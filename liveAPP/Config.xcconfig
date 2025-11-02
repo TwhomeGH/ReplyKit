@@ -1,0 +1,14 @@
+//
+//  Config.xcconfig
+//  liveAPP
+//
+//  Created by user on 2025/10/17.
+//
+
+// Configuration settings file format documentation can be found at:
+// https://developer.apple.com/documentation/xcode/adding-a-build-configuration-file-to-your-project
+
+
+CURRENT_PROJECT_VERSION = 2025101705
+MARKETING_VERSION = 2.2
+
