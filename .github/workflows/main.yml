@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-15
     steps:
       # 1️⃣ Checkout repository
       - name: Checkout
@@ -43,8 +43,7 @@ jobs:
             -configuration Release \
             -archivePath $PWD/build/MyApp.xcarchive \
             CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGN_IDENTITY="" \
-            OTHER_SWIFT_FLAGS="-no-extract-app-intents-metadata"
+            CODE_SIGN_IDENTITY=""
             
       # 4️⃣ Export Unsigned IPA using external plist
       - name: Export Unsigned IPA
