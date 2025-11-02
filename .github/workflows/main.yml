@@ -43,8 +43,9 @@ jobs:
             -configuration Release \
             -archivePath $PWD/build/MyApp.xcarchive \
             CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGN_IDENTITY=""
-
+            CODE_SIGN_IDENTITY="" \
+            OTHER_SWIFT_FLAGS="-no-extract-app-intents-metadata"
+            
       # 4️⃣ Export Unsigned IPA using external plist
       - name: Export Unsigned IPA
         run: |
