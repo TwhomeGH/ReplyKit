@@ -1,0 +1,103 @@
+name: iOS Archive & Release via Tag
+
+on:
+  push:
+    tags:
+      - 'v*'  # 例如 v1.0.0, v1.0.1 等
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      # 1️⃣ Checkout repository
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 2️⃣ Detect default scheme
+      - name: Set default scheme
+        run: |
+          scheme_list=$(xcodebuild -list -json | tr -d "\n")
+          default=$(echo $scheme_list | ruby -e "require 'json'; puts JSON.parse(STDIN.gets)['project']['targets'][0]")
+          echo $default > default
+          echo Using default scheme: $default
+
+      # 3️⃣ Build & Archive (Unsigned)
+      - name: Build & Archive Unsigned
+        run: |
+          scheme=$(cat default)
+          if [ "`ls -A | grep -i \\.xcworkspace\$`" ]; then
+              filetype="workspace"
+              file_to_build=`ls -A | grep -i \\.xcworkspace\$`
+          else
+              filetype="project"
+              file_to_build=`ls -A | grep -i \\.xcodeproj\$`
+          fi
+          file_to_build=$(echo $file_to_build | awk '{$1=$1;print}')
+
+          # Clean
+          xcodebuild clean -$filetype "$file_to_build" -scheme "$scheme" -configuration Release
+
+          # Archive without code signing
+          xcodebuild archive \
+            -$filetype "$file_to_build" \
+            -scheme "$scheme" \
+            -configuration Release \
+            -archivePath $PWD/build/MyApp.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      # 4️⃣ Export Unsigned IPA
+      - name: Export Unsigned IPA
+        run: |
+          cat > ExportOptionsUnsigned.plist << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" 
+ "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>method</key>
+    <string>development</string>
+    <key>signingStyle</key>
+    <string>manual</string>
+    <key>compileBitcode</key>
+    <false/>
+    <key>uploadBitcode</key>
+    <false/>
+    <key>stripSwiftSymbols</key>
+    <false/>
+    <key>teamID</key>
+    <string></string>
+    <key>signingCertificate</key>
+    <string></string>
+</dict>
+</plist>
+EOF
+
+          xcodebuild -exportArchive \
+            -archivePath $PWD/build/MyApp.xcarchive \
+            -exportPath $PWD/build \
+            -exportOptionsPlist ExportOptionsUnsigned.plist
+
+          # 重新命名 IPA 和 Archive
+          TAG=${GITHUB_REF##*/} # 取 tag 名，例如 v1.0.0
+          mv build/MyApp.xcarchive build/MyApp-${TAG}.xcarchive
+          mv build/MyApp.ipa build/MyApp-${TAG}.ipa
+
+      # 5️⃣ Create GitHub Release
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body: "Automated unsigned iOS build for ${{ github.ref_name }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 6️⃣ Upload IPA & Archive to Release
+      - name: Upload Artifacts to Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: build/*.ipa,build/*.xcarchive
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
