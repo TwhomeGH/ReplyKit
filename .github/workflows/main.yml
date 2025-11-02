@@ -3,17 +3,15 @@ name: iOS Archive & Release via Tag
 on:
   push:
     tags:
-      - 'v*'  # 例如 v1.0.0, v1.0.1 等
+      - 'v*'
 
 jobs:
   build:
     runs-on: macos-latest
     steps:
-      # 1️⃣ Checkout repository
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2️⃣ Detect default scheme
       - name: Set default scheme
         run: |
           scheme_list=$(xcodebuild -list -json | tr -d "\n")
@@ -21,7 +19,6 @@ jobs:
           echo $default > default
           echo Using default scheme: $default
 
-      # 3️⃣ Build & Archive (Unsigned)
       - name: Build & Archive Unsigned
         run: |
           scheme=$(cat default)
@@ -34,10 +31,8 @@ jobs:
           fi
           file_to_build=$(echo $file_to_build | awk '{$1=$1;print}')
 
-          # Clean
           xcodebuild clean -$filetype "$file_to_build" -scheme "$scheme" -configuration Release
 
-          # Archive without code signing
           xcodebuild archive \
             -$filetype "$file_to_build" \
             -scheme "$scheme" \
@@ -46,10 +41,9 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGN_IDENTITY=""
 
-      # 4️⃣ Export Unsigned IPA
       - name: Export Unsigned IPA
         run: |
-          cat > ExportOptionsUnsigned.plist << EOF
+          cat > ExportOptionsUnsigned.plist << 'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" 
  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -78,12 +72,10 @@ EOF
             -exportPath $PWD/build \
             -exportOptionsPlist ExportOptionsUnsigned.plist
 
-          # 重新命名 IPA 和 Archive
-          TAG=${GITHUB_REF##*/} # 取 tag 名，例如 v1.0.0
+          TAG=${GITHUB_REF##*/} 
           mv build/MyApp.xcarchive build/MyApp-${TAG}.xcarchive
           mv build/MyApp.ipa build/MyApp-${TAG}.ipa
 
-      # 5️⃣ Create GitHub Release
       - name: Create Release
         id: create_release
         uses: softprops/action-gh-release@v1
@@ -94,8 +86,7 @@ EOF
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 6️⃣ Upload IPA & Archive to Release
-      - name: Upload Artifacts to Release
+      - name: Upload IPA & Archive to Release
         uses: softprops/action-gh-release@v1
         with:
           files: build/*.ipa,build/*.xcarchive
