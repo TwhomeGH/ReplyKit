@@ -64,24 +64,21 @@ jobs:
           TAG=${GITHUB_REF##*/} 
 
           zip -r liveApp_${TAG}.ipa Payload
+
+          mv liveApp.xcarchive liveApp_${TAG}.xcarchive
           cd ..
           
+
+
         
-      # 5️⃣ Create GitHub Release
-      - name: Create Release
-        id: create_release
+      # 5️⃣ Upload IPA & Archive to Release
+      - name: Upload Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
           body: "Automated unsigned iOS build for ${{ github.ref_name }}"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # 6️⃣ Upload IPA & Archive to Release
-      - name: Upload IPA & Archive to Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: build/*.ipa
+          files: build/*.ipa,build/*.xcarchive
+          
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
