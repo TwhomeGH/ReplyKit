@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-latest
     steps:
       # 1️⃣ Checkout repository
       - name: Checkout
@@ -36,12 +36,14 @@ jobs:
           file_to_build=$(echo $file_to_build | awk '{$1=$1;print}')
 
           xcodebuild clean -$filetype "$file_to_build" -scheme "$scheme" -configuration Release
-
+          device=`xcrun xctrace list devices 2>&1 | grep -oE 'iPad.*?[^\(]+' | head -1 | awk '{$1=$1;print}'`
+          
           xcodebuild archive \
             -$filetype "$file_to_build" \
             -scheme "$scheme" \
             -configuration Release \
             -archivePath $PWD/build/MyApp.xcarchive \
+            -destination 'platform=iOS Simulator,name=$device'
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGN_IDENTITY=""
             
