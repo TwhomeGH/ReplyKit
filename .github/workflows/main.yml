@@ -121,7 +121,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           files: |
             build/*.ipa
-            build/liveApp_${{ github.ref_name }}*.xcarchive
+            build/liveApp_${{ github.ref_name }}.xcarchive
           
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
