@@ -108,15 +108,6 @@ jobs:
           -d "{\"tag_name\": \"$TAG_NAME\", \"name\": \"$TAG_NAME\", \"body\": \"$NEW_MESSAGE\", \"draft\": false, \"prerelease\": false}"
           fi
 
-          # 3️⃣ 上傳檔案（ipa / xcarchive）
-          for file in build/*.ipa build/*.xcarchive; do
-           [ -f "$file" ] || continue
-            curl -s -X POST \
-             -H "Authorization: token $GITHUB_TOKEN" \
-             -H "Content-Type: application/octet-stream" \
-             --data-binary @"$file" \
-             "$GITHUB_API/$RELEASE_ID/assets?name=$(basename $file)"
-           done
 
         
       # 5️⃣ Upload IPA & Archive to Release
