@@ -43,7 +43,7 @@ jobs:
             -scheme "$scheme" \
             -configuration Release \
             -archivePath $PWD/build/MyApp.xcarchive \
-            -destination 'platform=iOS Simulator,name=$device'
+            -destination "platform=iOS Simulator,name=$device"
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGN_IDENTITY=""
             
