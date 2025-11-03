@@ -14,6 +14,6 @@
     <key>stripSwiftSymbols</key>
     <false/>
     <key>teamID</key>
-    <string>ABCDE12345</string> <!-- 必須填非空 Team ID -->
+    <string></string> <!-- 必須填非空 Team ID -->
 </dict>
 </plist>
