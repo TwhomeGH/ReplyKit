@@ -89,23 +89,27 @@ jobs:
           RELEASE_ID=$(echo "$RELEASE" | jq -r '.id // empty')
 
           if [ -n "$RELEASE_ID" ]; then
-          # Release 存在 → 合併 body
-          EXISTING_BODY=$(echo "$RELEASE" | jq -r '.body')
-          MERGED_BODY="${EXISTING_BODY}\n\n${NEW_MESSAGE}"
+           # Release 存在 → 合併 body
+          
+           EXISTING_BODY=$(echo "$RELEASE" | jq -r '.body')
+           MERGED_BODY=$(printf "%s\n\n%s" "$EXISTING_BODY" "$NEW_MESSAGE" | jq -R --slurp '.')
 
-          # 更新 Release
-          curl -X PATCH \
+           # 更新 Release
+           curl -X PATCH \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            $GITHUB_API/$RELEASE_ID \
+           -d "{\"body\": \"$MERGED_BODY\"}"
+          else
+           # Release 不存在 → 建立 Release
+
+           NEW_BODY=$(echo "$NEW_MESSAGE" | jq -R --slurp '.')
+          
+           curl -X POST \
            -H "Authorization: token $GITHUB_TOKEN" \
            -H "Accept: application/vnd.github.v3+json" \
-           $GITHUB_API/$RELEASE_ID \
-          -d "{\"body\": \"$MERGED_BODY\"}"
-          else
-          # Release 不存在 → 建立 Release
-          curl -X POST \
-          -H "Authorization: token $GITHUB_TOKEN" \
-          -H "Accept: application/vnd.github.v3+json" \
-          $GITHUB_API \
-          -d "{\"tag_name\": \"$TAG_NAME\", \"name\": \"$TAG_NAME\", \"body\": \"$NEW_MESSAGE\", \"draft\": false, \"prerelease\": false}"
+           $GITHUB_API \
+           -d "{\"tag_name\": \"$TAG_NAME\", \"name\": \"$TAG_NAME\", \"body\": \"$NEW_BODY\", \"draft\": false, \"prerelease\": false}"
           fi
 
 
