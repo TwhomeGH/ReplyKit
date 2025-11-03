@@ -54,7 +54,7 @@ jobs:
       # 4️⃣ Export Unsigned IPA using external plist
       - name: Export Unsigned IPA
         run: |
-          mkdir -p build
+        
           cd build
           cp -r liveApp.xcarchive/Products/Applications/*.app .
           mkdir -p Payload
@@ -65,7 +65,7 @@ jobs:
 
           zip -r liveApp_${TAG}.ipa Payload
 
-          mv liveApp.xcarchive build/liveApp_${TAG}.xcarchive
+          mv liveApp.xcarchive liveApp_${TAG}.xcarchive
           cd ..
           
 
