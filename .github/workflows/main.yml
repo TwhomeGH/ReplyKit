@@ -66,10 +66,12 @@ jobs:
           zip -r liveApp_${TAG}.ipa Payload
 
           mv liveApp.xcarchive liveApp_${TAG}.xcarchive
+
+          zip -r liveApp_${TAG}.xcarchive.zip liveApp_${TAG}.xcarchive
           cd ..
 
           echo "Listing build directory contents"
-          ls -alR build/
+          ls -al build/
           
           
 
@@ -121,7 +123,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           files: |
             build/*.ipa
-            build/liveApp_${{ github.ref_name }}.xcarchive
+            build/liveApp_${{ github.ref_name }}.xcarchive.zip
           
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
