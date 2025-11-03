@@ -79,7 +79,7 @@ jobs:
           TAG_NAME: ${{ github.ref_name }}
         run: |
           GITHUB_API="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases"
-          NEW_MESSAGE="Automated unsigned iOS build updated at $(date +'%Y-%m-%d %H:%M:%S')"
+          NEW_MESSAGE="Automated unsigned iOS build \nUpdated at $(date +'%Y/%m/%d %H:%M:%S')"
 
           # 嘗試取得現有 release
           RELEASE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
