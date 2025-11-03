@@ -51,10 +51,11 @@ jobs:
       - name: Export Unsigned IPA
         run: |
           mkdir -p build
+          echo ls
           xcodebuild -exportArchive \
             -archivePath $PWD/build/MyApp.xcarchive \
             -exportPath $PWD/build \
-            -exportOptionsPlist ExportOptionsUnsigned.plist \
+            -exportOptionsPlist "$PWD/ExportOptionsUnsigned.plist" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY=""
