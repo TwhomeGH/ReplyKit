@@ -36,7 +36,12 @@ jobs:
           file_to_build=$(echo $file_to_build | awk '{$1=$1;print}')
 
           xcodebuild clean -$filetype "$file_to_build" -scheme "$scheme" -configuration Release
-          device=$(xcrun xctrace list devices 2>&1 | grep -E 'iPad' | head -1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')        
+          device=$(xcrun xctrace list devices 2>&1 \
+          | grep 'iPad' \
+          | head -1 \
+          | awk -F'Simulator' '{print $1}' \
+          | xargs)
+    
           xcodebuild archive \
             -$filetype "$file_to_build" \
             -scheme "$scheme" \
