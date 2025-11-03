@@ -94,7 +94,7 @@ jobs:
            # Release 存在 → 合併 body
           
            EXISTING_BODY=$(echo "$RELEASE" | jq -r '.body')
-           MERGED_BODY=$(printf "%s\n\n%s" "$EXISTING_BODY" "$NEW_MESSAGE" | jq -R --slurp '.')
+           MERGED_BODY=$(printf "%s\n\n%s" "$EXISTING_BODY" "$NEW_MESSAGE" | jq -Rs --slurp '.')
 
            # 更新 Release
            curl -X PATCH \
@@ -105,7 +105,7 @@ jobs:
           else
            # Release 不存在 → 建立 Release
 
-           NEW_BODY=$(echo "$NEW_MESSAGE" | jq -R --slurp '.')
+           NEW_BODY=$(echo "$NEW_MESSAGE" | jq -Rs --slurp '.')
           
            curl -X POST \
            -H "Authorization: token $GITHUB_TOKEN" \
