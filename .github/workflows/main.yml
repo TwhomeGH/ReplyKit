@@ -42,7 +42,7 @@ jobs:
             -$filetype "$file_to_build" \
             -scheme "$scheme" \
             -configuration Release \
-            -archivePath $PWD/build/MyApp.xcarchive \
+            -archivePath $PWD/build/liveApp.xcarchive \
             -destination "generic/platform=iOS" \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGNING_REQUIRED=NO \
@@ -56,16 +56,17 @@ jobs:
         run: |
           mkdir -p build
           cd build
-          cp -r MyApp.xcarchive/Products/Applications/*.app .
+          cp -r liveApp.xcarchive/Products/Applications/*.app .
           mkdir -p Payload
           mv *.app Payload/
-          zip -r MyApp.ipa Payload
-          cd ..
+
           
           TAG=${GITHUB_REF##*/} 
-          mv build/MyApp.xcarchive build/MyApp-${TAG}.xcarchive
-          mv build/MyApp.ipa build/MyApp-${TAG}.ipa
 
+          zip -r liveApp_${TAG}.ipa Payload
+          cd ..
+          
+        
       # 5️⃣ Create GitHub Release
       - name: Create Release
         id: create_release
@@ -81,6 +82,6 @@ jobs:
       - name: Upload IPA & Archive to Release
         uses: softprops/action-gh-release@v1
         with:
-          files: build/*.ipa,build/*.xcarchive
+          files: build/*.ipa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
