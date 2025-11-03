@@ -2,6 +2,8 @@ name: Check Changes & Trigger Tag
 
 on:
   push:
+    branches:
+      - main      # 或你想要監控的分支
     paths:
       - "liveApp*/**"
       - "ReplyKIT*/**"
