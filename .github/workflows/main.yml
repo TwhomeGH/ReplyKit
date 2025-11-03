@@ -115,8 +115,6 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
-          #body: "Automated unsigned iOS build for ${{ github.ref_name }}"
           files: build/*.ipa build/*.xcarchive
           
         env:
