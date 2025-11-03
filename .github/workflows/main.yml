@@ -54,7 +54,10 @@ jobs:
           xcodebuild -exportArchive \
             -archivePath $PWD/build/MyApp.xcarchive \
             -exportPath $PWD/build \
-            -exportOptionsPlist ExportOptionsUnsigned.plist
+            -exportOptionsPlist ExportOptionsUnsigned.plist \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
 
           TAG=${GITHUB_REF##*/} 
           mv build/MyApp.xcarchive build/MyApp-${TAG}.xcarchive
