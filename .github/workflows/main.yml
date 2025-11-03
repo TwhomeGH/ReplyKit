@@ -65,7 +65,7 @@ jobs:
 
           zip -r liveApp_${TAG}.ipa Payload
 
-          mv liveApp.xcarchive liveApp_${TAG}.xcarchive
+          mv liveApp.xcarchive build/liveApp_${TAG}.xcarchive
           cd ..
           
 
