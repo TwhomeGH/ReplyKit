@@ -55,15 +55,13 @@ jobs:
       - name: Export Unsigned IPA
         run: |
           mkdir -p build
-          echo ls
-          xcodebuild -exportArchive \
-            -archivePath $PWD/build/MyApp.xcarchive \
-            -exportPath $PWD/build \
-            -exportOptionsPlist "$PWD/ExportOptionsUnsigned.plist" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY=""
-
+          cd build
+          cp -r MyApp.xcarchive/Products/Applications/*.app .
+          mkdir -p Payload
+          mv *.app Payload/
+          zip -r MyApp.ipa Payload
+          cd ..
+          
           TAG=${GITHUB_REF##*/} 
           mv build/MyApp.xcarchive build/MyApp-${TAG}.xcarchive
           mv build/MyApp.ipa build/MyApp-${TAG}.ipa
