@@ -16,7 +16,6 @@ import os
 import UIKit
 #elseif os(macOS)
 import AppKit
-
 #endif
 
 import HaishinKit
@@ -31,12 +30,14 @@ import Foundation
 
 
 let logger = Logger(subsystem: "nuclear.liveAPP.ReplyKit", category: "extension")
-let userDefaults=UserDefaults(suiteName: "group.nuclear.liveAPP")
+var userDefaults = UserDefaults(suiteName: "group.nuclear.liveAPP")
 
 
 
 @available(iOS 10.0, *)
 class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
+
+    //private var userDefaults: UserDefaults?
 
     var DWidth = 1920
     var DHeight = 1334
@@ -51,6 +52,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     var volumeNotifier : VolumeNotifier?
 
     var isVideoRotationEnabled = true
+
+    var rtmpURL:String?
+    var rtmpKey:String?
 
 
     
@@ -113,8 +117,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
 
-    private var onAudioPage = userDefaults?.bool(forKey: "onAudioPage") ?? false
-
+    private var onAudioPage :Bool?
+    //
     private var needVideoConfiguration = true
     private var needAudioConfiguration = true
 
@@ -389,7 +393,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 if audioProcessor != nil {
 
                     audioProcessor.updatePage(status: onAudioPage)
-                    sendlog(message:"[Audio] Page \(onAudioPage)")
+                    sendlog(
+                        message:"[Audio] Page \(String(describing: onAudioPage))"
+                    )
 
                 }
                 
@@ -409,7 +415,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                         micAddVolume: micAddVolume,
                         appVolume: appVolume,
                         micVolume: micVolume,
-                        onAudioPage: onAudioPage
+                        onAudioPage: onAudioPage ?? false
                     )
                 
                     // 假設 AudioProcessor 有無參數的初始化方法
@@ -420,7 +426,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
 
-            sendlog(message: "AudioPage:\(onAudioPage)")
+            sendlog(message: "AudioPage:\(String(describing: onAudioPage))")
 
 
         case "PauseStream":
@@ -439,7 +445,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     deinit {
 
-        rtmpStream = nil
+        //rtmpStream = nil
 
         removeObservers()
     }
@@ -447,13 +453,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     // MARK: 初始化
     override init() {
 
-        let saved = UserDefaults.standard.integer(forKey: "bitRate")
 
-        bitrate =  saved != 0 ? saved : base * multiplier
-
+        bitrate=userDefaults?.integer(forKey: "bitRate") ?? 3_900_000
 
         rtmpStream = RTMPStream(connection: rtmpConnection)
-
+        
         ADWidth = 0
         ADHeight = 0
 
@@ -464,12 +468,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         logger.info("ReplyKit Debug")
 
 
+        // 初始讀取
+        reloadVolumes()
 
-
-        Task {
-            // 初始讀取
-            reloadVolumes()
-        }
     }
 
 
@@ -527,8 +528,16 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         guard let avOrientation = avOrientation(from: orientation) else { return }
 
         var videoSettings = await rtmpStream.videoSettings
-        let size = videoSettings.videoSize
+        var size = videoSettings.videoSize
+
+
         let newSize:CGSize
+
+        if ADWidth > 0 && ADHeight > 0 {
+            sendlog(message: "用戶設定寬高：\(ADWidth) x \(ADHeight)")
+            size.width = CGFloat(ADHeight)
+            size.height = CGFloat(ADWidth)
+        }
 
         switch avOrientation {
         case .portrait, .portraitUpsideDown:
@@ -604,6 +613,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                             userInfo: [NSLocalizedDescriptionKey: message])
         // 如果 broadcastEnd 是 async
            Task {
+               sendlog(message: message)
                broadcastEnd(message: message)  // 等待清理完成
                await MainActor.run {
                    finishBroadcastWithError(error)
@@ -674,10 +684,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
 
-    func setUserDefalutConfig(urlString:String,streamKey:String)  {
+    func setUserDefalutConfig(urlString:String = "rtmp://192.168.0.106/live" ,streamKey:String = "test")  {
         isVideoRotationEnabled = userDefaults?.bool(forKey: "VideoRotate") ?? true
-
-        isStopping = false
 
         if userDefaults?.object(forKey: "appVolume") == nil {
             userDefaults?.set(1.0, forKey: "appVolume")
@@ -695,8 +703,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             DHeight = ADHeight
         }
 
+        onAudioPage=userDefaults?.bool(forKey: "onAudioPage") ?? false
 
-        bitrate=userDefaults?.integer(forKey: "bitRate") ?? 3_900_000
+
+        //bitrate=userDefaults?.integer(forKey: "bitRate") ?? 3_900_000
 
 
         // MARK: Volume
@@ -780,6 +790,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         await mediaMixer.startRunning()
 
 
+        didConfigureVideo = false
+        didConfigureAudio = false
 
         configureOrientation()
 
@@ -798,6 +810,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     func initProcessors() async {
         videoBufferManager = AdaptiveVideoBufferManager()
+
         volumeNotifier = VolumeNotifier()
 
 
@@ -818,7 +831,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 micAddVolume: micAddVolume,
                 appVolume: appVolume,
                 micVolume: micVolume,
-                onAudioPage: onAudioPage
+                onAudioPage: onAudioPage ?? false
             )
 
 
@@ -828,6 +841,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
     func startRTMP(url:String,key:String) async {
+
         do {
 
             // step 3: 連線 RTMP
@@ -858,47 +872,58 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
     }
+
+
+
     // MARK: 直播開始
     override func broadcastStarted(withSetupInfo setupInfo: [String : NSObject]?) {
         // User has requested to start the broadcast. Setup info from the UI extension can be suppdlied but optional.
 
         logger.info("運行通知")
 
+        isStopping = false
 
 
         // 🔹 從 UserDefaults 拿 RTMP 設定
-        let urlString = userDefaults?.string(forKey: "rtmpURL") ?? "rtmp://192.168.0.102/live"
-        let streamKey = userDefaults?.string(forKey: "rtmpKey") ?? "stream1?vhost=live2"
-
-        setUserDefalutConfig(
-            urlString: urlString,
-            streamKey: streamKey
-        )
+        rtmpURL = userDefaults?.string(forKey: "rtmpURL") ?? "rtmp://192.168.0.102/live"
+        rtmpKey = userDefaults?.string(forKey: "rtmpKey") ?? "stream1?vhost=live2"
 
 
 
-        self.prepareCompressionSession()
+
+//       let rtmpURL2 = "rtmp://192.168.0.106/live"
+//       let rtmpKey2 = "e5c162ed9ae3?secret=BBA0A8FD817F4F75"
+//
+
+
+        //self.prepareCompressionSession()
 
         Task {
+            setUserDefalutConfig(
+                urlString: rtmpURL!,
+                streamKey: rtmpKey!
+            )
+
+            logger.debug("✅ RTMP設定: \(String(describing: self.rtmpURL)) \(String(describing: self.rtmpKey))")
+
 
             await configureVideo()
             await configureAudio()
             await configureMediaMixer()
 
-             logger.info("✅ MediaMixer 配置完成")
+            logger.info("✅ MediaMixer 配置完成")
 
             await initProcessors()
 
-             logger.info("✅ Processor 初始化完成")
+            logger.info("✅ Processor 初始化完成")
 
 
-
-
-            await startRTMP(url: urlString , key: streamKey)
-
-
-
+            await startRTMP(url: rtmpURL! , key: rtmpKey!)
         }
+
+
+
+
 
     }
 
@@ -967,9 +992,21 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         pauseTimer?.resume()
     }
 
+    private var isRebuilding = false
+    private var isCleanup = false
+
 
     // MARK: 直播暫停
     override func broadcastPaused() {
+
+        guard !isCleanup else {
+            sendlog(message: "⚠️ 正在重建中，忽略重複 Resume")
+            return
+        }
+        isCleanup = true
+        defer { isCleanup = false }
+
+
         stateQueue.sync {
             guard !isPause else {
                 sendlog(message: "⚠️ 已處於暫停狀態（防重複觸發）")
@@ -985,11 +1022,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         // 停止 Audio / Video 處理
         audioProcessor?.cleanup()
         videoProcessor?.cleanup()
-        volumeNotifier?.cleanup()
+
 
         audioProcessor = nil
         videoProcessor = nil
-        volumeNotifier = nil
 
         // MARK: === 建立暫停畫面資源 ===
         // 呼叫專門處理暫停畫面邏輯
@@ -1000,6 +1036,14 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     // MARK: 直播恢復
     override func broadcastResumed() {
+        guard !isRebuilding else {
+            sendlog(message: "⚠️ 正在重建中，忽略重複 Resume")
+            return
+        }
+        isRebuilding = true
+        defer { isRebuilding = false }
+
+
         stateQueue.sync {
             guard isPause else {
                 sendlog(message: "⚠️ 非暫停狀態，忽略恢復操作（防重複觸發）")
@@ -1051,7 +1095,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 micAddVolume: micAddVolume,
                 appVolume: appVolume,
                 micVolume: micVolume,
-                onAudioPage: onAudioPage
+                onAudioPage: onAudioPage ?? false
             )
             sendlog(message: "🎧 AudioProcessor 重建完成")
         }
@@ -1077,8 +1121,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         removeObservers()
 
-
+        isStopping = true
         isSessionReady = false
+
 
         Task {
 #if os(iOS)
@@ -1089,6 +1134,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 #endif
         }
 
+        
         DeviceOrientationManager.shared.stopUpdates()
 
         volumeNotifier?.cleanup()
@@ -1100,8 +1146,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         videoProcessor=nil
         audioProcessor=nil
 
-        didConfigureVideo = false
-        didConfigureAudio = false
 
         Task {
 
@@ -1296,6 +1340,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 }
 
+
                 let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
 
                 lastVideoTimestamp = timestamp
@@ -1310,7 +1355,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     }
                 }
 
+
             }
+
+
+
+
             break
 
 

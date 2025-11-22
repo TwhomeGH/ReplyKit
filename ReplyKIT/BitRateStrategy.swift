@@ -20,7 +20,7 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
     private var startTime: Date?
 
 
-    private let minBitrate = 2_000_000       // 最低 2000 kbps
+    private let minBitrate = 1_500_000       // 最低 1500 kbps
     private let stepUp: Double = 1.05      // 緩升 5%
     private let stepDown: Double = 0.85    // 緩降 15%
 
@@ -35,6 +35,9 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
     func setOnDisconnect(_ closure: @escaping () -> Void) {
         self.onDisconnect = closure
     }
+
+    // 宣告歷史陣列
+    var avgOutBpsHistory: [Double] = []
 
 
 
@@ -134,8 +137,17 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
 
             // 若網路No穩定且低於最大值，緩 30%
 
+            // 每次收到 status 事件更新
+            avgOutBpsHistory.append(avgOutBps ?? Double(VBitRate))
+
+            // 只保留最近 N 個
+            if avgOutBpsHistory.count > 5 {
+                avgOutBpsHistory.removeFirst()
+            }
+
             // 緩降
-            if Int(avgOutBps ?? 0) < Int(Double(VBitRate) * 0.5) {
+            // 判斷是否連續多次低於阈值才降碼率
+            if avgOutBpsHistory.filter({ $0 < Double(VBitRate) * 0.7 }).count >= 3 {
 
                 newBitV.bitRate=max(minBitrate, Int(Double(VBitRate) * stepDown))
 
@@ -147,7 +159,7 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
 
 
             // 緩升
-            else if Int(avgOutBps ?? 0) > Int(Double(VBitRate) * 0.95), VBitRate < mamimumVideoBitRate {
+            else if Int(avgOutBps ?? 0) > Int(Double(VBitRate) * 0.85), VBitRate < mamimumVideoBitRate {
 
                 newBitV.bitRate = min(mamimumVideoBitRate , Int(Double(VBitRate) * stepUp) )
 
@@ -166,8 +178,14 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
             // 用平均出流量或當前出流量作為基準
             let measuredBps = avgOutBps ?? Double(newBitV.bitRate)
 
+            // 使用短期 EMA 或平滑歷史
+            let smoothBps = 0.7 * (avgOutBps ?? Double(newBitV.bitRate)) + 0.3 * measuredBps
+
             // 計算新 bitrate，但不低於 minBitrate
-            newBitV.bitRate = max(minBitrate, Int(measuredBps * 0.9)) // 例如降到 90% 的平均出流量
+            newBitV.bitRate = max(
+                minBitrate,
+                Int(smoothBps * 0.9)
+            ) // 例如降到 90% 的平均出流量
 
             sendlog(message: "📉 Bitrate 網路不穩，調整至: \(newBitV.bitRate / 1000) Kbps")
 

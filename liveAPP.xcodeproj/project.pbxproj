@@ -771,6 +771,7 @@
 		CE2819CA2E5AB3790023BBC4 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2025101801;
 				DEVELOPMENT_TEAM = DD4ZZ69XV7;
@@ -795,6 +796,7 @@
 		CE2819CB2E5AB3790023BBC4 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2025101801;
 				DEVELOPMENT_TEAM = DD4ZZ69XV7;

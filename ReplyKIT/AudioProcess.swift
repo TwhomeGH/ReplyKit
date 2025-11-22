@@ -478,13 +478,13 @@ final class AudioProcessor : @unchecked Sendable {
 
 
             let gain = (trackType == .app) ? self.appAddVolume : self.micAddVolume
-        let safeGain = gain.isFinite ? gain : 1.0  // 防止 infinity / NaN
+            let safeGain = gain.isFinite ? gain : 1.0  // 防止 infinity / NaN
 
 
 
             var amplified = buffer
 
-            if safeGain != 1.0 {
+            if safeGain > 1.0 {
                 amplified = amplifySIMD(buffer, gain: safeGain)
             }
 
@@ -501,7 +501,11 @@ final class AudioProcessor : @unchecked Sendable {
                     var adjustedRMS = rms * safeUserVolume
                     if !adjustedRMS.isFinite { adjustedRMS = 0 }
 
-                    self.volumeNotifier.updateVolume(volume: adjustedRMS, track: Int(trackType.rawValue))
+                    // 丟到 main thread 處理
+                    DispatchQueue.main.async {
+                        
+                        self.volumeNotifier.updateVolume(volume: adjustedRMS, track: Int(trackType.rawValue))
+                    }
                 }
             }
 

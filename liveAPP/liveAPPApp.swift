@@ -350,6 +350,32 @@ func postSystemNotification(title: String, body: String) {
 
 
 
+final class SocketUserDefaluts: ObservableObject {
+    @Published var server: SocketServer?
+
+    static let shared = SocketUserDefaluts()
+
+    private init() {}
+
+
+    func startSettingsServer() {
+        guard server == nil else { return } // 避免重複啟動
+
+
+        do {
+            server = try SocketServer()
+            NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+                guard let self = self else { return }
+                let defaults = UserDefaults.standard
+                for (key, value) in defaults.dictionaryRepresentation() {
+                    self.server?.broadcast(key: key, value: value)
+                }
+            }
+        } catch {
+            print("Failed to start SettingsServer: \(error)")
+        }
+    }
+}
 
 @main
 struct liveAPPApp: App {
@@ -367,6 +393,9 @@ struct liveAPPApp: App {
               deviceOrientation != .faceDown,
               deviceOrientation != .unknown else { return }
 
+
+        // 明確使用 App Group
+        let userDefaults = UserDefaults(suiteName: "group.nuclear.liveAPP")
 
         userDefaults?.set(deviceOrientation.rawValue, forKey: "LOrientation")
         userDefaults?.set(false, forKey: "LockIN")
@@ -402,9 +431,14 @@ struct liveAPPApp: App {
         print("事件註冊")
         StableLockRotationDetector.shared.debugMode=true
         StableLockRotationDetector.shared.onLockStateDetected = { isLocked in
+
+            // 明確使用 App Group
+            let userDefaults = UserDefaults(suiteName: "group.nuclear.liveAPP")
+
             if isLocked {
+
+                
                 userDefaults?.set(true, forKey: "LockIN")
-                userDefaults?.synchronize()
 
                 let cfCenter = CFNotificationCenterGetDarwinNotifyCenter()
 
@@ -416,7 +450,7 @@ struct liveAPPApp: App {
                 print("使用者可能開了螢幕鎖定 🔒")
             } else {
                 userDefaults?.set(false, forKey: "LockIN")
-                userDefaults?.synchronize()
+
 
                 let cfCenter = CFNotificationCenterGetDarwinNotifyCenter()
 
@@ -438,14 +472,18 @@ struct liveAPPApp: App {
 
 
 
+
+
     init(){
+
+        // App 啟動時就啟動 Socket Server
+        // 啟動一次
+        SocketUserDefaluts.shared.startSettingsServer()
+
         cacheInitialOrientation()
 
+
         UserDefaults.standard.set(0, forKey: "lastReadLineCount")
-        //startMonitoringOrientation()
-//        userDefaults?.removeObject(forKey: "rtmpURL")
-//        userDefaults?.removeObject(forKey: "rtmpKey")
-//        userDefaults?.synchronize()
 
 
 

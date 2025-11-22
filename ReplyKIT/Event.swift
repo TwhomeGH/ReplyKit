@@ -378,7 +378,8 @@ func sendlog(title: String = "ReplyKit", message: String, mode: Int = 0) {
         }
 
         if RPConfig.shared.onLogPage {
-            LogManager.shared.log(title: title, message: message)
+            LogManager.shared.log(title:title,message: message)
+            //SocketClient.shared.sendLog(title: title, message: message)
         }
 
     }

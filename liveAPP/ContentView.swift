@@ -24,13 +24,8 @@ let userDefaults: UserDefaults? = UserDefaults(suiteName: "group.nuclear.liveAPP
 let userDefaults: UserDefaults = .standard
 #endif
 
-func syncUserDefault() {
-#if os(iOS)
-    userDefaults?.synchronize()
-#else
-    userDefaults.synchronize()
-#endif
-}
+
+
 func setUserDefault<T>(_ value: T, forKey key: String) {
 #if os(iOS)
     userDefaults?.set(value, forKey: key)
@@ -41,8 +36,23 @@ func setUserDefault<T>(_ value: T, forKey key: String) {
 
 func getUserDefault<T>(forKey key: String) -> T? {
 #if os(iOS)
+    
+    let defaults = userDefaults
+    switch T.self {
+    case is Float.Type:
+        return defaults?.float(forKey: key) as? T
+    case is Double.Type:
+        return defaults?.double(forKey: key) as? T
+    case is Int.Type:
+        return defaults?.integer(forKey: key) as? T
+    case is Bool.Type:
+        return defaults?.bool(forKey: key) as? T
+    default:
+        return defaults?.value(forKey: key) as? T
+    }
+    #else
+
     guard let userDefaults = userDefaults else { return nil }
-#endif
 
     let defaults = userDefaults
     switch T.self {
@@ -57,6 +67,10 @@ func getUserDefault<T>(forKey key: String) -> T? {
     default:
         return defaults.value(forKey: key) as? T
     }
+
+
+
+    #endif
 }
 
 
@@ -180,8 +194,6 @@ struct BroadcastButton: UIViewRepresentable {
             UR=UIDevice.current.orientation
             logger.info("ROTATE:\(String(describing:self.UR))")
             userDefaults?.set(self.UR.rawValue,forKey: "L3Rotate")
-            userDefaults?.synchronize()
-
         }
         func triggerButton() {
             button?.sendActions(for: .touchUpInside)
@@ -971,12 +983,7 @@ struct logView: View {
     }
 }
 
-class RTMPSetting {
-    var rtmp:String
-    init(){
-        self.rtmp="test"
-    }
-}
+
 
 struct AnimatedButton: View {
     var title: String
@@ -1022,22 +1029,23 @@ struct FormView: View {
     @Environment(\.dismiss) var dismiss
     @StateObject private var manager = StreamConfigManager()
     @AppStorage("rtmpURL",store: userDefaults) var rtmpURL: String = ""
-    @AppStorage("rtmpKey",store: userDefaults)  var rtmpKey: String=""
-    //   @State var rtmpURL: String = ""
-    //    @State var rtmpKey: String = ""
-    //
+    @AppStorage("rtmpKey",store: userDefaults) var rtmpKey: String=""
 
 
     @State var name:String = "自訂"
     @State var tip:String = ""
 
     @State private var selectedConfigID: UUID?
+
+
     var con: some View{
         List {
             Section(header: Text("選擇配置")) {
 
                 if #available(iOS 17.0, *) {
                     Picker("配置", selection: $selectedConfigID) {
+                        Text("未選擇任何配置").tag(UUID?.none) // 明確告訴 SwiftUI nil 代表這個選項
+
                         ForEach(manager.configs) { config in
                             Text(config.name).tag(config.id as UUID?)
                         }
@@ -1220,6 +1228,7 @@ struct FormView: View {
             }
         }
     }
+
     var body: some View {
 #if os(macOS)
         con
@@ -1232,24 +1241,63 @@ struct FormView: View {
                 .toolbar {
                     ToolbarItem(placement: .automatic) {
                         Button("完成") {
-                            if let id = selectedConfigID,
-                               var config = manager.configs.first(where: { $0.id == id }) {
-                                // 更新目前編輯的這組
+                            if let id = manager.activeConfigID,
+                               var config = manager.configs.first(
+                                where: { $0.id == id
+                                }) {
+
+                                config.name = name
                                 config.rtmpURL = rtmpURL
                                 config.streamKey = rtmpKey
+
+                                // 更新目前編輯的這組
+                                rtmpURL = config.rtmpURL
+                                rtmpKey = config.streamKey
                                 manager.updateConfig(config)
                                 manager.setActiveConfig(config)
+                                logger.debug("Now active:\(rtmpURL) \(rtmpKey)")
                             }
                             dismiss()
                         }
                     }
                 }
                 .onAppear {
-                    if let active = manager.activeConfig {
+                    // 如果有 activeConfigID，優先使用
+                    if let activeID = manager.activeConfigID {
+                        selectedConfigID = activeID
+                    } else if let firstID = manager.configs.first?.id {
+                        // 沒有 activeConfig 時 fallback 為第一個
+                        selectedConfigID = firstID
+                        manager.setActiveConfig(manager.configs.first!)
+                    } else {
+                        // 完全沒有配置 → 清空
+                        selectedConfigID = nil
+                    }
 
-                        selectedConfigID = active.id
-                        rtmpURL = active.rtmpURL
-                        rtmpKey = active.streamKey
+                    // 同步欄位資料
+                    if let id = selectedConfigID,
+                       let config = manager.configs.first(where: { $0.id == id }) {
+                        name = config.name
+                        rtmpURL = config.rtmpURL
+                        rtmpKey = config.streamKey
+                    }
+                }
+                .onDisappear {
+                    if let id = manager.activeConfigID,
+                       var config = manager.configs.first(
+                        where: { $0.id == id
+                        }) {
+
+                        config.name = name
+                        config.rtmpURL = rtmpURL
+                        config.streamKey = rtmpKey
+
+                        // 更新目前編輯的這組
+                        rtmpURL = config.rtmpURL
+                        rtmpKey = config.streamKey
+                        manager.updateConfig(config)
+                        manager.setActiveConfig(config)
+                        logger.debug("Disappear Now active:\(rtmpURL) \(rtmpKey)")
                     }
                 }
 
@@ -1774,10 +1822,21 @@ struct homeView:View{
 
 
                         var g = rtmpKey
-                        let endIndex = g.index(g.endIndex, offsetBy: -5)
-                        g = String(g[..<endIndex]) + "00000"
+                        let replaceCount = min(5, g.count)
+                        let endIndex = g.index(g.endIndex, offsetBy: -replaceCount)
+                        let prefix = String(g[..<endIndex])
 
-
+                        // 保留前 (replaceCount - 2) 個字，再補 "00"
+                        if replaceCount > 2 {
+                            let startOfReplace = g.index(g.endIndex, offsetBy: -replaceCount)
+                            let midEnd = g.index(g.endIndex, offsetBy: -2)
+                            let middle = g[startOfReplace..<midEnd]
+                            g = prefix + middle + "00"
+                        } else {
+                            // 如果總長小於等於2，就全部換成0
+                            g = String(repeating: "0", count: g.count)
+                        }
+                        
                         sendlog(message: "RTMP To:\(rtmpURL) \(g)")
                         StreamBtn.rtmpKey=rtmpKey
                         StreamBtn.rtmpURL=rtmpURL
@@ -1863,7 +1922,7 @@ struct ContentView: View {
 
     
     @EnvironmentObject var logModel: LogModel
-
+   
     @StateObject private var pageState = PageState()
 
 
@@ -1873,10 +1932,10 @@ struct ContentView: View {
 
     @AppStorage("onAudioPage",store:userDefaults) private var onAudioPage = false
 
-
-
+   
 
     init(){
+
         onAudioPage=false
     }
 
@@ -2037,6 +2096,7 @@ struct ContentView: View {
 
             }
         }
+
 
 
     }
