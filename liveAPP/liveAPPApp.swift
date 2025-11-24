@@ -350,33 +350,35 @@ func postSystemNotification(title: String, body: String) {
 
 
 
-final class SocketUserDefaluts: ObservableObject {
-    @Published var server: SocketServer?
-
-    static let shared = SocketUserDefaluts()
-
-    private init() {}
-
-
-    func startSettingsServer() {
-        guard server == nil else { return } // 避免重複啟動
-
-
-        do {
-            server = try SocketServer()
-            NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
-                guard let self = self else { return }
-                let defaults = UserDefaults.standard
-                for (key, value) in defaults.dictionaryRepresentation() {
-                    self.server?.broadcast(key: key, value: value)
-                }
-            }
-        } catch {
-            print("Failed to start SettingsServer: \(error)")
-        }
-    }
-}
-
+//final class SocketUserDefaluts: ObservableObject {
+//    @Published var server: CFMessagePortServer?
+//
+//    static let shared = SocketUserDefaluts()
+//
+//    private init() {}
+//
+//
+//    func startSettingsServer() {
+//        guard server == nil else { return } // 避免重複啟動
+//        
+//        server = CFMessagePortServer.shared
+//
+//        server?.start()
+//
+//
+////            NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+////                guard let self = self else { return }
+////                let defaults = UserDefaults.standard
+////                for (key, value) in defaults.dictionaryRepresentation() {
+////                    self.server?.broadcast(key: key, value: value)
+////                }
+////            }
+////        } catch {
+////            print("Failed to start SettingsServer: \(error)")
+////        }
+//    }
+//}
+//
 @main
 struct liveAPPApp: App {
     // 建立 delegate 實例
@@ -478,8 +480,9 @@ struct liveAPPApp: App {
 
         // App 啟動時就啟動 Socket Server
         // 啟動一次
-        SocketUserDefaluts.shared.startSettingsServer()
-
+        //SocketUserDefaluts.shared.startSettingsServer()
+        CFMessagePortServer.shared.start()
+        
         cacheInitialOrientation()
 
 

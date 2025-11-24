@@ -363,8 +363,8 @@ final class VolumeNotifier {
             queue.async { [weak self, pendingAppVolume, pendingMicVolume] in
                 guard let self = self, self.isActive else { return }
 
-                userDefaults?.set(pendingAppVolume, forKey: "appVolumeLive")
-                userDefaults?.set(pendingMicVolume, forKey: "micVolumeLive")
+                SharedDefaults.group?.set(pendingAppVolume, forKey: "appVolumeLive")
+                SharedDefaults.group?.set(pendingMicVolume, forKey: "micVolumeLive")
                 CFNotificationCenterPostNotification(
                     CFNotificationCenterGetDarwinNotifyCenter(),
                     CFNotificationName("LiveVolumeUpdated" as CFString),
@@ -503,7 +503,7 @@ final class AudioProcessor : @unchecked Sendable {
 
                     // 丟到 main thread 處理
                     DispatchQueue.main.async {
-                        
+
                         self.volumeNotifier.updateVolume(volume: adjustedRMS, track: Int(trackType.rawValue))
                     }
                 }

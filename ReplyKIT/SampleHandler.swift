@@ -30,8 +30,10 @@ import Foundation
 
 
 let logger = Logger(subsystem: "nuclear.liveAPP.ReplyKit", category: "extension")
-var userDefaults = UserDefaults(suiteName: "group.nuclear.liveAPP")
 
+class SharedDefaults {
+    static let group = UserDefaults(suiteName: "group.nuclear.liveAPP")
+}
 
 
 @available(iOS 10.0, *)
@@ -42,10 +44,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     var DWidth = 1920
     var DHeight = 1334
 
-    var audioProcessor: AudioProcessor!
-    var videoProcessor: VideoFrameProcessor!
+    let h264level = SharedDefaults.group?.string(forKey: "h264level")
 
-    var streamStataus:MyStreamBitRateStrategy!
+
+    var audioProcessor: AudioProcessor?
+    var videoProcessor: VideoFrameProcessor?
+
+    var streamStataus:MyStreamBitRateStrategy?
 
     var volumeCheckTimer: Timer?
 
@@ -153,8 +158,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             break;
 
         default:
-            appVolume = userDefaults?.float(forKey: "appVolume") ?? 1.0
-            micVolume = userDefaults?.float(forKey: "micVolume") ?? 1.0
+            appVolume = SharedDefaults.group?.float(forKey: "appVolume") ?? 1.0
+            micVolume = SharedDefaults.group?.float(forKey: "micVolume") ?? 1.0
             sendlog(message:"app mic audio update \(appVolume) \(micVolume)")
 
         }
@@ -202,7 +207,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         switch eventName {
         case "micAdd":
 
-            let newVolume = userDefaults?.double(forKey: "micAddVoulme") ?? 1.0
+            let newVolume = SharedDefaults.group?.double(forKey: "micAddVoulme") ?? 1.0
             micAddVolume=Float(newVolume)
             guard let audioProcessor else { return }
 
@@ -215,7 +220,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             ))
         case "appAdd":
 
-            let newVolume = userDefaults?.double(forKey: "appAddVoulme") ?? 1.0
+            let newVolume = SharedDefaults.group?.double(forKey: "appAddVoulme") ?? 1.0
             appAddVolume=Float(newVolume)
             guard let audioProcessor else { return }
             Task {
@@ -229,7 +234,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         case "micVolumeChanged":
             
-            let newVolume = userDefaults?.double(forKey: "micVolume") ?? 1.0
+            let newVolume = SharedDefaults.group?.double(forKey: "micVolume") ?? 1.0
             micVolume=Float(newVolume)
 
             guard let audioProcessor else { return }
@@ -244,7 +249,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             Task { await updateMicAudioVolume(Float(newVolume)) }
 
         case "appVolumeChanged":
-            let newVolume = userDefaults?.double(forKey: "appVolume") ?? 1.0
+            let newVolume = SharedDefaults.group?.double(forKey: "appVolume") ?? 1.0
             appVolume=Float(newVolume)
             guard let audioProcessor else { return }
             Task {
@@ -261,18 +266,21 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             
         case "orientationChanged":
 #if os(iOS)
-            if let orientationValue = userDefaults?.integer(forKey: "Orientation"),
+            let orientationValue = SharedDefaults.group?.integer(
+                forKey: "Orientation"
+            ) ?? 0
 
 
-                let orientation = UIDeviceOrientation(rawValue: orientationValue) {
+            if let orientation = UIDeviceOrientation(rawValue: orientationValue) {
 
                 sendlog(message: "OO:\(orientationValue) \(orientation)")
                 Task {
                     configureOrientation()
                 }
-
-
             }
+
+
+
 #else
             print("No Make tihs!")
 
@@ -290,31 +298,33 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "DebugRotate":
-            let Rlog=userDefaults?.bool(forKey: "EnableRotatelog") ?? false
-            videoProcessor.rotator?.debug = Rlog
+            let Rlog=SharedDefaults.group?.bool(forKey: "EnableRotatelog") ?? false
+            videoProcessor?.rotator?.debug = Rlog
             sendlog(message:"[旋轉日誌變化] VideoRotate \(Rlog)")
 
 
         case "useBic":
-            let Rlog=userDefaults?.bool(forKey: "useBic") ?? true
-            videoProcessor.rotator?.useBic = Rlog
+            let Rlog=SharedDefaults.group?.bool(forKey: "useBic") ?? true
+            videoProcessor?.rotator?.useBic = Rlog
             sendlog(message:"[GPU 使用Bic處理] \(Rlog)")
 
 
         case "bitRateChange":
             sendlog(message: "NewBit: \(bitrate)")
 
-            bitrate=userDefaults?.integer(forKey: "bitRate") ?? 3_900_000
+            bitrate=SharedDefaults.group?.integer(forKey: "bitRate") ?? 3_900_000
 
 
         case "logURL":
-            let logM=userDefaults?.string(forKey: "logURL") ?? "http://192.168.0.242/post"
+            let logM=SharedDefaults.group?.string(
+                forKey: "logURL"
+            ) ?? "http://192.168.0.242/post"
             RPConfig.shared.logURL = logM
             sendlog(message: "LOG URL: \(logM)")
 
 
         case "logMode":
-            let logM=userDefaults?.integer(forKey: "logMode") ?? 0
+            let logM=SharedDefaults.group?.integer(forKey: "logMode") ?? 0
             sendlog(message: "LOG Mode \(logM)")
             if logM == 0 {
                 LogManager.shared.forceFlush()
@@ -323,7 +333,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "onlogPage":
-            let logPage=userDefaults?.bool(forKey: "onlogPage") ?? false
+            let logPage=SharedDefaults.group?.bool(forKey: "onlogPage") ?? false
 
             RPConfig.shared.onLogPage=logPage
             if logPage {
@@ -362,17 +372,17 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "OutW":
-            let dstRW=userDefaults?.integer(forKey: "dstW") ?? 0
+            let dstRW=SharedDefaults.group?.integer(forKey: "dstW") ?? 0
 
             ADWidth = dstRW
-            videoProcessor.rotator?.dstWW = dstRW
+            videoProcessor?.rotator?.dstWW = dstRW
             sendlog(message: "OutW:\(dstRW)")
 
 
         case "OutH":
-            let dstRH=userDefaults?.integer(forKey: "dstH") ?? 0
+            let dstRH=SharedDefaults.group?.integer(forKey: "dstH") ?? 0
             ADHeight = dstRH
-            videoProcessor.rotator?.dstHH = dstRH
+            videoProcessor?.rotator?.dstHH = dstRH
 
             sendlog(message: "OutW:\(dstRH)")
 
@@ -380,19 +390,19 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "Enablelog":
-            let Enablelog=userDefaults?.bool(forKey: "Enablelog") ?? false
+            let Enablelog=SharedDefaults.group?.bool(forKey: "Enablelog") ?? false
             sendlog(message: "開關日誌log")
             RPConfig.shared.enableLog=Enablelog
 
 
         case "onAudioPage":
-            onAudioPage=userDefaults?.bool(forKey: "onAudioPage") ?? false
+            onAudioPage=SharedDefaults.group?.bool(forKey: "onAudioPage") ?? false
 
 
 
                 if audioProcessor != nil {
 
-                    audioProcessor.updatePage(status: onAudioPage)
+                    audioProcessor?.updatePage(status: onAudioPage)
                     sendlog(
                         message:"[Audio] Page \(String(describing: onAudioPage))"
                     )
@@ -400,7 +410,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 }
                 
                 else {
-                    let onPause=userDefaults?.bool(forKey: "PauseStream") ?? false
+                    let onPause=SharedDefaults.group?.bool(
+                        forKey: "PauseStream"
+                    ) ?? false
 
                     if onPause {
                         sendlog(message: "正在暫停 取消重建Audio")
@@ -454,7 +466,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     override init() {
 
 
-        bitrate=userDefaults?.integer(forKey: "bitRate") ?? 3_900_000
+        bitrate=SharedDefaults.group?.integer(forKey: "bitRate") ?? 3_900_000
 
         rtmpStream = RTMPStream(connection: rtmpConnection)
         
@@ -576,7 +588,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     func configureOrientation() {
         let manager = DeviceOrientationManager.shared   // 使用單例
-        let lockedValue = userDefaults?.bool(forKey: "LockIN") ?? false
+        let lockedValue = SharedDefaults.group?.bool(forKey: "LockIN") ?? false
         if  lockedValue {
             sendlog(message:"\(lockedValue)不偵測 初始化一次")
             manager.isEnabled = false
@@ -685,33 +697,33 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
     func setUserDefalutConfig(urlString:String = "rtmp://192.168.0.106/live" ,streamKey:String = "test")  {
-        isVideoRotationEnabled = userDefaults?.bool(forKey: "VideoRotate") ?? true
+        isVideoRotationEnabled = SharedDefaults.group?.bool(forKey: "VideoRotate") ?? false
 
-        if userDefaults?.object(forKey: "appVolume") == nil {
-            userDefaults?.set(1.0, forKey: "appVolume")
+        if SharedDefaults.group?.object(forKey: "appVolume") == nil {
+            SharedDefaults.group?.set(1.0, forKey: "appVolume")
         }
-        if userDefaults?.object(forKey: "micVolume") == nil {
-            userDefaults?.set(1.0, forKey: "micVolume")
+        if SharedDefaults.group?.object(forKey: "micVolume") == nil {
+            SharedDefaults.group?.set(1.0, forKey: "micVolume")
         }
 
         // MARK: Video dimensions
-        ADWidth = userDefaults?.integer(forKey: "dstW") ?? 0
-        ADHeight = userDefaults?.integer(forKey: "dstH") ?? 0
+        ADWidth = SharedDefaults.group?.integer(forKey: "dstW") ?? 0
+        ADHeight = SharedDefaults.group?.integer(forKey: "dstH") ?? 0
 
         if ADWidth > 0 && ADHeight > 0 {
             DWidth = ADWidth
             DHeight = ADHeight
         }
 
-        onAudioPage=userDefaults?.bool(forKey: "onAudioPage") ?? false
+        onAudioPage=SharedDefaults.group?.bool(forKey: "onAudioPage") ?? false
 
 
         //bitrate=userDefaults?.integer(forKey: "bitRate") ?? 3_900_000
 
 
         // MARK: Volume
-        let newMicAddVolume = userDefaults?.double(forKey: "micAddVoulme") ?? 1.0
-        let newAppAddVolume = userDefaults?.double(forKey: "appAddVoulme") ?? 1.0
+        let newMicAddVolume = SharedDefaults.group?.double(forKey: "micAddVoulme") ?? 1.0
+        let newAppAddVolume = SharedDefaults.group?.double(forKey: "appAddVoulme") ?? 1.0
 
         micAddVolume=Float(newMicAddVolume)
         appAddVolume=Float(newAppAddVolume)
@@ -723,8 +735,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         // MARK: 是否在日誌Log mode
-        RPConfig.shared.logMode = userDefaults?.integer(forKey: "logMode") ?? 0
-        RPConfig.shared.onLogPage = userDefaults?.bool(forKey: "onlogPage") ?? false
+        RPConfig.shared.logMode = SharedDefaults.group?
+            .integer(forKey: "logMode") ?? 0
+        RPConfig.shared.onLogPage = SharedDefaults.group?.bool(forKey: "onlogPage") ?? false
 
 
         // 🔹 轉成 URL
@@ -777,9 +790,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         streamStataus = MyStreamBitRateStrategy()
 
-        await streamStataus.refreshStatusTimestamp()
+        await streamStataus?.refreshStatusTimestamp()
 
-        await streamStataus.setOnDisconnect { [weak self] in
+        await streamStataus?.setOnDisconnect { [weak self] in
             self?.stopBroadcastWithError("RTMP 斷線")
         }
 
@@ -876,17 +889,26 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
     // MARK: 直播開始
-    override func broadcastStarted(withSetupInfo setupInfo: [String : NSObject]?) {
+    override func broadcastStarted(
+        withSetupInfo setupInfo: [String : NSObject]?
+    ) {
         // User has requested to start the broadcast. Setup info from the UI extension can be suppdlied but optional.
 
         logger.info("運行通知")
 
         isStopping = false
 
-
+//        if let rtmpURL2 = setupInfo?["rtmpURL"]
+//            ,let streamKey2 = setupInfo?["rtmpKey"] {
+//            print("RTMP URL:", rtmpURL2)
+//            print("Stream Key:", streamKey2 )
+//
+//        }
         // 🔹 從 UserDefaults 拿 RTMP 設定
-        rtmpURL = userDefaults?.string(forKey: "rtmpURL") ?? "rtmp://192.168.0.102/live"
-        rtmpKey = userDefaults?.string(forKey: "rtmpKey") ?? "stream1?vhost=live2"
+        rtmpURL = SharedDefaults.group?.string(forKey: "rtmpURL")
+        ?? "rtmp://192.168.0.102/live"
+        rtmpKey = SharedDefaults.group?.string(forKey: "rtmpKey")
+        ?? "stream1?vhost=live2"
 
 
 
@@ -900,8 +922,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         Task {
             setUserDefalutConfig(
-                urlString: rtmpURL!,
-                streamKey: rtmpKey!
+                urlString: rtmpURL ?? "rtmp://192.168.0.242/live",
+                streamKey: rtmpKey ?? "test"
             )
 
             logger.debug("✅ RTMP設定: \(String(describing: self.rtmpURL)) \(String(describing: self.rtmpKey))")
@@ -1189,8 +1211,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
 
-        let h264level = userDefaults?.string(forKey: "h264level")
-
         guard let formatDesc = sampleBuffer.formatDescription else { return }
         let dims = CMVideoFormatDescriptionGetDimensions(formatDesc)
 
@@ -1297,7 +1317,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
             if videoProcessor != nil {
-                videoProcessor.process(sampleBuffer, timestamp: timestamp)
+                videoProcessor?.process(sampleBuffer, timestamp: timestamp)
             } else {
                 if lastVideoTimestamp.seconds > lastlogTime + logInterval  {
                     sendlog(message: "Video進程不存在！")
@@ -1346,7 +1366,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 lastVideoTimestamp = timestamp
 
                 if audioProcessor != nil {
-                    audioProcessor
+                    audioProcessor?
                         .enqueue(sampleBuffer, trackType: trackType)
                 } else {
                     if lastVideoTimestamp.seconds > lastlogTimeAudio + logInterval  {

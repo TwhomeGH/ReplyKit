@@ -328,10 +328,13 @@ final class RPConfig {
     static let shared = RPConfig()
 
     private init() {
-        logMode=userDefaults?.integer(forKey: "logMode") ?? 1
-        onLogPage=userDefaults?.bool(forKey: "onlogPage") ?? false
-        enableLog=userDefaults?.bool(forKey: "Enablelog") ?? false
-        logURL = userDefaults?.string(forKey: "logURL") ?? "http://192.168.0.242:3000/post"
+        logMode=SharedDefaults.group?.integer(forKey: "logMode")
+        ?? 1
+        onLogPage=SharedDefaults.group?.bool(forKey: "onlogPage")
+        ?? false
+        enableLog=SharedDefaults.group?.bool(forKey: "Enablelog")
+        ?? false
+        logURL = SharedDefaults.group?.string(forKey: "logURL") ?? "http://192.168.0.242:3000/post"
 
     }
 

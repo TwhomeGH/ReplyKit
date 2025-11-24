@@ -92,7 +92,7 @@ final class RPVideoRotatorNV12Queue: @unchecked Sendable {
     }
 
 
-    init?(dstW: Int = 0, dstH: Int = 0, useBic: Bool = true, debug: Bool = false, maxPoolSize: Int = 20) {
+    init?(dstW: Int = 0, dstH: Int = 0, useBic: Bool = true, debug: Bool = false, maxPoolSize: Int = 5) {
         guard let dev = MTLCreateSystemDefaultDevice(),
               let q = dev.makeCommandQueue() else { return nil }
 

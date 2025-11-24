@@ -33,15 +33,19 @@ final class VideoFrameProcessor {
         self.isActive = true
 
         logger.debug("準備初始化Rotator!")
-        let Bic=userDefaults?.bool(forKey: "useBic") ?? false
+        let Bic=SharedDefaults.group?.bool(forKey: "useBic") ?? false
 
 
-        let maxInflight=userDefaults?.integer(forKey: "MaxInfilght") ?? 4
-        let Debugg=userDefaults?.bool(forKey: "EnableRotatelog") ?? false
+        let maxInflight=SharedDefaults.group?.integer(forKey: "MaxInfilght")
+        ?? 4
+        let Debugg=SharedDefaults.group?.bool(forKey: "EnableRotatelog")
+        ?? false
 
-        let dstRW=userDefaults?.integer(forKey: "dstW") ?? 0
+        let dstRW=SharedDefaults.group?.integer(forKey: "dstW")
+        ?? 0
 
-        let dstRH=userDefaults?.integer(forKey: "dstH") ?? 0
+        let dstRH=SharedDefaults.group?.integer(forKey: "dstH")
+        ?? 0
 
 
         sendlog("GPU旋轉配置:\(Debugg) Bic:\(Bic) maxInflight:\(maxInflight) \(dstRW) x \(dstRH)")

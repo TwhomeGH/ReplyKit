@@ -190,7 +190,6 @@ struct BroadcastButton: UIViewRepresentable {
 
         @objc func buttonTapped() {
 
-
             UR=UIDevice.current.orientation
             logger.info("ROTATE:\(String(describing:self.UR))")
             userDefaults?.set(self.UR.rawValue,forKey: "L3Rotate")

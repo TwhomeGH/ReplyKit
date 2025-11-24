@@ -7,34 +7,50 @@
 
 import ReplayKit
 
-#if os(iOS)
-
-import UIKit
 import os
 
 
 let logger = Logger(subsystem: "nuclear.liveAPP.ReplyKitSetupUI", category: "extension")
 
+
 let userDefaults=UserDefaults(suiteName: "group.nuclear.liveAPP")
+
+
+#if os(iOS)
+
+import UIKit
+
 
 class BroadcastSetupViewController: UIViewController {
 
 
-    // Call this method when the user has finished interacting with the view controller and a broadcast stream can start
+        // Call this method when the user has finished interacting with the view controller and a broadcast stream can start
 
      func userDidFinishSetup() {
          // URL of the resource where broadcast can be viewed that will be returned to the application
-         let broadcastURL = URL(string:"http://apple.com/broadcast/streamID")
+         // 先建立 broadcastURL，確保有效
 
-         // Dictionary with setup information that will be provided to broadcast extension when broadcast is started
+
+              let broadcastURL = URL(string: "https://apple.com/broadcast/streamID")
+
+
+
+//         Dictionary with setup information that will be provided to broadcast extension when broadcast is started
+
+
          let setupInfo: [String : NSCoding & NSObjectProtocol] = [
-            "broadcastName": "example" as NSCoding & NSObjectProtocol
-         ]
+               "broadcastName": "example" as NSCoding & NSObjectProtocol
+            ]
 
          // Tell ReplayKit that the extension is finished setting up and can begin broadcasting
-         self.extensionContext?.completeRequest(withBroadcast: broadcastURL!, setupInfo: setupInfo)
+         self.extensionContext?.completeRequest(
+            withBroadcast: broadcastURL!,
+            setupInfo: setupInfo )
+
+//
      }
 
+    
 
     func userDidCancelSetup() {
         let error = NSError(domain: "com.liveApp.broadcast", code: -1, userInfo: nil)

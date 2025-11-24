@@ -13,7 +13,7 @@
 		CE2819DF2E5ABD940023BBC4 /* RTMPHaishinKit in Frameworks */ = {isa = PBXBuildFile; productRef = CE2819DE2E5ABD940023BBC4 /* RTMPHaishinKit */; };
 		CE2819E92E5ACD670023BBC4 /* ReplayKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE2819E82E5ACD670023BBC4 /* ReplayKit.framework */; };
 		CE2819F32E5ACD680023BBC4 /* ReplayKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE2819E82E5ACD670023BBC4 /* ReplayKit.framework */; };
-		CE2819F52E5ACD680023BBC4 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE2819F42E5ACD680023BBC4 /* UIKit.framework */; platformFilter = ios; };
+		CE2819F52E5ACD680023BBC4 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE2819F42E5ACD680023BBC4 /* UIKit.framework */; };
 		CE2819FC2E5ACD680023BBC4 /* ReplyKITSetupUI.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CE2819F22E5ACD670023BBC4 /* ReplyKITSetupUI.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		CE2819FF2E5ACD680023BBC4 /* ReplyKIT.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CE2819E72E5ACD670023BBC4 /* ReplyKIT.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		CE281A0A2E5AE0850023BBC4 /* HaishinKit in Frameworks */ = {isa = PBXBuildFile; productRef = CE281A092E5AE0850023BBC4 /* HaishinKit */; };
