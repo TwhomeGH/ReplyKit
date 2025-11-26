@@ -79,14 +79,10 @@ func getUserDefault<T>(forKey key: String) -> T? {
 
 // ObservableObject 管理碼率
 class BitrateManager: ObservableObject {
-    @Published var multiplier: Int = 39 {
-        didSet {
-            updateStreamBitrate()
-        }
-    }
+    @Published var multiplier: Int = 39 
 
     let base: Int = 100_000       // 每單位 100 kbps
-    @Published var bitrate: Int = 3900000    // 實際 bps
+    @Published var bitrate: Int = 3_900_000    // 實際 bps
 
     init() {
         // 嘗試讀取 UserDefaults 的保存值
@@ -1775,7 +1771,7 @@ struct homeView:View{
 
 
                 VStack(spacing: 20) {
-                    Text("Bitrate: \(manager.bitrate / 1000) kbps")
+                    Text("Bitrate: \(manager.bitrate / 1000 ) kbps")
                         .font(.headline)
 
                     if #available(iOS 17.0, *) {
@@ -1785,23 +1781,26 @@ struct homeView:View{
                                 set: { manager.multiplier = Int($0) }
                             ),
                             in: 10...100,    // 10*100_000 = 1_000_000, 100*100_000 = 100_000_000
-                            step: 1
-                        )
-                        .onChange(
-                            of: manager.multiplier
-                        ) {
-                            oldValue,
-                            newValue in
-                            // ⚡ 這裡可以即時更新 bitrate
-                            manager.bitrate = newValue * 100_000
-                            logger.info(
-                                "Multiplier 改變: \(oldValue) → \(newValue)，新的 bitrate: \(manager.bitrate)"
-                            )
-                        }
-                    } else {
-                        // Fallback on earlier versions
-                    }
+                            step: 1,
+                            onEditingChanged : { editing in
 
+                                if !editing {
+                                    // ⚡ 這裡可以即時更新 bitrate
+
+                                    let old = manager.multiplier * 100_000
+                                    manager.bitrate = manager.multiplier * 100_000
+
+                                    manager.updateStreamBitrate()
+
+                                    sendlog(message:
+                                        "Multiplier 改變: \(old) → 新的 bitrate: \(manager.bitrate)"
+                                    )
+                                }
+                            }
+                        )
+
+
+                    }
 
                     HStack {
                         Text("1000 kbps")
@@ -1924,6 +1923,7 @@ struct ContentView: View {
    
     @StateObject private var pageState = PageState()
 
+    @AppStorage("BacklogTime",store:userDefaults) private var logTime = false
 
     @AppStorage("onlogPage",store:userDefaults) private var onlogPage = false
 
@@ -1975,9 +1975,10 @@ struct ContentView: View {
 
             if newValue == .log {
 
-                print("onlog:\(onlogPage)")
+                print("onlog:\(onlogPage) logTime:\(logTime)")
 
                 onlogPage=true
+
 
                 CFNotificationCenterPostNotification(cfCenter, CFNotificationName("onlogPage" as CFString), nil, nil, true)
 
@@ -2051,7 +2052,11 @@ struct ContentView: View {
                 if onlogPage == true {
                     sendlog(message: "應用已進入後台App 停止更新logPage")
                     onlogPage=false
-                    CFNotificationCenterPostNotification(cfCenter, CFNotificationName("onlogPage" as CFString), nil, nil, true)
+
+                    if !logTime {
+                        CFNotificationCenterPostNotification(cfCenter, CFNotificationName("onlogPage" as CFString), nil, nil, true)
+                        
+                    }
 
 
                 }
@@ -2068,31 +2073,11 @@ struct ContentView: View {
 
             case .inactive:
 
-                if onAudioPage == true {
-                    onAudioPage=false
+                sendlog(message: "正在離開App")
 
-                    CFNotificationCenterPostNotification(cfCenter,
-                                                         CFNotificationName("onAudioPage" as CFString),
-                                                         nil, nil, true)
-
-                    sendlog(message: "正在離開App 停止監聽AudioPage")
-                }
 
             @unknown default:
-                if onlogPage == true {
-                    sendlog(message: "應用已進入後台App 停止更新logPage")
-                    onlogPage=false
-
-                }
-                if onAudioPage == true {
-                    onAudioPage=false
-
-
-                    CFNotificationCenterPostNotification(cfCenter,
-                                                         CFNotificationName("onAudioPage" as CFString),
-                                                         nil, nil, true)
-                }
-
+                sendlog(message:"後台未知狀態 不處理")
             }
         }
 
