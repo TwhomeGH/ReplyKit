@@ -248,6 +248,11 @@ public final class AdaptiveVideoBufferManager {
         // 📈 儲存當前 buffer 效能紀錄
         bufferPerformanceHistory[currentBufferCount, default: []].append(smoothedFPS)
 
+        // 限制上限 
+        if bufferPerformanceHistory[currentBufferCount]!.count > 30 {
+            bufferPerformanceHistory[currentBufferCount]!.removeFirst()
+        }
+
         // 🧮 每秒調整一次 buffer
         if now - lastAdjustTime >= adjustInterval {
             lastAdjustTime = now
