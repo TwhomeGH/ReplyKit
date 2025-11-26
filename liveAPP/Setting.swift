@@ -151,7 +151,13 @@ struct GPURotateView: View {
 
 struct LogSettingView:View {
 
+    @AppStorage("onlogPage",store:userDefaults) private var onlogPage = false
+
+
+    @AppStorage("BacklogTime",store:userDefaults) private var logTime = false
+
     @AppStorage("Enablelog",store:userDefaults) private var Enablelog = false
+
     @AppStorage("EnableRotatelog",store:userDefaults) private var EnableRotatelog = false
 
     var body: some View {
@@ -162,10 +168,38 @@ struct LogSettingView:View {
             }.onChange(of:Enablelog) { newValue in
                 CFNotificationCenterPostNotification(cfCenter, CFNotificationName("Enablelog" as CFString), nil, nil, true)
             }
+
             Text("啟用日誌後, 會依用戶選擇App內顯示或外部服務器顯示 ，用於除錯或排查問題。")
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .padding(.bottom, 5)
+
+
+            Toggle(isOn: $logTime){
+                Text("停用非日誌頁面頻率調整 ！")
+            }.onChange(of: logTime ) { newValue in
+
+
+                if newValue {
+                    sendlog(message: "停用非日誌頁調整")
+                    onlogPage = true
+
+                } else {
+                    sendlog(message: "啟用非日誌頁調整")
+                    onlogPage = false
+
+                }
+                    CFNotificationCenterPostNotification(cfCenter, CFNotificationName("onlogPage" as CFString), nil, nil, true)
+
+
+
+            }
+
+            Text("啟用後 進入後台或非日誌頁不會發生日誌暫停")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .padding(.bottom, 5)
+
 
             Toggle(isOn: $EnableRotatelog){
                 Text("啟用畫面旋轉調試日誌 ！")
