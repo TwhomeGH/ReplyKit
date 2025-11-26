@@ -22,7 +22,7 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
 
     private let minBitrate = 1_500_000       // 最低 1500 kbps
     private let stepUp: Double = 1.05      // 緩升 5%
-    private let stepDown: Double = 0.95    // 緩降 5%
+    private let stepDown: Double = 0.99    // 緩降 1%
 
     private var avgOutBps: Double? //EMA平滑曲線
 
@@ -166,11 +166,13 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
             
             if avgOutBpsHistory.filter({ $0 < Double(VBitRate) * 0.5 }).count >= 10 {
 
+                let target = Int(Double(VBitRate) * stepDown)
 
-                newBitV.bitRate=max(minBitrate, Int(Double(VBitRate) * stepDown))
+                newBitV.bitRate = max(minBitrate, target)  // ✅ 強制 minBitrate
 
 
-                sendlog(message: "📉 Bitrate 降至 : \(newBitV.bitRate / 1000) Kbps")
+
+                sendlog(message: "📉 Bitrate 降至 : \(newBitV.bitRate) : \(newBitV.bitRate / 1000) Kbps")
 
                 try? await stream.setVideoSettings(newBitV)
             }
@@ -179,7 +181,9 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
             // 緩升
             else if Int(avgOutBps ?? 0) > Int(Double(VBitRate) * 0.75), VBitRate < mamimumVideoBitRate {
 
-                newBitV.bitRate = min(mamimumVideoBitRate , Int(Double(VBitRate) * stepUp) )
+                let target = min(mamimumVideoBitRate , Int(Double(VBitRate) * stepUp))
+
+                newBitV.bitRate = max(minBitrate, target) // ✅ 同樣保護
 
                 sendlog(message: "📈 Bitrate 回升至 \(newBitV.bitRate / 1000) Kbps")
 
