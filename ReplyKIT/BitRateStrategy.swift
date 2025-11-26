@@ -22,9 +22,12 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
 
     private let minBitrate = 1_500_000       // 最低 1500 kbps
     private let stepUp: Double = 1.05      // 緩升 5%
-    private let stepDown: Double = 0.90    // 緩降 10%
+    private let stepDown: Double = 0.95    // 緩降 5%
 
     private var avgOutBps: Double? //EMA平滑曲線
+
+    var lastBitrateChangeTime: Date? = nil
+    let minBitrateHoldDuration: TimeInterval = 3.0 // 秒
 
     // 新增：最後一次收到 status 的時間
     private var lastStatusTimestamp: Date?
@@ -40,17 +43,22 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
     var avgOutBpsHistory: [Double] = []
 
 
+    private var lastAvgUpdateTime: Date? = nil
+    private let tau: TimeInterval = 3.0 // 平滑時間常數 (秒)
 
     func updateAvgOutBps(latest: Double) {
-        let alpha = 0.2
-        if let previous = avgOutBps {
-            avgOutBps = alpha * latest + (1 - alpha) * previous
+        let now = Date()
+        if let previous = avgOutBps, let lastTime = lastAvgUpdateTime {
+            let deltaTime = now.timeIntervalSince(lastTime)
+            // 計算時間加權 alpha
+            let alphaTimeAdjusted = 1 - exp(-deltaTime / tau)
+            avgOutBps = alphaTimeAdjusted * latest + (1 - alphaTimeAdjusted) * previous
         } else {
-            avgOutBps = latest // 第一筆資料直接當作初始值
+            avgOutBps = latest // 第一筆資料
         }
+        lastAvgUpdateTime = now
     }
-
-
+    
     init(videoBitRate: Int = 4_000_000,
          audioBitRate: Int = 128_000 ) {
         self.mamimumVideoBitRate = videoBitRate
@@ -141,13 +149,23 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
             avgOutBpsHistory.append(avgOutBps ?? Double(VBitRate))
 
             // 只保留最近 N 個
-            if avgOutBpsHistory.count > 5 {
+            if avgOutBpsHistory.count > 10 {
                 avgOutBpsHistory.removeFirst()
+            }
+
+
+            if let lastChange = lastBitrateChangeTime,
+               Date().timeIntervalSince(lastChange) < minBitrateHoldDuration {
+                // 離上次碼率調整時間還太短，不做調整
+                sendlog(message: "📌 保持碼率不變，距上次調整 < \(minBitrateHoldDuration)s : \(VBitRate)")
+                return
             }
 
             // 緩降
             // 判斷是否連續多次低於阈值才降碼率
-            if avgOutBpsHistory.filter({ $0 < Double(VBitRate) * 0.5 }).count >= 5 {
+            
+            if avgOutBpsHistory.filter({ $0 < Double(VBitRate) * 0.5 }).count >= 10 {
+
 
                 newBitV.bitRate=max(minBitrate, Int(Double(VBitRate) * stepDown))
 
@@ -159,7 +177,7 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
 
 
             // 緩升
-            else if Int(avgOutBps ?? 0) > Int(Double(VBitRate) * 0.65), VBitRate < mamimumVideoBitRate {
+            else if Int(avgOutBps ?? 0) > Int(Double(VBitRate) * 0.75), VBitRate < mamimumVideoBitRate {
 
                 newBitV.bitRate = min(mamimumVideoBitRate , Int(Double(VBitRate) * stepUp) )
 
