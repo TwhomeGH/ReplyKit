@@ -69,9 +69,14 @@ final class PIPService: NSObject {
         DispatchQueue.main.async {
             do {
                 let session = AVAudioSession.sharedInstance()
-                try session.setCategory(.playAndRecord,
+                try session.setCategory(
+.playAndRecord,
                                         mode: .default,
-                                        options: [.mixWithOthers, .allowBluetooth])
+options: [
+    .mixWithOthers,
+    .allowBluetoothHFP
+]
+                )
                 try session.setActive(true, options: .notifyOthersOnDeactivation)
             } catch {
                 logTo("AVAudioSession setup error: \(error)")

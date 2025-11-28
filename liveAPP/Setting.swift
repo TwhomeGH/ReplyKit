@@ -189,6 +189,7 @@ struct LogSettingView:View {
                     onlogPage = false
 
                 }
+
                     CFNotificationCenterPostNotification(cfCenter, CFNotificationName("onlogPage" as CFString), nil, nil, true)
 
 
