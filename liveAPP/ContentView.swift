@@ -781,7 +781,14 @@ struct LogSettingsView: View {
                         Text(result)
                             .foregroundColor(result.contains("成功") ? .green : .red)
                     }
+
+                    Button("取得視頻輸出設定") {
+                        CFNotificationCenterPostNotification(cfCenter, CFNotificationName("VideoSet" as CFString), nil, nil, true)
+                    }
                 }
+
+
+
 
 
             }
@@ -1985,9 +1992,14 @@ struct ContentView: View {
 
             }else {
 
-                onlogPage=false
-                CFNotificationCenterPostNotification(cfCenter, CFNotificationName("onlogPage" as CFString), nil, nil, true)
 
+                if !logTime {
+
+                    onlogPage=false
+
+                    CFNotificationCenterPostNotification(cfCenter, CFNotificationName("onlogPage" as CFString), nil, nil, true)
+
+                }
 
 
             }
@@ -2024,6 +2036,7 @@ struct ContentView: View {
                 if pageState.onlogPage {
                     if onlogPage == false {
                         onlogPage=true
+
                         CFNotificationCenterPostNotification(cfCenter, CFNotificationName("onlogPage" as CFString), nil, nil, true)
 
                     }
@@ -2050,10 +2063,21 @@ struct ContentView: View {
 
 
                 if onlogPage == true {
-                    sendlog(message: "應用已進入後台App 停止更新logPage")
-                    onlogPage=false
 
-                    if !logTime {
+
+
+                    if logTime {
+
+                        sendlog(message: "應用已進入後台App 仍保持更新logPage")
+
+
+                    } else {
+
+                        sendlog(message: "應用已進入後台App 停止更新logPage")
+
+                        onlogPage=false
+
+
                         CFNotificationCenterPostNotification(cfCenter, CFNotificationName("onlogPage" as CFString), nil, nil, true)
                         
                     }
