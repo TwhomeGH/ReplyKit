@@ -165,6 +165,9 @@ final class LogManager {
     var flushInterval: TimeInterval = 1.0
     var flushTimer: DispatchSourceTimer?
 
+    var isActive = true
+
+
     private var lastNotifyTime: Date = .distantPast
 
     var notifyThrottle: TimeInterval = 1.0
@@ -203,10 +206,18 @@ final class LogManager {
             flushTimer?.cancel()
             flushTimer = nil
             remoteLogger?.flush()
+            remoteLogger = nil
+
+            isActive = false
         }
     }
 
     func log(title: String = "ReplyKit", message: String) {
+        
+        if !isActive {
+            return
+        }
+        
         let logMessage = "\(formattedTime()): \(title): \(message)\n"
 
         logQueue.async {
@@ -244,6 +255,8 @@ final class LogManager {
         // 先取消舊的 timer
         flushTimer?.cancel()
         flushTimer = nil
+
+        isActive = true
 
         // 延遲通知主 App
         let now = Date()
