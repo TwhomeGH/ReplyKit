@@ -40,45 +40,43 @@ struct LogItem: Identifiable, Hashable {
 }
 
 // ObservableObject 接收 Notification
+
+
 final class LogModel: ObservableObject {
     @Published private(set) var messages: [LogItem] = []
     private var cancellable: AnyCancellable?
-    private var buffer: [LogItem] = []
-    private var timer: Timer?
 
     init() {
-        // 批次更新 UI，每 0.3 秒
-        timer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
-            guard let self = self, !self.buffer.isEmpty else { return }
-            let newItems = self.buffer
-            self.buffer.removeAll()
-            DispatchQueue.main.async {
-                self.messages.append(contentsOf: newItems)
-                if self.messages.count > 200 {
-                    self.messages.removeFirst(self.messages.count - 200)
-                }
-            }
-        }
-
-        // 收通知
+        // 訂閱通知，即時更新 messages
         cancellable = NotificationCenter.default.publisher(for: .appLogNotification)
             .compactMap { $0.object as? String }
             .sink { [weak self] msg in
-                self?.buffer.append(LogItem(message: msg))
+                guard let self = self else { return }
+                Task { @MainActor in
+                    self.appendLog(message: msg)
+                }
             }
     }
 
-    func clearLogs() {
-        DispatchQueue.main.async {
-            self.messages.removeAll()
+    @MainActor
+    private func appendLog(message: String) {
+        let item = LogItem(message: message)
+        self.messages.append(item)
+        // 保留最新 200 筆
+        if self.messages.count > 200 {
+            self.messages.removeFirst(self.messages.count - 200)
         }
     }
 
+    @MainActor
+    func clearLogs() {
+        self.messages.removeAll()
+    }
+
     deinit {
-        timer?.invalidate()
+        cancellable?.cancel()
     }
 }
-
 final class LogReceiver {
     private let maxPush = 20
     private let flushInterval: TimeInterval = 0.3
@@ -481,8 +479,8 @@ struct liveAPPApp: App {
         // App 啟動時就啟動 Socket Server
         // 啟動一次
         //SocketUserDefaluts.shared.startSettingsServer()
-        CFMessagePortServer.shared.start()
-        
+        //CFMessagePortServer.shared.start()
+
         cacheInitialOrientation()
 
 
