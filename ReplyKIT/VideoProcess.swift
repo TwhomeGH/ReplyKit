@@ -7,7 +7,7 @@ import CoreMedia
 
 final class VideoFrameProcessor {
     // 初始化 RotatorPool（在 SampleHandler 或初始化時）
-    var rotator: RPVideoRotatorNV12Queue?
+    var rotator: RPVideoRotatorNV12BatchQueueOptimized?
 
 
     private let mediaMixer: MediaMixer
@@ -22,7 +22,7 @@ final class VideoFrameProcessor {
 
     init(mediaMixer: MediaMixer,
          videoBufferManager: AdaptiveVideoBufferManager,
-         
+
          rtmpStream: RTMPStream,
          sendlog: @escaping (String) -> Void) {
         self.mediaMixer = mediaMixer
@@ -50,20 +50,19 @@ final class VideoFrameProcessor {
 
         sendlog("GPU旋轉配置:\(Debugg) Bic:\(Bic) maxInflight:\(maxInflight) \(dstRW) x \(dstRH)")
 
-        guard let rot = RPVideoRotatorNV12Queue(
-            //maxInflight: maxInflight,
+        guard let rot = RPVideoRotatorNV12BatchQueueOptimized(
+            //maxPoolsize: maxInflight,
             dstW: dstRW,
             dstH: dstRH,
-            useBic: Bic,
-            debug: Debugg
+            useBic: Bic, debug: Debugg, mediaMixer: mediaMixer
         ) else {
             sendlog("RPVideoRotatorNV12Queue 初始化失敗")
             return
         }
+
+
         self.rotator = rot
 
-        
-        
     }
     func cleanup() {
         isActive = false
@@ -80,7 +79,7 @@ final class VideoFrameProcessor {
 
     }
     deinit {
-        
+
         cleanup()
 
         rotator = nil
@@ -103,32 +102,41 @@ final class VideoFrameProcessor {
     }
 
 
+
     private func processFrame(_ sample: CMSampleBuffer) {
 
 
+
+
         Task(priority: .userInitiated) { [weak self] in
-                guard let self = self, self.isActive else { return }
+            guard let self = self, self.isActive else { return }
 
-                        if let rotated = await self.rotator?.rotateAsync(sampleBuffer: sample, angle: .angle90) {
-                            await self.mediaMixer.append(rotated)
-                        }
-            
 
+
+            //old rotate
+
+            if let rotated = await self.rotator?.rotateAsync(sampleBuffer: sample, angle: .angle90) {
+                await self.mediaMixer.append(rotated)
             }
 
 
-                        // FPS 調整與 log trace
-                        self.videoBufferManager.monitorFPSAndAdjust(
-                            with: sample,
-                            rtmpStream: rtmpStream,
-                            sendlog: sendlog
-                        )
+        }
+
+
+        // FPS 調整與 log trace
+        self.videoBufferManager.monitorFPSAndAdjust(
+            with: sample,
+            rtmpStream: rtmpStream,
+            sendlog: sendlog
+        )
 
 
 
 
 
     }
+
+
 }
 
 
