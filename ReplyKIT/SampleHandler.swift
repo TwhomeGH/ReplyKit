@@ -162,6 +162,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             micVolume = SharedDefaults.group?.float(forKey: "micVolume") ?? 1.0
             sendlog(message:"app mic audio update \(appVolume) \(micVolume)")
 
+            Task {
+                await updateAppAudioVolume(appVolume)
+                await updateMicAudioVolume(micVolume)
+            }
+
         }
 
     }
@@ -199,6 +204,20 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                                                UnsafeRawPointer(Unmanaged.passUnretained(self).toOpaque()),
                                                CFNotificationName(event as CFString),
                                                nil)
+        }
+    }
+
+    actor FrameState {
+        var frameRate: Double = 30.0
+
+        init(frameRate:Double = 30.0){
+            self.frameRate = frameRate
+        }
+        func set(frame:Double){
+            self.frameRate = frame
+        }
+        func get() -> Double {
+            return self.frameRate
         }
     }
 
@@ -274,9 +293,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             if let orientation = UIDeviceOrientation(rawValue: orientationValue) {
 
                 sendlog(message: "OO:\(orientationValue) \(orientation)")
-                Task {
-                    configureOrientation()
-                }
+//                Task {
+//                    configureOrientation()
+//                }
             }
 
 
@@ -331,6 +350,18 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             }
             RPConfig.shared.logMode=logM
 
+            switch logM {
+            case 1:
+                LogManager.shared.mode = .local
+            case 0:
+                LogManager.shared.mode = .remote
+            case 2:
+                LogManager.shared.mode = .both
+            default:
+                LogManager.shared.mode = .local
+
+            }
+
 
         case "onlogPage":
             let logPage=SharedDefaults.group?.bool(forKey: "onlogPage") ?? false
@@ -338,38 +369,31 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             RPConfig.shared.onLogPage=logPage
             if logPage {
 
-                videoBufferManager?.adjustInterval = 3.0
-                LogManager.shared.flushInterval = 1.0
-
-                // 先取消舊的 timer（如果存在）
-                if let oldTimer = LogManager.shared.flushTimer {
-                    oldTimer.cancel()
-                    LogManager.shared.flushTimer = nil
-                }
-
-                LogManager.shared.setupFlushTimer()
-
-                LogManager.shared.notifyThrottle = 1.0
+                videoBufferManager?.logInterval = 3.0
                 sendlog(message: "正在LOG NTime:\(LogManager.shared.notifyThrottle)")
+
             } else {
 
-                videoBufferManager?.adjustInterval = 30.0
-
-                // 先取消舊的 timer（如果存在）
-                if let oldTimer = LogManager.shared.flushTimer {
-                    oldTimer.cancel()
-                    LogManager.shared.flushTimer = nil
-                }
-
-
-                LogManager.shared.flushInterval = 10.0
-                LogManager.shared.setupFlushTimer()
-
-
-                LogManager.shared.notifyThrottle = 20.0
+                videoBufferManager?.logInterval = 30.0
                 sendlog(message: "非LOG NTime:\(LogManager.shared.notifyThrottle)")
             }
 
+        case "VideoSet":
+            Task {
+                let mediaSet = await mediaMixer.videoInputFormats
+
+
+                let fps = await mediaMixer.frameRate
+
+                let videoSet = await rtmpStream.videoSettings
+
+                let track = await mediaMixer.videoMixerSettings.mainTrack
+
+
+
+                sendlog(message: "FrameRate:\(fps) \nmediaSet:\(mediaSet) \nVTrack:\(track)\nVideoSet:\(videoSet)")
+
+            }
 
         case "OutW":
             let dstRW=SharedDefaults.group?.integer(forKey: "dstW") ?? 0
@@ -758,14 +782,33 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         videoSettings.profileLevel = kVTProfileLevel_H264_High_AutoLevel as String
         videoSettings.videoSize = .init(width: 1334, height: 1920)
         videoSettings.maxKeyFrameIntervalDuration = 2
+        videoSettings.expectedFrameRate = 60.0
+
+
         try? await rtmpStream.setVideoSettings(videoSettings)
 
         // Video mixer passthrough
         var videoMixerSettings = await mediaMixer.videoMixerSettings
         videoMixerSettings.mode = .passthrough
 
+        let track = videoMixerSettings.mainTrack
 
+        sendlog(message:"VTrack:\(track)")
+
+
+        do {
+            try await mediaMixer.setFrameRate(60.0)
+            let fps = await mediaMixer.frameRate
+            sendlog(message: "FPS OK: \(fps)")
+
+
+        } catch {
+            sendlog(message: "FPS Error:\(error)")
+        }
+
+        
         await mediaMixer.setVideoMixerSettings(videoMixerSettings)
+
 
 
         // ReplayKit is sensitive to memory, so we limit the queue to a maximum of five items.
@@ -798,7 +841,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         await rtmpStream.setBitRateStrategy(streamStataus)
 
-
         await mediaMixer.addOutput(rtmpStream)
         await mediaMixer.startRunning()
 
@@ -809,12 +851,18 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         configureOrientation()
 
 
-//        #if os(iOS)
-//
-//        let videofrom = await UIDevice.current.orientation
-//        await updateVideoOrientation(from: videofrom)
-//
-//        #endif
+        // if DeviceOrientationManager.shared.isEnabled {
+
+
+        //        #if os(iOS)
+        //
+        //        let videofrom = await UIDevice.current.orientation
+        //        await updateVideoOrientation(from: videofrom)
+        //
+        //        #endif
+
+        //}
+
 
     }
 
@@ -1203,6 +1251,53 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     private var didConfigureAudio = false
 
+    /// 根據解析度與幀率選擇對應 H.264 High Profile Level
+
+    enum H264Profile: String {
+        case baseline = "Baseline"
+        case main = "Main"
+        case high = "High"
+    }
+
+    /// 根據解析度、幀率與 Profile 選擇 H.264 Level
+    func h264ProfileLevel(forWidth width: Int, height: Int, fps: Int, profile: H264Profile) -> String {
+        // 計算宏塊數
+        let macroblockWidth = (width + 15) / 16
+        let macroblockHeight = (height + 15) / 16
+        let mbPerFrame = macroblockWidth * macroblockHeight
+
+        switch profile {
+        case .baseline:
+            switch mbPerFrame {
+            case 0..<1620: return kVTProfileLevel_H264_Baseline_3_0 as String
+            case 1620..<3600:
+                return fps <= 30 ? kVTProfileLevel_H264_Baseline_3_1 as String : kVTProfileLevel_H264_Baseline_3_2 as String
+            case 3600..<8192: return fps <= 30 ? kVTProfileLevel_H264_Baseline_4_0 as String : kVTProfileLevel_H264_Baseline_4_1 as String
+            default: return kVTProfileLevel_H264_Baseline_4_2 as String
+            }
+
+        case .main:
+            switch mbPerFrame {
+            case 0..<1620: return kVTProfileLevel_H264_Main_3_0 as String
+            case 1620..<3600:
+                return fps <= 30 ? kVTProfileLevel_H264_Main_3_1 as String : kVTProfileLevel_H264_Main_3_2 as String
+            case 3600..<8192: return fps <= 30 ? kVTProfileLevel_H264_Main_4_0 as String : kVTProfileLevel_H264_Main_4_1 as String
+            default: return kVTProfileLevel_H264_Main_4_2 as String
+            }
+
+        case .high:
+            switch mbPerFrame {
+            case 0..<1620: return kVTProfileLevel_H264_High_3_0 as String
+            case 1620..<3600:
+                return fps <= 30 ? kVTProfileLevel_H264_High_3_1 as String : kVTProfileLevel_H264_High_3_2 as String
+            case 3600..<8192: return fps <= 30 ? kVTProfileLevel_H264_High_4_0 as String : kVTProfileLevel_H264_High_4_2 as String
+            case 8192..<8704: return kVTProfileLevel_H264_High_4_2 as String
+            case 8704..<36864: return kVTProfileLevel_H264_High_5_0 as String
+            default: return fps <= 60 ? kVTProfileLevel_H264_High_5_1 as String : kVTProfileLevel_H264_High_5_2 as String
+            }
+        }
+    }
+
     func configureVideo(_ sampleBuffer: CMSampleBuffer) async {
 
         // 如果已經初始化過，就不再重做
@@ -1225,6 +1320,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             height = ADWidth
         }
 
+
+       
         if let orientationValue = CMGetAttachment(sampleBuffer, key: RPVideoSampleOrientationKey as CFString, attachmentModeOut: nil) as? NSNumber {
             sendlog(message: "ReplayKit 當前畫面方向: \(orientationValue)")
         }
@@ -1248,25 +1345,59 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         var videoSettings = await rtmpStream.videoSettings
         videoSettings.videoSize = newSize
+        videoSettings.expectedFrameRate = 60.0
+
 
         let profilelvl: String
+
         switch h264level {
-        case "Baseline": profilelvl = kVTProfileLevel_H264_Baseline_AutoLevel as String
-        case "Main": profilelvl = kVTProfileLevel_H264_Main_AutoLevel as String
-        case "High": profilelvl = kVTProfileLevel_H264_High_AutoLevel as String
+        case "Baseline":
+            let res = h264ProfileLevel(
+                forWidth: width,
+                height: height,
+                fps: 60,
+                profile: .baseline
+            )
+
+            profilelvl = res
+
+        case "Main":
+            let res = h264ProfileLevel(
+                forWidth: width,
+                height: height,
+                fps: 60,
+                profile: .main
+            )
+
+            profilelvl = res
+
+        case "High":
+            let res = h264ProfileLevel(
+                forWidth: width,
+                height: height,
+                fps: 60,
+                profile: .high
+            )
+
+            profilelvl = res
+
         case "ConstrainedBaseline": profilelvl = kVTProfileLevel_H264_ConstrainedBaseline_AutoLevel as String
         case "ConstrainedHigh": profilelvl = kVTProfileLevel_H264_ConstrainedHigh_AutoLevel as String
         case "Extended": profilelvl = kVTProfileLevel_H264_Extended_AutoLevel as String
-        default: profilelvl = kVTProfileLevel_H264_Main_AutoLevel as String
+        default: profilelvl = kVTProfileLevel_H264_Main_4_2 as String
         }
 
         sendlog(message: "H264Profilelevel: \(profilelvl)")
+
         videoSettings.profileLevel = profilelvl
         videoSettings.maxKeyFrameIntervalDuration = 2
 
         if lastConfiguredSize != newSize {
             try? await rtmpStream.setVideoSettings(videoSettings)
         }
+
+
+
 
         lastConfiguredSize = newSize
         DWidth = Int(newSize.width)
