@@ -173,7 +173,7 @@ public final class AdaptiveVideoBufferManager {
     private let fixedTargetFPS: Double = 30.0
 
     private var lastLogTime: CFTimeInterval = 0
-    private let logInterval: CFTimeInterval = 3.0
+    var logInterval: CFTimeInterval = 3.0
 
     // 📈 EMA 平滑變數
     private var smoothedFPS: Double = 0
