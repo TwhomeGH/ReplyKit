@@ -369,10 +369,15 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             RPConfig.shared.onLogPage=logPage
             if logPage {
 
+                LogManager.shared.forceFlush()
+                LogManager.shared.setupFlushTimer()
+
+
                 videoBufferManager?.logInterval = 3.0
                 sendlog(message: "正在LOG NTime:\(LogManager.shared.notifyThrottle)")
 
             } else {
+                LogManager.shared.forceFlush()
 
                 videoBufferManager?.logInterval = 30.0
                 sendlog(message: "非LOG NTime:\(LogManager.shared.notifyThrottle)")
