@@ -228,8 +228,6 @@ final class LogManager {
                         self.localLogBuffer.append(logMessage)
                         self.localLogSize += logMessage.utf8.count
 
-
-                        self.localLogBuffer.append(logMessage)
                         if self.localLogSize >= self.maxLogBufferSize {
                             self.flushLocalLogs()
                         }
