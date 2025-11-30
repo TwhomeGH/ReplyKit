@@ -336,7 +336,22 @@ final class RPConfig {
         ?? false
         logURL = SharedDefaults.group?.string(forKey: "logURL") ?? "http://192.168.0.242:3000/post"
 
+
+        switch logMode {
+        case 1:
+            LogManager.shared.mode = .local
+        case 0:
+            LogManager.shared.mode = .remote
+        case 2:
+            LogManager.shared.mode = .both
+        default:
+            LogManager.shared.mode = .local
+
+        }
+
     }
+
+    
 
     // 日誌相關
     var enableLog: Bool = false
@@ -368,17 +383,7 @@ func sendlog(title: String = "ReplyKit", message: String, mode: Int = 0) {
 
     if RPConfig.shared.enableLog {
 
-        switch RPConfig.shared.logMode {
-        case 1:
-            LogManager.shared.mode = .local
-        case 0:
-            LogManager.shared.mode = .remote
-        case 2:
-            LogManager.shared.mode = .both
-        default:
-            LogManager.shared.mode = .local
 
-        }
 
         if RPConfig.shared.onLogPage {
             LogManager.shared.log(title:title,message: message)
