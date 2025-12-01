@@ -15,6 +15,31 @@ jobs:
       # 1️⃣ Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch_depth: 0
+
+      - name: Check commit timestamp (within 30 minutes)
+        id: timecheck
+        run: |
+          COMMIT_TIME=$(git log -1 --format=%ct)
+          NOW=$(date +%s)
+          DIFF=$((NOW - COMMIT_TIME))
+
+          echo "Commit age: ${DIFF}s"
+
+          if [ $DIFF -gt 1800 ]; then
+            echo "recent=false" >> $GITHUB_OUTPUT
+          else
+            echo "recent=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Stop if older than 30 minutes
+        if: steps.timecheck.outputs.recent == 'false'
+        run: |
+          echo "⏳ This commit is older than 30 minutes. Skipping workflow."
+          exit 0
+
+
 
       # 2️⃣ Get latest tag
       - name: Get latest tag
