@@ -508,10 +508,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         registerObservers()
         logger.info("ReplyKit Debug")
 
-
-        // 初始讀取
-        reloadVolumes()
-
     }
 
 
@@ -774,9 +770,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         sendlog(message: "App:\(appVolume)  Mic:\(micVolume) AppAdd:\(appAddVolume) MicAdd:\(micAddVolume)")
 
 
-
-        reloadVolumes()
-
     }
 
 
@@ -829,6 +822,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         await mediaMixer.setAudioMixerSettings(audioSettings)
+
+        reloadVolumes()
 
 
 
@@ -1436,7 +1431,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 // ✅ 初始化時才抓一次方向
 #if os(iOS)
                 if DeviceOrientationManager.shared.isEnabled {
-
 
                         let orientation = UIDevice.current.orientation
                         self.nowOrientation = orientation
