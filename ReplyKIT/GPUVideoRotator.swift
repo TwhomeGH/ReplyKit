@@ -97,9 +97,45 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         private var capacity: Int
         private var waiters: [CheckedContinuation<Void, Never>] = []
 
-        init(initialAvailable: Int = 4, capacity: Int = 4) {
-            self.availableCount = initialAvailable
-            self.capacity = capacity
+        init() {
+
+            // 用 Metal device 名稱推估性能
+            let device = MTLCreateSystemDefaultDevice()
+            let name = device?.name.lowercased() ?? ""
+
+            // 簡單、有效、無副作用的判定
+            if name.contains("m2") || name.contains("m3") || name.contains("a17") {
+                // 高階/新款 → 4
+                self.availableCount = 4
+                self.capacity = 4
+            } else {
+
+                self.availableCount = 3
+                // 中階/老款 → 3
+                self.capacity = 3
+            }
+
+
+//            self.availableCount = initialAvailable
+//            self.capacity = capacity
+
+        }
+
+        func info() -> (now:Int,max:Int){
+            return (now:self.availableCount,max:self.capacity)
+        }
+
+        // 延遲初始化時重新設定建議值
+        func configure(initialAvailable: Int, capacity: Int) {
+            self.capacity = max(1, capacity)
+
+            // 只有在沒有 waiters 時才調整 availableCount
+            if waiters.isEmpty {
+                availableCount = min(max(0, initialAvailable), self.capacity)
+            } else {
+                // 若有人在等，讓 wait 流程照舊，不硬調 availableCount
+                availableCount = min(availableCount, self.capacity)
+            }
         }
 
         func wait() async {
@@ -117,7 +153,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         }
     }
 
-    private let gpuSemaphore = AsyncSemaphore(initialAvailable: 4, capacity: 4)
+    private let gpuSemaphore = AsyncSemaphore()
 
     // MARK: - Cleanup
     func cleanup()  {
@@ -239,6 +275,9 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         if dstWW > 0 && dstHH > 0 { dstW = dstWW; dstH = dstHH }
 
 
+        let infoGPU=await gpuSemaphore.info()
+        self.logTo("GPU Info:\(infoGPU.now):\(infoGPU.max)")
+        
         self.logTo("\(srcW)x\(srcH) -> \(dstW)x\(dstH)")
 
         guard let outSet = getReusableOutput(width: dstW, height: dstH) else { return nil }
