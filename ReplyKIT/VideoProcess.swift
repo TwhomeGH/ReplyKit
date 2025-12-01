@@ -32,103 +32,110 @@ final class VideoFrameProcessor {
         self.sendlog = sendlog
         self.isActive = true
 
-        logger.debug("準備初始化Rotator!")
-        let Bic=SharedDefaults.group?.bool(forKey: "useBic") ?? false
-
-
-        let maxInflight=SharedDefaults.group?.integer(forKey: "MaxInfilght")
-        ?? 4
-        let Debugg=SharedDefaults.group?.bool(forKey: "EnableRotatelog")
-        ?? false
-
-        let dstRW=SharedDefaults.group?.integer(forKey: "dstW")
-        ?? 0
-
-        let dstRH=SharedDefaults.group?.integer(forKey: "dstH")
-        ?? 0
-
-
-        sendlog("GPU旋轉配置:\(Debugg) Bic:\(Bic) maxInflight:\(maxInflight) \(dstRW) x \(dstRH)")
-
-        guard let rot = RPVideoRotatorNV12BatchQueueOptimized(
-            //maxPoolsize: maxInflight,
-            dstW: dstRW,
-            dstH: dstRH,
-            useBic: Bic, debug: Debugg, mediaMixer: mediaMixer
-        ) else {
-            sendlog("RPVideoRotatorNV12Queue 初始化失敗")
-            return
-        }
-
-
-        self.rotator = rot
+//        logger.debug("準備初始化Rotator!")
+//        let Bic=SharedDefaults.group?.bool(forKey: "useBic") ?? false
+//        let maxInflight=SharedDefaults.group?.integer(forKey: "MaxInfilght")
+//        ?? 4
+//        let Debugg=SharedDefaults.group?.bool(forKey: "EnableRotatelog")
+//        ?? false
+//        let dstRW=SharedDefaults.group?.integer(forKey: "dstW")
+//        ?? 0
+//        let dstRH=SharedDefaults.group?.integer(forKey: "dstH")
+//        ?? 0
+//
+//
+//        sendlog("GPU旋轉配置:\(Debugg) Bic:\(Bic) maxInflight:\(maxInflight) \(dstRW) x \(dstRH)")
+//
+//        guard let rot = RPVideoRotatorNV12BatchQueueOptimized(
+//            //maxPoolsize: maxInflight,
+//            dstW: dstRW,
+//            dstH: dstRH,
+//            useBic: Bic, debug: Debugg, mediaMixer: mediaMixer
+//        ) else {
+//            sendlog("RPVideoRotatorNV12Queue 初始化失敗")
+//            return
+//        }
+//
+//
+//        self.rotator = rot
 
     }
     func cleanup() {
         isActive = false
         // 清空 queue 上未執行的任務
-        processingQueue.sync {
+//        processingQueue.sync {
+//
+//
+//        } // 確保之前的所有 block 都完成
+//
 
-
-        } // 確保之前的所有 block 都完成
         // Task 目前無法強制取消，確保 isActive 檢查能立即返回
-
+        
         rotator?.cleanup()
-
-
+        rotator = nil
 
     }
     deinit {
 
         cleanup()
-
-        rotator = nil
         sendlog("🧹 VideoFrameProcessor deinit — resources released")
     }
 
 
     func process(_ sampleBuffer: CMSampleBuffer, timestamp: CMTime) {
 
-        processingQueue.async { [weak self] in
-            guard let self = self, self.isActive else { return }
+        //processingQueue.async {
+            guard self.isActive else { return }
+
+            // 延遲初始化 rotator
+            if self.rotator == nil {
+                let Bic = SharedDefaults.group?.bool(forKey: "useBic") ?? false
+                let Debugg = SharedDefaults.group?.bool(forKey: "EnableRotatelog") ?? false
+                let dstRW = SharedDefaults.group?.integer(forKey: "dstW") ?? 0
+                let dstRH = SharedDefaults.group?.integer(forKey: "dstH") ?? 0
+
+                if let rot = RPVideoRotatorNV12BatchQueueOptimized(
+                    dstW: dstRW,
+                    dstH: dstRH,
+                    useBic: Bic,
+                    debug: Debugg,
+                    mediaMixer: self.mediaMixer
+                ) {
+                    self.rotator = rot
+                    self.sendlog("🟢 RPVideoRotatorNV12BatchQueue 延遲初始化成功")
+                } else {
+                    self.sendlog("❌ RPVideoRotatorNV12BatchQueue 初始化失敗")
+                    return
+                }
+            }
+
 
 
             self.processFrame(sampleBuffer)
-
-        }
 
 
 
     }
 
-
-
     private func processFrame(_ sample: CMSampleBuffer) {
-
-
-
 
         Task(priority: .userInitiated) { [weak self] in
             guard let self = self, self.isActive else { return }
-
-
-
-            //old rotate
 
             if let rotated = await self.rotator?.rotateAsync(sampleBuffer: sample, angle: .angle90) {
                 await self.mediaMixer.append(rotated)
             }
 
-
+            // FPS 調整與 log trace
+            self.videoBufferManager.monitorFPSAndAdjust(
+                with: sample,
+                rtmpStream: rtmpStream,
+                sendlog: sendlog
+            )
+            
         }
 
 
-        // FPS 調整與 log trace
-        self.videoBufferManager.monitorFPSAndAdjust(
-            with: sample,
-            rtmpStream: rtmpStream,
-            sendlog: sendlog
-        )
 
 
 
