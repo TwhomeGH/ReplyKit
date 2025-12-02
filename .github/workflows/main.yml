@@ -50,7 +50,8 @@ jobs:
             -scheme "$scheme" \
             -configuration Release \
             -archivePath $PWD/build/liveApp.xcarchive \
-            -destination "generic/platform=iOS"
+            -destination "generic/platform=iOS" \
+            -allowProvisioningUpdates
 
             
       # 4️⃣ Export Unsigned IPA using external plist
