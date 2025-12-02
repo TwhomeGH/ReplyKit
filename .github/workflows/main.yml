@@ -3,7 +3,7 @@ name: iOS Archive & Release via Tag
 on:
   push:
     tags:
-      - 'v*'
+      - '*'
 
 jobs:
   build:
@@ -17,7 +17,9 @@ jobs:
       - name: Set default scheme
         run: |
           scheme_list=$(xcodebuild -list -json | tr -d "\n")
-          default=$(echo $scheme_list | ruby -e "require 'json'; puts JSON.parse(STDIN.gets)['project']['targets'][1]")
+          default=$(echo $scheme_list | ruby -e "require 'json'; data = JSON.parse(STDIN.gets) schemes = data['project']['schemes'] puts schemes.find { |s| s.include?('ReplyKit') } || schemes[0] ")
+          
+
           echo $default > default
           echo Using default scheme: $default
 
