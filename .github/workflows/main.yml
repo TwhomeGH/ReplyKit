@@ -49,8 +49,7 @@ jobs:
             -scheme "$scheme" \
             -configuration Release \
             -archivePath $PWD/build/liveApp.xcarchive \
-            -destination "generic/platform=iOS" \
-            CODE_SIGNING_ALLOWED=NO
+            -destination "generic/platform=iOS"
 
             
       # 4️⃣ Export Unsigned IPA using external plist
