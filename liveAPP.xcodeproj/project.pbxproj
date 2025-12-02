@@ -94,6 +94,7 @@
 		CE281A0E2E5AE7FC0023BBC4 /* Exceptions for "liveAPP" folder in "liveAPP" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Config.xcconfig,
 				Info.plist,
 			);
 			target = CE2819A12E5AB3750023BBC4 /* liveAPP */;
@@ -351,7 +352,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1630;
-				LastUpgradeCheck = 1640;
+				LastUpgradeCheck = 2610;
 				TargetAttributes = {
 					CE2819A12E5AB3750023BBC4 = {
 						CreatedOnToolsVersion = 16.3;
@@ -559,6 +560,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -617,6 +619,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				VALIDATE_PRODUCT = YES;
 			};
@@ -638,6 +641,7 @@
 				INFOPLIST_FILE = liveAPP/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "松鼠推流工具";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "使用本地網路通信";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "使用麥克風直播";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -683,6 +687,7 @@
 				INFOPLIST_FILE = liveAPP/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "松鼠推流工具";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "使用本地網路通信";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "使用麥克風直播";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
