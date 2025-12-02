@@ -9,7 +9,7 @@ jobs:
   build:
     runs-on: macos-26
     env:
-      APPLE_ID: ${{ secrets.APPID }}
+      FASTLANE_USER: ${{ secrets.APPID }}
       FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD: ${{ secrets.APPPass }}
 
     steps:
@@ -55,7 +55,8 @@ jobs:
             -configuration Release \
             -archivePath $PWD/build/liveApp.xcarchive \
             -destination "generic/platform=iOS" \
-            -allowProvisioningUpdates
+            -allowProvisioningUpdates \
+            -allowProvisioningDeviceRegistration
 
             
       # 4️⃣ Export Unsigned IPA using external plist

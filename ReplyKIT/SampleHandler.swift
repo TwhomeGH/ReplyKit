@@ -394,9 +394,14 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 let track = await mediaMixer.videoMixerSettings.mainTrack
 
-
-
                 sendlog(message: "FrameRate:\(fps) \nmediaSet:\(mediaSet) \nVTrack:\(track)\nVideoSet:\(videoSet)")
+
+                ExtensionMessagePort.shared.send(toApp: [
+                    "FPS": "\(fps)",
+                    "VideoSet":"\(videoSet)"
+                                                        ]
+                )
+
 
             }
 
@@ -494,6 +499,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     // MARK: 初始化
     override init() {
 
+        ExtensionMessagePort.shared.connectToApp()
 
         bitrate=SharedDefaults.group?.integer(forKey: "bitRate") ?? 3_900_000
 
@@ -944,6 +950,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         logger.info("運行通知")
 
+        SocketClient.shared.requestAllSettings()
+
         isStopping = false
 
 //        if let rtmpURL2 = setupInfo?["rtmpURL"]
@@ -1184,6 +1192,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         // 停止斷線監控 Task
         disconnectMonitorTask?.cancel()
         disconnectMonitorTask = nil
+
+        ExtensionMessagePort.shared.disconnectFromApp()
+
 
         needVideoConfiguration = true
         needAudioConfiguration = true

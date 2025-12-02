@@ -2,6 +2,7 @@ import Foundation
 import os
 
 
+
 // MARK: TimeFormat
 func formattedTime() -> String {
     let formatter = DateFormatter()
@@ -400,4 +401,102 @@ func sendlog(title: String = "ReplyKit", message: String, mode: Int = 0) {
 
     }
 }
+
+
+
+//MARK: CFPort
+
+final class ExtensionMessagePort {
+    static let shared = ExtensionMessagePort()
+
+    private var localPort: CFMessagePort?
+    private var remotePort: CFMessagePort?
+
+    var endP : CFString?
+
+    private init() {
+        setupReceiver()
+    }
+
+    private func setupReceiver() {
+        var context = CFMessagePortContext(
+            version: 0,
+            info: UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque()),
+            retain: nil,
+            release: nil,
+            copyDescription: nil
+        )
+
+        let callback: CFMessagePortCallBack = { port, msgid, cfData, info -> Unmanaged<CFData>? in
+
+            if let data = cfData as Data?,
+               let obj = try? JSONSerialization.jsonObject(with: data),
+               let pretty = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted]),
+               let str = String(data: pretty, encoding: .utf8) {
+
+                LogManager.shared
+                    .log(message:"📨 Extension 收到來自 App 的訊息:\n\(str)")
+
+            } else {
+                LogManager.shared
+                    .log(message:"📨 Extension Not Get 來自 App 的訊息")
+
+
+            }
+            return nil
+        }
+
+        localPort = CFMessagePortCreateLocal(nil,
+                                             "group.nuclear.liveAPP.ExtPort" as CFString,
+                                             callback,
+                                             &context,
+                                             nil)
+
+        endP = CFMessagePortGetName(localPort)
+
+        if let localPort {
+            let rl = CFMessagePortCreateRunLoopSource(nil, localPort, 0)
+            CFRunLoopAddSource(CFRunLoopGetMain(), rl, .defaultMode)
+        }
+
+        LogManager.shared
+            .log(message:"Port Add Ext \(String(describing: endP))")
+    }
+
+    func connectToApp() {
+        remotePort = CFMessagePortCreateRemote(nil, "group.nuclear.liveAPP.AppPort" as CFString)
+
+        LogManager.shared
+            .log(message:"App連接建立!")
+        ExtensionMessagePort.shared.send(toApp: ["test":"ok"])
+
+    }
+
+    func disconnectFromApp() {
+        if let port = remotePort {
+            CFMessagePortInvalidate(remotePort)
+            remotePort = nil
+            LogManager.shared.log(message: "App連接已取消")
+        }
+    }
+
+    func send(toApp dict: [String: Any]) {
+        guard
+            let remote = remotePort,
+            let data = try? JSONSerialization.data(withJSONObject: dict)
+        else { return }
+
+        CFMessagePortSendRequest(
+            remote,
+            100,                 // message id
+            data as CFData,
+            1,
+            1,
+            nil,
+            nil
+        )
+    }
+
+}
+
 

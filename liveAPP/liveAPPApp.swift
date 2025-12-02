@@ -176,7 +176,13 @@ final class LogReceiver {
                 return
             }
 
-            let lines = content.split(separator: "\n").map { String($0) }
+            let normalizedContent = content.replacingOccurrences(of: "\r\n", with: "\n")
+
+            let lines = normalizedContent
+                            .split(separator: "\n")
+                            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                            .filter { !$0.isEmpty }
+            
             if !lines.isEmpty {
                 // 限制推送行數
                 let newLines = lines.suffix(self.maxPush)
@@ -480,6 +486,10 @@ struct liveAPPApp: App {
         // 啟動一次
         //SocketUserDefaluts.shared.startSettingsServer()
         //CFMessagePortServer.shared.start()
+
+        SocketServer.shared?.sendInitialUserDefaults()
+
+        AppMessagePort.shared.setupReceiver()
 
         cacheInitialOrientation()
 
