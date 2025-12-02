@@ -8,6 +8,10 @@ on:
 jobs:
   build:
     runs-on: macos-26
+    env:
+      APPLE_ID: ${{ secrets.APPID }}
+      FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD: ${{ secrets.APPPass }}
+
     steps:
       # 1️⃣ Checkout repository
       - name: Checkout
