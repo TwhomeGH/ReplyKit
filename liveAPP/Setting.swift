@@ -267,7 +267,9 @@ final class AppMessagePort {
 
                 AppMessagePort.shared.logTo("📨 來自 Extension:\n\(str)")
 
-                AppMessagePort.shared.connectToExtension()
+                if !AppMessagePort.shared.isConnect {
+                    AppMessagePort.shared.connectToExtension()
+                }
 
             } else {
                 AppMessagePort.shared.logTo("📨 來自 Extension: <無法解析>")
@@ -294,6 +296,8 @@ final class AppMessagePort {
 
     func connectToExtension() {
 
+        disconnectFromExt()
+
         remotePort = CFMessagePortCreateRemote(nil, "group.nuclear.liveAPP.ExtPort" as CFString)
 
         isConnect = true
@@ -301,7 +305,7 @@ final class AppMessagePort {
     }
 
     func disconnectFromExt() {
-        if let port = remotePort {
+        if remotePort != nil {
 
             CFMessagePortInvalidate(remotePort)
             remotePort = nil
@@ -328,6 +332,8 @@ final class AppMessagePort {
             nil,
             nil
         )
+
+       
     }
 }
 
