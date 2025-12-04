@@ -177,6 +177,10 @@ class SocketServer {
         logger.info("SocketServer stopped")
     }
 
+    deinit {
+        stop()
+    }
+
     // MARK: - Utils
     private func safeJSONValue(_ value: Any) -> Any {
         switch value {
