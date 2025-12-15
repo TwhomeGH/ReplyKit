@@ -299,10 +299,12 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             Task { await self.gpuSemaphore.signal() }
         }
 
+        defer {
+            signalIfNeeded();
+        }
 
         // 延遲初始化 Metal/TextureCache
         guard ensureMetalResources() else {
-            signalIfNeeded();
             return nil
         }
 
@@ -323,12 +325,19 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         guard let outSet = getReusableOutput(width: dstW, height: dstH) else { return nil }
         guard let ycvTexIn = makeTexture(from: inBuffer, planeIndex: 0),
               let uvcvTexIn = makeTexture(from: inBuffer, planeIndex: 1),
-              let cmd = queue?.makeCommandBuffer() else { return nil }
+              let cmd = queue?.makeCommandBuffer() else {
+
+            recycleOutput(outSet)
+
+            return nil
+        }
 
         renderPlaneYUV(cmd: cmd, srcY: ycvTexIn.tex, srcUV: uvcvTexIn.tex,
                        dstY: outSet.yTex, dstUV: outSet.uvTex, angle: angle)
 
 
+        // ✅ 成功路徑：semaphore 交給 GPU completion
+        didSignal = true
 
         return await withCheckedContinuation { cont in
 
