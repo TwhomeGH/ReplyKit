@@ -155,15 +155,26 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     private let gpuSemaphore = AsyncSemaphore()
 
+
+
+    func cleanup() {
+        Task { [weak self] in
+            guard let self else { return }
+            await self.cleanGPU()
+            self.cleanupD()
+        }
+    }
+
+    func cleanGPU() async {
+        // 等待所有 in-flight GPU 完成
+        await gpuSemaphore.waitUntilAllReleased()
+    }
     // MARK: - Cleanup
-    func cleanup()  {
+    func cleanupD() {
         isActive = false
 
-        Task {
-            // 等待所有 in-flight GPU 完成
-            await gpuSemaphore.waitUntilAllReleased()
-        }
-        
+
+
         // 清空 pool，釋放 CVMetalTexture
         outputPoolLock.lock()
         for outSet in outputPool {
@@ -246,21 +257,34 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         let outPB: CVPixelBuffer
         let outSet: RPVideoRotatorNV12BatchQueueOptimized.ReusableOutputSet
 
+        // ✅ 新增：撐住 input backing
+         let inY: CVMetalTexture
+         let inUV: CVMetalTexture
+
+
         init(sampleBuffer: CMSampleBuffer,
-             outSet: RPVideoRotatorNV12BatchQueueOptimized.ReusableOutputSet) {
+             outSet: RPVideoRotatorNV12BatchQueueOptimized.ReusableOutputSet,
+             inY:CVMetalTexture,
+             inUV:CVMetalTexture
+        ) {
             self.sampleBuffer = sampleBuffer
             self.outSet = outSet
             self.outPB = outSet.pixelBuffer
+
+            self.inY = inY
+            self.inUV = inUV
 
         }
 
 
     }
 
+    let timeoutNs: UInt64 = 2_000_000_000
+
+
     // MARK: - Enqueue Frame
     func rotateAsync(sampleBuffer: CMSampleBuffer, angle: RotationAngle) async -> CMSampleBuffer? {
-        await gpuSemaphore.wait()
-        defer { Task { await gpuSemaphore.signal() } }
+            await gpuSemaphore.wait()
 
 
         // 延遲初始化 Metal/TextureCache
@@ -275,9 +299,9 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         if dstWW > 0 && dstHH > 0 { dstW = dstWW; dstH = dstHH }
 
 
-        let infoGPU=await gpuSemaphore.info()
-        self.logTo("GPU Info:\(infoGPU.now):\(infoGPU.max)")
-        
+        //        let infoGPU=await gpuSemaphore.info()
+        //        self.logTo("GPU Info:\(infoGPU.now):\(infoGPU.max)")
+
         self.logTo("\(srcW)x\(srcH) -> \(dstW)x\(dstH)")
 
         guard let outSet = getReusableOutput(width: dstW, height: dstH) else { return nil }
@@ -289,22 +313,67 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                        dstY: outSet.yTex, dstUV: outSet.uvTex, angle: angle)
 
 
-        return await withCheckedContinuation { cont in
 
-            let frameC = FrameContext(sampleBuffer: sampleBuffer, outSet: outSet)
+//        return await withCheckedContinuation { cont in
+//
+//            let frameC = FrameContext(sampleBuffer: sampleBuffer, outSet: outSet,
+//                                      inY: ycvTexIn.cv,inUV: uvcvTexIn.cv
+//            )
+//
+//            cmd.addCompletedHandler { _ in
+//                let wrapped = self.wrapPixelBuffer(
+//                    frameC.outPB,
+//                    originalSampleBuffer: sampleBuffer
+//                )
+//                self.recycleOutput(frameC.outSet)
+//
+//                self.logTo("GPU Frame down")
+//                cont.resume(returning: wrapped)
+//            }
+//            cmd.commit()
+//        }
+
+
+        return await withCheckedContinuation { cont in
+            let lock = NSLock()
+            var didResume = false
+
+            func resumeOnce(_ value: CMSampleBuffer?) {
+                lock.lock()
+                defer { lock.unlock() }
+                if didResume { return }
+                didResume = true
+                cont.resume(returning: value)
+            }
+
+            let frameC = FrameContext(
+                sampleBuffer: sampleBuffer,
+                outSet: outSet,
+                inY: ycvTexIn.cv,
+                inUV: uvcvTexIn.cv
+            )
 
             cmd.addCompletedHandler { _ in
-                let wrapped = self.wrapPixelBuffer(
-                    frameC.outPB,
-                    originalSampleBuffer: sampleBuffer
-                )
-                self.recycleOutput(frameC.outSet)
+                let wrapped = self.wrapPixelBuffer(frameC.outPB, originalSampleBuffer: sampleBuffer)
 
-                self.logTo("GPU Frame down")
-                cont.resume(returning: wrapped)
+                // ✅ GPU 完成：回收 + signal（只會走一次）
+                self.logTo("Frame Done")
+                self.recycleOutput(frameC.outSet)
+                Task { await self.gpuSemaphore.signal() }
+
+                resumeOnce(wrapped)
             }
+
             cmd.commit()
+
+            Task {
+                try? await Task.sleep(nanoseconds: self.timeoutNs)
+
+                // ✅ timeout：只「提早回 nil」，但不回收、不 signal（等 GPU 真完成再做）
+                resumeOnce(nil)
+            }
         }
+
     }
 
     // MARK: - Reusable Output
@@ -352,6 +421,9 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             let removed = outputPool.removeFirst()
             removed.cvY = nil
             removed.cvUV = nil
+//            removed.pixelBuffer = nil
+//            removed.uvTex = nil
+//            removed.yTex = nil
         }
         outputPool.append(outSet)
     }
