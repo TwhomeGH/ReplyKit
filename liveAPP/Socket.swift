@@ -22,27 +22,30 @@ class SocketServer {
             self?.handleNewConnection(connection)
         }
         listener?.start(queue: queue)
-        logger.info("SocketServer started on port \(port)")
+        logTo("SocketServer started on port \(port)")
+    }
+
+    func logTo(_ mes:String){
+        sendlog(message: "\(mes)")
     }
 
     // MARK: - Handle New Connection
     private func handleNewConnection(_ connection: NWConnection) {
         connections.append(connection)
-        logger
-            .debug(
+        logTo(
                 "New connection added. Total connections: \(self.connections.count)"
             )
 
         connection.stateUpdateHandler = { [weak self] state in
             switch state {
             case .ready:
-                logger.debug("Connection ready: \(String(describing: connection))")
+                self?.logTo("Connection ready: \(String(describing: connection))")
                 self?.sendInitialUserDefaults(to: connection)
             case .failed(let error):
-                logger.debug("Connection failed: \(error.localizedDescription)")
+                self?.logTo("Connection failed: \(error.localizedDescription)")
                 self?.removeConnection(connection)
             case .cancelled:
-                logger.debug("Connection cancelled")
+                self?.logTo("Connection cancelled")
                 self?.removeConnection(connection)
             default:
                 break
@@ -84,14 +87,14 @@ class SocketServer {
             sendToAll(payload: payload)
 
         case "requestSettings":
-            logger.debug("Sync UserDefaults to client")
+            logTo("Sync UserDefaults to client")
             sendInitialUserDefaults(to: connection)
 
         case "settings":
             if let key = dict["key"] as? String, let valueAny = dict["value"] {
                 let safeValue: Any = safeJSONValue(valueAny) // 明確 Any
                 let safeValueStr = String(describing: safeValue)
-                logger.debug("Updated UserDefaults: \(key) = \(safeValueStr)")
+                logTo("Updated UserDefaults: \(key) = \(safeValueStr)")
 
                 UserDefaults.standard.set(valueAny, forKey: key) // 用原值存 UserDefaults
 
@@ -101,11 +104,11 @@ class SocketServer {
         case "log":
             if let message = dict["message"] as? String {
                 appendLogToFile(message)
-                logger.debug("Received log: \(message)")
+                logTo("Received log: \(message)")
             }
 
         default:
-            logger.debug("Unknown message type: \(type)")
+            logTo("Unknown message type: \(type)")
         }
     }
 
@@ -115,7 +118,7 @@ class SocketServer {
         for conn in connections {
             conn.send(content: data, completion: .contentProcessed { error in
                 if let error = error {
-                    logger.debug("Send error: \(error.localizedDescription)")
+                    self.logTo("Send error: \(error.localizedDescription)")
                 }
             })
         }
@@ -163,7 +166,7 @@ class SocketServer {
         if let index = connections.firstIndex(where: { $0 === connection }) {
             connections.remove(at: index)
         }
-        logger.debug("Connection removed. Remaining: \(self.connections.count)")
+        logTo("Connection removed. Remaining: \(self.connections.count)")
     }
 
     func stop() {
@@ -174,7 +177,7 @@ class SocketServer {
             conn.cancel()
         }
         connections.removeAll()
-        logger.info("SocketServer stopped")
+        logTo("SocketServer stopped")
     }
 
     deinit {
