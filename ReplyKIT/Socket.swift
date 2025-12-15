@@ -25,7 +25,7 @@ class SocketClient {
 
     init(host: String = "localhost", port: UInt16 = 9322) {
         setupConnection(host: host, port: port)
-        observeLocalChanges()
+        //observeLocalChanges()
         sendlog(message: "test socket!!!")
     }
 
@@ -39,14 +39,22 @@ class SocketClient {
         start()
     }
 
+    func closeConnection() {
+       
+        connection?.cancel()
+        connection = nil
+
+        //stopObservingLocalChanges()
+
+    }
+    
     func start() {
         connection.stateUpdateHandler = { [weak self] state in
             guard let self = self else { return }
             switch state {
             case .ready:
                 sendlog(message:"SocketClient connected")
-                //self.requestAllSettings()
-                //self.sendInitialUserDefaults()
+
                 self.receive()
             case .failed(let error):
                 logTo("SocketClient failed: \(String(describing: error))")
@@ -129,7 +137,7 @@ class SocketClient {
                 case "settings":
                     if let key = dict["key"] as? String,
                        let value = dict["value"] {
-                        UserDefaults.standard.set(value, forKey: key)
+                        //SharedDefaults.group?.set(value, forKey: key)
                         NotificationCenter.default.post(name: .didReceiveSettings, object: nil)
                         logTo("Updated UserDefaults: \(key) = \(String(describing: value))")
                     }
@@ -145,9 +153,11 @@ class SocketClient {
         }
     }
 
+    private var localChangesObserver: NSObjectProtocol?
+
     // MARK: - 監聽本地 UserDefaults
     private func observeLocalChanges() {
-        NotificationCenter.default.addObserver(
+        localChangesObserver = NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification,
             object: nil,
             queue: .main
@@ -157,6 +167,14 @@ class SocketClient {
             for (key, value) in defaults.dictionaryRepresentation() {
                 self.sendSettings(key: key, value: value)
             }
+        }
+
+    }
+
+    private func stopObservingLocalChanges() {
+        if let observer = localChangesObserver {
+            NotificationCenter.default.removeObserver(observer)
+            localChangesObserver = nil
         }
     }
 
