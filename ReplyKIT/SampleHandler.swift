@@ -489,17 +489,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         }
     }
 
-    deinit {
 
-        //rtmpStream = nil
-
-        removeObservers()
-    }
 
     // MARK: 初始化
     override init() {
 
-        ExtensionMessagePort.shared.connectToApp()
 
         bitrate=SharedDefaults.group?.integer(forKey: "bitRate") ?? 3_900_000
 
@@ -950,8 +944,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         logger.info("運行通知")
 
+
+        ExtensionMessagePort.shared.connectToApp()
         SocketClient.shared.requestAllSettings()
 
+        
         isStopping = false
 
 //        if let rtmpURL2 = setupInfo?["rtmpURL"]
@@ -1194,6 +1191,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         disconnectMonitorTask = nil
 
         ExtensionMessagePort.shared.disconnectFromApp()
+        SocketClient.shared.closeConnection()
+
 
 
         needVideoConfiguration = true
