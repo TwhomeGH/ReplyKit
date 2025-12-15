@@ -63,11 +63,11 @@ final class VideoFrameProcessor {
     func cleanup() {
         isActive = false
         // 清空 queue 上未執行的任務
-//        processingQueue.sync {
-//
-//
-//        } // 確保之前的所有 block 都完成
-//
+        processingQueue.sync {
+
+
+        } // 確保之前的所有 block 都完成
+
 
         // Task 目前無法強制取消，確保 isActive 檢查能立即返回
         
@@ -84,7 +84,7 @@ final class VideoFrameProcessor {
 
     func process(_ sampleBuffer: CMSampleBuffer, timestamp: CMTime) {
 
-        //processingQueue.async {
+        processingQueue.async {
             guard self.isActive else { return }
 
             // 延遲初始化 rotator
@@ -113,6 +113,8 @@ final class VideoFrameProcessor {
 
             self.processFrame(sampleBuffer)
 
+        }
+
 
 
     }
@@ -124,6 +126,9 @@ final class VideoFrameProcessor {
 
             if let rotated = await self.rotator?.rotateAsync(sampleBuffer: sample, angle: .angle90) {
                 await self.mediaMixer.append(rotated)
+            } else {
+                sendlog("GPU Fail!")
+                await self.mediaMixer.append(sample)
             }
 
             // FPS 調整與 log trace
