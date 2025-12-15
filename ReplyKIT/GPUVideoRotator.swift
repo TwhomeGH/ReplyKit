@@ -458,7 +458,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         encoder.setTexture(dstY, index: 2)
         encoder.setTexture(dstUV, index: 3)
 
-        let tgWidth = min(compute.threadExecutionWidth, 32)
+        let tgWidth = min(compute.threadExecutionWidth, 16)
         let tgHeight = max(1, compute.maxTotalThreadsPerThreadgroup / tgWidth)
 
         var params = Params(srcWidth: UInt32(srcY.width), srcHeight: UInt32(srcY.height),
