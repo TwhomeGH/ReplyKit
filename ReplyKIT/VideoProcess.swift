@@ -76,8 +76,6 @@ final class VideoFrameProcessor {
 
     }
     deinit {
-
-        cleanup()
         sendlog("🧹 VideoFrameProcessor deinit — resources released")
     }
 

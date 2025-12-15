@@ -444,7 +444,6 @@ final class AudioProcessor : @unchecked Sendable {
 
     }
     deinit {
-        cleanup()
         sendlog(message:"🧹 AudioProcessor deinit — resources released")
     }
 
