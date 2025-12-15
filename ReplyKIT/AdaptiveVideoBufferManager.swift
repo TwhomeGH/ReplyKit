@@ -182,6 +182,9 @@ public final class AdaptiveVideoBufferManager {
     private var smoothedLatency: Double = 0
     private let latencyAlpha: Double = 0.2
 
+    private let queue = DispatchQueue(label: "fps.processor.queue", qos: .userInitiated)
+
+
     // 🧠 性能記錄
     private var bufferPerformanceHistory: [Int: [Double]] = [:]
 
@@ -200,108 +203,131 @@ public final class AdaptiveVideoBufferManager {
     deinit {
         sendlog(message:"動態控制緩衝釋放")
     }
+
     public func monitorFPSAndAdjust(
         with sampleBuffer: CMSampleBuffer,
         rtmpStream: RTMPStream,
         sendlog: @escaping (String) -> Void
     ) {
-        let now = CACurrentMediaTime()
+        queue.async { [weak self] in
+            guard let self else { return }
+            self._monitorFPSAndAdjust(with: sampleBuffer, rtmpStream: rtmpStream, sendlog: sendlog)
+        }
+    }
 
-        // 🎯 目標 FPS 判斷
-        var timingInfo = CMSampleTimingInfo()
-        if CMSampleBufferGetSampleTimingInfo(sampleBuffer, at: 0, timingInfoOut: &timingInfo) == noErr {
-            if !useFixedTargetFPS, timingInfo.duration.seconds > 0 {
-                targetFPS = 1.0 / timingInfo.duration.seconds
+    public func _monitorFPSAndAdjust(
+        with sampleBuffer: CMSampleBuffer,
+        rtmpStream: RTMPStream,
+        sendlog: @escaping (String) -> Void
+    ) {
+
+
+
+            let now = CACurrentMediaTime()
+
+            // 🎯 目標 FPS 判斷
+            var timingInfo = CMSampleTimingInfo()
+            if CMSampleBufferGetSampleTimingInfo(sampleBuffer, at: 0, timingInfoOut: &timingInfo) == noErr {
+                if !useFixedTargetFPS, timingInfo.duration.seconds > 0 {
+                    targetFPS = 1.0 / timingInfo.duration.seconds
+                }
+            } else if useFixedTargetFPS {
+                targetFPS = fixedTargetFPS
             }
-        } else if useFixedTargetFPS {
-            targetFPS = fixedTargetFPS
-        }
 
-        // 🕒 幀時間計算
-        let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer).seconds
-        if lastFrameTime == 0 {
+            // 🕒 幀時間計算
+            let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer).seconds
+            if lastFrameTime == 0 {
+                lastFrameTime = pts
+                return
+            }
+
+            let delta = pts - lastFrameTime
             lastFrameTime = pts
-            return
-        }
+            guard delta > 0 else { return }
 
-        let delta = pts - lastFrameTime
-        lastFrameTime = pts
-        guard delta > 0 else { return }
+            let fps = 1.0 / delta
 
-        let fps = 1.0 / delta
+            // 📊 更新 EMA 平滑 FPS
+            if smoothedFPS == 0 {
+                smoothedFPS = fps
+            } else {
+                smoothedFPS = emaAlpha * fps + (1 - emaAlpha) * smoothedFPS
+            }
 
-        // 📊 更新 EMA 平滑 FPS
-        if smoothedFPS == 0 {
-            smoothedFPS = fps
-        } else {
-            smoothedFPS = emaAlpha * fps + (1 - emaAlpha) * smoothedFPS
-        }
+            // 🎯 計算繪製延遲並平滑
+            let renderLatency = now - pts
+            if smoothedLatency == 0 {
+                smoothedLatency = renderLatency
+            } else {
+                smoothedLatency = latencyAlpha * renderLatency + (1 - latencyAlpha) * smoothedLatency
+            }
 
-        // 🎯 計算繪製延遲並平滑
-        let renderLatency = now - pts
-        if smoothedLatency == 0 {
-            smoothedLatency = renderLatency
-        } else {
-            smoothedLatency = latencyAlpha * renderLatency + (1 - latencyAlpha) * smoothedLatency
-        }
+            // 📈 儲存當前 buffer 效能紀錄
+            bufferPerformanceHistory[currentBufferCount, default: []].append(smoothedFPS)
 
-        // 📈 儲存當前 buffer 效能紀錄
-        bufferPerformanceHistory[currentBufferCount, default: []].append(smoothedFPS)
+            // 限制上限
+            if bufferPerformanceHistory[currentBufferCount, default: []].count > 30 {
+                bufferPerformanceHistory[currentBufferCount]?.removeFirst()
+            }
 
-        // 限制上限 
-        if bufferPerformanceHistory[currentBufferCount]!.count > 30 {
-            bufferPerformanceHistory[currentBufferCount]!.removeFirst()
-        }
+            // 🧮 每秒調整一次 buffer
+            if now - lastAdjustTime >= adjustInterval {
+                lastAdjustTime = now
 
-        // 🧮 每秒調整一次 buffer
-        if now - lastAdjustTime >= adjustInterval {
-            lastAdjustTime = now
+                let fpsDiff = abs(smoothedFPS - lastStableFPS)
+                var newBufferCount = currentBufferCount
 
-            let fpsDiff = abs(smoothedFPS - lastStableFPS)
-            var newBufferCount = currentBufferCount
+                if fpsDiff > targetFPS * hysteresisMargin ||
+                    smoothedLatency > 0.2 || smoothedLatency < 0.05 {
 
-            if fpsDiff > targetFPS * hysteresisMargin ||
-                smoothedLatency > 0.2 || smoothedLatency < 0.05 {
+                    lastStableFPS = smoothedFPS
 
-                lastStableFPS = smoothedFPS
+                    // FPS 過低或延遲偏高 → 增加 buffer
+                    if smoothedLatency > 0.2 || smoothedFPS < targetFPS * lowFPSThreshold {
+                        newBufferCount = min(currentBufferCount + 1, maxBufferCount)
 
-                // FPS 過低或延遲偏高 → 增加 buffer
-                if smoothedLatency > 0.2 || smoothedFPS < targetFPS * lowFPSThreshold {
-                    newBufferCount = min(currentBufferCount + 1, maxBufferCount)
+                        // FPS 過高或延遲過低 → 減少 buffer
+                    } else if smoothedLatency < 0.05 || smoothedFPS > targetFPS * highFPSThreshold {
+                        newBufferCount = max(currentBufferCount - 1, minBufferCount)
+                    }
 
-                // FPS 過高或延遲過低 → 減少 buffer
-                } else if smoothedLatency < 0.05 || smoothedFPS > targetFPS * highFPSThreshold {
-                    newBufferCount = max(currentBufferCount - 1, minBufferCount)
-                }
+                    // 🎯 使用歷史資料學習最優解
+                    let filtered = bufferPerformanceHistory.filter { $0.value.count >= 3 }
+                    if let best = filtered.max(by: { $0.value.reduce(0,+)/Double($0.value.count)
+                        < $1.value.reduce(0,+)/Double($1.value.count) })?.key {
+                        newBufferCount = best
+                    }
 
-                // 🎯 使用歷史資料學習最優解
-                let filtered = bufferPerformanceHistory.filter { $0.value.count >= 3 }
-                if let bestBuffer = filtered.max(by: { $0.value.average() < $1.value.average() })?.key,
-                   bestBuffer != newBufferCount {
-                    newBufferCount = bestBuffer
-                }
 
-                // 🧠 實際應用變更
-                if newBufferCount != lastSetBufferCount {
-                    currentBufferCount = newBufferCount
-                    lastSetBufferCount = newBufferCount
+                    // 🧠 實際應用變更
+                    if newBufferCount != lastSetBufferCount {
+                        currentBufferCount = newBufferCount
+                        lastSetBufferCount = newBufferCount
 
-                    Task {
-                        await rtmpStream.setVideoInputBufferCounts(currentBufferCount)
+                        Task {
+                            await rtmpStream.setVideoInputBufferCounts(currentBufferCount)
+                        }
                     }
                 }
             }
-        }
 
-        // 🪵 每3秒輸出一次 log
-        if now - lastLogTime >= logInterval {
-            lastLogTime = now
-            let direction = (lastSetBufferCount > currentBufferCount) ? "↑" :
-                            (lastSetBufferCount < currentBufferCount) ? "↓" : "-"
-            sendlog(
-                "ReplyKit: EMA-FPS: \(Int(smoothedFPS)) latency: \(String(format: "%.3f", smoothedLatency)) bufferCount: \(currentBufferCount) \(direction)"
-            )
-        }
+            // 🪵 每3秒輸出一次 log
+            if now - lastLogTime >= logInterval {
+                lastLogTime = now
+
+                let prev = currentBufferCount
+
+                let direction = currentBufferCount  > prev ? "↑" :     currentBufferCount  < prev ? "↓" : "-"
+
+
+                sendlog(
+                    "ReplyKit: EMA-FPS: \(Int(smoothedFPS)) latency: \(String(format: "%.3f", smoothedLatency)) bufferCount: \(currentBufferCount) \(direction)"
+                )
+            }
+
+
+
     }
 }
 
