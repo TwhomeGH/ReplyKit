@@ -464,6 +464,8 @@ final class ExtensionMessagePort {
     }
 
     func connectToApp() {
+        disconnectFromApp()
+        
         remotePort = CFMessagePortCreateRemote(nil, "group.nuclear.liveAPP.AppPort" as CFString)
 
         LogManager.shared
@@ -473,7 +475,7 @@ final class ExtensionMessagePort {
     }
 
     func disconnectFromApp() {
-        if let port = remotePort {
+        if remotePort != nil {
             CFMessagePortInvalidate(remotePort)
             remotePort = nil
             LogManager.shared.log(message: "App連接已取消")
