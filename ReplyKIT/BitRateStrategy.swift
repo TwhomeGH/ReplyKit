@@ -42,6 +42,14 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
     // 宣告歷史陣列
     var avgOutBpsHistory: [Double] = []
 
+    var ChangeBit = false
+
+
+    func isChangBit(_ status:Bool = false){
+        self.ChangeBit = status
+    }
+
+
 
     private var lastAvgUpdateTime: Date? = nil
     private let tau: TimeInterval = 3.0 // 平滑時間常數 (秒)
@@ -93,6 +101,19 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
     }
 
 
+
+    func applyVideoBitrate(_ newBitRate: Int, to stream: some HaishinKit.StreamConvertible) async {
+        var v = await stream.videoSettings
+        guard v.bitRate != newBitRate else { return } // 避免同值也一直 set
+
+        v.bitRate = newBitRate
+        try? await stream.setVideoSettings(v)
+
+        lastBitrateChangeTime = Date()        // ✅ 關鍵：更新冷卻時間
+        avgOutBpsHistory.removeAll()          // ✅ 可選：避免用舊歷史立刻二次觸發
+    }
+
+
     func adjustBitrate(_ event: HaishinKit.NetworkMonitorEvent, stream: some HaishinKit.StreamConvertible) async {
         switch event {
         case .status(let report):
@@ -117,7 +138,7 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
         
 
 
-            var newBitV = await stream.videoSettings
+            let newBitV = await stream.videoSettings
             let VBitRate = newBitV.bitRate
 
 
@@ -161,6 +182,13 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
                 return
             }
 
+
+
+
+            if ChangeBit == false {
+                sendlog(message: "已停用調整碼率!")
+                return
+            }
             // 緩降
             // 判斷是否連續多次低於阈值才降碼率
             
@@ -168,13 +196,14 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
 
                 let target = Int(Double(VBitRate) * stepDown)
 
-                newBitV.bitRate = max(minBitrate, target)  // ✅ 強制 minBitrate
+                let res = max(minBitrate, target)  // ✅ 強制 minBitrate
 
 
 
                 sendlog(message: "📉 Bitrate 降至 : \(newBitV.bitRate) : \(newBitV.bitRate / 1000) Kbps")
 
-                try? await stream.setVideoSettings(newBitV)
+                await applyVideoBitrate(res, to: stream)
+
             }
 
 
@@ -183,19 +212,18 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
 
                 let target = min(mamimumVideoBitRate , Int(Double(VBitRate) * stepUp))
 
-                newBitV.bitRate = max(minBitrate, target) // ✅ 同樣保護
+                let res = max(minBitrate, target) // ✅ 同樣保護
 
                 sendlog(message: "📈 Bitrate 回升至 \(newBitV.bitRate / 1000) Kbps")
 
-                try? await stream.setVideoSettings(newBitV)
-
+                await applyVideoBitrate(res, to: stream)
 
             }
 
         case .publishInsufficientBWOccured( _):
             // 網路不穩時降碼率 -30%
 
-            var newBitV=await stream.videoSettings
+            let newBitV=await stream.videoSettings
 
             // 用平均出流量或當前出流量作為基準
             let measuredBps = avgOutBps ?? Double(newBitV.bitRate)
@@ -204,25 +232,26 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
             let smoothBps = 0.7 * (avgOutBps ?? Double(newBitV.bitRate)) + 0.3 * measuredBps
 
             // 計算新 bitrate，但不低於 minBitrate
-            newBitV.bitRate = max(
+            let res = max(
                 minBitrate,
-                Int(smoothBps * 0.9)
-            ) // 例如降到 90% 的平均出流量
+                Int(smoothBps * 0.97)
+            ) // 例如降到 97% 的平均出流量
 
             sendlog(message: "📉 Bitrate 網路不穩，調整至: \(newBitV.bitRate / 1000) Kbps")
 
-
-            try? await stream.setVideoSettings(newBitV)
+            await applyVideoBitrate(res, to: stream)
 
         case .reset:
             // 回復最大碼率
 
-            var newBit=await stream.videoSettings
-            newBit.bitRate = mamimumVideoBitRate
+            let newBit=await stream.videoSettings
+
+            let res = mamimumVideoBitRate
 
             sendlog(message: "BitRateReset: \(newBit.bitRate)")
 
-            try? await stream.setVideoSettings(newBit)
+            await applyVideoBitrate(res, to: stream)
+
         }
     }
 

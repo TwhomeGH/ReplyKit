@@ -22,7 +22,8 @@ class Eventlisten {
         "micAdd","appAdd","onAudioPage","logMode",
         "onlogPage","Enablelog","logURL",
         "DebugRotate","OutW","OutH","VideoSet",
-        "useBic","PauseStream","ResumeStream"
+        "useBic","PauseStream","ResumeStream",
+        "ChangeBit"
 
     ]
 

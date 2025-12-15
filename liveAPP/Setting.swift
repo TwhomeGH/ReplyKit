@@ -162,6 +162,8 @@ struct LogSettingView:View {
 
     @AppStorage("EnableRotatelog",store:userDefaults) private var EnableRotatelog = false
 
+    @AppStorage("ChangeBit",store:userDefaults) private var ChangeBit = true
+
     var body: some View {
         Section(header: Text("除錯日誌")) {
 
@@ -226,6 +228,20 @@ struct LogSettingView:View {
 
         }
 
+        Section(header: Text("網路")) {
+            Toggle(isOn: $ChangeBit){
+                Text("停用自動碼率調整策略 ！")
+            }
+            .onChange(of:ChangeBit) { newValue in
+                CFNotificationCenterPostNotification(cfCenter, CFNotificationName("ChangeBit" as CFString), nil, nil, true)
+            }
+            Text("停用後不管網路狀況做調整")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .padding(.bottom, 5)
+
+
+        }
     }
 }
 

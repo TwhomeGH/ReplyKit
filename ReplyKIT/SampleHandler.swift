@@ -321,6 +321,14 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             videoProcessor?.rotator?.debug = Rlog
             sendlog(message:"[旋轉日誌變化] VideoRotate \(Rlog)")
 
+        case "ChangeBit":
+            let Rlog=SharedDefaults.group?.bool(forKey: "ChangeBit") ?? false
+            Task {
+                await streamStataus?.isChangBit(Rlog)
+            }
+            sendlog(message:"[網路]碼率控制: \(Rlog)")
+
+
 
         case "useBic":
             let Rlog=SharedDefaults.group?.bool(forKey: "useBic") ?? true
@@ -838,6 +846,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         await streamStataus?.setOnDisconnect { [weak self] in
             self?.stopBroadcastWithError("RTMP 斷線")
         }
+
+
+        let Rlog=SharedDefaults.group?.bool(forKey: "ChangeBit") ?? false
+
+        await streamStataus?.isChangBit(Rlog)
+
 
         await rtmpStream.setBitRateStrategy(streamStataus)
 
