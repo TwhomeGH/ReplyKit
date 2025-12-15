@@ -179,7 +179,8 @@ public final class AdaptiveVideoBufferManager {
     private var smoothedFPS: Double = 0
     private let emaAlpha: Double = 0.2
 
-    private var smoothedLatency: Double = 0
+    //private var smoothedLatency: Double = 0
+
     private let latencyAlpha: Double = 0.2
 
     private let queue = DispatchQueue(label: "fps.processor.queue", qos: .userInitiated)
@@ -256,12 +257,12 @@ public final class AdaptiveVideoBufferManager {
             }
 
             // 🎯 計算繪製延遲並平滑
-            let renderLatency = now - pts
-            if smoothedLatency == 0 {
-                smoothedLatency = renderLatency
-            } else {
-                smoothedLatency = latencyAlpha * renderLatency + (1 - latencyAlpha) * smoothedLatency
-            }
+//            let renderLatency = now - pts
+//            if smoothedLatency == 0 {
+//                smoothedLatency = renderLatency
+//            } else {
+//                smoothedLatency = latencyAlpha * renderLatency + (1 - latencyAlpha) * smoothedLatency
+//            }
 
             // 📈 儲存當前 buffer 效能紀錄
             bufferPerformanceHistory[currentBufferCount, default: []].append(smoothedFPS)
@@ -278,17 +279,16 @@ public final class AdaptiveVideoBufferManager {
                 let fpsDiff = abs(smoothedFPS - lastStableFPS)
                 var newBufferCount = currentBufferCount
 
-                if fpsDiff > targetFPS * hysteresisMargin ||
-                    smoothedLatency > 0.2 || smoothedLatency < 0.05 {
+                if fpsDiff > targetFPS * hysteresisMargin {
 
                     lastStableFPS = smoothedFPS
 
                     // FPS 過低或延遲偏高 → 增加 buffer
-                    if smoothedLatency > 0.2 || smoothedFPS < targetFPS * lowFPSThreshold {
+                    if smoothedFPS < targetFPS * lowFPSThreshold {
                         newBufferCount = min(currentBufferCount + 1, maxBufferCount)
 
                         // FPS 過高或延遲過低 → 減少 buffer
-                    } else if smoothedLatency < 0.05 || smoothedFPS > targetFPS * highFPSThreshold {
+                    } else if smoothedFPS > targetFPS * highFPSThreshold {
                         newBufferCount = max(currentBufferCount - 1, minBufferCount)
                     }
 
@@ -322,7 +322,7 @@ public final class AdaptiveVideoBufferManager {
 
 
                 sendlog(
-                    "ReplyKit: EMA-FPS: \(Int(smoothedFPS)) latency: \(String(format: "%.3f", smoothedLatency)) bufferCount: \(currentBufferCount) \(direction)"
+                    "ReplyKit: EMA-FPS: \(Int(smoothedFPS)) bufferCount: \(currentBufferCount) \(direction)"
                 )
             }
 
