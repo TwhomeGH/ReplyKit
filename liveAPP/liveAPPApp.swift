@@ -404,13 +404,7 @@ struct liveAPPApp: App {
         let userDefaults = UserDefaults(suiteName: "group.nuclear.liveAPP")
 
         userDefaults?.set(deviceOrientation.rawValue, forKey: "LOrientation")
-        userDefaults?.set(false, forKey: "LockIN")
-       
-
-
-        let g=userDefaults?.integer(forKey: "LOrientation") ?? 1
-        let g2=userDefaults?.bool(forKey: "LockIN") ?? false
-        print("DGG",g,g2)
+        
     }
     #else
     func cacheInitialOrientation() {
