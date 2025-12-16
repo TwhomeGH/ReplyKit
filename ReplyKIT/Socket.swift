@@ -155,12 +155,72 @@ class SocketClient {
 
                 switch type {
                 case "RTMP":
-                    if let key = dict["rtmpURL"] as? String,
-                       let value = dict["rtmpKey"] as? String {
+                    if let rtmpURL = dict["rtmpURL"] as? String,
+                       let rtmpKey = dict["rtmpKey"] as? String,
+                       let BitRate = dict["BitRate"] as? Int,
+                       let ChangeBit = dict["ChangeBit"] as? Bool,
 
-                        logTo("Get RTMPURL:\(key) : \(value)")
-                        RPConfig.shared.RTMPURL = key
-                        RPConfig.shared.RTMPKey = value
+                       let dstW =  dict["dstW"] as? Int,
+                       let dstH =  dict["dstH"] as? Int,
+
+                       let appVolume = dict["appVolume"] as? Float,
+                       let micVolume = dict["micVolume"] as? Float,
+
+                       let appAddVolume =  dict["appVolumeAdd"] as? Double,
+                       let micAddVolume =  dict["micVolumeAdd"] as? Double,
+
+                       let logMode =  dict["logMode"] as? Int,
+                       let logURL = dict["logURL"] as? String,
+
+                       let onlogPage = dict["onlogPage"] as? Bool,
+                       let onAudioPage = dict["onAudioPage"] as? Bool,
+                       let enablelog = dict["enablelog"] as? Bool
+
+
+
+                    {
+
+                        //RTMP
+                        logTo("[Socket]Get RTMPURL:\(rtmpURL) : \(rtmpKey)")
+                        RPConfig.shared.RTMPURL = rtmpURL
+                        RPConfig.shared.RTMPKey = rtmpKey
+
+                        logTo("[Socket]Get BitRate:\(BitRate) : \(ChangeBit)")
+                        RPConfig.shared.BitRate = BitRate
+                        RPConfig.shared.ChangeBit = ChangeBit
+
+                        //Width
+                        logTo("[Socket]Get Target \(dstW)x\(dstH)")
+
+                        RPConfig.shared.ADWidth = dstW
+                        RPConfig.shared.ADHeight = dstH
+
+                        //Audio
+                        logTo(
+                            "[Socket]Get Audio App:\(appVolume) Mic:\(micVolume) AppAdd:\(appAddVolume) MicAdd:\(micAddVolume)"
+                        )
+
+                        RPConfig.shared.AppVolume = appVolume
+                        RPConfig.shared.MicVolume = micVolume
+                        RPConfig.shared.AppVolumeAdd = appAddVolume
+                        RPConfig.shared.MicVolumeAdd = micAddVolume
+
+                        //log
+                        logTo("[Socket]Logger Mode:\(logMode) URL:\(logURL)")
+                        RPConfig.shared.logMode = logMode
+                        RPConfig.shared.logURL = logURL
+
+                        logTo(
+                            "[Socket]onLog:\(onlogPage) onAudio:\(onAudioPage) EnableLog:\(enablelog)"
+                        )
+                        RPConfig.shared.onLogPage = onlogPage
+                        RPConfig.shared.onAudioPage = onAudioPage
+                        RPConfig.shared.enableLog = enablelog
+
+
+
+
+
                     }
 
                 case "settings":

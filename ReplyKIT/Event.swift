@@ -336,22 +336,80 @@ final class LogManager {
 final class RPConfig {
     static let shared = RPConfig()
 
+    // RTMP 配置
+    var RTMPURL : String?
+    var RTMPKey : String?
+
+    var BitRate : Int
+    
+    var ChangeBit : Bool
+
+    // 音訊
+    var AppVolumeAdd : Double
+    var MicVolumeAdd : Double
+
+    var AppVolume : Float
+    var MicVolume : Float
+
+    var ADWidth : Int
+    var ADHeight : Int
+
+
+    // 日誌相關
+    var enableLog: Bool = false
+    var logMode: Int = 1
+    var onLogPage: Bool = false
+
+    var onAudioPage : Bool = false
+
+    var logURL:String = "http://192.168.0.242:3000/post"
+
+    // 其他配置
+    var maxInflightFrames: Int = 4
+
     private init() {
 
         logMode=SharedDefaults.group?.integer(forKey: "logMode")
         ?? 1
-        onLogPage=SharedDefaults.group?.bool(forKey: "onlogPage")
-        ?? false
-        enableLog=SharedDefaults.group?.bool(forKey: "Enablelog")
-        ?? false
+
         logURL = SharedDefaults.group?.string(forKey: "logURL") ?? "http://192.168.0.242:3000/post"
 
+
+        enableLog=SharedDefaults.group?.bool(forKey: "Enablelog")
+        ?? false
+
+        onLogPage=SharedDefaults.group?.bool(forKey: "onlogPage")
+        ?? false
+
+        onAudioPage=SharedDefaults.group?.bool(forKey: "onAudioPage") ?? false
+
+
+
+
+
+        // RTMP
         RTMPURL = SharedDefaults.group?.string(forKey: "rtmpURL")
         ?? "rtmp://192.168.0.102/live"
 
         RTMPKey = SharedDefaults.group?.string(forKey: "rtmpKey")
         ?? "stream1?vhost=live2"
-        
+
+        BitRate = SharedDefaults.group?.integer(forKey: "bitRate") ?? 3_900_000
+
+        ChangeBit = SharedDefaults.group?.bool(forKey: "ChangeBit") ?? false
+
+
+        // AppVolume
+        AppVolumeAdd = SharedDefaults.group?.double(forKey: "appAddVoulme") ?? 1.0
+        MicVolumeAdd = SharedDefaults.group?.double(forKey: "micAddVoulme") ?? 1.0
+
+        AppVolume =  SharedDefaults.group?.float(forKey: "appVolume") ?? 1.0
+        MicVolume =  SharedDefaults.group?.float(forKey: "micVolume") ?? 1.0
+
+        // Width
+        ADWidth = SharedDefaults.group?.integer(forKey: "dstW") ?? 0
+        ADHeight = SharedDefaults.group?.integer(forKey: "dstH") ?? 0
+
 
         switch logMode {
         case 1:
@@ -368,18 +426,7 @@ final class RPConfig {
     }
 
     
-    // RTMP 配置
-    var RTMPURL : String?
-    var RTMPKey : String?
-    
-    // 日誌相關
-    var enableLog: Bool = false
-    var logMode: Int = 1
-    var onLogPage: Bool = false
-    var logURL:String = "http://192.168.0.242:3000/post"
 
-    // 其他配置
-    var maxInflightFrames: Int = 4
 
 }
 

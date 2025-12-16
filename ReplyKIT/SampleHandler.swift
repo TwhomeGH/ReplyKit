@@ -84,7 +84,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     var base:Int = 100_000
     var multiplier:Int = 39
     // 100_000 * 30 = 3_000_000 bps
-    var bitrate:Int {
+    var bitrate:Int? {
 
         didSet {
             Task{
@@ -98,8 +98,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 sendlog(message: "Old BitRate:\(VSet)")
 
 
+                guard let bit = bitrate else { return }
 
-                await streamStataus.updateVideoBitRate(to: bitrate)
+                await streamStataus.updateVideoBitRate(to: bit)
 
                 sendlog(message: "New BitRate:\(VSet)")
             }
@@ -158,8 +159,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             break;
 
         default:
-            appVolume = SharedDefaults.group?.float(forKey: "appVolume") ?? 1.0
-            micVolume = SharedDefaults.group?.float(forKey: "micVolume") ?? 1.0
+
+            appVolume = RPConfig.shared.AppVolume
+            micVolume = RPConfig.shared.MicVolume
+
             sendlog(message:"app mic audio update \(appVolume) \(micVolume)")
 
             Task {
@@ -227,6 +230,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         case "micAdd":
 
             let newVolume = SharedDefaults.group?.double(forKey: "micAddVoulme") ?? 1.0
+
+
             micAddVolume=Float(newVolume)
             guard let audioProcessor else { return }
 
@@ -337,7 +342,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "bitRateChange":
-            sendlog(message: "NewBit: \(bitrate)")
+            sendlog(message: "NewBit: \(String(describing: bitrate))")
 
             bitrate=SharedDefaults.group?.integer(forKey: "bitRate") ?? 3_900_000
 
@@ -500,10 +505,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     // MARK: 初始化
     override init() {
-
-
-
-        bitrate=SharedDefaults.group?.integer(forKey: "bitRate") ?? 3_900_000
 
         rtmpStream = RTMPStream(connection: rtmpConnection)
         
@@ -732,33 +733,27 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
     func setUserDefalutConfig(urlString:String = "rtmp://192.168.0.106/live" ,streamKey:String = "test")  {
+
+
         isVideoRotationEnabled = SharedDefaults.group?.bool(forKey: "VideoRotate") ?? false
 
-        if SharedDefaults.group?.object(forKey: "appVolume") == nil {
-            SharedDefaults.group?.set(1.0, forKey: "appVolume")
-        }
-        if SharedDefaults.group?.object(forKey: "micVolume") == nil {
-            SharedDefaults.group?.set(1.0, forKey: "micVolume")
-        }
 
         // MARK: Video dimensions
-        ADWidth = SharedDefaults.group?.integer(forKey: "dstW") ?? 0
-        ADHeight = SharedDefaults.group?.integer(forKey: "dstH") ?? 0
+        ADWidth = RPConfig.shared.ADWidth
+        ADHeight = RPConfig.shared.ADHeight
 
         if ADWidth > 0 && ADHeight > 0 {
             DWidth = ADWidth
             DHeight = ADHeight
         }
 
-        onAudioPage=SharedDefaults.group?.bool(forKey: "onAudioPage") ?? false
-
-
-        //bitrate=userDefaults?.integer(forKey: "bitRate") ?? 3_900_000
+        onAudioPage = RPConfig.shared.onAudioPage
 
 
         // MARK: Volume
-        let newMicAddVolume = SharedDefaults.group?.double(forKey: "micAddVoulme") ?? 1.0
-        let newAppAddVolume = SharedDefaults.group?.double(forKey: "appAddVoulme") ?? 1.0
+        let newMicAddVolume = RPConfig.shared.MicVolumeAdd
+
+        let newAppAddVolume = RPConfig.shared.AppVolumeAdd
 
         micAddVolume=Float(newMicAddVolume)
         appAddVolume=Float(newAppAddVolume)
@@ -850,8 +845,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         }
 
 
-        let Rlog=SharedDefaults.group?.bool(forKey: "ChangeBit") ?? false
-
+        let Rlog=RPConfig.shared.ChangeBit
+        
         await streamStataus?.isChangBit(Rlog)
 
 
@@ -886,6 +881,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
    // MARK: Process
 
     func initProcessors() async {
+
+
+        bitrate = RPConfig.shared.BitRate
+
+        
         videoBufferManager = InitialVideoBufferEstimator()
 
         volumeNotifier = VolumeNotifier()

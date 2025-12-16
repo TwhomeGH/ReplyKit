@@ -82,7 +82,44 @@ class SocketServer {
             let payload: [String: Any] = [
                 "type": "RTMP",
                 "rtmpURL": userDefaults?.string(forKey: "rtmpURL") ?? "rtmp://192.168.0.102/live",
-                "rtmpKey": userDefaults?.string(forKey: "rtmpKey") ?? "test"
+                "rtmpKey": userDefaults?.string(forKey: "rtmpKey") ?? "test",
+                "BitRate": userDefaults?.integer(forKey: "bitRate") ?? 3_900_000,
+
+                "ChangeBit": userDefaults?.bool(forKey: "ChangeBit") ?? false,
+
+
+                "dstW": userDefaults?.integer(forKey: "dstW") ?? 0,
+                "dstH": userDefaults?.integer(forKey: "dstH") ?? 0,
+
+                "appVolume": userDefaults?.float(forKey: "appVolume") ?? 1.0,
+                "micVolume": userDefaults?.float(forKey: "micVolume") ?? 1.0,
+                "appVolumeAdd": userDefaults?.double(forKey: "appAddVolume") ?? 1.0,
+                "micVolumeAdd": userDefaults?.double(forKey: "micAddVoulme") ?? 1.0,
+
+
+                "logMode": userDefaults?.integer(forKey: "logMode")
+                ?? 1,
+
+                "logURL": userDefaults?
+                    .string(
+                        forKey: "logURL"
+                    ) ?? "http://192.168.0.242:3000/post",
+
+
+
+                "onlogPage":userDefaults?.bool(forKey: "onlogPage")
+                ?? false,
+                "onAudioPage":userDefaults?.bool(forKey: "onAudioPage") ?? false,
+
+                "enablelog":userDefaults?.bool(forKey: "Enablelog")
+                ?? false
+
+
+
+
+
+
+
             ]
             sendToAll(payload: payload)
 
