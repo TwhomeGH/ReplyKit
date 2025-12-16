@@ -223,6 +223,11 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
         case .publishInsufficientBWOccured( _):
             // 網路不穩時降碼率 -30%
 
+            if ChangeBit == false {
+                sendlog(message: "不穩定 已停用調整碼率!")
+                return
+            }
+
             let newBitV=await stream.videoSettings
 
             // 用平均出流量或當前出流量作為基準
