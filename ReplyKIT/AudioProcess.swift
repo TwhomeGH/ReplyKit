@@ -500,11 +500,8 @@ final class AudioProcessor : @unchecked Sendable {
                     var adjustedRMS = rms * safeUserVolume
                     if !adjustedRMS.isFinite { adjustedRMS = 0 }
 
-                    // 丟到 main thread 處理
-                    DispatchQueue.main.async {
+                    self.volumeNotifier.updateVolume(volume: adjustedRMS, track: Int(trackType.rawValue))
 
-                        self.volumeNotifier.updateVolume(volume: adjustedRMS, track: Int(trackType.rawValue))
-                    }
                 }
             }
 
