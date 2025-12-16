@@ -11,7 +11,7 @@ final class VideoFrameProcessor {
 
 
     private let mediaMixer: MediaMixer
-    private let videoBufferManager: AdaptiveVideoBufferManager
+    private let videoBufferManager: InitialVideoBufferEstimator
     //private var rotator: VideoRotator?
     private let rtmpStream: RTMPStream
     private let sendlog: (String) -> Void
@@ -19,9 +19,10 @@ final class VideoFrameProcessor {
 
     var isActive = true
 
+    var hasPublished = false
 
     init(mediaMixer: MediaMixer,
-         videoBufferManager: AdaptiveVideoBufferManager,
+         videoBufferManager: InitialVideoBufferEstimator,
 
          rtmpStream: RTMPStream,
          sendlog: @escaping (String) -> Void) {
@@ -32,32 +33,10 @@ final class VideoFrameProcessor {
         self.sendlog = sendlog
         self.isActive = true
 
-//        logger.debug("準備初始化Rotator!")
-//        let Bic=SharedDefaults.group?.bool(forKey: "useBic") ?? false
-//        let maxInflight=SharedDefaults.group?.integer(forKey: "MaxInfilght")
-//        ?? 4
-//        let Debugg=SharedDefaults.group?.bool(forKey: "EnableRotatelog")
-//        ?? false
-//        let dstRW=SharedDefaults.group?.integer(forKey: "dstW")
-//        ?? 0
-//        let dstRH=SharedDefaults.group?.integer(forKey: "dstH")
-//        ?? 0
-//
+
 //
 //        sendlog("GPU旋轉配置:\(Debugg) Bic:\(Bic) maxInflight:\(maxInflight) \(dstRW) x \(dstRH)")
 //
-//        guard let rot = RPVideoRotatorNV12BatchQueueOptimized(
-//            //maxPoolsize: maxInflight,
-//            dstW: dstRW,
-//            dstH: dstRH,
-//            useBic: Bic, debug: Debugg, mediaMixer: mediaMixer
-//        ) else {
-//            sendlog("RPVideoRotatorNV12Queue 初始化失敗")
-//            return
-//        }
-//
-//
-//        self.rotator = rot
 
     }
     func cleanup() {
@@ -108,43 +87,50 @@ final class VideoFrameProcessor {
             }
 
 
-
-            self.processFrame(sampleBuffer)
-
-        }
+            Task(priority: .userInitiated) { [weak self] in
+                guard let self = self, self.isActive else { return }
 
 
+                // Buffer調整
+                if !hasPublished {
+                    videoBufferManager.ingest(sampleBuffer: sampleBuffer)
 
-    }
+                    if videoBufferManager.isReady {
+                        let count = videoBufferManager.estimatedBufferCount
 
-    private func processFrame(_ sample: CMSampleBuffer) {
+                        sendlog("[VideoBuffer]更新Buffer -> \(count)")
+                        Task {
+                            await self.rtmpStream.setVideoInputBufferCounts(count)
+                        }
+                            hasPublished = true
+                    }
+                }
 
-        Task(priority: .userInitiated) { [weak self] in
-            guard let self = self, self.isActive else { return }
+                if let rotated = await self.rotator?.rotateAsync(
+                    sampleBuffer: sampleBuffer,
+                    angle: .angle90
+                ) {
+                    await self.mediaMixer.append(rotated)
+                } else {
+                    sendlog("GPU Fail!")
+                    await self.mediaMixer.append(sampleBuffer)
+                }
 
-            if let rotated = await self.rotator?.rotateAsync(sampleBuffer: sample, angle: .angle90) {
-                await self.mediaMixer.append(rotated)
-            } else {
-                sendlog("GPU Fail!")
-                await self.mediaMixer.append(sample)
+
+
+
             }
 
-            // FPS 調整與 log trace
-            self.videoBufferManager.monitorFPSAndAdjust(
-                with: sample,
-                rtmpStream: rtmpStream,
-                sendlog: sendlog
-            )
-            
+
+
+
+
         }
 
 
 
-
-
-
-
     }
+
 
 
 }

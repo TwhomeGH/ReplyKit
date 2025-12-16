@@ -138,7 +138,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     private var rtmpStream : RTMPStream!
 
-    var videoBufferManager: AdaptiveVideoBufferManager?
+    var videoBufferManager: InitialVideoBufferEstimator?
 
     private var lastConfiguredSize: CGSize? = nil
 
@@ -381,13 +381,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 LogManager.shared.setupFlushTimer()
 
 
-                videoBufferManager?.logInterval = 3.0
+
                 sendlog(message: "正在LOG NTime:\(LogManager.shared.notifyThrottle)")
 
             } else {
                 LogManager.shared.forceFlush()
 
-                videoBufferManager?.logInterval = 30.0
                 sendlog(message: "非LOG NTime:\(LogManager.shared.notifyThrottle)")
             }
 
@@ -884,7 +883,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
    // MARK: Process
 
     func initProcessors() async {
-        videoBufferManager = AdaptiveVideoBufferManager()
+        videoBufferManager = InitialVideoBufferEstimator()
 
         volumeNotifier = VolumeNotifier()
 
