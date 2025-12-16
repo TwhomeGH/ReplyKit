@@ -44,26 +44,42 @@ half bicubicSampleY(texture2d<half, access::read> tex, float2 uv, uint2 texSize)
 }
 
 // --- Bicubic sample UV ---
-half2 bicubicSampleUV(texture2d<half, access::read> tex, float2 uv, uint2 texSize) {
-    int2 p = int2(floor(uv));
-    half2 arr[4][4];
-    for(int j=-1;j<=2;j++)
-        for(int i=-1;i<=2;i++)
-            arr[j+1][i+1] = tex.read(uint2(clamp(p+int2(i,j), int2(0,0), int2(texSize.x-1, texSize.y-1)))).rg;
+half2 bicubicSampleUV(
+    texture2d<half, access::read> tex,
+    float2 uv_px,
+    uint2 texSize
+) {
+    // 對齊 pixel center（原本隱含，現在顯式）
+    uv_px -= 0.5;
 
-    half2 col[4];
-    half fx = half(uv.x - floor(uv.x));
-    half fy = half(uv.y - floor(uv.y));
-    for(int j=0;j<4;j++) {
-        col[j].x = cubicHermite(arr[j][0].x, arr[j][1].x, arr[j][2].x, arr[j][3].x, fx);
-        col[j].y = cubicHermite(arr[j][0].y, arr[j][1].y, arr[j][2].y, arr[j][3].y, fx);
+    int2 p = int2(floor(uv_px));
+    float2 f = uv_px - float2(p);
+
+    float2 arr[4][4];
+
+    for (int j = -1; j <= 2; j++) {
+        for (int i = -1; i <= 2; i++) {
+            int2 c = clamp(
+                p + int2(i, j),
+                int2(0),
+                int2(texSize) - 1
+            );
+            arr[j + 1][i + 1] = float2(tex.read(uint2(c)).rg);
+        }
     }
-    half2 result;
-    result.x = cubicHermite(col[0].x,col[1].x,col[2].x,col[3].x, fy);
-    result.y = cubicHermite(col[0].y,col[1].y,col[2].y,col[3].y, fy);
-    return result;
-}
 
+    float2 col[4];
+    for (int j = 0; j < 4; j++) {
+        col[j].x = cubicHermite(arr[j][0].x, arr[j][1].x, arr[j][2].x, arr[j][3].x, f.x);
+        col[j].y = cubicHermite(arr[j][0].y, arr[j][1].y, arr[j][2].y, arr[j][3].y, f.x);
+    }
+
+    float2 result;
+    result.x = cubicHermite(col[0].x, col[1].x, col[2].x, col[3].x, f.y);
+    result.y = cubicHermite(col[0].y, col[1].y, col[2].y, col[3].y, f.y);
+
+    return half2(result);
+}
 
 // --- Read Y from tile ---
 inline half readYFromTile(threadgroup half localY[][MAX_TILE_SIZE+2*BORDER],
