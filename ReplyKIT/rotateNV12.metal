@@ -43,43 +43,49 @@ half bicubicSampleY(texture2d<half, access::read> tex, float2 uv, uint2 texSize)
     return cubicHermite(col[0],col[1],col[2],col[3],fy);
 }
 
-// --- Bicubic sample UV ---
-half2 bicubicSampleUV(
-    texture2d<half, access::read> tex,
-    float2 uv_px,
-    uint2 texSize
-) {
-    // 對齊 pixel center（原本隱含，現在顯式）
-    uv_px -= 0.5;
 
-    int2 p = int2(floor(uv_px));
-    float2 f = uv_px - float2(p);
 
-    float2 arr[4][4];
+inline float4 cubicWeights(float t)
+{
+    float t2 = t * t;
+    float t3 = t2 * t;
 
-    for (int j = -1; j <= 2; j++) {
-        for (int i = -1; i <= 2; i++) {
-            int2 c = clamp(
-                p + int2(i, j),
-                int2(0),
-                int2(texSize) - 1
-            );
-            arr[j + 1][i + 1] = float2(tex.read(uint2(c)).rg);
-        }
-    }
-
-    float2 col[4];
-    for (int j = 0; j < 4; j++) {
-        col[j].x = cubicHermite(arr[j][0].x, arr[j][1].x, arr[j][2].x, arr[j][3].x, f.x);
-        col[j].y = cubicHermite(arr[j][0].y, arr[j][1].y, arr[j][2].y, arr[j][3].y, f.x);
-    }
-
-    float2 result;
-    result.x = cubicHermite(col[0].x, col[1].x, col[2].x, col[3].x, f.y);
-    result.y = cubicHermite(col[0].y, col[1].y, col[2].y, col[3].y, f.y);
-
-    return half2(result);
+    return float4(
+        -0.5*t3 + t2 - 0.5*t,
+         1.5*t3 - 2.5*t2 + 1.0,
+        -1.5*t3 + 2.0*t2 + 0.5*t,
+         0.5*t3 - 0.5*t2
+    );
 }
+
+
+// 計算 threadgroup index
+
+inline float2 getLocalUV(threadgroup half2 localUV[],
+                          int2 tileOriginUV,
+                          int2 coord,
+                          uint tileSizeUW,
+                          uint tileSizeUH)
+{
+    // 將 global pixel 座標轉成 tile-local 座標
+    int lx = coord.x - tileOriginUV.x + BORDER;
+    int ly = coord.y - tileOriginUV.y + BORDER;
+
+    // clamp 到 tile buffer 範圍（0 ~ tileSize + 2*BORDER - 1）
+    lx = clamp(lx, 0, int(tileSizeUW + 2*BORDER - 1));
+    ly = clamp(ly, 0, int(tileSizeUH + 2*BORDER - 1));
+
+    // 計算一維索引
+    uint index = ly * (MAX_TILE_SIZE/2 + 2*BORDER) + lx;
+
+    // 取值
+    return float2(localUV[index]);
+}
+
+
+
+
+
 
 // --- Read Y from tile ---
 inline half readYFromTile(threadgroup half localY[][MAX_TILE_SIZE+2*BORDER],
@@ -181,6 +187,51 @@ inline half2 readUVFromTile(threadgroup half2 localUV[],
 }
 
 
+
+
+
+
+// --- Bicubic sample UV ---
+half2 bicubicSampleUV(
+    texture2d<half, access::read> tex,
+    float2 uv_px,
+    uint2 texSize
+) {
+    // 對齊 pixel center（原本隱含，現在顯式）
+    uv_px -= 0.5;
+
+    int2 p = int2(floor(uv_px));
+    float2 f = uv_px - float2(p);
+
+    float2 arr[4][4];
+
+    for (int j = -1; j <= 2; j++) {
+        for (int i = -1; i <= 2; i++) {
+            int2 c = clamp(
+                p + int2(i, j),
+                int2(0),
+                int2(texSize) - 1
+            );
+            arr[j + 1][i + 1] = float2(tex.read(uint2(c)).rg);
+        }
+    }
+
+    float2 col[4];
+    for (int j = 0; j < 4; j++) {
+        col[j].x = cubicHermite(arr[j][0].x, arr[j][1].x, arr[j][2].x, arr[j][3].x, f.x);
+        col[j].y = cubicHermite(arr[j][0].y, arr[j][1].y, arr[j][2].y, arr[j][3].y, f.x);
+    }
+
+    float2 result;
+    result.x = cubicHermite(col[0].x, col[1].x, col[2].x, col[3].x, f.y);
+    result.y = cubicHermite(col[0].y, col[1].y, col[2].y, col[3].y, f.y);
+
+    return half2(result);
+}
+
+
+
+
 // --- Main kernel ---
 kernel void rotateNV12_tileBicubicUV(
     texture2d<half, access::read> srcY   [[ texture(0) ]],
@@ -261,13 +312,6 @@ kernel void rotateNV12_tileBicubicUV(
         p2 = clamp(p2, int2(0), texMax);
         p3 = clamp(p3, int2(0), texMax);
 
-//        float2 f = float2(srcXf, srcYf) - float2(p0);
-//
-//
-//        half c0 = readTileY(localY, tileOrigin, p0, srcY, tileSizeW, tileSizeH, sharpenStrength, maxX, maxY);
-//        half c1 = readTileY(localY, tileOrigin, p1, srcY, tileSizeW, tileSizeH, sharpenStrength, maxX, maxY);
-//        half c2 = readTileY(localY, tileOrigin, p2, srcY, tileSizeW, tileSizeH, sharpenStrength, maxX, maxY);
-//        half c3 = readTileY(localY, tileOrigin, p3, srcY, tileSizeW, tileSizeH, sharpenStrength, maxX, maxY);
 
         // --- NEAREST for Y ---
 
@@ -319,38 +363,15 @@ kernel void rotateNV12_tileBicubicUV(
     // --- 替換原本 UV plane 的讀取 ---
     if ((gid.x & 1u) == 0 && (gid.y & 1u) == 0) {
         float2 uvPos = float2(srcXf*0.5f, srcYf*0.5f);
+
         half2 uvVal;
 
-//        if (params.useBicubic != 0) {
-//            uvVal = bicubicSampleUV(srcUV, uvPos, uint2(srcUV.get_width(), srcUV.get_height()));
-//        } else {
-//            int2 u00 = int2(floor(uvPos));
-//            int2 u10 = u00 + int2(1,0);
-//            int2 u01 = u00 + int2(0,1);
-//            int2 u11 = u00 + int2(1,1);
-//            int2 uMax = int2(srcUV.get_width()-1, srcUV.get_height()-1);
-//            u00 = clamp(u00, int2(0), uMax);
-//            u10 = clamp(u10, int2(0), uMax);
-//            u01 = clamp(u01, int2(0), uMax);
-//            u11 = clamp(u11, int2(0), uMax);
-//
-//            float2 f = uvPos - float2(u00);
-//
-//            half2 c00 = readUVFromTile(localUV, tileOriginUV, u00, srcUV, tileSizeUW, tileSizeUH);
-//            half2 c10 = readUVFromTile(localUV, tileOriginUV, u10, srcUV, tileSizeUW, tileSizeUH);
-//            half2 c01 = readUVFromTile(localUV, tileOriginUV, u01, srcUV, tileSizeUW, tileSizeUH);
-//            half2 c11 = readUVFromTile(localUV, tileOriginUV, u11, srcUV, tileSizeUW, tileSizeUH);
-//            
-//            uvVal = half2(
-//                mix(mix(c00.x,c10.x,half(f.x)), mix(c01.x,c11.x,half(f.x)), half(f.y)),
-//                mix(mix(c00.y,c10.y,half(f.x)), mix(c01.y,c11.y,half(f.x)), half(f.y))
-//            );
-//        }
 
         // 無論 params.useBicubic 或縮小比例，都使用 bicubic
+
         uvVal = bicubicSampleUV(srcUV, uvPos, uint2(srcUV.get_width(), srcUV.get_height()));
 
-        
+
 
         uint2 uvDst = uint2(gid.x/2, gid.y/2);
         uvDst.x = min(uvDst.x, dstUV.get_width()-1);
