@@ -183,6 +183,8 @@ public final class AdaptiveVideoBufferManager {
 
     private let latencyAlpha: Double = 0.2
 
+    var isActive: Bool = true
+
     private let queue = DispatchQueue(label: "fps.processor.queue", qos: .userInitiated)
 
 
@@ -199,9 +201,14 @@ public final class AdaptiveVideoBufferManager {
             currentBufferCount = 2
         }
         lastSetBufferCount = currentBufferCount
+
+        isActive = true
     }
 
     deinit {
+        isActive = false
+        queue.sync {
+        }
         sendlog(message:"動態控制緩衝釋放")
     }
 
@@ -211,7 +218,8 @@ public final class AdaptiveVideoBufferManager {
         sendlog: @escaping (String) -> Void
     ) {
         queue.async { [weak self] in
-            guard let self else { return }
+            guard let self,self.isActive else { return }
+
             self._monitorFPSAndAdjust(with: sampleBuffer, rtmpStream: rtmpStream, sendlog: sendlog)
         }
     }
