@@ -1327,7 +1327,10 @@ struct homeView:View{
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var showAlert = false
+    @State private var showLocalAlert = false
+
     @State private var micStatus = "不知道"
+    
     @AppStorage("logAppBackground",store:userDefaults) private var logAppBackground = false
 
 
@@ -1416,11 +1419,14 @@ struct homeView:View{
 #endif
 
 
-    @State var lockIN:Bool=getUserDefault(forKey:"LockIN") ?? true
+    @State var lockIN:Bool = getUserDefault(forKey:"LockIN") ?? true
     @State var lockDetect=false
     @State var videoRotate=true
     @State private var showForm = false
     @AppStorage("PauseStream",store: userDefaults) var PauseStream: Bool = false
+
+    @StateObject private var permissionManager = LocalNetworkPermissionManager()
+
 
 
 
@@ -1443,7 +1449,7 @@ struct homeView:View{
                             .font(.headline)
                             .padding()
 
-                        VStack(){
+                        VStack {
                             Picker("H264配置", selection: selectedProfile) {
                                 ForEach(H264Profile.allCases) { profile in
                                     Text(profile.rawValue).tag(profile)
@@ -1466,18 +1472,13 @@ struct homeView:View{
                         .background(Color(UIColor.secondarySystemGroupedBackground))
 #elseif os(macOS)
                         .background(Color(NSColor.windowBackgroundColor))
-
 #endif
 
                         .cornerRadius(8)
 
 
                     }
-
-
                     .frame(maxWidth: .infinity)
-
-
 
 
                     VStack(spacing:10){
@@ -1520,8 +1521,6 @@ struct homeView:View{
                                         print("LockIN \(newValue)")
 
                                         setUserDefault(newValue,forKey:"LockIN")
-                                        //syncUserDefault()
-
 
 
                                         CFNotificationCenterPostNotification(
@@ -1632,152 +1631,202 @@ struct homeView:View{
                     .frame(maxWidth: .infinity) // 撐滿右側空間
 
                 }
-                .padding(.horizontal)
+                .padding()
 
-                VStack(spacing: 10) {
+                HStack(alignment: .top, spacing: 16) {
+                    VStack(spacing: 10){
+                        Text("基本配置")
+                            .font(.headline)
+                            .padding()
 
-                    VStack(alignment: .leading) {
+                        VStack {
 
-                        Toggle("暫停畫面",isOn: $PauseStream)
-                            .onChange(of: PauseStream){ newVal in
+                            Button("請求用於通信的本地網路") {
+                                permissionManager.requestPermission {
+                                    res in
 
-                                if newVal  == true {
-                                    CFNotificationCenterPostNotification(
-                                        cfCenter,
-                                        CFNotificationName(
-                                            "PauseStream" as CFString
-                                        ),
-                                        nil,
-                                        nil,
-                                        true
-                                    )
-                                } else {
-                                    CFNotificationCenterPostNotification(
-                                        cfCenter,
-                                        CFNotificationName(
-                                            "ResumeStream" as CFString
-                                        ),
-                                        nil,
-                                        nil,
-                                        true
-                                    )
+                                    showLocalAlert = true
+                                    
+                                    if res {
+                                        logTo("OK LocalNet")
+                                    } else {
+                                        logTo("Fail LocalNet")
+                                    }
                                 }
+
+
+                            }.alert(
+                                isPresented:$showLocalAlert
+                            ) {
+                                let resL = permissionManager.status
+                                return Alert(
+                                    title: Text("本地網路權限"),
+                                      message: Text(resL),
+                                      dismissButton: .default(Text("好")))
 
                             }
 
-                    }
-                    .onAppear{
-                        if PauseStream == true {
-                            CFNotificationCenterPostNotification(
-                                cfCenter,
-                                CFNotificationName(
-                                    "PauseStream" as CFString
-                                ),
-                                nil,
-                                nil,
-                                true
-                            )
-                        } else {
-                            CFNotificationCenterPostNotification(
-                                cfCenter,
-                                CFNotificationName(
-                                    "ResumeStream" as CFString
-                                ),
-                                nil,
-                                nil,
-                                true
-                            )
+                            Button("請求麥克風") {
+                                checkMicrophonePermission()
+                            }.alert(isPresented: $showAlert) {
+                                Alert(title: Text("麥克風權限"),
+                                      message: Text(micStatus),
+                                      dismissButton: .default(Text("好")))
+                            }
 
                         }
+                        .frame(maxWidth: .infinity) //
+                        .fixedSize(horizontal: false, vertical: true) // 撐滿寬度，內容自適應高度
+                        .padding()
+                        #if os(iOS)
+                        .background(Color(UIColor.secondarySystemGroupedBackground))
+                        #elseif os(macOS)
+                        .background(Color(NSColor.windowBackgroundColor))
+                        #endif
+                        .cornerRadius(8)
 
                     }
-                    .frame(maxWidth: .infinity) //
+                    VStack(spacing: 10) {
 
-                    .fixedSize(horizontal: false, vertical: true) // 撐滿寬度，內容自適應高度
+                        VStack {
 
+                            Toggle("暫停畫面",isOn: $PauseStream)
+                                .onChange(of: PauseStream){ newVal in
+
+                                    if newVal  == true {
+                                        CFNotificationCenterPostNotification(
+                                            cfCenter,
+                                            CFNotificationName(
+                                                "PauseStream" as CFString
+                                            ),
+                                            nil,
+                                            nil,
+                                            true
+                                        )
+                                    } else {
+                                        CFNotificationCenterPostNotification(
+                                            cfCenter,
+                                            CFNotificationName(
+                                                "ResumeStream" as CFString
+                                            ),
+                                            nil,
+                                            nil,
+                                            true
+                                        )
+                                    }
+
+                                }
+
+                        }
+                        .onAppear{
+                            if PauseStream == true {
+                                CFNotificationCenterPostNotification(
+                                    cfCenter,
+                                    CFNotificationName(
+                                        "PauseStream" as CFString
+                                    ),
+                                    nil,
+                                    nil,
+                                    true
+                                )
+                            } else {
+                                CFNotificationCenterPostNotification(
+                                    cfCenter,
+                                    CFNotificationName(
+                                        "ResumeStream" as CFString
+                                    ),
+                                    nil,
+                                    nil,
+                                    true
+                                )
+
+                            }
+
+                        }
+                        .frame(maxWidth: .infinity) //
+
+                        .fixedSize(horizontal: false, vertical: true) // 撐滿寬度，內容自適應高度
+
+                        .padding()
+#if os(iOS)
+                        .background(Color(UIColor.secondarySystemGroupedBackground))
+#elseif os(macOS)
+                        .background(Color(NSColor.windowBackgroundColor))
+#endif
+
+                        .cornerRadius(8)
+
+                    }
+                    .frame(maxWidth: .infinity) // 撐滿右側空間
+
+
+                }
+                .padding()
+
+                HStack (alignment: .center) {
+
+                    Text("當前寬高：")
+                    .padding()
+
+                    HStack(spacing: 10) {
+                        Button("橫向"){
+
+
+                            CFNotificationCenterPostNotification(cfCenter,
+                                                                 CFNotificationName("orientationV" as CFString),
+                                                                 nil, nil, true)
+
+                        }
+                        Button("直向"){
+
+                            CFNotificationCenterPostNotification(cfCenter,
+                                                                 CFNotificationName("orientationH" as CFString),
+                                                                 nil, nil, true)
+
+                        }
+                    }
                     .padding()
                     #if os(iOS)
                     .background(Color(UIColor.secondarySystemGroupedBackground))
                     #elseif os(macOS)
                     .background(Color(NSColor.windowBackgroundColor))
                     #endif
-
                     .cornerRadius(8)
 
                 }
                 .padding()
-                
-                HStack (alignment: .firstTextBaseline) {
-
-                    
+                .frame(maxWidth: .infinity, alignment: .leading) // ✅ 這裡讓 HStack 靠左
 
 
-                    Button("橫向"){
+                HStack(alignment: .center , spacing: 16) {
 
+                    HStack(spacing: 10) {
+                        Button("輸入 RTMP 設定") {
+                            showForm.toggle()
+                        }
+                        .padding()
+                        .sheet(isPresented: $showForm) {
+                            FormView()
 
-                        CFNotificationCenterPostNotification(cfCenter,
-                                                             CFNotificationName("orientationV" as CFString),
-                                                             nil, nil, true)
-
-                    }
-                    Button("直向"){
-
-                        CFNotificationCenterPostNotification(cfCenter,
-                                                             CFNotificationName("orientationH" as CFString),
-                                                             nil, nil, true)
-
-                    }
-                    Text("當前寬高：")
-
-                    VStack(alignment: .leading,spacing: 8) {
-                        // 麥克風授權 + BroadcastButton
-                        Button("請求麥克風") {
-                            checkMicrophonePermission()
-                        }.alert(isPresented: $showAlert) {
-                            Alert(title: Text("麥克風權限"),
-                                  message: Text(micStatus),
-                                  dismissButton: .default(Text("好")))
                         }
 
-
-
                     }
-                    .padding()
+                    .frame(maxWidth:.infinity,alignment: .center)
 
-#if os(iOS)
-                    .background(Color(UIColor.secondarySystemBackground))
-#elseif os(macOS)
-                    .background(Color(NSColor.windowBackgroundColor))
-
-#endif
-                    .cornerRadius(8)
-
-
-
-                }
-                .padding()
+                    HStack(spacing: 10) {
+                        // 測試顯示輸入的內容
+                        if !rtmpURL.isEmpty && !rtmpKey.isEmpty {
+                            Text("推流位址：\n\(rtmpURL)/")
+                                .padding()
+                                .multilineTextAlignment(.center)
+                        }
+                    }.frame(maxWidth:.infinity,alignment: .center)
 
 
-                VStack {
-                    Button("輸入 RTMP 設定") {
-                        showForm.toggle()
-                    }
-                    .padding()
-                    .sheet(isPresented: $showForm) {
-                        FormView()
 
-                    }
+                }.frame(maxWidth:.infinity,alignment: .leading)
 
-                    // 測試顯示輸入的內容
-                    if !rtmpURL.isEmpty && !rtmpKey.isEmpty {
-                        Text("推流位址：\n\(rtmpURL)/")
-                            .padding()
-                            .multilineTextAlignment(.center)
-                    }
-                }
-
-
-                VStack(spacing: 20) {
+                VStack(spacing: 10) {
                     Text("Bitrate: \(manager.bitrate / 1000 ) kbps")
                         .font(.headline)
 
@@ -1815,9 +1864,10 @@ struct homeView:View{
                         Text("10000 kbps")
                     }
                 }
-                .padding(
+                .padding()
 
-                )
+
+
 
                 VStack {
 

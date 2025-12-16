@@ -9,6 +9,7 @@
 import SwiftUI
 
 import Foundation
+import Network
 
 final class GPUSettingsViewModel: ObservableObject {
     @AppStorage("dstW", store: userDefaults) var dstW = 0
@@ -354,3 +355,53 @@ final class AppMessagePort {
 }
 
 
+
+
+
+
+final class LocalNetworkPermissionManager: ObservableObject {
+    private var browser: NWBrowser?
+
+    var status : String = ""
+
+    func requestPermission(completion: @escaping (Bool) -> Void) {
+
+        let params = NWParameters.tcp
+        params.includePeerToPeer = true
+
+        let descriptor = NWBrowser.Descriptor.bonjour(
+            type: "_http._tcp",
+            domain: "localhost"
+        )
+
+        let browser = NWBrowser(for: descriptor, using: params)
+        self.browser = browser
+
+        browser.stateUpdateHandler = { state in
+            switch state {
+            case .ready:
+                browser.cancel()
+                self.status = "✅ Local network permission granted"
+
+                completion(true)
+
+            case .failed(let error):
+                self.status = "❌ Browser failed:\(error)"
+                browser.cancel()
+
+                completion(false)
+
+
+            default:
+                break
+            }
+
+
+        }
+
+        browser.start(queue: .main)
+      
+
+    }
+
+}

@@ -502,6 +502,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     override init() {
 
 
+
         bitrate=SharedDefaults.group?.integer(forKey: "bitRate") ?? 3_900_000
 
         rtmpStream = RTMPStream(connection: rtmpConnection)
@@ -516,6 +517,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         logger.info("ReplyKit Debug")
 
     }
+
+
 
 
 
@@ -914,10 +917,14 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     }
 
 
-    func startRTMP(url:String,key:String) async {
+    func startRTMP(url:String?,key:String?) async {
 
         do {
 
+            guard let url = url ,let key = key else {
+                stopBroadcastWithError("RTMP配置取得異常!")
+                return
+            }
             // step 3: 連線 RTMP
 
             _ = try await rtmpConnection.connect(url)
@@ -959,29 +966,19 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         ExtensionMessagePort.shared.connectToApp()
-        SocketClient.shared.requestAllSettings()
+        
+        //SocketClient.shared.requestAllSettings()
+        SocketClient.shared.requestRTMPKEY()
+
+
 
         
         isStopping = false
 
-//        if let rtmpURL2 = setupInfo?["rtmpURL"]
-//            ,let streamKey2 = setupInfo?["rtmpKey"] {
-//            print("RTMP URL:", rtmpURL2)
-//            print("Stream Key:", streamKey2 )
-//
-//        }
+
         // 🔹 從 UserDefaults 拿 RTMP 設定
-        rtmpURL = SharedDefaults.group?.string(forKey: "rtmpURL")
-        ?? "rtmp://192.168.0.102/live"
-        rtmpKey = SharedDefaults.group?.string(forKey: "rtmpKey")
-        ?? "stream1?vhost=live2"
-
-
-
-
-//       let rtmpURL2 = "rtmp://192.168.0.106/live"
-//       let rtmpKey2 = "e5c162ed9ae3?secret=BBA0A8FD817F4F75"
-//
+        rtmpURL = RPConfig.shared.RTMPURL
+        rtmpKey = RPConfig.shared.RTMPKey
 
 
         //self.prepareCompressionSession()
@@ -1006,7 +1003,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             logger.info("✅ Processor 初始化完成")
 
 
-            await startRTMP(url: rtmpURL! , key: rtmpKey!)
+            await startRTMP(url: rtmpURL , key: rtmpKey)
         }
 
 
@@ -1109,6 +1106,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         // 停止 Audio / Video 處理
         audioProcessor?.cleanup()
+
+
         videoProcessor?.cleanup()
 
 
@@ -1231,7 +1230,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         DeviceOrientationManager.shared.stopUpdates()
 
         volumeNotifier?.cleanup()
+
+
         videoProcessor?.cleanup()
+
+
         audioProcessor?.cleanup()
 
         videoBufferManager = nil

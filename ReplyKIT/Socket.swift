@@ -16,7 +16,7 @@ class SocketClient {
 
     static let shared = SocketClient()
 
-    private var connection: NWConnection!
+    private var connection: NWConnection?
     private var reconnectTimer: Timer?
     private let queue = DispatchQueue(label: "SocketClientQueue")
 
@@ -49,7 +49,10 @@ class SocketClient {
     }
     
     func start() {
-        connection.stateUpdateHandler = { [weak self] state in
+
+        guard let con = connection else { return }
+
+        con.stateUpdateHandler = { [weak self] state in
             guard let self = self else { return }
             switch state {
             case .ready:
@@ -66,7 +69,7 @@ class SocketClient {
                 break
             }
         }
-        connection.start(queue: queue)
+        con.start(queue: queue)
     }
 
     private func retry() {
@@ -81,6 +84,14 @@ class SocketClient {
 
         logTo("嘗試請求設定Socket")
         let payload: [String: Any] = ["type": "requestSettings"]
+        sendPayload(payload)
+    }
+
+    // MARK: - 發送
+    func requestRTMPKEY() {
+
+        logTo("嘗試請求設定Socket RTMPKEY")
+        let payload: [String: Any] = ["type": "requestRTMP"]
         sendPayload(payload)
     }
 
@@ -107,13 +118,22 @@ class SocketClient {
     }
 
     private func sendPayload(_ payload: [String: Any]) {
-        guard let data = try? JSONSerialization.data(withJSONObject: payload, options: []) else { return }
-        connection.send(content: data, completion: .contentProcessed({ _ in }))
+        guard let data = try? JSONSerialization.data(withJSONObject: payload, options: []) , let con = connection else { return }
+
+
+        con.send(content: data, completion: .contentProcessed({ _ in }))
     }
 
     // MARK: - 接收資料
     private func receive() {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, _ in
+
+        guard let con = connection else { return }
+
+        con.receive(minimumIncompleteLength: 1, maximumLength: 65536) {
+                [weak self] data,
+                _,
+                isComplete,
+                _ in
             guard let self = self else { return }
 
             defer {
@@ -134,6 +154,15 @@ class SocketClient {
                 defer { self.isProcessingRemoteUpdate = false }
 
                 switch type {
+                case "RTMP":
+                    if let key = dict["rtmpURL"] as? String,
+                       let value = dict["rtmpKey"] as? String {
+
+                        logTo("Get RTMPURL:\(key) : \(value)")
+                        RPConfig.shared.RTMPURL = key
+                        RPConfig.shared.RTMPKey = value
+                    }
+
                 case "settings":
                     if let key = dict["key"] as? String,
                        let value = dict["value"] {
