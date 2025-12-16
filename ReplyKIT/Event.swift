@@ -337,6 +337,7 @@ final class RPConfig {
     static let shared = RPConfig()
 
     private init() {
+
         logMode=SharedDefaults.group?.integer(forKey: "logMode")
         ?? 1
         onLogPage=SharedDefaults.group?.bool(forKey: "onlogPage")
@@ -345,6 +346,12 @@ final class RPConfig {
         ?? false
         logURL = SharedDefaults.group?.string(forKey: "logURL") ?? "http://192.168.0.242:3000/post"
 
+        RTMPURL = SharedDefaults.group?.string(forKey: "rtmpURL")
+        ?? "rtmp://192.168.0.102/live"
+
+        RTMPKey = SharedDefaults.group?.string(forKey: "rtmpKey")
+        ?? "stream1?vhost=live2"
+        
 
         switch logMode {
         case 1:
@@ -361,7 +368,10 @@ final class RPConfig {
     }
 
     
-
+    // RTMP 配置
+    var RTMPURL : String?
+    var RTMPKey : String?
+    
     // 日誌相關
     var enableLog: Bool = false
     var logMode: Int = 1

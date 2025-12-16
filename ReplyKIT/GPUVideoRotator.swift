@@ -157,12 +157,11 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
 
 
-    func cleanup() {
-        Task { [weak self] in
-            guard let self else { return }
-            await self.cleanGPU()
-            self.cleanupD()
-        }
+    func cleanup() async {
+        guard isActive else { return }
+        isActive = false   // 先阻止新 GPU 任務進來
+        await cleanGPU()
+        cleanupD()
     }
 
     func cleanGPU() async {

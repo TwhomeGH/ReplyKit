@@ -32,6 +32,7 @@ final class VideoFrameProcessor {
         self.rtmpStream = rtmpStream
         self.sendlog = sendlog
         self.isActive = true
+        self.hasPublished = false
 
 
 //
@@ -49,10 +50,12 @@ final class VideoFrameProcessor {
 
 
         // Task 目前無法強制取消，確保 isActive 檢查能立即返回
-        
-        rotator?.cleanup()
-        rotator = nil
 
+        Task {
+            await rotator?.cleanup()
+            rotator = nil
+
+        }
     }
     deinit {
         sendlog("🧹 VideoFrameProcessor deinit — resources released")
