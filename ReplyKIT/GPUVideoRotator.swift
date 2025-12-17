@@ -346,8 +346,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
             cmd.addCompletedHandler { _ in
                 let wrapped = self.wrapPixelBuffer(
-                    frameC.outPB,
-                    originalSampleBuffer: sampleBuffer
+                    frameC.outPB
                 )
 
                 cont.resume(returning: wrapped)
@@ -431,28 +430,39 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         return (cv: cv, tex: tex)
     }
 
-    private func wrapPixelBuffer(_ pixelBuffer: CVPixelBuffer, originalSampleBuffer: CMSampleBuffer) -> CMSampleBuffer? {
-        var timingInfo = CMSampleTimingInfo.invalid
-        CMSampleBufferGetSampleTimingInfo(originalSampleBuffer, at: 0, timingInfoOut: &timingInfo)
+    private func wrapPixelBuffer(_ pixelBuffer: CVPixelBuffer) -> CMSampleBuffer? {
+
+        let pts = CMClockGetTime(CMClockGetHostTimeClock())
+
+        var timing = CMSampleTimingInfo(
+            duration: CMTime.invalid,
+            presentationTimeStamp: pts,
+            decodeTimeStamp: CMTime.invalid
+        )
 
         var formatDesc: CMFormatDescription?
-        guard CMVideoFormatDescriptionCreateForImageBuffer(allocator: kCFAllocatorDefault,
-                                                           imageBuffer: pixelBuffer,
-                                                           formatDescriptionOut: &formatDesc) == noErr,
-              let fmt = formatDesc else { return nil }
+        guard CMVideoFormatDescriptionCreateForImageBuffer(
+            allocator: kCFAllocatorDefault,
+            imageBuffer: pixelBuffer,
+            formatDescriptionOut: &formatDesc
+        ) == noErr,
+        let fmt = formatDesc else { return nil }
 
-        var newBuffer: CMSampleBuffer?
-        guard CMSampleBufferCreateForImageBuffer(allocator: kCFAllocatorDefault,
-                                                 imageBuffer: pixelBuffer,
-                                                 dataReady: true,
-                                                 makeDataReadyCallback: nil,
-                                                 refcon: nil,
-                                                 formatDescription: fmt,
-                                                 sampleTiming: &timingInfo,
-                                                 sampleBufferOut: &newBuffer) == noErr else { return nil }
-        return newBuffer
+        var sampleBuffer: CMSampleBuffer?
+        let status = CMSampleBufferCreateForImageBuffer(
+            allocator: kCFAllocatorDefault,
+            imageBuffer: pixelBuffer,
+            dataReady: true,
+            makeDataReadyCallback: nil,
+            refcon: nil,
+            formatDescription: fmt,
+            sampleTiming: &timing,
+            sampleBufferOut: &sampleBuffer
+        )
+
+        guard status == noErr else { return nil }
+        return sampleBuffer
     }
-
     // MARK: - Render YUV
     private func renderPlaneYUV(cmd: MTLCommandBuffer,
                                 srcY: MTLTexture, srcUV: MTLTexture,
