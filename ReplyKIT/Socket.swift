@@ -16,6 +16,12 @@ class SocketClient {
 
     static let shared = SocketClient()
 
+    private var rtmpCompletionHandlers: [(Bool) -> Void] = []
+
+    private var logConfigCompletionHandlers: [(Bool) -> Void] = []
+
+
+
     private var connection: NWConnection?
     private var reconnectTimer: Timer?
     private let queue = DispatchQueue(label: "SocketClientQueue")
@@ -29,8 +35,9 @@ class SocketClient {
         sendlog(message: "test socket!!!")
     }
 
+  
     // MARK: - 連線初始化
-     func setupConnection(host: String, port: UInt16) {
+     func setupConnection(host: String = "localhost" , port: UInt16 = 9322) {
         connection = NWConnection(
             host: NWEndpoint.Host(host),
             port: NWEndpoint.Port(rawValue: port)!,
@@ -50,14 +57,15 @@ class SocketClient {
     
     func start() {
 
-        guard let con = connection else { return }
+        guard let con = connection else {
+            return
+        }
 
         con.stateUpdateHandler = { [weak self] state in
             guard let self = self else { return }
             switch state {
             case .ready:
                 sendlog(message:"SocketClient connected")
-
                 self.receive()
             case .failed(let error):
                 logTo("SocketClient failed: \(String(describing: error))")
@@ -72,12 +80,16 @@ class SocketClient {
         con.start(queue: queue)
     }
 
-    private func retry() {
+    func retry() {
         reconnectTimer?.invalidate()
         reconnectTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
+
+            self?.connection?.cancel()   // ✅ 先取消舊連線
+            self?.setupConnection()      // 重新建立新 connection
             self?.start()
         }
     }
+
 
     // MARK: - 發送
     func requestAllSettings() {
@@ -88,12 +100,23 @@ class SocketClient {
     }
 
     // MARK: - 發送
-    func requestRTMPKEY() {
+    func requestRTMPKEY(completion: @escaping (Bool) -> Void) {
+
+        rtmpCompletionHandlers.append(completion)
 
         logTo("嘗試請求設定Socket RTMPKEY")
         let payload: [String: Any] = ["type": "requestRTMP"]
         sendPayload(payload)
     }
+
+    func requestLogConfig(completion: @escaping (Bool) -> Void) {
+        logConfigCompletionHandlers.append(completion)
+
+        logTo("嘗試請求設定Socket logConfig")
+        let payload: [String: Any] = ["type": "logConfig"]
+        sendPayload(payload)
+    }
+
 
     func sendSettings(key: String, value: Any) {
         let payload: [String: Any] = [
@@ -114,20 +137,169 @@ class SocketClient {
     }
 
     func logTo(_ message:String){
+        logger.debug("SocketDebug:\(message)")
+
         sendlog(title:"ReplyKit_Socket",message: message)
     }
 
     private func sendPayload(_ payload: [String: Any]) {
-        guard let data = try? JSONSerialization.data(withJSONObject: payload, options: []) , let con = connection else { return }
+        guard var data = try? JSONSerialization.data(withJSONObject: payload, options: []) , let con = connection else {
+            logTo("Socket可能沒上線!")
+            return
+        }
+
+        // ★ 關鍵：加換行符號當封包結尾
+        data.append(0x0A) // '\n'
+
+        
+        con.send(content: data, completion: .contentProcessed({ error in
+
+            if let error = error {
+                self.logTo("Socket Send error: \(error.localizedDescription)")
+            }
+        }))
+
+        }
 
 
-        con.send(content: data, completion: .contentProcessed({ _ in }))
+
+
+    struct TypePayload: Codable {
+        let type:String
+    }
+
+    struct RTMPConfig: Codable {
+        let type: String
+        let rtmpURL: String
+        let rtmpKey: String
+
+        let BitRate: Int
+        let ChangeBit: Bool
+        let h264level: String
+
+        let dstW: Int
+        let dstH: Int
+
+        let appVolume: Double
+        let micVolume: Double
+        let appVolumeAdd: Double
+        let micVolumeAdd: Double
+    }
+
+    struct LogConfig: Codable {
+        let type:String
+        let logMode: Int
+        let logURL: String
+        let onlogPage: Bool
+        let onAudioPage: Bool
+        let enablelog: Bool
+    }
+
+    struct LogMessage: Codable {
+        let type:String
+        let message: String
+    }
+
+
+    private func applyRTMP(_ c: RTMPConfig) {
+
+
+        logTo("[Get]RTMP:\(c.rtmpURL):\(fixlogSafeKey(c.rtmpKey))")
+        RPConfig.shared.RTMPURL = c.rtmpURL
+        RPConfig.shared.RTMPKey = c.rtmpKey
+
+        logTo("[Get]Bit:\(c.BitRate):\(c.ChangeBit)")
+        RPConfig.shared.BitRate = c.BitRate
+        RPConfig.shared.ChangeBit = c.ChangeBit
+
+        logTo("[Get]H264:\(c.h264level) : \(c.dstW)x\(c.dstH)")
+        RPConfig.shared.h264level = c.h264level
+
+        RPConfig.shared.ADWidth = c.dstW
+        RPConfig.shared.ADHeight = c.dstH
+
+
+        logTo(
+            "[Get]Audio App:\(c.appVolume) Mic:\(c.micVolume) AppAdd:\(c.appVolumeAdd) MicAdd:\(c.micVolumeAdd)"
+        )
+        RPConfig.shared.AppVolume = Float(c.appVolume)
+        RPConfig.shared.MicVolume = Float(c.micVolume)
+
+        RPConfig.shared.AppVolumeAdd = c.appVolumeAdd
+        RPConfig.shared.MicVolumeAdd = c.micVolumeAdd
+
+        // ✅ 回調通知所有等待的人
+        rtmpCompletionHandlers.forEach { $0(true) }
+        rtmpCompletionHandlers.removeAll()
+
+    }
+
+    private var receiveBuffer = Data()
+
+    private func handleJSONPacket(_ data: Data) {
+        do {
+            let decoder = JSONDecoder()
+
+            // 先只 decode type
+            let base = try decoder.decode(TypePayload.self, from: data)
+
+            self.isProcessingRemoteUpdate = true
+            defer { self.isProcessingRemoteUpdate = false }
+
+            switch base.type {
+            case "testRTMP":
+                self.requestRTMPKEY { success in
+                    if success {
+                    // 這裡 logConfig 已經拿到
+                        self.logTo("RTMP 已完成同步")
+                    // 可以進行後續流程
+                    }
+                }
+                self.requestLogConfig { success in
+                    if success {
+                        // 這裡 logConfig 已經拿到
+                        self.logTo("LogConfig 已完成同步")
+                        // 可以進行後續流程
+                    }
+
+                }
+
+            case "logConfig":
+                let env = try decoder.decode(LogConfig.self, from: data)
+                RPConfig.shared.logMode = env.logMode
+                RPConfig.shared.logURL = env.logURL
+                RPConfig.shared.onLogPage = env.onlogPage
+                RPConfig.shared.onAudioPage = env.onAudioPage
+                RPConfig.shared.enableLog = env.enablelog
+                RPConfig.shared.applyLogMode()
+
+                // ✅ 通知所有等待的 callback
+                logConfigCompletionHandlers.forEach { $0(true) }
+                logConfigCompletionHandlers.removeAll()
+
+            case "RTMP":
+                let env = try decoder.decode(RTMPConfig.self, from: data)
+                applyRTMP(env)
+
+            case "log":
+                let env = try decoder.decode(LogMessage.self, from: data)
+                self.logTo("[Extension] Get \(env.message)")
+
+            default:
+                break
+            }
+
+        } catch {
+            logTo("[Socket]Decode failed ❌ \(error)")
+        }
     }
 
     // MARK: - 接收資料
     private func receive() {
 
-        guard let con = connection else { return }
+        guard let con = connection else {
+            return
+        }
 
         con.receive(minimumIncompleteLength: 1, maximumLength: 65536) {
                 [weak self] data,
@@ -147,98 +319,20 @@ class SocketClient {
                 return
             }
 
-            if let dict = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
-               let type = dict["type"] as? String {
 
-                self.isProcessingRemoteUpdate = true
-                defer { self.isProcessingRemoteUpdate = false }
+            self.receiveBuffer.append(data)
 
-                switch type {
-                case "RTMP":
-                    if let rtmpURL = dict["rtmpURL"] as? String,
-                       let rtmpKey = dict["rtmpKey"] as? String,
-                       let BitRate = dict["BitRate"] as? Int,
-                       let ChangeBit = dict["ChangeBit"] as? Bool,
+            // 2️⃣ 拆包，找到每個 '\n'
+            while let range = self.receiveBuffer.firstRange(of: Data([0x0A])) {
+                let packet = self.receiveBuffer.subdata(in: 0..<range.lowerBound)
+                self.receiveBuffer.removeSubrange(0...range.lowerBound) // 含 '\n'
 
-                       let dstW =  dict["dstW"] as? Int,
-                       let dstH =  dict["dstH"] as? Int,
-
-                       let appVolume = dict["appVolume"] as? Float,
-                       let micVolume = dict["micVolume"] as? Float,
-
-                       let appAddVolume =  dict["appVolumeAdd"] as? Double,
-                       let micAddVolume =  dict["micVolumeAdd"] as? Double,
-
-                       let logMode =  dict["logMode"] as? Int,
-                       let logURL = dict["logURL"] as? String,
-
-                       let onlogPage = dict["onlogPage"] as? Bool,
-                       let onAudioPage = dict["onAudioPage"] as? Bool,
-                       let enablelog = dict["enablelog"] as? Bool
-
-
-
-                    {
-
-                        //RTMP
-                        logTo("[Socket]Get RTMPURL:\(rtmpURL) : \(rtmpKey)")
-                        RPConfig.shared.RTMPURL = rtmpURL
-                        RPConfig.shared.RTMPKey = rtmpKey
-
-                        logTo("[Socket]Get BitRate:\(BitRate) : \(ChangeBit)")
-                        RPConfig.shared.BitRate = BitRate
-                        RPConfig.shared.ChangeBit = ChangeBit
-
-                        //Width
-                        logTo("[Socket]Get Target \(dstW)x\(dstH)")
-
-                        RPConfig.shared.ADWidth = dstW
-                        RPConfig.shared.ADHeight = dstH
-
-                        //Audio
-                        logTo(
-                            "[Socket]Get Audio App:\(appVolume) Mic:\(micVolume) AppAdd:\(appAddVolume) MicAdd:\(micAddVolume)"
-                        )
-
-                        RPConfig.shared.AppVolume = appVolume
-                        RPConfig.shared.MicVolume = micVolume
-                        RPConfig.shared.AppVolumeAdd = appAddVolume
-                        RPConfig.shared.MicVolumeAdd = micAddVolume
-
-                        //log
-                        logTo("[Socket]Logger Mode:\(logMode) URL:\(logURL)")
-                        RPConfig.shared.logMode = logMode
-                        RPConfig.shared.logURL = logURL
-
-                        logTo(
-                            "[Socket]onLog:\(onlogPage) onAudio:\(onAudioPage) EnableLog:\(enablelog)"
-                        )
-                        RPConfig.shared.onLogPage = onlogPage
-                        RPConfig.shared.onAudioPage = onAudioPage
-                        RPConfig.shared.enableLog = enablelog
-
-
-
-
-
-                    }
-
-                case "settings":
-                    if let key = dict["key"] as? String,
-                       let value = dict["value"] {
-                        //SharedDefaults.group?.set(value, forKey: key)
-                        NotificationCenter.default.post(name: .didReceiveSettings, object: nil)
-                        logTo("Updated UserDefaults: \(key) = \(String(describing: value))")
-                    }
-
-                case "log":
-                    if let message = dict["message"] as? String {
-                        sendlog(title: "[Extension] Get", message: message)
-                    }
-                default:
-                    break
-                }
+                // 3️⃣ decode packet
+                self.handleJSONPacket(packet)
             }
+
+
+
         }
     }
 

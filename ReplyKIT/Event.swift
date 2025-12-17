@@ -340,6 +340,10 @@ final class RPConfig {
     var RTMPURL : String?
     var RTMPKey : String?
 
+    var h264level : String
+
+    var BufferCount : Int
+
     var BitRate : Int
     
     var ChangeBit : Bool
@@ -398,10 +402,15 @@ final class RPConfig {
 
         ChangeBit = SharedDefaults.group?.bool(forKey: "ChangeBit") ?? false
 
+        h264level = SharedDefaults.group?.string(forKey: "h264level") ?? "AutoHigh"
+
+
+        BufferCount =  SharedDefaults.group?.integer(forKey: "BufferCount") ?? 5
+
 
         // AppVolume
-        AppVolumeAdd = SharedDefaults.group?.double(forKey: "appAddVoulme") ?? 1.0
-        MicVolumeAdd = SharedDefaults.group?.double(forKey: "micAddVoulme") ?? 1.0
+        AppVolumeAdd = SharedDefaults.group?.double(forKey: "appAddVolume") ?? 1.0
+        MicVolumeAdd = SharedDefaults.group?.double(forKey: "micAddVolume") ?? 1.0
 
         AppVolume =  SharedDefaults.group?.float(forKey: "appVolume") ?? 1.0
         MicVolume =  SharedDefaults.group?.float(forKey: "micVolume") ?? 1.0
@@ -411,6 +420,9 @@ final class RPConfig {
         ADHeight = SharedDefaults.group?.integer(forKey: "dstH") ?? 0
 
 
+    }
+
+    func applyLogMode() {
         switch logMode {
         case 1:
             LogManager.shared.mode = .local
@@ -422,7 +434,6 @@ final class RPConfig {
             LogManager.shared.mode = .local
 
         }
-
     }
 
     
@@ -448,8 +459,6 @@ func sendlog(title: String = "ReplyKit", message: String, mode: Int = 0) {
     }
 
     if RPConfig.shared.enableLog {
-
-
 
         if RPConfig.shared.onLogPage {
             LogManager.shared.log(title:title,message: message)
@@ -556,6 +565,28 @@ final class ExtensionMessagePort {
         )
     }
 
+}
+
+
+// MARK:日誌內容保護StreamKey不全顯示
+func fixlogSafeKey(_ str:String) -> String{
+    var g = str
+    let replaceCount = min(5, g.count)
+    let endIndex = g.index(g.endIndex, offsetBy: -replaceCount)
+    let prefix = String(g[..<endIndex])
+
+    // 保留前 (replaceCount - 2) 個字，再補 "00"
+    if replaceCount > 2 {
+        let startOfReplace = g.index(g.endIndex, offsetBy: -replaceCount)
+        let midEnd = g.index(g.endIndex, offsetBy: -2)
+        let middle = g[startOfReplace..<midEnd]
+        g = prefix + middle + "00"
+    } else {
+        // 如果總長小於等於2，就全部換成0
+        g = String(repeating: "0", count: g.count)
+    }
+
+    return g
 }
 
 

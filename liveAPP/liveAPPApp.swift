@@ -203,11 +203,11 @@ final class LogReceiver {
         let linesToSend = buffer
         buffer.removeAll()
 
-        DispatchQueue.main.async {
+
             for line in linesToSend {
                 NotificationCenter.default.post(name: .appLogNotification, object: line)
             }
-        }
+        
     }
 }
 

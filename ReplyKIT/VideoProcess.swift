@@ -11,7 +11,6 @@ final class VideoFrameProcessor {
 
 
     private let mediaMixer: MediaMixer
-    private let videoBufferManager: InitialVideoBufferEstimator
     //private var rotator: VideoRotator?
     private let rtmpStream: RTMPStream
     private let sendlog: (String) -> Void
@@ -22,13 +21,10 @@ final class VideoFrameProcessor {
     var hasPublished = false
 
     init(mediaMixer: MediaMixer,
-         videoBufferManager: InitialVideoBufferEstimator,
 
          rtmpStream: RTMPStream,
          sendlog: @escaping (String) -> Void) {
         self.mediaMixer = mediaMixer
-        self.videoBufferManager = videoBufferManager
-
         self.rtmpStream = rtmpStream
         self.sendlog = sendlog
         self.isActive = true
@@ -94,20 +90,6 @@ final class VideoFrameProcessor {
                 guard let self = self, self.isActive else { return }
 
 
-                // Buffer調整
-                if !hasPublished {
-                    videoBufferManager.ingest(sampleBuffer: sampleBuffer)
-
-                    if videoBufferManager.isReady {
-                        let count = videoBufferManager.estimatedBufferCount
-
-                        sendlog("[VideoBuffer]更新Buffer -> \(count)")
-                        Task {
-                            await self.rtmpStream.setVideoInputBufferCounts(count)
-                        }
-                            hasPublished = true
-                    }
-                }
 
                 if let rotated = await self.rotator?.rotateAsync(
                     sampleBuffer: sampleBuffer,

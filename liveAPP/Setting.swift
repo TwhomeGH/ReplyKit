@@ -15,7 +15,7 @@ final class GPUSettingsViewModel: ObservableObject {
     @AppStorage("dstW", store: userDefaults) var dstW = 0
     @AppStorage("dstH", store: userDefaults) var dstH = 0
     @AppStorage("useBic", store: userDefaults) var useBic = false
-    @AppStorage("MaxInfilght", store: userDefaults) var maxInflightFrames = 4
+    @AppStorage("BufferCount", store: userDefaults) var BufferCount = 5
 
     @Published var configs: [GPUOutputConfig] = []
     @Published var selectedConfig: GPUOutputConfig? = nil
@@ -123,7 +123,11 @@ struct GPURotateView: View {
                         .foregroundColor(.secondary)
                         .padding(.bottom, 5)
 
-                TextField("直接輸入數量", value: $viewModel.maxInflightFrames, format: .number)
+                TextField(
+                    "直接輸入數量",
+                    value: $viewModel.BufferCount,
+                    format: .number
+                )
                     .frame(maxWidth: .infinity)
                      .textFieldStyle(RoundedBorderTextFieldStyle())
                      .keyboardType(.numberPad)
@@ -136,10 +140,21 @@ struct GPURotateView: View {
                          }
                     }
 
-                Stepper("[棄用]同時處理數量：\(viewModel.maxInflightFrames)", value: $viewModel.maxInflightFrames, in: 1...1000)
-                    .onChange(of: viewModel.maxInflightFrames) { _ in
-                        CFNotificationCenterPostNotification(cfCenter, CFNotificationName("MaxInfilght" as CFString), nil, nil, true)
+                Stepper(
+                    "輸入緩衝區數量：\(viewModel.BufferCount)",
+                    value: $viewModel.BufferCount,
+                    in: 1...20
+                )
+                    .onChange(of: viewModel.BufferCount) { _ in
+                        logTo("VBuffer -> \(viewModel.BufferCount) ")
                     }
+
+                Text("建議值: 5或3 太大可能爆內存"
+                )
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                        .padding(.bottom, 5)
+
             }
         }
         .navigationTitle("GPU輸出設置")
@@ -223,8 +238,18 @@ struct LogSettingView:View {
                 AppMessagePort.shared.send(toExtension: ["ping": "From_App"])
 
                 SocketServer.shared?.broadcast(type:"log",key: "test3", value: "OK Socket")
+                SocketServer.shared?.broadcast(type: "testRTMP", key: "test3", value: "OK")
 
             }
+            Button("Socket重連"){
+                CFNotificationCenterPostNotification(cfCenter, CFNotificationName("SocketRetry" as CFString), nil, nil, true)
+
+            }
+            Text("如果通信斷線了可以用這個重建")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .padding(.bottom, 5)
+
 
 
         }

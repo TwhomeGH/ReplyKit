@@ -447,7 +447,12 @@ final class AudioProcessor : @unchecked Sendable {
         sendlog(message:"🧹 AudioProcessor deinit — resources released")
     }
 
-    func updateVolumes(appAdd: Float? = nil, micAdd: Float? = nil, app: Float? = nil, mic: Float? = nil) {
+    func updateVolumes(
+        appAdd: Float? = nil,
+        micAdd: Float? = nil,
+        app: Float? = nil,
+        mic: Float? = nil
+    ) {
         if let appAdd = appAdd { self.appAddVolume = appAdd }
         if let micAdd = micAdd { self.micAddVolume = micAdd }
         if let app = app { self.appVolume = app }

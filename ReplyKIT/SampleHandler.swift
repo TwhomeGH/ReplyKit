@@ -44,8 +44,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     var DWidth = 1920
     var DHeight = 1334
 
-    let h264level = SharedDefaults.group?.string(forKey: "h264level")
+    var rtmpURL:String?
+    var rtmpKey:String?
 
+    let h264level = RPConfig.shared.h264level
 
     var audioProcessor: AudioProcessor?
     var videoProcessor: VideoFrameProcessor?
@@ -58,8 +60,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     var isVideoRotationEnabled = true
 
-    var rtmpURL:String?
-    var rtmpKey:String?
 
 
     
@@ -139,7 +139,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     private var rtmpStream : RTMPStream!
 
-    var videoBufferManager: InitialVideoBufferEstimator?
 
     private var lastConfiguredSize: CGSize? = nil
 
@@ -229,7 +228,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         switch eventName {
         case "micAdd":
 
-            let newVolume = SharedDefaults.group?.double(forKey: "micAddVoulme") ?? 1.0
+            let newVolume = SharedDefaults.group?.double(forKey: "micAddVolume") ?? 1.0
 
 
             micAddVolume=Float(newVolume)
@@ -244,7 +243,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             ))
         case "appAdd":
 
-            let newVolume = SharedDefaults.group?.double(forKey: "appAddVoulme") ?? 1.0
+            let newVolume = SharedDefaults.group?.double(forKey: "appAddVolume") ?? 1.0
             appAddVolume=Float(newVolume)
             guard let audioProcessor else { return }
             Task {
@@ -310,6 +309,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 #endif
 
+        case "SocketRetry":
+            SocketClient.shared.retry()
+            sendlog(message: "重連Socket!")
+
         case "videoRotateChanged":
             sendlog(message: "棄用方法！")
             break
@@ -362,18 +365,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 LogManager.shared.forceFlush()
             }
             RPConfig.shared.logMode=logM
-
-            switch logM {
-            case 1:
-                LogManager.shared.mode = .local
-            case 0:
-                LogManager.shared.mode = .remote
-            case 2:
-                LogManager.shared.mode = .both
-            default:
-                LogManager.shared.mode = .local
-
-            }
+            RPConfig.shared.applyLogMode()
 
 
         case "onlogPage":
@@ -466,9 +458,16 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     }
 
                     sendlog(message:"[Audio] audioProcessor is nil Rebuild AudioProcessor!")
+
+
+                    guard let volumeNotifier = volumeNotifier else {
+                        sendlog(message: "volumeNotifier沒有建立！")
+                        return
+                    }
+
                     audioProcessor = AudioProcessor(
                         mediaMixer: mediaMixer,
-                        volumeNotifier: volumeNotifier!,
+                        volumeNotifier: volumeNotifier,
                         appAddVolume: appAddVolume,
                         micAddVolume: micAddVolume,
                         appVolume: appVolume,
@@ -730,8 +729,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     }
 
-
-
+    
     func setUserDefalutConfig(urlString:String = "rtmp://192.168.0.106/live" ,streamKey:String = "test")  {
 
 
@@ -760,8 +758,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
 
+        let safelogKey = fixlogSafeKey(streamKey)
         // 組成完整 RTMP URL
-        let fullURLString = "\(urlString)/\(streamKey)"
+        let fullURLString = "\(urlString)/\(safelogKey)"
 
 
         // MARK: 是否在日誌Log mode
@@ -769,6 +768,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             .integer(forKey: "logMode") ?? 0
         RPConfig.shared.onLogPage = SharedDefaults.group?.bool(forKey: "onlogPage") ?? false
 
+
+        RPConfig.shared.applyLogMode()
 
         // 🔹 轉成 URL
         sendlog(message: "🔹 推流 URL:\(fullURLString)")
@@ -812,10 +813,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         
         await mediaMixer.setVideoMixerSettings(videoMixerSettings)
 
-
-
+        let BCount = RPConfig.shared.BufferCount
         // ReplayKit is sensitive to memory, so we limit the queue to a maximum of five items.
-        await rtmpStream.setVideoInputBufferCounts(5)
+        await rtmpStream.setVideoInputBufferCounts(BCount)
+
+        sendlog(message: "Video Buffer -> \(BCount)")
 
 
     }
@@ -885,15 +887,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         bitrate = RPConfig.shared.BitRate
 
-        
-        videoBufferManager = InitialVideoBufferEstimator()
 
         volumeNotifier = VolumeNotifier()
 
 
             videoProcessor = VideoFrameProcessor(
                 mediaMixer: mediaMixer,
-                videoBufferManager: videoBufferManager!,
                 rtmpStream: rtmpStream,
                 sendlog: { message in
                     sendlog(message: message)
@@ -964,52 +963,74 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         logger.info("運行通知")
 
-
-        ExtensionMessagePort.shared.connectToApp()
-        
-        //SocketClient.shared.requestAllSettings()
-        SocketClient.shared.requestRTMPKEY()
-
-
-
-        
         isStopping = false
 
-
-        // 🔹 從 UserDefaults 拿 RTMP 設定
-        rtmpURL = RPConfig.shared.RTMPURL
-        rtmpKey = RPConfig.shared.RTMPKey
+        ExtensionMessagePort.shared.connectToApp()
 
 
         //self.prepareCompressionSession()
 
-        Task {
-            setUserDefalutConfig(
-                urlString: rtmpURL ?? "rtmp://192.168.0.242/live",
-                streamKey: rtmpKey ?? "test"
-            )
+        let group = DispatchGroup()
 
-            logger.debug("✅ RTMP設定: \(String(describing: self.rtmpURL)) \(String(describing: self.rtmpKey))")
+        group.enter()
+        SocketClient.shared.requestRTMPKEY { success in
+            if success {
 
+                sendlog(message:"RTMP 已完成同步")
+                // 可以進行後續流程
+                group.leave()
+            }
 
-            await configureVideo()
-            await configureAudio()
-            await configureMediaMixer()
+        }
+        group.enter()
+        SocketClient.shared.requestLogConfig { success in
+            if success {
+                // 這裡 logConfig 已經拿到
+                sendlog(message:"LogConfig 已完成同步")
+                // 可以進行後續流程
+                group.leave()
+            }
 
-            logger.info("✅ MediaMixer 配置完成")
-
-            await initProcessors()
-
-            logger.info("✅ Processor 初始化完成")
-
-
-            await startRTMP(url: rtmpURL , key: rtmpKey)
         }
 
 
 
+        group.notify(queue: .main) { [weak self] in
+            guard let self = self else { return }
 
 
+            // 🔹 從 UserDefaults 拿 RTMP 設定
+            self.rtmpURL = RPConfig.shared.RTMPURL
+            self.rtmpKey = RPConfig.shared.RTMPKey
+
+
+            Task {
+
+
+                self.setUserDefalutConfig(
+                    urlString: self.rtmpURL ?? "rtmp://192.168.0.242/live",
+                    streamKey: self.rtmpKey ?? "test"
+                )
+
+                logger.debug("✅ RTMP設定: \(String(describing: self.rtmpURL)) \(String(describing: self.rtmpKey))")
+
+
+                await self.configureVideo()
+                await self.configureAudio()
+                await self.configureMediaMixer()
+
+                logger.info("✅ MediaMixer 配置完成")
+
+                await self.initProcessors()
+
+                logger.info("✅ Processor 初始化完成")
+
+
+                await self.startRTMP(url: self.rtmpURL , key: self.rtmpKey)
+            }
+
+
+        }
     }
 
 
@@ -1162,9 +1183,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         // MARK: 重建 VideoProcessor
         if videoProcessor == nil {
+
+
             videoProcessor = VideoFrameProcessor(
                 mediaMixer: mediaMixer,
-                videoBufferManager: videoBufferManager!,
                 rtmpStream: rtmpStream,
                 sendlog: { message in
                     sendlog(message: message)
@@ -1237,7 +1259,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         audioProcessor?.cleanup()
 
-        videoBufferManager = nil
         volumeNotifier=nil
         videoProcessor=nil
         audioProcessor=nil
@@ -1316,7 +1337,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             case 0..<1620: return kVTProfileLevel_H264_High_3_0 as String
             case 1620..<3600:
                 return fps <= 30 ? kVTProfileLevel_H264_High_3_1 as String : kVTProfileLevel_H264_High_3_2 as String
-            case 3600..<8192: return fps <= 30 ? kVTProfileLevel_H264_High_4_0 as String : kVTProfileLevel_H264_High_4_2 as String
+            case 3600..<8192: return fps <= 30 ? kVTProfileLevel_H264_High_4_0 as String : kVTProfileLevel_H264_High_4_1 as String
             case 8192..<8704: return kVTProfileLevel_H264_High_4_2 as String
             case 8704..<36864: return kVTProfileLevel_H264_High_5_0 as String
             default: return fps <= 60 ? kVTProfileLevel_H264_High_5_1 as String : kVTProfileLevel_H264_High_5_2 as String
@@ -1407,10 +1428,22 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             profilelvl = res
 
-        case "ConstrainedBaseline": profilelvl = kVTProfileLevel_H264_ConstrainedBaseline_AutoLevel as String
-        case "ConstrainedHigh": profilelvl = kVTProfileLevel_H264_ConstrainedHigh_AutoLevel as String
-        case "Extended": profilelvl = kVTProfileLevel_H264_Extended_AutoLevel as String
-        default: profilelvl = kVTProfileLevel_H264_Main_4_2 as String
+        case "AutoBaseline":
+            profilelvl = kVTProfileLevel_H264_Baseline_AutoLevel as String
+        case "AutoMain":
+            profilelvl = kVTProfileLevel_H264_Main_AutoLevel as String
+        case "AutoHigh":
+            profilelvl = kVTProfileLevel_H264_High_AutoLevel as String
+
+        case "ConstrainedBaseline":
+            profilelvl = kVTProfileLevel_H264_ConstrainedBaseline_AutoLevel as String
+        case "ConstrainedHigh":
+            profilelvl = kVTProfileLevel_H264_ConstrainedHigh_AutoLevel as String
+        case "Extended":
+            profilelvl = kVTProfileLevel_H264_Extended_AutoLevel as String
+
+        default:
+            profilelvl = kVTProfileLevel_H264_Main_AutoLevel as String
         }
 
         sendlog(message: "H264Profilelevel: \(profilelvl)")

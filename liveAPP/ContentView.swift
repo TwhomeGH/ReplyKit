@@ -361,11 +361,11 @@ struct LiveVolumeView: View {
 
     @StateObject var model = LiveVolumeModel()
 
-    @AppStorage("appVoulme",store: userDefaults)  var appVolume: Double = 1.0
-    @AppStorage("micVoulme",store: userDefaults)  var micVolume: Double = 1.0
+    @AppStorage("appVolume",store: userDefaults)  var appVolume: Double = 1.0
+    @AppStorage("micVolume",store: userDefaults)  var micVolume: Double = 1.0
 
-    @AppStorage("appAddVoulme",store: userDefaults)  var appAddVolume: Double = 1.0
-    @AppStorage("micAddVoulme",store: userDefaults)  var micAddVolume: Double = 1.0
+    @AppStorage("appAddVolume",store: userDefaults)  var appAddVolume: Double = 1.0
+    @AppStorage("micAddVolume",store: userDefaults)  var micAddVolume: Double = 1.0
 
 
 
@@ -485,9 +485,7 @@ struct LiveVolumeView: View {
                        onEditingChanged: { editing in
 
                     if !editing {
-                        //let realVolume = percentageToVolume(APP_percentage)
-                        setUserDefault( appVolume , forKey: "appVolume")
-
+                        
 
 
 #if os(iOS)
@@ -576,7 +574,6 @@ struct LiveVolumeView: View {
                             volumeToPercentage(micVolume),
                             micVolume
                         ))
-                        setUserDefault(micVolume, forKey: "micVolume")
 
 
 #if os(iOS)
@@ -1313,6 +1310,10 @@ enum H264Profile: String, CaseIterable, Identifiable {
     case baseline = "Baseline"
     case main = "Main"
     case high = "High"
+    case AutoBaseline = "AutoBaseline"
+    case AutoMain = "AutoMain"
+    case AutoHigh = "AutoHigh"
+    
     case constrainedBaseline = "ConstrainedBaseline"
     case constrainedHigh = "ConstrainedHigh"
     case extended = "Extended"

@@ -2,6 +2,7 @@ import Foundation
 import Network
 import os
 
+
 //let logger = Logger(subsystem: "nuclear.liveAPP", category: "SocketServer")
 
 class SocketServer {
@@ -40,7 +41,7 @@ class SocketServer {
             switch state {
             case .ready:
                 self?.logTo("Connection ready: \(String(describing: connection))")
-                self?.sendInitialUserDefaults(to: connection)
+                //self?.sendInitialUserDefaults(to: connection)
             case .failed(let error):
                 self?.logTo("Connection failed: \(error.localizedDescription)")
                 self?.removeConnection(connection)
@@ -56,14 +57,31 @@ class SocketServer {
         receive(from: connection)
     }
 
+    private var receiveBuffer = Data()
+
     // MARK: - Receive Data
     private func receive(from connection: NWConnection) {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
             guard let self = self else { return }
 
+
             if let data = data, !data.isEmpty {
-                self.handleReceivedData(data, from: connection)
+                // 1️⃣ 累積到 buffer
+                self.receiveBuffer.append(data)
+
+                // 2️⃣ 拆包，每個 \n 為一個完整 JSON
+               while let range = self.receiveBuffer.firstRange(of: Data([0x0A])) {
+                   let packet = self.receiveBuffer.subdata(in: 0..<range.lowerBound)
+                   // 移除已處理的資料（包含 \n）
+                   self.receiveBuffer.removeSubrange(0...range.lowerBound)
+
+                   // 3️⃣ 處理單一 JSON packet
+                   self.handleReceivedData(packet, from: connection)
+               }
+
             }
+
+
 
             if isComplete || error != nil {
                 self.removeConnection(connection)
@@ -73,30 +91,47 @@ class SocketServer {
         }
     }
 
+    func debugRTMP() {
+        let payload: [String: Any] = [
+            "type": "RTMP",
+            "rtmpURL": userDefaults?.string(forKey: "rtmpURL") ?? "rtmp://192.168.0.102/live",
+            "rtmpKey": userDefaults?.string(forKey: "rtmpKey") ?? "test",
+            "BitRate": userDefaults?.integer(forKey: "bitRate") ?? 3_900_000,
+            "ChangeBit": userDefaults?.bool(forKey: "ChangeBit") ?? false,
+            "h264level": userDefaults?
+                .string(forKey: "h264level") ?? "AutoHigh",
+
+
+
+            "dstW": userDefaults?.integer(forKey: "dstW") ?? 0,
+            "dstH": userDefaults?.integer(forKey: "dstH") ?? 0,
+
+            "appVolume": userDefaults?.float(forKey: "appVolume") ?? 1.0,
+            "micVolume": userDefaults?.float(forKey: "micVolume") ?? 1.0,
+            "appVolumeAdd": userDefaults?
+                .double(forKey: "appAddVolume") ?? 1.0,
+            "micVolumeAdd": userDefaults?
+                .double(forKey: "micAddVoulme") ?? 1.0,
+
+
+
+        ]
+        sendToAll(payload: payload)
+
+    }
+
     private func handleReceivedData(_ data: Data, from connection: NWConnection) {
+
+
+
         guard let dict = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
               let type = dict["type"] as? String else { return }
 
         switch type {
-        case "requestRTMP":
+
+        case "logConfig":
             let payload: [String: Any] = [
-                "type": "RTMP",
-                "rtmpURL": userDefaults?.string(forKey: "rtmpURL") ?? "rtmp://192.168.0.102/live",
-                "rtmpKey": userDefaults?.string(forKey: "rtmpKey") ?? "test",
-                "BitRate": userDefaults?.integer(forKey: "bitRate") ?? 3_900_000,
-
-                "ChangeBit": userDefaults?.bool(forKey: "ChangeBit") ?? false,
-
-
-                "dstW": userDefaults?.integer(forKey: "dstW") ?? 0,
-                "dstH": userDefaults?.integer(forKey: "dstH") ?? 0,
-
-                "appVolume": userDefaults?.float(forKey: "appVolume") ?? 1.0,
-                "micVolume": userDefaults?.float(forKey: "micVolume") ?? 1.0,
-                "appVolumeAdd": userDefaults?.double(forKey: "appAddVolume") ?? 1.0,
-                "micVolumeAdd": userDefaults?.double(forKey: "micAddVoulme") ?? 1.0,
-
-
+                "type": "logConfig",
                 "logMode": userDefaults?.integer(forKey: "logMode")
                 ?? 1,
 
@@ -113,14 +148,37 @@ class SocketServer {
 
                 "enablelog":userDefaults?.bool(forKey: "Enablelog")
                 ?? false
+                ]
+
+            sendToAll(payload: payload)
+
+        case "requestRTMP":
+            let payload: [String: Any] = [
+                "type": "RTMP",
+                "rtmpURL": userDefaults?.string(forKey: "rtmpURL") ?? "rtmp://192.168.0.102/live",
+                "rtmpKey": userDefaults?.string(forKey: "rtmpKey") ?? "test",
+                "BitRate": userDefaults?.integer(forKey: "bitRate") ?? 3_900_000,
+                "ChangeBit": userDefaults?.bool(forKey: "ChangeBit") ?? false,
+                "h264level": userDefaults?
+                    .string(forKey: "h264level") ?? "AutoHigh",
 
 
 
+                "dstW": userDefaults?.integer(forKey: "dstW") ?? 0,
+                "dstH": userDefaults?.integer(forKey: "dstH") ?? 0,
 
+                "appVolume": userDefaults?.float(forKey: "appVolume") ?? 1.0,
+                "micVolume": userDefaults?.float(forKey: "micVolume") ?? 1.0,
+                "appVolumeAdd": userDefaults?
+                    .double(forKey: "appAddVolume") ?? 1.0,
+                "micVolumeAdd": userDefaults?
+                    .double(forKey: "micAddVolume") ?? 1.0,
 
 
 
             ]
+
+            logTo("RTMP DebugAdd[Socket]\(payload)")
             sendToAll(payload: payload)
 
         case "requestSettings":
@@ -151,7 +209,12 @@ class SocketServer {
 
     // MARK: - Send Data
     private func sendToAll(payload: [String: Any]) {
-        guard let data = try? JSONSerialization.data(withJSONObject: payload, options: []) else { return }
+        guard var data = try? JSONSerialization.data(withJSONObject: payload, options: []) else { return }
+
+        // ★ 關鍵：加換行符號當封包結尾
+        data.append(0x0A) // '\n'
+
+
         for conn in connections {
             conn.send(content: data, completion: .contentProcessed { error in
                 if let error = error {
@@ -266,8 +329,6 @@ class SocketServer {
 //  Created by user on 2025/11/4.
 //
 
-import Foundation
-import os
 
 
 
