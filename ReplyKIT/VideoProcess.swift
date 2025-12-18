@@ -98,7 +98,6 @@ final class VideoFrameProcessor {
                     await self.mediaMixer.append(rotated)
                 } else {
                     sendlog("GPU Fail!")
-                    await self.mediaMixer.append(sampleBuffer)
                 }
 
 
