@@ -785,10 +785,19 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     func configureVideo() async {
         // Video settings
+
+        var DW = 1334
+        var DH = 1920
+        if ADWidth > 0 && ADHeight > 0 {
+            sendlog(message: "[CV]用戶設定寬高：\(ADWidth) x \(ADHeight)")
+            DW = ADHeight
+            DH = ADWidth
+        }
+
         var videoSettings = await rtmpStream.videoSettings
         videoSettings.scalingMode = .letterbox
         videoSettings.profileLevel = kVTProfileLevel_H264_High_AutoLevel as String
-        videoSettings.videoSize = .init(width: 1334, height: 1920)
+        videoSettings.videoSize = .init(width: DW, height: DH)
         videoSettings.maxKeyFrameIntervalDuration = 2
         videoSettings.expectedFrameRate = 60.0
 
@@ -958,6 +967,22 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     }
 
 
+    enum TimeoutError: Error {
+        case timedOut
+    }
+
+    func withTimeout<T>(_ seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await operation() }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw TimeoutError.timedOut
+            }
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
+        }
+    }
 
     // MARK: 直播開始
     override func broadcastStarted(
@@ -969,23 +994,43 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         isStopping = false
 
-        ExtensionMessagePort.shared.connectToApp()
-
-
+        Task {
+            do {
+                try await withTimeout(3) {
+                    ExtensionMessagePort.shared.connectToApp()
+                }
+                logger.debug("連線成功或至少嘗試完成")
+            } catch TimeoutError.timedOut {
+                logger.debug("連線主 App 超時")
+            } catch {
+                logger.debug("其他錯誤:\(error)")
+            }
+        }
         //self.prepareCompressionSession()
 
 
-            Task {
-                // 同時發出兩個請求
-                async let rtmpSuccess = SocketClient.shared.requestRTMPKEY()
-                async let logSuccess = SocketClient.shared.requestLogConfig()
+        Task {
 
+
+            do {
+                // 同時發出兩個請求
+                async let rtmpSuccess = withTimeout(5) {
+                    await SocketClient.shared.requestRTMPKEY()
+                }
+                async let logSuccess = withTimeout(5) {
+                    await SocketClient.shared.requestLogConfig()
+                }
                 // 等待兩個結果
-                let (r, l) = await (rtmpSuccess, logSuccess)
+                let (r, l) = try await (rtmpSuccess, logSuccess)
 
                 if r { sendlog(message:"RTMP 已完成同步") }
                 if l { sendlog(message:"LogConfig 已完成同步") }
 
+            } catch TimeoutError.timedOut {
+                sendlog(message: "超時！AppGroup有效時不影響")
+            } catch {
+                sendlog(message: "請求失敗! \(error)")
+            }
 
                 // 🔹 從 UserDefaults 拿 RTMP 設定
                 rtmpURL = RPConfig.shared.RTMPURL
