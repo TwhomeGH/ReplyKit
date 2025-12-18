@@ -80,6 +80,37 @@ half bicubicSampleY(texture2d<half, access::read> tex, float2 uv, uint2 texSize)
     return cubicHermite(col[0],col[1],col[2],col[3],fy);
 }
 
+half bicubicSampleY_4fetch(
+    texture2d<half, access::sample> tex,
+    sampler s,
+    float2 uv_px,      // pixel space（跟你現在一樣）
+    uint2 texSize
+) {
+    float2 texSizeF = float2(texSize);
+
+    // pixel -> normalized
+    float2 pixel = uv_px - 0.5;
+    int2 ip = int2(floor(pixel));
+    float2 f = pixel - float2(ip);
+
+    // 4 個 bilinear sample（硬體會各自做 2x2）
+    float2 uv00 = (float2(ip) + float2(0.0, 0.0) + 0.5) / texSizeF;
+    float2 uv10 = (float2(ip) + float2(1.0, 0.0) + 0.5) / texSizeF;
+    float2 uv01 = (float2(ip) + float2(0.0, 1.0) + 0.5) / texSizeF;
+    float2 uv11 = (float2(ip) + float2(1.0, 1.0) + 0.5) / texSizeF;
+
+    half c00 = tex.sample(s, uv00).x;
+    half c10 = tex.sample(s, uv10).x;
+    half c01 = tex.sample(s, uv01).x;
+    half c11 = tex.sample(s, uv11).x;
+
+    // bilinear → bicubic approximation
+    half col0 = mix(c00, c10, half(f.x));
+    half col1 = mix(c01, c11, half(f.x));
+
+    return mix(col0, col1, half(f.y));
+}
+
 
 
 inline float4 cubicWeights(float t)
@@ -165,42 +196,7 @@ inline uint localIndex(uint x, uint y, uint stride) {
     return y * stride + x;
 }
 
-inline half readTileY(threadgroup half localY[],
-                      int2 tileOrigin,
-                      int2 coord,
-                      texture2d<half, access::read> srcY,
-                      int tileSizeW,
-                      int tileSizeH,
-                      half sharpenStrength,
-                      int maxX,
-                      int maxY)
-{
-    int lx = coord.x - tileOrigin.x + BORDER;
-    int ly = coord.y - tileOrigin.y + BORDER;
-    int index = ly * (MAX_TILE_SIZE + 2*BORDER) + lx;
 
-    // 在 tile 內
-    if(lx >= 0 && lx < tileSizeW + 2*BORDER && ly >= 0 && ly < tileSizeH + 2*BORDER)
-    {
-        half val = localY[index];
-        if(lx>0 && ly>0 && lx<tileSizeW + 2*BORDER-1 && ly<tileSizeH + 2*BORDER-1 && sharpenStrength>0.0)
-        {
-            half neighborAvg = 0.25 * (
-                localY[(ly-1)*(MAX_TILE_SIZE+2*BORDER)+lx] +
-                localY[(ly+1)*(MAX_TILE_SIZE+2*BORDER)+lx] +
-                localY[ly*(MAX_TILE_SIZE+2*BORDER)+(lx-1)] +
-                localY[ly*(MAX_TILE_SIZE+2*BORDER)+(lx+1)]
-            );
-            val = half(clamp(float(val + sharpenStrength*(val-neighborAvg)),0.0,1.0));
-        }
-        return val;
-    }
-    else
-    {
-        int2 cl = clamp(coord, int2(0,0), int2(maxX-1, maxY-1));
-        return srcY.read(uint2(cl)).x;
-    }
-}
 
 inline half2 readUVFromTile(threadgroup half2 localUV[],
                             int2 tileOriginUV,
@@ -236,7 +232,7 @@ constexpr sampler linearClampSampler(
 
 // --- Main kernel ---
 kernel void rotateNV12_tileBicubicUV(
-    texture2d<half, access::read> srcY   [[ texture(0) ]],
+    texture2d<half, access::sample> srcY   [[ texture(0) ]],
     texture2d<half, access::sample> srcUV  [[ texture(1) ]],
     texture2d<half, access::write> dstY  [[ texture(2) ]],
     texture2d<half, access::write> dstUV  [[ texture(3) ]],
@@ -302,7 +298,13 @@ kernel void rotateNV12_tileBicubicUV(
     }
 
     if (params.useBicubic != 0) {
-        yVal = bicubicSampleY(srcY, float2(srcXf, srcYf), uint2(maxX, maxY));
+        yVal = bicubicSampleY_4fetch(
+            srcY,
+            linearClampSampler,
+            float2(srcXf, srcYf),
+            uint2(maxX, maxY)
+        );
+
     } else {
         int2 p0 = int2(floor(float2(srcXf, srcYf)));
         int2 p1 = p0 + int2(1,0);
@@ -320,13 +322,15 @@ kernel void rotateNV12_tileBicubicUV(
         int2 p = int2(round(srcXf), round(srcYf));
         p = clamp(p, int2(0), int2(maxX-1, maxY-1));
 
-        // 縮小比例 < 1.0 使用 bicubic
-        if (shrinkFactor < 1.0) {
-            yVal = bicubicSampleY(srcY, float2(srcXf, srcYf), uint2(maxX, maxY));
-        } else {
 
-            yVal = readTileY(localY, tileOrigin, p, srcY, tileSizeW, tileSizeH, sharpenStrength, maxX, maxY);
-        }
+        yVal = bicubicSampleY_4fetch(
+            srcY,
+            linearClampSampler,
+            float2(srcXf, srcYf),
+            uint2(maxX, maxY)
+        );
+
+
 
     }
 
