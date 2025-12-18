@@ -74,8 +74,7 @@ final class VideoFrameProcessor {
                     dstW: dstRW,
                     dstH: dstRH,
                     useBic: Bic,
-                    debug: Debugg,
-                    mediaMixer: self.mediaMixer
+                    debug: Debugg
                 ) {
                     self.rotator = rot
                     self.sendlog("🟢 RPVideoRotatorNV12BatchQueue 延遲初始化成功")

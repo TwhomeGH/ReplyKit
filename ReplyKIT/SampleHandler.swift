@@ -994,7 +994,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         isStopping = false
 
+
+        //self.prepareCompressionSession()
+
+
         Task {
+
             do {
                 try await withTimeout(3) {
                     ExtensionMessagePort.shared.connectToApp()
@@ -1005,11 +1010,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             } catch {
                 logger.debug("其他錯誤:\(error)")
             }
-        }
-        //self.prepareCompressionSession()
-
-
-        Task {
 
 
             do {

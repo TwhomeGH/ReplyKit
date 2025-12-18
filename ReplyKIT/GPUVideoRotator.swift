@@ -12,40 +12,23 @@ import HaishinKit
 
 
 
-// MARK: - CVPixelBuffer InUse Extension
-private extension CVPixelBuffer {
-    private static var _inUseKey: UInt8 = 0
 
-    var inUse: Bool {
-        get { objc_getAssociatedObject(self, &CVPixelBuffer._inUseKey) as? Bool ?? false }
-        set { objc_setAssociatedObject(self, &CVPixelBuffer._inUseKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
-    }
-}
 
-extension DispatchSemaphore {
-    func waitAsync() async {
-        await withCheckedContinuation { cont in
-            DispatchQueue.global().async {
-                self.wait()
-                cont.resume()
-            }
-        }
-    }
-}
+
 
 // MARK: - GPU Video Rotator
-
-final class ReusableBuffer {
-    let pixelBuffer: CVPixelBuffer
-    var inUse: Bool = false
-    var yTex: MTLTexture?
-    var uTex: MTLTexture?
-    var vTex: MTLTexture?
-
-    init(pixelBuffer: CVPixelBuffer) {
-        self.pixelBuffer = pixelBuffer
-    }
-}
+//
+//final class ReusableBuffer {
+//    let pixelBuffer: CVPixelBuffer
+//    var inUse: Bool = false
+//    var yTex: MTLTexture?
+//    var uTex: MTLTexture?
+//    var vTex: MTLTexture?
+//
+//    init(pixelBuffer: CVPixelBuffer) {
+//        self.pixelBuffer = pixelBuffer
+//    }
+//}
 
 
 
@@ -60,7 +43,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     private(set) var textureCache: CVMetalTextureCache?
 
     private var isActive = true
-    var mediaMixer: MediaMixer
     var dstWW: Int = 0
     var dstHH: Int = 0
     var useBic: Bool = true
@@ -133,7 +115,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     }
 
 
-    private let gpuSemaphore = SyncSemaphore(capacity: 4)
+    private let gpuSemaphore = SyncSemaphore(capacity: 3)
 
 
 
@@ -176,7 +158,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     // MARK: Init
     init?(dstW: Int = 0, dstH: Int = 0, useBic: Bool = true, debug: Bool = false,
-          maxPoolSize: Int = 3, mediaMixer: MediaMixer) {
+          maxPoolSize: Int = 3) {
 
 
         self.dstWW = dstW
@@ -184,8 +166,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         self.useBic = useBic
         self.debug = debug
         self.maxPoolSize = maxPoolSize
-        self.mediaMixer = mediaMixer
-
 
     }
 
