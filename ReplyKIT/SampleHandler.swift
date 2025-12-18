@@ -39,8 +39,7 @@ class SharedDefaults {
 @available(iOS 10.0, *)
 class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
-    //private var userDefaults: UserDefaults?
-
+   
     var DWidth = 1920
     var DHeight = 1334
 
@@ -159,8 +158,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         default:
 
-            appVolume = RPConfig.shared.AppVolume
-            micVolume = RPConfig.shared.MicVolume
+            appVolume = Float(RPConfig.shared.AppVolume)
+            micVolume = Float(RPConfig.shared.MicVolume)
 
             sendlog(message:"app mic audio update \(appVolume) \(micVolume)")
 
@@ -273,9 +272,20 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         case "appVolumeChanged":
             let newVolume = SharedDefaults.group?.double(forKey: "appVolume") ?? 1.0
-            appVolume=Float(newVolume)
+
+
+
+
             guard let audioProcessor else { return }
             Task {
+                if let av = await SocketClient.shared.requestSet(for: "appVolume", type: "Double") {
+
+                    sendlog(message: "原始AppVolume數據包:\(av)")
+
+                }
+
+                appVolume=Float(newVolume)
+
                 audioProcessor.updateVolumes(app: appVolume)
             }
 
@@ -313,16 +323,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             SocketClient.shared.retry()
             sendlog(message: "重連Socket!")
 
-        case "videoRotateChanged":
-            sendlog(message: "棄用方法！")
-            break
-            //isVideoRotationEnabled=userDefaults?.bool(forKey: "VideoRotate") ?? true
-
-//            Task {
-//                videoProcessor.updateRotator(status: rotator)
-//            }
-            //logger.info("AutoVideoRotate:\(self.isVideoRotationEnabled)")
-
+       
 
         case "DebugRotate":
             let Rlog=SharedDefaults.group?.bool(forKey: "EnableRotatelog") ?? false
@@ -429,8 +430,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         case "Enablelog":
             let Enablelog=SharedDefaults.group?.bool(forKey: "Enablelog") ?? false
+
             sendlog(message: "開關日誌log")
             RPConfig.shared.enableLog=Enablelog
+
+            
 
 
         case "onAudioPage":
@@ -491,8 +495,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             sendlog(message: "你暫停直播畫面！")
         case "ResumeStream":
             self.broadcastResumed()
-            sendlog(message: "你灰復了直播畫面！")
-            
+            sendlog(message: "你恢復了直播畫面！")
+
 
             
         default:
@@ -507,8 +511,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         rtmpStream = RTMPStream(connection: rtmpConnection)
         
-        ADWidth = 0
-        ADHeight = 0
+        ADWidth = RPConfig.shared.ADWidth
+        ADHeight = RPConfig.shared.ADHeight
 
         super.init()
 
@@ -970,41 +974,22 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         //self.prepareCompressionSession()
 
-        let group = DispatchGroup()
-
-        group.enter()
-        SocketClient.shared.requestRTMPKEY { success in
-            if success {
-
-                sendlog(message:"RTMP 已完成同步")
-                // 可以進行後續流程
-                group.leave()
-            }
-
-        }
-        group.enter()
-        SocketClient.shared.requestLogConfig { success in
-            if success {
-                // 這裡 logConfig 已經拿到
-                sendlog(message:"LogConfig 已完成同步")
-                // 可以進行後續流程
-                group.leave()
-            }
-
-        }
-
-
-
-        group.notify(queue: .main) { [weak self] in
-            guard let self = self else { return }
-
-
-            // 🔹 從 UserDefaults 拿 RTMP 設定
-            self.rtmpURL = RPConfig.shared.RTMPURL
-            self.rtmpKey = RPConfig.shared.RTMPKey
-
 
             Task {
+                // 同時發出兩個請求
+                async let rtmpSuccess = SocketClient.shared.requestRTMPKEY()
+                async let logSuccess = SocketClient.shared.requestLogConfig()
+
+                // 等待兩個結果
+                let (r, l) = await (rtmpSuccess, logSuccess)
+
+                if r { sendlog(message:"RTMP 已完成同步") }
+                if l { sendlog(message:"LogConfig 已完成同步") }
+
+
+                // 🔹 從 UserDefaults 拿 RTMP 設定
+                rtmpURL = RPConfig.shared.RTMPURL
+                rtmpKey = RPConfig.shared.RTMPKey
 
 
                 self.setUserDefalutConfig(
@@ -1030,7 +1015,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             }
 
 
-        }
+
     }
 
 
@@ -1294,9 +1279,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
     // MARK: 內部已配置處理
-    private var didConfigureVideo = false
-
-    private var didConfigureAudio = false
+    private var didConfigureVideo = true
+    private var didConfigureAudio = true
 
     /// 根據解析度與幀率選擇對應 H.264 High Profile Level
 

@@ -12,12 +12,31 @@ extension Notification.Name {
     static let didReceiveSettings = Notification.Name("didReceiveSettings")
 }
 
+extension SocketClient.JSONValue {
+    var rawValue: Any? {
+        switch self {
+        case .string(let v): return v
+        case .int(let v): return v
+        case .double(let v): return v
+        case .bool(let v): return v
+        case .object(let v):
+            return v.mapValues { $0.rawValue }
+        case .array(let v):
+            return v.map { $0.rawValue }
+        case .null:
+            return nil
+        }
+    }
+}
+
+
 class SocketClient {
 
     static let shared = SocketClient()
 
-    private var rtmpCompletionHandlers: [(Bool) -> Void] = []
+    private var requestCompletionHandlers: [(Any?) -> Void] = []
 
+    private var rtmpCompletionHandlers: [(Bool) -> Void] = []
     private var logConfigCompletionHandlers: [(Bool) -> Void] = []
 
 
@@ -91,6 +110,7 @@ class SocketClient {
     }
 
 
+
     // MARK: - 發送
     func requestAllSettings() {
 
@@ -99,7 +119,37 @@ class SocketClient {
         sendPayload(payload)
     }
 
+    func requestSet(for key:String, type:String) async -> Any? {
+        await withCheckedContinuation { continuation in
+            self.requestSet(for:key,type: type) { value in
+                continuation.resume(returning: value )
+            }
+        }
+    }
+
+    func requestSet(for key:String, type:String,completion: @escaping (Any?) -> Void) {
+
+        requestCompletionHandlers.append(completion)
+        logTo("嘗試請求特定設定Socket")
+        let payload: [String: Any] = [
+            "type": "UPSet",
+            "key": key,
+            "ValueType":type
+        ]
+        sendPayload(payload)
+
+    }
+
+
     // MARK: - 發送
+    func requestRTMPKEY() async -> Bool {
+        await withCheckedContinuation { continuation in
+            // 呼叫原本 closure 版
+            self.requestRTMPKEY { success in
+                continuation.resume(returning: success)
+            }
+        }
+    }
     func requestRTMPKEY(completion: @escaping (Bool) -> Void) {
 
         rtmpCompletionHandlers.append(completion)
@@ -107,6 +157,15 @@ class SocketClient {
         logTo("嘗試請求設定Socket RTMPKEY")
         let payload: [String: Any] = ["type": "requestRTMP"]
         sendPayload(payload)
+    }
+
+    func requestLogConfig() async -> Bool {
+        await withCheckedContinuation { continuation in
+            // 呼叫原本 closure 版
+            self.requestLogConfig { success in
+                continuation.resume(returning: success)
+            }
+        }
     }
 
     func requestLogConfig(completion: @escaping (Bool) -> Void) {
@@ -204,6 +263,7 @@ class SocketClient {
     private func applyRTMP(_ c: RTMPConfig) {
 
 
+
         logTo("[Get]RTMP:\(c.rtmpURL):\(fixlogSafeKey(c.rtmpKey))")
         RPConfig.shared.RTMPURL = c.rtmpURL
         RPConfig.shared.RTMPKey = c.rtmpKey
@@ -222,8 +282,8 @@ class SocketClient {
         logTo(
             "[Get]Audio App:\(c.appVolume) Mic:\(c.micVolume) AppAdd:\(c.appVolumeAdd) MicAdd:\(c.micVolumeAdd)"
         )
-        RPConfig.shared.AppVolume = Float(c.appVolume)
-        RPConfig.shared.MicVolume = Float(c.micVolume)
+        RPConfig.shared.AppVolume = c.appVolume
+        RPConfig.shared.MicVolume = c.micVolume
 
         RPConfig.shared.AppVolumeAdd = c.appVolumeAdd
         RPConfig.shared.MicVolumeAdd = c.micVolumeAdd
@@ -235,6 +295,42 @@ class SocketClient {
     }
 
     private var receiveBuffer = Data()
+
+    enum JSONValue: Codable {
+        case string(String)
+        case int(Int)
+        case double(Double)
+        case bool(Bool)
+        case object([String: JSONValue])
+        case array([JSONValue])
+        case null
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.singleValueContainer()
+            if let v = try? container.decode(Bool.self) { self = .bool(v); return }
+            if let v = try? container.decode(Int.self) { self = .int(v); return }
+            if let v = try? container.decode(Double.self) { self = .double(v); return }
+            if let v = try? container.decode(String.self) { self = .string(v); return }
+            if let v = try? container.decode([String: JSONValue].self) { self = .object(v); return }
+            if let v = try? container.decode([JSONValue].self) { self = .array(v); return }
+            self = .null
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.singleValueContainer()
+            switch self {
+            case .string(let v): try container.encode(v)
+            case .int(let v): try container.encode(v)
+            case .double(let v): try container.encode(v)
+            case .bool(let v): try container.encode(v)
+            case .object(let v): try container.encode(v)
+            case .array(let v): try container.encode(v)
+            case .null: try container.encodeNil()
+            }
+        }
+    }
+
+
 
     private func handleJSONPacket(_ data: Data) {
         do {
@@ -264,14 +360,41 @@ class SocketClient {
 
                 }
 
+            case "UPSet":
+                logTo("UPSet結果得到了！")
+                // 假設你解析 JSON 得到 resultValue
+                let resultValue = try decoder.decode(
+                    [String: JSONValue].self,
+                    from: data
+                )
+                let key = resultValue["key"]?.rawValue as? String
+                let value = resultValue["value"]?.rawValue
+
+                logTo(
+                    "UPGet -> \(String(describing: key)) \(String(describing: value))"
+                )
+                requestCompletionHandlers.forEach {
+                    logTo("⬅️ callback value = \(String(describing: value))")
+                    $0(value)
+                }  // ✅ 回傳值
+                requestCompletionHandlers.removeAll()
+
+
             case "logConfig":
                 let env = try decoder.decode(LogConfig.self, from: data)
                 RPConfig.shared.logMode = env.logMode
                 RPConfig.shared.logURL = env.logURL
+
                 RPConfig.shared.onLogPage = env.onlogPage
                 RPConfig.shared.onAudioPage = env.onAudioPage
                 RPConfig.shared.enableLog = env.enablelog
+
                 RPConfig.shared.applyLogMode()
+
+                logTo("[Get]logMode:\(env.logMode) logURL:\(env.logURL)")
+                logTo(
+                    "[Get]onLog:\(env.onlogPage) onAudio:\(env.onAudioPage) EnableLog:\(env.enablelog)"
+                )
 
                 // ✅ 通知所有等待的 callback
                 logConfigCompletionHandlers.forEach { $0(true) }

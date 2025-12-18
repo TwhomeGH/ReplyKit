@@ -168,51 +168,44 @@ func createSampleBuffer(
     frameIndex: inout Int,
     timescale: CMTimeScale = 30
 ) -> CMSampleBuffer? {
-    var newSampleBuffer: CMSampleBuffer?
-    var videoInfo: CMVideoFormatDescription?
 
-    // 建立格式描述
-    let status = CMVideoFormatDescriptionCreateForImageBuffer(
+    var formatDesc: CMFormatDescription?
+    guard CMVideoFormatDescriptionCreateForImageBuffer(
         allocator: kCFAllocatorDefault,
         imageBuffer: pixelBuffer,
-        formatDescriptionOut: &videoInfo
-    )
-    guard status == noErr, let formatDesc = videoInfo else {
-        sendlog(message: "❌ createSampleBuffer: formatDesc 生成失敗 (\(status))")
+        formatDescriptionOut: &formatDesc
+    ) == noErr,
+    let fmt = formatDesc else {
+        sendlog(message: "❌ createSampleBuffer: formatDesc 生成失敗")
         return nil
     }
 
-    // 固定 FPS
-    let frameDuration = CMTime(value: 1, timescale: timescale)
-
-    // 使用遞增的 PTS，確保時間連續
+    // 使用 frameIndex 遞增產生 PTS
     let pts = CMTime(value: CMTimeValue(frameIndex), timescale: timescale)
     frameIndex += 1
 
     var timing = CMSampleTimingInfo(
-        duration: frameDuration,
+        duration: CMTime(value: 1, timescale: timescale),
         presentationTimeStamp: pts,
         decodeTimeStamp: .invalid
     )
 
-    let sampleStatus = CMSampleBufferCreateForImageBuffer(
+    var sampleBuffer: CMSampleBuffer?
+    let status = CMSampleBufferCreateForImageBuffer(
         allocator: kCFAllocatorDefault,
         imageBuffer: pixelBuffer,
         dataReady: true,
         makeDataReadyCallback: nil,
         refcon: nil,
-        formatDescription: formatDesc,
+        formatDescription: fmt,
         sampleTiming: &timing,
-        sampleBufferOut: &newSampleBuffer
+        sampleBufferOut: &sampleBuffer
     )
 
-    guard sampleStatus == noErr else {
-        sendlog(message: "❌ createSampleBuffer: CMSampleBuffer 建立失敗 (\(sampleStatus))")
+    guard status == noErr else {
+        sendlog(message: "❌ createSampleBuffer: CMSampleBuffer 建立失敗 (\(status))")
         return nil
     }
 
-    return newSampleBuffer
+    return sampleBuffer
 }
-
-
-

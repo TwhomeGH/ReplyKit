@@ -15,7 +15,7 @@ final class GPUSettingsViewModel: ObservableObject {
     @AppStorage("dstW", store: userDefaults) var dstW = 0
     @AppStorage("dstH", store: userDefaults) var dstH = 0
     @AppStorage("useBic", store: userDefaults) var useBic = false
-    @AppStorage("BufferCount", store: userDefaults) var BufferCount = 5
+    @AppStorage("BufferCount", store: userDefaults) var BufferCount = 3
 
     @Published var configs: [GPUOutputConfig] = []
     @Published var selectedConfig: GPUOutputConfig? = nil

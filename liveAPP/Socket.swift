@@ -106,8 +106,8 @@ class SocketServer {
             "dstW": userDefaults?.integer(forKey: "dstW") ?? 0,
             "dstH": userDefaults?.integer(forKey: "dstH") ?? 0,
 
-            "appVolume": userDefaults?.float(forKey: "appVolume") ?? 1.0,
-            "micVolume": userDefaults?.float(forKey: "micVolume") ?? 1.0,
+            "appVolume": userDefaults?.double(forKey: "appVolume") ?? 1.0,
+            "micVolume": userDefaults?.double(forKey: "micVolume") ?? 1.0,
             "appVolumeAdd": userDefaults?
                 .double(forKey: "appAddVolume") ?? 1.0,
             "micVolumeAdd": userDefaults?
@@ -128,6 +128,55 @@ class SocketServer {
               let type = dict["type"] as? String else { return }
 
         switch type {
+
+
+        case "UPSet":
+
+            guard let key = dict["key"] as? String,
+                  let VType = dict["ValueType"] as? String else {
+                return
+            }
+
+
+            var res : Any?
+
+            switch VType {
+
+            case "String":
+                res = userDefaults?.string(forKey: key)
+            case "Bool":
+                res = userDefaults?.bool(forKey: key)
+
+            case "Double":
+                res =  userDefaults?.double(forKey: key)
+            case "Int":
+                res =  userDefaults?.integer(forKey: key)
+
+            case "Float":
+                res =  userDefaults?.float(forKey: key)
+
+            default:
+                logTo("Unknow?")
+                return
+            }
+
+
+            guard let result = res else {
+                logTo("Value for key \(key) is nil")
+                return
+            }
+
+
+            let payload: [String: Any] = [
+
+                "type": "UPSet",
+                "key": key,
+                "value": result
+                ]
+            
+            sendToAll(payload: payload)
+
+
 
         case "logConfig":
             let payload: [String: Any] = [
@@ -178,7 +227,13 @@ class SocketServer {
 
             ]
 
-            logTo("RTMP DebugAdd[Socket]\(payload)")
+            var CPayloadKey = payload
+
+            if let key = payload["rtmpKey"] as? String {
+                CPayloadKey["rtmpKey"] = fixlogSafeKey(key)
+            }
+
+            logTo("RTMP DebugAdd[Socket]\(CPayloadKey)")
             sendToAll(payload: payload)
 
         case "requestSettings":
@@ -320,6 +375,30 @@ class SocketServer {
         }
     }
 }
+
+
+// MARK:日誌內容保護StreamKey不全顯示
+func fixlogSafeKey(_ str:String) -> String{
+    var g = str
+    let replaceCount = min(5, g.count)
+    let endIndex = g.index(g.endIndex, offsetBy: -replaceCount)
+    let prefix = String(g[..<endIndex])
+
+    // 保留前 (replaceCount - 2) 個字，再補 "00"
+    if replaceCount > 2 {
+        let startOfReplace = g.index(g.endIndex, offsetBy: -replaceCount)
+        let midEnd = g.index(g.endIndex, offsetBy: -2)
+        let middle = g[startOfReplace..<midEnd]
+        g = prefix + middle + "00"
+    } else {
+        // 如果總長小於等於2，就全部換成0
+        g = String(repeating: "0", count: g.count)
+    }
+
+    return g
+}
+
+
 
 
 //

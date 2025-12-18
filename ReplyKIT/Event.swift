@@ -352,8 +352,8 @@ final class RPConfig {
     var AppVolumeAdd : Double
     var MicVolumeAdd : Double
 
-    var AppVolume : Float
-    var MicVolume : Float
+    var AppVolume : Double
+    var MicVolume : Double
 
     var ADWidth : Int
     var ADHeight : Int
@@ -412,8 +412,8 @@ final class RPConfig {
         AppVolumeAdd = SharedDefaults.group?.double(forKey: "appAddVolume") ?? 1.0
         MicVolumeAdd = SharedDefaults.group?.double(forKey: "micAddVolume") ?? 1.0
 
-        AppVolume =  SharedDefaults.group?.float(forKey: "appVolume") ?? 1.0
-        MicVolume =  SharedDefaults.group?.float(forKey: "micVolume") ?? 1.0
+        AppVolume =  SharedDefaults.group?.double(forKey: "appVolume") ?? 1.0
+        MicVolume =  SharedDefaults.group?.double(forKey: "micVolume") ?? 1.0
 
         // Width
         ADWidth = SharedDefaults.group?.integer(forKey: "dstW") ?? 0

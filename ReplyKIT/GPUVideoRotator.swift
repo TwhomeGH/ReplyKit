@@ -463,6 +463,8 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         guard status == noErr else { return nil }
         return sampleBuffer
     }
+
+
     // MARK: - Render YUV
     private func renderPlaneYUV(cmd: MTLCommandBuffer,
                                 srcY: MTLTexture, srcUV: MTLTexture,
