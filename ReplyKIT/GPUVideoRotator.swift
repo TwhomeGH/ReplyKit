@@ -45,9 +45,14 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     private var isActive = true
     var dstWW: Int = 0
     var dstHH: Int = 0
-    var useBic: Bool = true
     var debug: Bool = false
-    struct Params { var srcWidth, srcHeight, dstWidth, dstHeight, angle, useBicubic, tileWidth, tileHeight: UInt32 }
+    struct Params {
+        var srcWidth: UInt32
+        var srcHeight: UInt32
+        var dstWidth: UInt32
+        var dstHeight: UInt32
+        var angle: UInt32
+    }
 
     // MARK: - Metal Output Pool
     final class ReusableOutputSet {
@@ -157,13 +162,12 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     }
 
     // MARK: Init
-    init?(dstW: Int = 0, dstH: Int = 0, useBic: Bool = true, debug: Bool = false,
+    init?(dstW: Int = 0, dstH: Int = 0, debug: Bool = false,
           maxPoolSize: Int = 3) {
 
 
         self.dstWW = dstW
         self.dstHH = dstH
-        self.useBic = useBic
         self.debug = debug
         self.maxPoolSize = maxPoolSize
 
@@ -443,8 +447,8 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
         var params = Params(srcWidth: UInt32(srcY.width), srcHeight: UInt32(srcY.height),
                             dstWidth: UInt32(dstY.width), dstHeight: UInt32(dstY.height),
-                            angle: UInt32(angle.rawValue), useBicubic: useBic ? 1 : 0,
-                            tileWidth: UInt32(tgWidth), tileHeight: UInt32(tgHeight))
+                            angle: UInt32(angle.rawValue)
+                            )
 
         encoder.setBytes(&params, length: MemoryLayout<Params>.stride, index: 0)
         encoder.dispatchThreads(MTLSize(width: dstY.width, height: dstY.height, depth: 1),

@@ -339,11 +339,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
 
-        case "useBic":
-            let Rlog=SharedDefaults.group?.bool(forKey: "useBic") ?? true
-            videoProcessor?.rotator?.useBic = Rlog
-            sendlog(message:"[GPU 使用Bic處理] \(Rlog)")
-
+        
 
         case "bitRateChange":
             sendlog(message: "NewBit: \(String(describing: bitrate))")

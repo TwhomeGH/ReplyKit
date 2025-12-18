@@ -14,7 +14,6 @@ import Network
 final class GPUSettingsViewModel: ObservableObject {
     @AppStorage("dstW", store: userDefaults) var dstW = 0
     @AppStorage("dstH", store: userDefaults) var dstH = 0
-    @AppStorage("useBic", store: userDefaults) var useBic = false
     @AppStorage("BufferCount", store: userDefaults) var BufferCount = 5
 
     @Published var configs: [GPUOutputConfig] = []
@@ -112,16 +111,7 @@ struct GPURotateView: View {
                         }
                     }
 
-                Toggle("使用 Bicubic 插值", isOn: $viewModel.useBic)
-                    .onChange(of: viewModel.useBic) { _ in
-                        CFNotificationCenterPostNotification(cfCenter, CFNotificationName("useBic" as CFString), nil, nil, true)
-                    }
-
-                Text("使用 16 個鄰近像素計算 運算較慢，但細節保留更好，邊緣更平滑，大動態畫面旋轉時不容易出現模糊或鋸齒感。"
-                )
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
-                        .padding(.bottom, 5)
+               
 
                 TextField(
                     "直接輸入數量",

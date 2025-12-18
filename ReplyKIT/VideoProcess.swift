@@ -65,7 +65,7 @@ final class VideoFrameProcessor {
 
             // 延遲初始化 rotator
             if self.rotator == nil {
-                let Bic = SharedDefaults.group?.bool(forKey: "useBic") ?? false
+
                 let Debugg = SharedDefaults.group?.bool(forKey: "EnableRotatelog") ?? false
                 let dstRW = SharedDefaults.group?.integer(forKey: "dstW") ?? 0
                 let dstRH = SharedDefaults.group?.integer(forKey: "dstH") ?? 0
@@ -73,7 +73,6 @@ final class VideoFrameProcessor {
                 if let rot = RPVideoRotatorNV12BatchQueueOptimized(
                     dstW: dstRW,
                     dstH: dstRH,
-                    useBic: Bic,
                     debug: Debugg
                 ) {
                     self.rotator = rot

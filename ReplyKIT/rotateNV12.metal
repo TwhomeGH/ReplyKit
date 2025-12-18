@@ -7,10 +7,7 @@ struct Params {
     uint dstWidth;
     uint dstHeight;
     uint angle;       // 0 / 90 / 180 / 270
-    uint useBicubic;  // 0 = bilinear, 1 = bicubic
-    uint tileWidth;
-    uint tileHeight;
-
+    
 };
 
 #define TILE_SIZE 16
@@ -155,48 +152,6 @@ inline float2 getLocalUV(threadgroup half2 localUV[],
 
 
 
-// --- Read Y from tile ---
-inline half readYFromTile(threadgroup half localY[][MAX_TILE_SIZE+2*BORDER],
-                           int2 tileOrigin,
-                           int2 coord,
-                           texture2d<half, access::read> srcY,
-                           half sharpenStrength,
-                          uint tileW,
-                          uint tileH
-                          )
-{
-    int lx = coord.x - tileOrigin.x + BORDER;
-    int ly = coord.y - tileOrigin.y + BORDER;
-
-    half val;
-
-
-    // 如果在 tile 範圍內
-    if(lx>=0 && lx< int(tileW)+2*BORDER && ly>=0 && ly<int(tileH)+2*BORDER) {
-        val = localY[ly][lx];
-
-        // 簡單 3x3 銳化
-        if(lx>0 && ly>0 && lx< int(tileW) +2*BORDER-1 && ly< int(tileH)+2*BORDER-1 && sharpenStrength>0.0) {
-            half neighborAvg = 0.25*(localY[ly-1][lx] + localY[ly+1][lx] + localY[ly][lx-1] + localY[ly][lx+1]);
-            half sharpen = val + sharpenStrength * (val - neighborAvg);
-            val = half(clamp(float(sharpen), 0.0, 1.0));
-        }
-    } else {
-        // 超出 tile，用原本讀取方式
-        int2 cl = clamp(coord, int2(0), int2(srcY.get_width()-1, srcY.get_height()-1));
-        val = srcY.read(uint2(cl)).x;
-    }
-
-    return val;
-}
-
-
-// 計算一維 index 的 helper
-inline uint localIndex(uint x, uint y, uint stride) {
-    return y * stride + x;
-}
-
-
 
 inline half2 readUVFromTile(threadgroup half2 localUV[],
                             int2 tileOriginUV,
@@ -247,32 +202,10 @@ kernel void rotateNV12_tileBicubicUV(
     uint dstH = params.dstHeight;
     if (gid.x >= dstW || gid.y >= dstH) return;
 
-    // --- Y tile (一維 threadgroup buffer) ---
-    threadgroup half localY[(MAX_TILE_SIZE + 2*BORDER)*(MAX_TILE_SIZE + 2*BORDER)];
-
-    uint tileSizeW = params.tileWidth;
-    uint tileSizeH = params.tileHeight;
 
     uint maxX = srcY.get_width();
     uint maxY = srcY.get_height();
-    tileSizeW = min(tileSizeW, maxX - group_id.x * tileSizeW + 1);
-    tileSizeH = min(tileSizeH, maxY - group_id.y * tileSizeH + 1);
 
-    int2 tileOrigin = int2(group_id.x * tileSizeW - BORDER, group_id.y * tileSizeH - BORDER);
-
-    // --- 填充 threadgroup buffer ---
-    for (uint j = tid.y; j < tileSizeH + 2*BORDER; j += params.tileHeight) {
-        for (uint i = tid.x; i < tileSizeW + 2*BORDER; i += params.tileWidth) {
-            int2 coord = tileOrigin + int2(i, j);               // 計算 global 座標
-            coord.x = clamp(coord.x, 0, int(maxX - 1));
-            coord.y = clamp(coord.y, 0, int(maxY - 1));
-
-            // 一維 index 計算
-            uint index = j * (MAX_TILE_SIZE + 2*BORDER) + i;
-            localY[index] = srcY.read(uint2(coord)).x;
-        }
-    }
-    threadgroup_barrier(mem_flags::mem_threadgroup);
 
     // --- dst -> src mapping 與 bicubic/linear 插值 ---
     float scaleX = float(W)/float(dstW);
@@ -297,71 +230,22 @@ kernel void rotateNV12_tileBicubicUV(
         sharpenStrength = half(clamp((1.0/shrinkFactor - 1.0) * 0.5, 0.0, 1.0));
     }
 
-    if (params.useBicubic != 0) {
-        yVal = bicubicSampleY_4fetch(
-            srcY,
-            linearClampSampler,
-            float2(srcXf, srcYf),
-            uint2(maxX, maxY)
-        );
 
-    } else {
-        int2 p0 = int2(floor(float2(srcXf, srcYf)));
-        int2 p1 = p0 + int2(1,0);
-        int2 p2 = p0 + int2(0,1);
-        int2 p3 = p0 + int2(1,1);
-        int2 texMax = int2(maxX-1, maxY-1);
-        p0 = clamp(p0, int2(0), texMax);
-        p1 = clamp(p1, int2(0), texMax);
-        p2 = clamp(p2, int2(0), texMax);
-        p3 = clamp(p3, int2(0), texMax);
-
-
-        // --- NEAREST for Y ---
-
-        int2 p = int2(round(srcXf), round(srcYf));
-        p = clamp(p, int2(0), int2(maxX-1, maxY-1));
-
-
-        yVal = bicubicSampleY_4fetch(
-            srcY,
-            linearClampSampler,
-            float2(srcXf, srcYf),
-            uint2(maxX, maxY)
-        );
+    yVal = bicubicSampleY_4fetch(
+        srcY,
+        linearClampSampler,
+        float2(srcXf, srcYf),
+        uint2(maxX, maxY)
+    );
 
 
 
-    }
 
     // Gamma 校正
     float yLinear = pow(float(yVal),2.2);
 
     yVal = half(pow(yLinear, 1.0/2.2));
     dstY.write(yVal, gid);
-
-    // UV plane 原邏輯保持不變
-    // --- UV tile (一維 threadgroup buffer) ---
-    threadgroup half2 localUV[(MAX_TILE_SIZE/2 + 2*BORDER) * (MAX_TILE_SIZE/2 + 2*BORDER)];
-
-    // 計算 UV tile 尺寸（因為是 4:2:0，每 2x2 Y 對應 1 UV）
-    uint tileSizeUW = (tileSizeW + 1) / 2;
-    uint tileSizeUH = (tileSizeH + 1) / 2;
-
-    int2 tileOriginUV = int2(group_id.x * tileSizeUW - BORDER, group_id.y * tileSizeUH - BORDER);
-
-    // 填充 threadgroup buffer
-    for (uint j = tid.y; j < tileSizeUH + 2*BORDER; j += max(1u, params.tileHeight/2)) {
-        for (uint i = tid.x; i < tileSizeUW + 2*BORDER; i += max(1u, params.tileWidth/2)) {
-            int2 coordUV = tileOriginUV + int2(i,j);
-            coordUV.x = clamp(coordUV.x, 0, int(srcUV.get_width() - 1));
-            coordUV.y = clamp(coordUV.y, 0, int(srcUV.get_height() - 1));
-
-            uint index = j * (MAX_TILE_SIZE/2 + 2*BORDER) + i;
-            localUV[index] = srcUV.read(uint2(coordUV)).rg;
-        }
-    }
-    threadgroup_barrier(mem_flags::mem_threadgroup);
 
 
 
