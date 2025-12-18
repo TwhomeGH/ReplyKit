@@ -27,7 +27,44 @@ half cubicHermite(half v0, half v1, half v2, half v3, half t) {
     return ((a0*t + a1)*t + a2)*t + a3;
 }
 
+
+// 4-fetch bicubic approximation
+half2 bicubicSampleApprox(texture2d<half, access::sample> tex,
+                           sampler s,
+                           float2 uv_px,
+                           uint2 texSize) {
+
+    float2 texSizeF = float2(texSize);
+    float2 uv = uv_px / texSizeF; // convert pixel coords to [0,1] uv
+
+    // 計算整數像素位置
+    float2 pixel = uv * texSizeF - 0.5;
+    int2 iPix = int2(floor(pixel));
+    float2 f = pixel - float2(iPix);
+
+    // sample 四個點 (2x2 bilinear fetches)
+    float2 uv00 = (float2(iPix) + float2(0.0,0.0) + 0.5) / texSizeF;
+    float2 uv10 = (float2(iPix) + float2(1.0,0.0) + 0.5) / texSizeF;
+    float2 uv01 = (float2(iPix) + float2(0.0,1.0) + 0.5) / texSizeF;
+    float2 uv11 = (float2(iPix) + float2(1.0,1.0) + 0.5) / texSizeF;
+
+    float2 c00 = float2(tex.sample(s, uv00).rg);
+    float2 c10 = float2(tex.sample(s, uv10).rg);
+    float2 c01 = float2(tex.sample(s, uv01).rg);
+    float2 c11 = float2(tex.sample(s, uv11).rg);
+
+    // 先對 x 做 cubic interpolation（近似用 bilinear）：
+    float2 col0 = mix(c00, c10, f.x);
+    float2 col1 = mix(c01, c11, f.x);
+
+    // 再對 y 做 cubic interpolation（近似用 bilinear）
+    float2 result = mix(col0, col1, f.y);
+
+    return half2(result);
+}
+
 // --- Bicubic sample Y ---
+
 
 half bicubicSampleY(texture2d<half, access::read> tex, float2 uv, uint2 texSize) {
     int2 p = int2(floor(uv));
@@ -190,52 +227,17 @@ inline half2 readUVFromTile(threadgroup half2 localUV[],
 
 
 
-
-// --- Bicubic sample UV ---
-half2 bicubicSampleUV(
-    texture2d<half, access::read> tex,
-    float2 uv_px,
-    uint2 texSize
-) {
-    // 對齊 pixel center（原本隱含，現在顯式）
-    uv_px -= 0.5;
-
-    int2 p = int2(floor(uv_px));
-    float2 f = uv_px - float2(p);
-
-    float2 arr[4][4];
-
-    for (int j = -1; j <= 2; j++) {
-        for (int i = -1; i <= 2; i++) {
-            int2 c = clamp(
-                p + int2(i, j),
-                int2(0),
-                int2(texSize) - 1
-            );
-            arr[j + 1][i + 1] = float2(tex.read(uint2(c)).rg);
-        }
-    }
-
-    float2 col[4];
-    for (int j = 0; j < 4; j++) {
-        col[j].x = cubicHermite(arr[j][0].x, arr[j][1].x, arr[j][2].x, arr[j][3].x, f.x);
-        col[j].y = cubicHermite(arr[j][0].y, arr[j][1].y, arr[j][2].y, arr[j][3].y, f.x);
-    }
-
-    float2 result;
-    result.x = cubicHermite(col[0].x, col[1].x, col[2].x, col[3].x, f.y);
-    result.y = cubicHermite(col[0].y, col[1].y, col[2].y, col[3].y, f.y);
-
-    return half2(result);
-}
-
-
+constexpr sampler linearClampSampler(
+    coord::normalized,
+    address::clamp_to_edge,
+    filter::linear
+);
 
 
 // --- Main kernel ---
 kernel void rotateNV12_tileBicubicUV(
     texture2d<half, access::read> srcY   [[ texture(0) ]],
-    texture2d<half, access::read> srcUV  [[ texture(1) ]],
+    texture2d<half, access::sample> srcUV  [[ texture(1) ]],
     texture2d<half, access::write> dstY  [[ texture(2) ]],
     texture2d<half, access::write> dstUV  [[ texture(3) ]],
     constant Params& params               [[ buffer(0) ]],
@@ -367,10 +369,7 @@ kernel void rotateNV12_tileBicubicUV(
         half2 uvVal;
 
 
-        // 無論 params.useBicubic 或縮小比例，都使用 bicubic
-
-        uvVal = bicubicSampleUV(srcUV, uvPos, uint2(srcUV.get_width(), srcUV.get_height()));
-
+        uvVal = bicubicSampleApprox(srcUV, linearClampSampler,uvPos, uint2(srcUV.get_width(), srcUV.get_height()));
 
 
         uint2 uvDst = uint2(gid.x/2, gid.y/2);
