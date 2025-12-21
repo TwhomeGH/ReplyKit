@@ -339,7 +339,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
 
-        
+
 
         case "bitRateChange":
             sendlog(message: "NewBit: \(String(describing: bitrate))")
@@ -638,7 +638,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 sendlog(message: "方向Free中")
                 #if os(iOS)
                 guard let self else { return }
-                Task.detached(priority: .utility) {
+                Task(priority: .utility) {
 
                     await self.updateVideoOrientation(from: deviceOrientation)
                 }
@@ -678,7 +678,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     // MARK: 斷線檢測
     func startDisconnectMonitor() {
-        disconnectMonitorTask = Task.detached { [weak self, weak streamStataus] in
+        disconnectMonitorTask = Task { [weak self, weak streamStataus] in
             while !(self?.isStopping ?? true) {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 await streamStataus?.checkDisconnect(timeout: 5)
@@ -772,7 +772,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         RPConfig.shared.applyLogMode()
 
         // 🔹 轉成 URL
-        sendlog(message: "🔹 推流 URL:\(fullURLString)")
+        sendlog(message: "🔹 推流 URL:\(fullURLString)",flush: true)
         sendlog(message: "App:\(appVolume)  Mic:\(micVolume) AppAdd:\(appAddVolume) MicAdd:\(micAddVolume)")
 
 
@@ -1010,22 +1010,31 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             do {
                 // 同時發出兩個請求
-                async let rtmpSuccess = withTimeout(5) {
+                let rtmpSuccess = try await withTimeout(5) {
                     await SocketClient.shared.requestRTMPKEY()
                 }
-                async let logSuccess = withTimeout(5) {
+                let logSuccess = try await withTimeout(5) {
                     await SocketClient.shared.requestLogConfig()
                 }
                 // 等待兩個結果
-                let (r, l) = try await (rtmpSuccess, logSuccess)
 
-                if r { sendlog(message:"RTMP 已完成同步") }
-                if l { sendlog(message:"LogConfig 已完成同步") }
+                sendlog(
+                    message:"RTMP: \(rtmpSuccess) LogConfig : \(logSuccess) 已完成同步",
+                    flush: true
+                )
 
             } catch TimeoutError.timedOut {
                 sendlog(message: "超時！AppGroup有效時不影響")
+                // ❗ 這裡要確保清理 pending continuation
+                    SocketClient.shared.cancelPendingRTMP()
+                    SocketClient.shared.cancelPendingLogConfig()
+
             } catch {
                 sendlog(message: "請求失敗! \(error)")
+
+                // ❗ 這裡要確保清理 pending continuation
+                    SocketClient.shared.cancelPendingRTMP()
+                    SocketClient.shared.cancelPendingLogConfig()
             }
 
                 // 🔹 從 UserDefaults 拿 RTMP 設定
