@@ -190,7 +190,7 @@ final class PIPService: NSObject, @unchecked Sendable {
 
     private var lastHashTime: CFTimeInterval = 0
     private let hashInterval: CFTimeInterval = 0.5
-    // 每 0.2 秒計算一次 hash
+    // 每 0.5 秒計算一次 hash
 
     private var debugImageView: UIImageView?
     private let pipStartThreshold: Int64 = 3 // 改成 3 幀
@@ -199,7 +199,7 @@ final class PIPService: NSObject, @unchecked Sendable {
     private var currentFPS: Double = 30
 
     private let defaultFPS: Double = 1       // 平常 FPS
-    private let decayRate: Double = 0.90     // 每次渲染衰減比例
+    private let decayRate: Double = 0.95     // 每次渲染衰減比例
 
     private var lastRenderTime = CACurrentMediaTime()
     private var lastImageHash: UInt64 = 0
@@ -244,7 +244,7 @@ final class PIPService: NSObject, @unchecked Sendable {
     }
 
 
-    @MainActor
+
     func markDirty() {
         lastRenderedHash = 0 // force renderIncremental 渲染新畫面
         isMark = true

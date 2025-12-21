@@ -51,24 +51,29 @@ func formattedTime() -> String {
 // MARK: RemoteLogger
 final class RemoteLogger {
     private var buffer: [[String: Any]] = []
+
+
     private let queue = DispatchQueue(label: "com.liveapp.remoteLogger", qos: .utility)
 
     // MARK: flushTime
     private let flushInterval: TimeInterval = 1.0
     private var flushTimer: DispatchSourceTimer?
 
-    // MARK: Rem Count
-    private var RemoteLogSize: Int = 0  // 累積的字元數
-    private let maxLogBufferSize = 1_000_000  // 約 1MB 上限，可自行調整
+    private let maxLogCount = 500  // 500 條 上限，可自行調整
 
 
     private var logURL: URL? = URL(string:RPConfig.shared.logURL)
 
 
+
     init() {
+
+        
         logger.debug("RPlogURL: \(self.logURL?.absoluteString ?? "nil")")
 
+
         setupFlushTimer()
+
     }
 
     deinit {
@@ -78,28 +83,73 @@ final class RemoteLogger {
 
         // 直接清理 buffer，不用呼叫 flush() 觸發 URLSession
         buffer.removeAll()
-        RemoteLogSize = 0
+
+    }
+
+    func addDebugLog(title:String = "ReplyKit[Remote]", _ msg:String = ""){
+
+        let time = Date()
+        let entry: [String: Any] = ["title": title, "body": msg, "time": time.description]
+
+
+        self.buffer.append(entry)
+        logger.debug("RemoteLogBuffer:\(msg)")
     }
 
     func log(title: String, message: String) {
         let time = Date()
         let entry: [String: Any] = ["title": title, "body": message, "time": time.description]
 
-        queue.async {
+        queue.async { [self] in
             self.buffer.append(entry)
 
-            // 計算 entry 真實大小
-            if let data = try? JSONSerialization.data(withJSONObject: entry) {
-                self.RemoteLogSize += data.count
-            }
-
-
-            if self.RemoteLogSize >= self.maxLogBufferSize {
+            // ✅ 不再每條 log 立即計算 JSON 大小
+            // 只在 flush 時才計算整個 buffer 的大小
+            if self.buffer.count >=  maxLogCount { // 可設定條數閾值，也可保持 flushInterval 控制
                 self.flush()
-
             }
         }
     }
+
+    func flush() {
+        queue.async { [weak self] in
+            guard let self = self, !self.buffer.isEmpty, let url = self.logURL else { return }
+
+            let logsToSend = self.buffer
+
+            let payload: [String: Any] = [
+                "logs": logsToSend
+            ]
+
+            // ✅ 只在 flush 時一次性序列化整個 buffer
+            guard let body = try? JSONSerialization.data(withJSONObject: payload) else {
+                return
+            }
+
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+            
+            request.httpBody = body
+
+            URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
+                guard let self = self else { return }
+
+                if let error = error {
+                    print("❌ Remote log failed:", error)
+                    // 不清理 buffer
+                } else {
+                    // 成功發送才清理
+                    self.queue.async {
+                        self.buffer.removeAll()
+
+                    }
+                }
+            }.resume()
+        }
+    }
+
 
     private func setupFlushTimer() {
 
@@ -115,42 +165,16 @@ final class RemoteLogger {
         flushTimer?.resume()
     }
 
-    func flush() {
-        queue.async { [weak self] in
-            guard let self = self, !self.buffer.isEmpty, let url = self.logURL else { return }
 
-            let logsToSend = self.buffer
-            guard let body = try? JSONSerialization.data(withJSONObject: logsToSend) else { return }
-
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = body
-
-            URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
-                guard let self = self else { return }
-
-                if let error = error {
-                    print("❌ Remote log failed:", error)
-                    // 不清理 buffer
-                } else {
-                    // 成功發送才清理
-                    self.queue.async {
-                        self.buffer.removeAll()
-                        self.RemoteLogSize = 0
-                    }
-                }
-            }.resume()
-        }
-    }
 }
 
 
 
+// MARK: New LogManager
 final class LogManager {
     static let shared = LogManager()
 
-    enum Mode { case local, remote ,both }
+    enum Mode { case local, remote, both }
 
     private let logQueue = DispatchQueue(label: "com.liveapp.logQueue", qos: .utility)
     private var localLogBuffer: [String] = []
@@ -159,18 +183,16 @@ final class LogManager {
     private let groupID = "group.nuclear.liveAPP"
 
     // MARK: Rem Count
-    private var localLogSize: Int = 0  // 累積的字元數
+    private var localLogSize: Int = 0  // 累積字元數
     private let maxLogBufferSize = 1_000_000  // 約 1MB 上限，可自行調整
 
     // MARK: flush寫入間隔
     var flushInterval: TimeInterval = 1.0
-    var flushTimer: DispatchSourceTimer?
+    private var flushTimer: DispatchSourceTimer?
 
     var isActive = true
 
-
     private var lastNotifyTime: Date = .distantPast
-
     var notifyThrottle: TimeInterval = 1.0
 
     private var remoteLogger: RemoteLogger?
@@ -179,20 +201,53 @@ final class LogManager {
         didSet {
             switch mode {
             case .remote:
-                if remoteLogger == nil { remoteLogger = RemoteLogger() }
+                if remoteLogger == nil {
+                    remoteLogger = RemoteLogger()
+                }
             case .local:
                 remoteLogger?.flush()
                 remoteLogger = nil
-
             case .both:
-                if remoteLogger == nil { remoteLogger = RemoteLogger() }
-
-
+                if remoteLogger == nil {
+                    remoteLogger = RemoteLogger()
+                }
             }
+        }
+    }
+
+    func setMode(_ Num:Int = 1){
+
+        switch Num {
+        case 0:
+            self.mode = .remote
+            remoteLogger?.addDebugLog("logMode : 只在外部")
+
+        case 1:
+            self.mode = .local
+            addDebugLog("logMode : 只在App")
+        case 2:
+            self.mode = .both
+            addDebugLog("logMode : 同時App + 外部")
+
+            remoteLogger?.addDebugLog("logMode : 同時App + 外部")
 
 
+        default:
+            self.mode = .local
+            addDebugLog("logMode : 只在App")
 
         }
+
+    }
+
+
+
+    private func addDebugLog(_ msg:String = ""){
+
+        self.localLogBuffer.append(msg)
+        self.localLogSize += msg.utf8.count
+
+        logger.debug("LogBuffer:\(msg)")
     }
 
     private init() {
@@ -203,90 +258,68 @@ final class LogManager {
     func forceFlush() {
         logQueue.sync {
             flushLocalLogs(forceNotify: true)
-            // 先取消舊的 timer
             flushTimer?.cancel()
             flushTimer = nil
             remoteLogger?.flush()
             remoteLogger = nil
-
             isActive = false
         }
     }
 
     func log(title: String = "ReplyKit", message: String, flushImmediately: Bool = false) {
-
-        if !isActive {
-            return
-        }
-        
+        guard isActive else { return }
         let logMessage = "\(formattedTime()): \(title): \(message)\n"
 
         logQueue.async {
-
-
             switch self.mode {
-                    case .local:
-                        self.localLogBuffer.append(logMessage)
-                        self.localLogSize += logMessage.utf8.count
+            case .local:
+                self.localLogBuffer.append(logMessage)
+                self.localLogSize += logMessage.utf8.count
+                if flushImmediately || self.localLogSize >= self.maxLogBufferSize {
+                    self.flushLocalLogs()
+                }
 
-                    if flushImmediately || self.localLogSize >= self.maxLogBufferSize {
-                            self.flushLocalLogs()
-                        }
+            case .remote:
+                self.remoteLogger?.log(title: title, message: message)
 
-                    case .remote:
-                        self.remoteLogger?.log(title: title, message: message)
-                    case .both:
-
-                        self.localLogBuffer.append(logMessage)
-                        self.localLogSize += logMessage.utf8.count
-
-                        if  flushImmediately || self.localLogSize >= self.maxLogBufferSize {
-                            self.flushLocalLogs()
-                        }
-
-                        self.remoteLogger?.log(title: title, message: message)
-                    }
-
-
+            case .both:
+                self.localLogBuffer.append(logMessage)
+                self.localLogSize += logMessage.utf8.count
+                if flushImmediately || self.localLogSize >= self.maxLogBufferSize {
+                    self.flushLocalLogs()
+                }
+                self.remoteLogger?.log(title: title, message: message)
+            }
         }
     }
 
     func setupFlushTimer() {
-
-        // 先取消舊的 timer
         flushTimer?.cancel()
         flushTimer = nil
 
         isActive = true
+        lastNotifyTime = Date()
 
-        // 延遲通知主 App
-        let now = Date()
-        lastNotifyTime = now
         flushTimer = DispatchSource.makeTimerSource(queue: logQueue)
         flushTimer?.schedule(deadline: .now() + flushInterval, repeating: flushInterval)
-
         flushTimer?.setEventHandler { [weak self] in
             guard let self = self else { return }
-
             if self.mode == .local || self.mode == .both {
-                    self.flushLocalLogs()
+                self.flushLocalLogs()
             }
-
         }
         flushTimer?.resume()
     }
 
     private func flushLocalLogs(forceNotify: Bool = false) {
         guard !localLogBuffer.isEmpty else { return }
+
         let bufferCopy = localLogBuffer.joined()
         localLogBuffer.removeAll()
         localLogSize = 0
 
-
-
         guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupID) else { return }
         let fileURL = containerURL.appendingPathComponent(logFileName)
-
 
         if let data = bufferCopy.data(using: .utf8) {
             if FileManager.default.fileExists(atPath: fileURL.path),
@@ -299,25 +332,32 @@ final class LogManager {
             }
         }
 
-        // 延遲通知主 App
-        let now = Date()
-        if forceNotify || now.timeIntervalSince(lastNotifyTime) > notifyThrottle {
-            lastNotifyTime = now
-            DispatchQueue.global(qos: .utility).async {
-                CFNotificationCenterPostNotification(
-                    CFNotificationCenterGetDarwinNotifyCenter(),
-                    CFNotificationName("liveAPP.log" as CFString),
-                    nil,
-                    nil,
-                    true
-                )
-            }
-        }
+        notifyMainAppIfNeeded(forceNotify: forceNotify)
     }
 
+    // MARK: - 通知主 App（優化版）
+    private func notifyMainAppIfNeeded(forceNotify: Bool = false) {
+        let now = Date()
+        guard forceNotify || now.timeIntervalSince(lastNotifyTime) > notifyThrottle else { return }
+        lastNotifyTime = now
 
+        // 直接在 logQueue 執行，避免不必要的 context switch
+        CFNotificationCenterPostNotification(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            CFNotificationName("liveAPP.log" as CFString),
+            nil,
+            nil,
+            true
+        )
+    }
+
+    // MARK: - 時間格式化
+    private func formattedTime() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+        return formatter.string(from: Date())
+    }
 }
-
 
 
 
@@ -424,17 +464,7 @@ final class RPConfig {
     }
 
     func applyLogMode() {
-        switch logMode {
-        case 1:
-            LogManager.shared.mode = .local
-        case 0:
-            LogManager.shared.mode = .remote
-        case 2:
-            LogManager.shared.mode = .both
-        default:
-            LogManager.shared.mode = .local
-
-        }
+        LogManager.shared.setMode(logMode)
     }
 
     
@@ -460,7 +490,6 @@ func sendlog(title: String = "ReplyKit", message: String, mode: Int = 0,flush:Bo
     }
 
     if RPConfig.shared.enableLog {
-
         if RPConfig.shared.onLogPage {
             LogManager.shared
                 .log(title:title,message: message,flushImmediately: flush)

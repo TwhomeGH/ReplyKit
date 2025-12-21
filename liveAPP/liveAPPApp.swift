@@ -39,44 +39,93 @@ struct LogItem: Identifiable, Hashable {
     let message: String
 }
 
-// ObservableObject 接收 Notification
 
 
-final class LogModel: ObservableObject {
-    @Published private(set) var messages: [LogItem] = []
-    private var cancellable: AnyCancellable?
+// MARK: 日誌緩衝區
+final class LogBuffer {
+    static let shared = LogBuffer()
 
-    init() {
-        // 訂閱通知，即時更新 messages
-        cancellable = NotificationCenter.default.publisher(for: .appLogNotification)
-            .compactMap { $0.object as? String }
-            .sink { [weak self] msg in
-                guard let self = self else { return }
-                Task { @MainActor in
-                    self.appendLog(message: msg)
-                }
-            }
-    }
+    private let queue = DispatchQueue(label: "log.buffer.queue")
+    private var buffer: [String] = []
 
-    @MainActor
-    private func appendLog(message: String) {
-        let item = LogItem(message: message)
-        self.messages.append(item)
-        // 保留最新 200 筆
-        if self.messages.count > 200 {
-            self.messages.removeFirst(self.messages.count - 200)
+    func push(_ msg: String) {
+        queue.async {
+            self.buffer.append(msg)
         }
     }
 
-    @MainActor
+    func drain(max: Int) -> [String] {
+        queue.sync {
+            guard !buffer.isEmpty else { return [] }
+            let count = min(max, buffer.count)
+            let result = Array(buffer.prefix(count))
+            buffer.removeFirst(count)
+            return result
+        }
+    }
+
+    func clear() {
+        queue.async {
+            self.buffer.removeAll()
+        }
+    }
+}
+
+
+// MARK: 新日誌區塊
+final class LogModel: ObservableObject {
+
+    @Published private(set) var messages: [LogItem] = []
+
+    private var timer: DispatchSourceTimer?
+
+    /// UI 更新頻率（秒）
+    private let refreshInterval: TimeInterval = 0.2
+    /// 每次最多吃幾筆 log
+    private let batchLimit = 20
+    /// UI 最多保留筆數
+    private let maxMessages = 200
+
+    init() {
+        startLogPump()
+    }
+
+    private func startLogPump() {
+        let t = DispatchSource.makeTimerSource(queue: .main)
+        t.schedule(deadline: .now(), repeating: refreshInterval)
+        t.setEventHandler { [weak self] in
+            guard let self else { return }
+            let logs = LogBuffer.shared.drain(max: self.batchLimit)
+            guard !logs.isEmpty else { return }
+            self.appendLogs(logs)
+        }
+        t.resume()
+        timer = t
+    }
+
+
+    private func appendLogs(_ logs: [String]) {
+        for msg in logs {
+            messages.append(LogItem(message: msg))
+        }
+        if messages.count > maxMessages {
+            messages.removeFirst(messages.count - maxMessages)
+        }
+    }
+
+
     func clearLogs() {
-        self.messages.removeAll()
+        messages.removeAll()
+        LogBuffer.shared.clear()
     }
 
     deinit {
-        cancellable?.cancel()
+        timer?.cancel()
+        timer = nil
     }
 }
+
+
 final class LogReceiver {
     private let maxPush = 20
     private let flushInterval: TimeInterval = 0.3
@@ -201,16 +250,127 @@ final class LogReceiver {
     private func flushBuffer() {
         guard !buffer.isEmpty else { return }
         let linesToSend = buffer
+
         buffer.removeAll()
 
+        for line in linesToSend {
+            LogBuffer.shared.push(line)
+        }
 
-            for line in linesToSend {
-                NotificationCenter.default.post(name: .appLogNotification, object: line)
-            }
+
         
+
     }
 }
 
+
+
+// MARK: RemoteLog
+final class RemoteLogBuffer {
+    static let shared = RemoteLogBuffer()
+
+    private let queue = DispatchQueue(label: "remote.log.buffer.queue")
+    private var buffer: [[String: String]] = []
+
+    /// 最多暫存幾筆，超過就丟
+    private let maxBufferSize = 300
+
+    func push(title: String, message: String) {
+        let item = [
+            "title": title,
+            "body": message,
+            "time": formatTime()
+        ]
+
+        queue.async {
+            if self.buffer.count >= self.maxBufferSize {
+                // 丟掉最舊的
+                self.buffer.removeFirst()
+            }
+            self.buffer.append(item)
+        }
+    }
+
+    func drain(max: Int) -> [[String: String]] {
+        queue.sync {
+            guard !buffer.isEmpty else { return [] }
+            let count = min(max, buffer.count)
+            let result = Array(buffer.prefix(count))
+            buffer.removeFirst(count)
+            return result
+        }
+    }
+}
+
+// MARK: RemoteLogSend
+final class RemoteLogSender {
+
+    static let shared = RemoteLogSender()
+
+    private var timer: DispatchSourceTimer?
+    private let session = URLSession(configuration: .ephemeral)
+
+    private let flushInterval: TimeInterval = 2.0
+    private let batchLimit = 50
+
+    private var started = false
+
+
+    func stop() {
+        guard started else { return }
+
+            timer?.cancel()
+            timer = nil
+            started = false
+        }
+
+    func start() {
+
+        guard !started else { return }
+             started = true
+
+        let t = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
+        t.schedule(deadline: .now() + flushInterval, repeating: flushInterval)
+        t.setEventHandler {
+            self.flush()
+        }
+        t.resume()
+        timer = t
+    }
+
+    private func flush() {
+        let logs = RemoteLogBuffer.shared.drain(max: batchLimit)
+        guard !logs.isEmpty else { return }
+
+        sendBatch(logs)
+    }
+
+    private func sendBatch(_ logs: [[String: String]]) {
+        let urla = LPConfig.shared.logURL
+        guard let url = URL(string: urla) else { return }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let payload: [String: Any] = [
+            "logs": logs
+        ]
+
+        guard let body = try? JSONSerialization.data(withJSONObject: payload) else {
+            return
+        }
+        request.httpBody = body
+
+        session.dataTask(with: request) { _, _, _ in
+            // 失敗直接忽略（log 本來就不重要）
+        }.resume()
+    }
+
+    deinit {
+        timer?.cancel()
+    }
+}
 
 func remotelog(title:String="liveApp",message:String) {
 
@@ -269,38 +429,36 @@ func formatTime() -> String {
     return timeString
 
 }
+
+
+// MARK: 日誌通知
 func sendlog(title:String = "liveApp",message: String) {
-    // 1. 目標 URL
 
-    let Enablelog:Bool = LPConfig.shared.enableLog
-    let mode2:Int = LPConfig.shared.logMode
+    guard LPConfig.shared.enableLog else { return }
+
+
     let timeString = formatTime()
+    let full = "\(timeString): \(title):\(message)"
+
+    // MARK: 日誌緩衝區
+    LogBuffer.shared.push(full)
 
 
-    logger.info("EnableLog:\(Enablelog)")
-    if Enablelog {
-        switch mode2 {
+    // 遠端 log 可以保留（但最好也 async）
+    if LPConfig.shared.logMode == 0 || LPConfig.shared.logMode == 2 {
 
-            case 0:
-            remotelog(title:title,message: message)
+        RemoteLogSender.shared.start()
+        RemoteLogBuffer.shared.push(title: title, message: message)
 
-            case 1:
-                NotificationCenter.default.post(name: .appLogNotification, object: "\(timeString): \(title):\(message)")
-            case 2:
-            NotificationCenter.default.post(name: .appLogNotification, object: "\(timeString): \(title):\(message)")
-            remotelog(title:title,message: message)
-
-            default:
-                NotificationCenter.default.post(name: .appLogNotification, object: "\(timeString): \(title):\(message)")
-
-        }
-
+    } else {
+        // 取消遠端 log
+        RemoteLogSender.shared.stop()
 
     }
 
+    logger.info("logMode:\(LPConfig.shared.logMode) \(title,privacy:.public):\(message,privacy:.public)")
 
 
-    logger.info("logMode:\(mode2) \(title,privacy:.public):\(message,privacy:.public)")
 
 
 }
@@ -383,6 +541,7 @@ func postSystemNotification(title: String, body: String) {
 //    }
 //}
 //
+
 @main
 struct liveAPPApp: App {
     // 建立 delegate 實例

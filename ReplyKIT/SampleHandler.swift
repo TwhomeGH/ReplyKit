@@ -357,10 +357,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         case "logMode":
             let logM=SharedDefaults.group?.integer(forKey: "logMode") ?? 0
+
+
+
             sendlog(message: "LOG Mode \(logM)")
-            if logM == 0 {
-                LogManager.shared.forceFlush()
-            }
+           
             RPConfig.shared.logMode=logM
             RPConfig.shared.applyLogMode()
 
@@ -985,6 +986,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         withSetupInfo setupInfo: [String : NSObject]?
     ) {
         // User has requested to start the broadcast. Setup info from the UI extension can be suppdlied but optional.
+
+
 
         logger.info("運行通知")
 

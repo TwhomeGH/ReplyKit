@@ -205,37 +205,19 @@ final class PIPServiceMessages {
         container.masksToBounds = true
     }
 
-    // MARK: - Add Message
-    func addMessage(user: String, message: String, img: UIImage? = nil, giftImg: UIImage? = nil, isMain:Bool = true) {
 
-        // 自動判斷訊息類型
-        let type: MessageType
-
-
-        if isMain {
-            type = .primary
-        } else {
-            type = .secondary
-        }
-
-        let fontSize: CGFloat
-        let avatarSizeLocal: CGFloat
-        let giftSizeLocal: CGFloat
-
-        switch type {
-        case .primary:
-            fontSize = 15
-            avatarSizeLocal = 20
-            giftSizeLocal = 20
-        case .secondary:
-            fontSize = 10
-            avatarSizeLocal = 18
-            giftSizeLocal = 18
-        }
-
-        let localFont = UIFont.systemFont(ofSize: fontSize)
-
-
+    // MARK: - Build Message Tuple（抽出來重用）
+    private func buildMessageTuple(
+        user: String,
+        message: String,
+        img: UIImage?,
+        giftImg: UIImage?,
+        showAvatar: Bool,
+        showName: Bool,
+        font: UIFont,
+        avatarSizeLocal: CGFloat,
+        giftSizeLocal: CGFloat
+    ) -> MessageLayerTuple {
 
         // Avatar
         let avatarLayer = CALayer()
@@ -247,29 +229,29 @@ final class PIPServiceMessages {
             width: avatarSizeLocal,
             height: avatarSizeLocal
         )
+        avatarLayer.opacity = showAvatar ? 1 : 0
         container.addSublayer(avatarLayer)
 
         // Name
         let nameLayer = CATextLayer()
         nameLayer.string = user
-        nameLayer.font = localFont
-        nameLayer.fontSize = fontSize
+        nameLayer.font = font
+        nameLayer.fontSize = font.pointSize
         nameLayer.foregroundColor = UIColor.white.cgColor
         nameLayer.contentsScale = UIScreen.main.scale
         nameLayer.isWrapped = true
-        nameLayer.truncationMode = .none
         nameLayer.alignmentMode = .left
+        nameLayer.opacity = showName ? 1 : 0
         container.addSublayer(nameLayer)
 
         // Message
         let messageLayer = CATextLayer()
         messageLayer.string = message
-        messageLayer.font = localFont
-        messageLayer.fontSize = fontSize
+        messageLayer.font = font
+        messageLayer.fontSize = font.pointSize
         messageLayer.foregroundColor = UIColor.white.cgColor
         messageLayer.contentsScale = UIScreen.main.scale
         messageLayer.isWrapped = true
-        messageLayer.truncationMode = .none
         messageLayer.alignmentMode = .left
         container.addSublayer(messageLayer)
 
@@ -283,7 +265,6 @@ final class PIPServiceMessages {
             giftLayer = layer
         }
 
-        // 建立 tuple
         let tuple = MessageLayerTuple(
             avatar: avatarLayer,
             name: nameLayer,
@@ -291,52 +272,173 @@ final class PIPServiceMessages {
             gift: giftLayer
         )
 
-        switch type {
-        case .primary:
-            tuple.verticalSpacing = 4
-        case .secondary:
-            tuple.verticalSpacing = 2
-        }
-
-        // 儲存該訊息的大小資訊
-        tuple.font = localFont
+        tuple.font = font
         tuple.avatarSize = avatarSizeLocal
         tuple.giftSize = giftSizeLocal
+        tuple.verticalSpacing = 4
+        tuple.isNew = true
+        tuple.alpha = 1.0
 
-        // 計算名字與訊息高度
-        let maxNameWidth = container.bounds.width - leftPadding*2 - avatarSizeLocal - horizontalSpacing
-        let nameHeight = (user as NSString).boundingRect(
-            with: CGSize(width: maxNameWidth, height: .greatestFiniteMagnitude),
-            options: [.usesLineFragmentOrigin, .usesFontLeading],
-            attributes: [.font: localFont],
-            context: nil
-        ).height
+        // 先計算高度（layout 會再修正）
+        let maxNameWidth = container.bounds.width
+            - leftPadding * 2
+            - avatarSizeLocal
+            - horizontalSpacing
 
-        let maxMessageWidth = container.bounds.width - leftPadding*2 - avatarSizeLocal - horizontalSpacing - (giftImg != nil ? giftSizeLocal + 2 : 0)
+        let nameHeight = showName
+            ? (user as NSString).boundingRect(
+                with: CGSize(width: maxNameWidth, height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                attributes: [.font: font],
+                context: nil
+            ).height
+            : 0
+
+        let maxMessageWidth = container.bounds.width
+            - leftPadding * 2
+            - avatarSizeLocal
+            - horizontalSpacing
+            - (giftLayer != nil ? giftSizeLocal + 2 : 0)
+
         let messageHeight = (message as NSString).boundingRect(
             with: CGSize(width: maxMessageWidth, height: .greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
-            attributes: [.font: localFont],
+            attributes: [.font: font],
             context: nil
         ).height
-
-        tuple.isNew = true
-
 
         let textBlockHeight = nameHeight + tuple.verticalSpacing + messageHeight
         tuple.height = max(avatarSizeLocal, textBlockHeight) + tuple.verticalSpacing
 
-        switch type {
-        case .primary:
-            stackedMessages.append(tuple)
-            layoutTargetsAndStartAnimation()
-        case .secondary:
-            replaceBottomMessage(tuple)
+        return tuple
+    }
+
+    private var lastDirtyTime: CFTimeInterval = 0
+
+
+    // MARK: 切分訊息 如果太長
+    private func splitMessageIntoChunks(
+        message: String,
+        font: UIFont,
+        maxWidth: CGFloat,
+        maxHeight: CGFloat
+    ) -> [String] {
+
+        var result: [String] = []
+        var current = ""
+
+        let lines = message.components(separatedBy: "\n")
+
+        for line in lines {
+            let test = current.isEmpty ? line : current + "\n" + line
+
+            let height = (test as NSString).boundingRect(
+                with: CGSize(width: maxWidth, height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                attributes: [.font: font],
+                context: nil
+            ).height
+
+            if height > maxHeight {
+                if !current.isEmpty {
+                    result.append(current)
+                    current = line
+                } else {
+                    result.append(line)
+                }
+            } else {
+                current = test
+            }
         }
 
+        if !current.isEmpty {
+            result.append(current)
+        }
 
-
+        return result
     }
+
+
+
+    // MARK: - Add Message（Chunk 修正版，可直接替換）
+    func addMessage(
+        user: String,
+        message: String,
+        img: UIImage? = nil,
+        giftImg: UIImage? = nil,
+        isMain: Bool = true
+    ) {
+
+        Task.detached(priority: .utility) { [weak self] in
+            guard let self else { return }
+
+            let type: MessageType = isMain ? .primary : .secondary
+
+            let fontSize: CGFloat = (type == .primary) ? 15 : 10
+            let avatarSizeLocal: CGFloat = (type == .primary) ? 20 : 18
+            let giftSizeLocal: CGFloat = (type == .primary) ? 20 : 18
+            let font = UIFont.systemFont(ofSize: fontSize)
+
+            // secondary 不 chunk
+            if type == .secondary {
+                await MainActor.run {
+                    let tuple = self.buildMessageTuple(
+                        user: user,
+                        message: message,
+                        img: img,
+                        giftImg: giftImg,
+                        showAvatar: true,
+                        showName: true,
+                        font: font,
+                        avatarSizeLocal: avatarSizeLocal,
+                        giftSizeLocal: giftSizeLocal
+                    )
+                    self.replaceBottomMessage(tuple)
+                }
+                return
+            }
+
+            let maxMessageWidth =
+                self.container.bounds.width
+                - self.leftPadding * 2
+                - avatarSizeLocal
+                - self.horizontalSpacing
+                - (giftImg != nil ? giftSizeLocal + 2 : 0)
+
+            let maxChunkHeight =
+                self.container.bounds.height
+                - self.topMargin
+                - (self.bottomMessage?.height ?? 0)
+                - 8
+                - avatarSizeLocal
+
+            let chunks = self.splitMessageIntoChunks(
+                message: message,
+                font: font,
+                maxWidth: maxMessageWidth,
+                maxHeight: maxChunkHeight
+            )
+
+            await MainActor.run {
+                for (index, chunk) in chunks.enumerated() {
+                    let tuple = self.buildMessageTuple(
+                        user: user,
+                        message: chunk,
+                        img: img,
+                        giftImg: giftImg,
+                        showAvatar: index == 0,
+                        showName: index == 0,
+                        font: font,
+                        avatarSizeLocal: avatarSizeLocal,
+                        giftSizeLocal: giftSizeLocal
+                    )
+                    self.stackedMessages.append(tuple)
+                }
+                self.layoutTargetsAndStartAnimation()
+            }
+        }
+    }
+
 
     private func layoutBottomMessage() {
         guard let msg = bottomMessage else { return }
@@ -422,7 +524,8 @@ final class PIPServiceMessages {
         // 動畫每幀滑動
         let snapThreshold: CGFloat = 0.5
 
-        for msg in animatingMessages {
+        let activeAnimating = animatingMessages.prefix(8)
+        for msg in activeAnimating {
             let distance = msg.targetY - msg.startY
 
             if abs(distance) < snapThreshold {
@@ -536,11 +639,13 @@ final class PIPServiceMessages {
             )
         }
 
-        Task { @MainActor in
+        let now = CACurrentMediaTime()
+        if now - lastDirtyTime > 1.0 / 20 {
+            lastDirtyTime = now
             PIPService.shared.markDirty()
             PIPService.shared.isAnimatingMessages = true
-
         }
+
 
     }
 
