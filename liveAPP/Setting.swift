@@ -161,6 +161,8 @@ struct LogSettingView:View {
 
     @AppStorage("onlogPage",store:userDefaults) private var onlogPage = false
 
+    @AppStorage("PIPLog",store:userDefaults) private var PIPLog = false
+
 
     @AppStorage("BacklogTime",store:userDefaults) private var logTime = false
 
@@ -219,6 +221,18 @@ struct LogSettingView:View {
                 CFNotificationCenterPostNotification(cfCenter, CFNotificationName("DebugRotate" as CFString), nil, nil, true)
             }
             Text("啟用後顯示, 關於畫面GPU旋轉處理情況")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .padding(.bottom, 5)
+
+            Toggle(isOn: $PIPLog){
+                Text("啟用PIP子母窗口調試用日誌 ！")
+            }.onChange(of:PIPLog) { newValue in
+                logger.debug("PIPLog:\(newValue)")
+                LPConfig.shared.PIPLog = newValue
+            }
+
+            Text("啟用後顯示, 關於PIP畫面情況")
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .padding(.bottom, 5)
