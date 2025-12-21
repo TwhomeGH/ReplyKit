@@ -1564,7 +1564,7 @@
 //
 //    // MARK: - Batch Pipeline
 //    private func startBatchPipeline() {
-//        Task.detached { [weak self] in
+//        Task { [weak self] in
 //            guard let self = self else { return }
 //            for await batchItem in self.frameStreamHolder.stream {
 //                await self.waitForAvailableSlot()
