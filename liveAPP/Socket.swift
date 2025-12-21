@@ -5,16 +5,38 @@ import os
 
 //let logger = Logger(subsystem: "nuclear.liveAPP", category: "SocketServer")
 
+
+extension SocketServer.JSONValue {
+    var rawValue: Any? {
+        switch self {
+        case .string(let v): return v
+        case .int(let v): return v
+        case .double(let v): return v
+        case .bool(let v): return v
+        case .object(let v):
+            return v.mapValues { $0.rawValue }
+        case .array(let v):
+            return v.map { $0.rawValue }
+        case .null:
+            return nil
+        }
+    }
+}
 class SocketServer {
 
     // MARK: - Properties
 
     static let shared = try? SocketServer()
 
+    private var receiveBuffers: [ObjectIdentifier: Data] = [:]
 
     private var listener: NWListener?
-    private var connections: [NWConnection] = []
+    private var connections: [ObjectIdentifier: NWConnection] = [:]
+
     private let queue = DispatchQueue(label: "SocketServerQueue")
+
+    private let sendSemaphore = DispatchSemaphore(value: 4) // 同時最多 4 條連線
+
 
     // MARK: - Init
     init(port: UInt16 = 9322) throws {
@@ -32,64 +54,74 @@ class SocketServer {
 
     // MARK: - Handle New Connection
     private func handleNewConnection(_ connection: NWConnection) {
-        connections.append(connection)
-        logTo(
-                "New connection added. Total connections: \(self.connections.count)"
-            )
+        let id = ObjectIdentifier(connection)
+        connections[id] = connection
+        
+        logTo("New connection added. Total connections: \(self.connections.count)")
+
+
 
         connection.stateUpdateHandler = { [weak self] state in
+            guard let self = self else { return }
+
             switch state {
             case .ready:
-                self?.logTo("Connection ready: \(String(describing: connection))")
+
+                if self.connections[ObjectIdentifier(connection)] != nil {
+                    self.logTo("Connection ready: \(connection)")
+
+                }
+
+
                 //self?.sendInitialUserDefaults(to: connection)
             case .failed(let error):
-                self?.logTo("Connection failed: \(error.localizedDescription)")
-                self?.removeConnection(connection)
+                self.logTo("Connection failed: \(error.localizedDescription)")
+                self.removeConnection(connection)
             case .cancelled:
-                self?.logTo("Connection cancelled")
-                self?.removeConnection(connection)
+                self.logTo("Connection cancelled")
+                self.removeConnection(connection)
             default:
                 break
             }
         }
 
+
+        receiveBuffers[id] = Data()       // ✅ 為該連線創建專屬 buffer
+
         connection.start(queue: queue)
         receive(from: connection)
     }
 
-    private var receiveBuffer = Data()
 
     // MARK: - Receive Data
     private func receive(from connection: NWConnection) {
+        let id = ObjectIdentifier(connection)
+
+        guard connections[id] != nil else { return } // 連線已被移除，直接 return
+
         connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
             guard let self = self else { return }
 
-
             if let data = data, !data.isEmpty {
-                // 1️⃣ 累積到 buffer
-                self.receiveBuffer.append(data)
-
-                // 2️⃣ 拆包，每個 \n 為一個完整 JSON
-               while let range = self.receiveBuffer.firstRange(of: Data([0x0A])) {
-                   let packet = self.receiveBuffer.subdata(in: 0..<range.lowerBound)
-                   // 移除已處理的資料（包含 \n）
-                   self.receiveBuffer.removeSubrange(0...range.lowerBound)
-
-                   // 3️⃣ 處理單一 JSON packet
-                   self.handleReceivedData(packet, from: connection)
-               }
-
+                var buffer = self.receiveBuffers[id] ?? Data()
+                buffer.append(data)
+                while let range = buffer.firstRange(of: Data([0x0A])) {
+                    let packet = buffer.subdata(in: 0..<range.lowerBound)
+                    buffer.removeSubrange(0...range.lowerBound)
+                    self.handleReceivedData(packet, from: connection)
+                }
+                self.receiveBuffers[id] = buffer
             }
 
-
-
-            if isComplete || error != nil {
-                self.removeConnection(connection)
-            } else {
+            // 只在連線仍存在且未完成時再呼叫 receive
+            if self.connections[id] != nil && !isComplete && error == nil {
                 self.receive(from: connection)
+            } else {
+                self.removeConnection(connection)
             }
         }
     }
+
 
     func debugRTMP() {
         let payload: [String: Any] = [
@@ -120,146 +152,343 @@ class SocketServer {
 
     }
 
+    struct ChatBufferMessage: Identifiable {
+        let id = UUID()
+        let user: String
+        let msg: String
+        let img: String
+    }
+
+    private var messageBuffer: [ChatBufferMessage] = []
+
+    private var messageTimer: DispatchSourceTimer?
+
+
+
+    struct TypePayload: Codable {
+        let type:String
+    }
+
+    struct ChatMessage: Codable {
+        let user:String
+        let message:String
+        let img:String?
+        let giftImg:String?
+        var isMain:Bool?
+    }
+    enum JSONValue: Codable {
+        case string(String)
+        case int(Int)
+        case double(Double)
+        case bool(Bool)
+        case object([String: JSONValue])
+        case array([JSONValue])
+        case null
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.singleValueContainer()
+            if let v = try? container.decode(Bool.self) { self = .bool(v); return }
+            if let v = try? container.decode(Int.self) { self = .int(v); return }
+            if let v = try? container.decode(Double.self) { self = .double(v); return }
+            if let v = try? container.decode(String.self) { self = .string(v); return }
+            if let v = try? container.decode([String: JSONValue].self) { self = .object(v); return }
+            if let v = try? container.decode([JSONValue].self) { self = .array(v); return }
+            self = .null
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.singleValueContainer()
+            switch self {
+            case .string(let v): try container.encode(v)
+            case .int(let v): try container.encode(v)
+            case .double(let v): try container.encode(v)
+            case .bool(let v): try container.encode(v)
+            case .object(let v): try container.encode(v)
+            case .array(let v): try container.encode(v)
+            case .null: try container.encodeNil()
+            }
+        }
+    }
+
+
+
+    
+    func renderChatMessage(
+        user: String,
+        msg: String,
+        img: String?,
+        giftImg: String?,
+        isMain:Bool?
+    ) {
+
+
+
+
+        if let img = img, let giftImg = giftImg, let isMain = isMain {
+             logTo("取得聊天室訊息:\(user):\(msg) Img:\(img) GIFT:\(giftImg) isMain:\(isMain)")
+
+             Task { @MainActor in
+                 PIPService.shared
+                     .addMessage(
+                        user:user,
+                        msg:msg,
+                        imgURL:img,
+                        giftURL: giftImg,
+                        isMain: isMain
+                     )
+             }
+
+        } else if let img = img ,let isMain = isMain {
+             logTo("IMG取得聊天室訊息:\(user):\(msg) Img:\(img) GIFT:_ isMain:\(isMain)")
+             Task { @MainActor in
+                 PIPService.shared
+                     .addMessage(
+                        user:user,
+                        msg:msg,
+                        imgURL:img,
+                        giftURL: giftImg,
+                        isMain: isMain
+                     )
+             }
+
+        } else if let giftImg = giftImg ,let isMain = isMain {
+             logTo("GIFT取得聊天室訊息:\(user):\(msg) Img:_ GIFT:\(giftImg) isMain:\(isMain)")
+             Task { @MainActor in
+                 PIPService.shared
+                     .addMessage(
+                        user:user,
+                        msg:msg,
+                        imgURL:img,
+                        giftURL: giftImg,
+                        isMain: isMain
+                     )
+             }
+
+         } else {
+
+             logTo("U取得聊天室訊息:\(user):\(msg) Img:_ GIFT:_ isMain: True ")
+             Task { @MainActor in
+                 PIPService.shared
+                     .addMessage(
+                        user:user,
+                        msg:msg,
+                        imgURL:img,
+                        giftURL: giftImg,
+                        isMain: true
+                     )
+             }
+
+         }
+
+
+    }
     private func handleReceivedData(_ data: Data, from connection: NWConnection) {
 
 
-
-        guard let dict = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
-              let type = dict["type"] as? String else { return }
-
-        switch type {
-
-
-        case "UPSet":
-
-            guard let key = dict["key"] as? String,
-                  let VType = dict["ValueType"] as? String else {
-                return
-            }
-
-
-            var res : Any?
-
-            switch VType {
-
-            case "String":
-                res = userDefaults?.string(forKey: key)
-            case "Bool":
-                res = userDefaults?.bool(forKey: key)
-
-            case "Double":
-                res =  userDefaults?.double(forKey: key)
-            case "Int":
-                res =  userDefaults?.integer(forKey: key)
-
-            case "Float":
-                res =  userDefaults?.float(forKey: key)
-
-            default:
-                logTo("Unknow?")
-                return
-            }
-
-
-            guard let result = res else {
-                logTo("Value for key \(key) is nil")
-                return
-            }
-
-
-            let payload: [String: Any] = [
-
-                "type": "UPSet",
-                "key": key,
-                "value": result
-                ]
+        do {
+            let decoder = JSONDecoder()
             
-            sendToAll(payload: payload)
+            // 先只 decode type
+            let base = try decoder.decode(TypePayload.self, from: data)
+            
+            
+            switch base.type {
+                
+                
+            case "StreamMessage":
+
+                // 假設你解析 JSON 得到 resultValue
+                let dict = try decoder.decode(ChatMessage.self,
+                    from: data
+                )
+
+                let user = dict.user
+                let msg = dict.message
+
+                guard !user.isEmpty, !msg.isEmpty else {
+                    logTo("解包失敗_StreamMessage")
+                    return
+                }
+
+                let img : String? = dict.img
+                let giftImg: String? = dict.giftImg
+                let isMain: Bool? = dict.isMain
 
 
 
-        case "logConfig":
-            let payload: [String: Any] = [
-                "type": "logConfig",
-                "logMode": userDefaults?.integer(forKey: "logMode")
-                ?? 1,
 
-                "logURL": userDefaults?
-                    .string(
-                        forKey: "logURL"
-                    ) ?? "http://192.168.0.242:3000/post",
+                renderChatMessage(
+                    user: user,
+                    msg: msg,
+                    img: img,
+                    giftImg: giftImg,
+                    isMain: isMain
+                )
 
 
 
-                "onlogPage":userDefaults?.bool(forKey: "onlogPage")
-                ?? false,
-                "onAudioPage":userDefaults?.bool(forKey: "onAudioPage") ?? false,
+                
+                
+            case "UPSet":
 
-                "enablelog":userDefaults?.bool(forKey: "Enablelog")
-                ?? false
+                // 假設你解析 JSON 得到 resultValue
+                let dict = try decoder.decode(
+                    [String: JSONValue].self,
+                    from: data
+                )
+
+                guard let key = dict["key"]?.rawValue as? String,
+                      let VType = dict["ValueType"]?.rawValue as? String else {
+                    return
+                }
+                
+                
+                var res : Any?
+                
+                switch VType {
+                    
+                case "String":
+                    res = userDefaults?.string(forKey: key)
+                case "Bool":
+                    res = userDefaults?.bool(forKey: key)
+                    
+                case "Double":
+                    res =  userDefaults?.double(forKey: key)
+                case "Int":
+                    res =  userDefaults?.integer(forKey: key)
+                    
+                case "Float":
+                    res =  userDefaults?.float(forKey: key)
+                    
+                default:
+                    logTo("Unknow?")
+                    return
+                }
+                
+                
+                guard let result = res else {
+                    logTo("Value for key \(key) is nil")
+                    return
+                }
+                
+                
+                let payload: [String: Any] = [
+                    
+                    "type": "UPSet",
+                    "key": key,
+                    "value": result
                 ]
+                
+                sendTo(connection,payload: payload)
+                
+                
+                
+            case "logConfig":
+                let payload: [String: Any] = [
+                    "type": "logConfig",
+                    "logMode": userDefaults?.integer(forKey: "logMode")
+                    ?? 1,
+                    
+                    "logURL": userDefaults?
+                        .string(
+                            forKey: "logURL"
+                        ) ?? "http://192.168.0.242:3000/post",
+                    
+                    
+                    
+                    "onlogPage":userDefaults?.bool(forKey: "onlogPage")
+                    ?? false,
+                    "onAudioPage":userDefaults?.bool(forKey: "onAudioPage") ?? false,
+                    
+                    "enablelog":userDefaults?.bool(forKey: "Enablelog")
+                    ?? false
+                ]
+                
+                sendToAll(payload: payload)
+                
+            case "requestRTMP":
+                let payload: [String: Any] = [
+                    "type": "RTMP",
+                    "rtmpURL": userDefaults?.string(forKey: "rtmpURL") ?? "rtmp://192.168.0.102/live",
+                    "rtmpKey": userDefaults?.string(forKey: "rtmpKey") ?? "test",
+                    "BitRate": userDefaults?.integer(forKey: "bitRate") ?? 3_900_000,
+                    "ChangeBit": userDefaults?.bool(forKey: "ChangeBit") ?? false,
+                    "h264level": userDefaults?
+                        .string(forKey: "h264level") ?? "AutoHigh",
+                    
+                    
+                    
+                    "dstW": userDefaults?.integer(forKey: "dstW") ?? 0,
+                    "dstH": userDefaults?.integer(forKey: "dstH") ?? 0,
+                    
+                    "appVolume": userDefaults?.float(forKey: "appVolume") ?? 1.0,
+                    "micVolume": userDefaults?.float(forKey: "micVolume") ?? 1.0,
+                    "appVolumeAdd": userDefaults?
+                        .double(forKey: "appAddVolume") ?? 1.0,
+                    "micVolumeAdd": userDefaults?
+                        .double(forKey: "micAddVolume") ?? 1.0,
+                    
+                    
+                    
+                ]
+                
+                var CPayloadKey = payload
+                
+                if let key = payload["rtmpKey"] as? String {
+                    CPayloadKey["rtmpKey"] = fixlogSafeKey(key)
+                }
+                
+                logTo("RTMP DebugAdd[Socket]\(CPayloadKey)")
+                sendToAll(payload: payload)
+                
+            case "requestSettings":
+                logTo("Sync UserDefaults to client")
+                sendInitialUserDefaults(to: connection)
+                
+            case "settings":
 
-            sendToAll(payload: payload)
-
-        case "requestRTMP":
-            let payload: [String: Any] = [
-                "type": "RTMP",
-                "rtmpURL": userDefaults?.string(forKey: "rtmpURL") ?? "rtmp://192.168.0.102/live",
-                "rtmpKey": userDefaults?.string(forKey: "rtmpKey") ?? "test",
-                "BitRate": userDefaults?.integer(forKey: "bitRate") ?? 3_900_000,
-                "ChangeBit": userDefaults?.bool(forKey: "ChangeBit") ?? false,
-                "h264level": userDefaults?
-                    .string(forKey: "h264level") ?? "AutoHigh",
+                // 假設你解析 JSON 得到 resultValue
+                let dict = try decoder.decode(
+                    [String: JSONValue].self,
+                    from: data
+                )
 
 
+                if let key = dict["key"]?.rawValue as? String, let valueAny = dict["value"]?.rawValue {
+                    let safeValue: Any = safeJSONValue(valueAny) // 明確 Any
+                    let safeValueStr = String(describing: safeValue)
+                    logTo("Updated UserDefaults: \(key) = \(safeValueStr)")
+                    
+                    UserDefaults.standard.set(valueAny, forKey: key) // 用原值存 UserDefaults
+                    
+                    broadcast(key: key, value: safeValue) // 型別明確，不再報錯
+                }
+                
+            case "log":
+                // 假設你解析 JSON 得到 resultValue
+                let dict = try decoder.decode(
+                    [String: JSONValue].self,
+                    from: data
+                )
 
-                "dstW": userDefaults?.integer(forKey: "dstW") ?? 0,
-                "dstH": userDefaults?.integer(forKey: "dstH") ?? 0,
 
-                "appVolume": userDefaults?.float(forKey: "appVolume") ?? 1.0,
-                "micVolume": userDefaults?.float(forKey: "micVolume") ?? 1.0,
-                "appVolumeAdd": userDefaults?
-                    .double(forKey: "appAddVolume") ?? 1.0,
-                "micVolumeAdd": userDefaults?
-                    .double(forKey: "micAddVolume") ?? 1.0,
+                if let message = dict["message"]?.rawValue as? String {
+                    appendLogToFile(message)
+                    logTo("Received log: \(message)")
+                }
+                
+            default:
+                logTo("Unknown message type: \(base.type)")
 
-
-
-            ]
-
-            var CPayloadKey = payload
-
-            if let key = payload["rtmpKey"] as? String {
-                CPayloadKey["rtmpKey"] = fixlogSafeKey(key)
             }
+            
+        }  catch {
 
-            logTo("RTMP DebugAdd[Socket]\(CPayloadKey)")
-            sendToAll(payload: payload)
+            removeConnection(connection)
+            logTo("[Socket]Decode failed ❌ \(error)")
 
-        case "requestSettings":
-            logTo("Sync UserDefaults to client")
-            sendInitialUserDefaults(to: connection)
-
-        case "settings":
-            if let key = dict["key"] as? String, let valueAny = dict["value"] {
-                let safeValue: Any = safeJSONValue(valueAny) // 明確 Any
-                let safeValueStr = String(describing: safeValue)
-                logTo("Updated UserDefaults: \(key) = \(safeValueStr)")
-
-                UserDefaults.standard.set(valueAny, forKey: key) // 用原值存 UserDefaults
-
-                broadcast(key: key, value: safeValue) // 型別明確，不再報錯
-            }
-
-        case "log":
-            if let message = dict["message"] as? String {
-                appendLogToFile(message)
-                logTo("Received log: \(message)")
-            }
-
-        default:
-            logTo("Unknown message type: \(type)")
         }
+        
     }
 
     // MARK: - Send Data
@@ -270,13 +499,21 @@ class SocketServer {
         data.append(0x0A) // '\n'
 
 
-        for conn in connections {
-            conn.send(content: data, completion: .contentProcessed { error in
-                if let error = error {
-                    self.logTo("Send error: \(error.localizedDescription)")
-                }
-            })
+        for (_, conn) in connections {
+
+            queue.async {
+                self.sendSemaphore.wait()
+                conn.send(content: data, completion: .contentProcessed { [weak self] error in
+
+                    defer { self?.sendSemaphore.signal() } // ✅ 釋放 semaphore
+
+                    if error != nil {
+                        self?.removeConnection(conn)
+                    }
+                })
+            }
         }
+
     }
 
     func broadcast(type:String = "settings",key: String, value: Any) {
@@ -316,22 +553,29 @@ class SocketServer {
 
     // MARK: - Connection Cleanup
     private func removeConnection(_ connection: NWConnection) {
+        let id = ObjectIdentifier(connection)
+        guard connections[id] != nil else { return } // 已被移除
         connection.stateUpdateHandler = nil
         connection.cancel()
-        if let index = connections.firstIndex(where: { $0 === connection }) {
-            connections.remove(at: index)
-        }
+        connections[id] = nil
+        receiveBuffers[id] = nil
         logTo("Connection removed. Remaining: \(self.connections.count)")
+
+
     }
 
     func stop() {
         listener?.stateUpdateHandler = nil
         listener?.cancel()
-        for conn in connections {
+        for (_, conn) in connections {
             conn.stateUpdateHandler = nil
             conn.cancel()
         }
+
+
         connections.removeAll()
+        receiveBuffers.removeAll()  // ✅ 同時清理所有 buffer
+
         logTo("SocketServer stopped")
     }
 
