@@ -202,7 +202,7 @@ final class LogManager {
     // MARK: 提前結束
     func forceFlush() {
         logQueue.sync {
-            flushLocalLogs()
+            flushLocalLogs(forceNotify: true)
             // 先取消舊的 timer
             flushTimer?.cancel()
             flushTimer = nil
@@ -213,8 +213,8 @@ final class LogManager {
         }
     }
 
-    func log(title: String = "ReplyKit", message: String) {
-        
+    func log(title: String = "ReplyKit", message: String, flushImmediately: Bool = false) {
+
         if !isActive {
             return
         }
@@ -229,7 +229,7 @@ final class LogManager {
                         self.localLogBuffer.append(logMessage)
                         self.localLogSize += logMessage.utf8.count
 
-                        if self.localLogSize >= self.maxLogBufferSize {
+                    if flushImmediately || self.localLogSize >= self.maxLogBufferSize {
                             self.flushLocalLogs()
                         }
 
@@ -240,7 +240,7 @@ final class LogManager {
                         self.localLogBuffer.append(logMessage)
                         self.localLogSize += logMessage.utf8.count
 
-                        if self.localLogSize >= self.maxLogBufferSize {
+                        if  flushImmediately || self.localLogSize >= self.maxLogBufferSize {
                             self.flushLocalLogs()
                         }
 
@@ -276,7 +276,7 @@ final class LogManager {
         flushTimer?.resume()
     }
 
-    private func flushLocalLogs() {
+    private func flushLocalLogs(forceNotify: Bool = false) {
         guard !localLogBuffer.isEmpty else { return }
         let bufferCopy = localLogBuffer.joined()
         localLogBuffer.removeAll()
@@ -286,6 +286,7 @@ final class LogManager {
 
         guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupID) else { return }
         let fileURL = containerURL.appendingPathComponent(logFileName)
+
 
         if let data = bufferCopy.data(using: .utf8) {
             if FileManager.default.fileExists(atPath: fileURL.path),
@@ -300,7 +301,7 @@ final class LogManager {
 
         // 延遲通知主 App
         let now = Date()
-        if now.timeIntervalSince(lastNotifyTime) > notifyThrottle {
+        if forceNotify || now.timeIntervalSince(lastNotifyTime) > notifyThrottle {
             lastNotifyTime = now
             DispatchQueue.global(qos: .utility).async {
                 CFNotificationCenterPostNotification(
@@ -445,7 +446,7 @@ var lastlogT = Date()
 var IntTime:TimeInterval = 5.0
 
 
-func sendlog(title: String = "ReplyKit", message: String, mode: Int = 0) {
+func sendlog(title: String = "ReplyKit", message: String, mode: Int = 0,flush:Bool = false) {
 
     let noww=Date()
 
@@ -461,7 +462,8 @@ func sendlog(title: String = "ReplyKit", message: String, mode: Int = 0) {
     if RPConfig.shared.enableLog {
 
         if RPConfig.shared.onLogPage {
-            LogManager.shared.log(title:title,message: message)
+            LogManager.shared
+                .log(title:title,message: message,flushImmediately: flush)
             //SocketClient.shared.sendLog(title: title, message: message)
         }
 
