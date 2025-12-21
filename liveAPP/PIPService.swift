@@ -25,386 +25,665 @@ final class DummyPlaybackDelegate: NSObject, AVPictureInPictureSampleBufferPlayb
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController,
                                     setPlaying playing: Bool) {}
     func pictureInPictureControllerTimeRangeForPlayback(_ pictureInPictureController: AVPictureInPictureController) -> CMTimeRange {
-        return CMTimeRange(start: .zero, duration: CMTime(value: 1, timescale: 60))
-        //CMTimeRange(start: .zero, duration: .positiveInfinity)
+        return CMTimeRange(start: .zero, duration: .positiveInfinity)
     }
 
 
 }
 
+
+
+
+
+
+
+
+
+
+
 // =========================
 // PIPService - Ultimate Version
 // =========================
 
-
-final class PIPService: NSObject {
+final class PIPService: NSObject, @unchecked Sendable {
     static let shared = PIPService()
-    private override init() {
+    private override init() { }
+
+    var isAnimatingMessages = false
+
+    private var messagesLayer: PIPServiceMessages?
+
+    // MARK: 時間顯示
+    private func drawTimeOverlay(in cg: CGContext, size: CGSize) {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_TW")
+        formatter.dateFormat = "yyyy/MM/dd aHH:mm:ss"
+
+        let timeText = formatter.string(from: Date())
+
+        let fontSize: CGFloat = 16
+        let timeFont = UIFont.monospacedDigitSystemFont(ofSize: fontSize, weight: .regular)
+        let labelFont = UIFont.systemFont(ofSize: fontSize, weight: .medium)
+
+        // 組 attributed string：同一行
+        let fullLine = NSMutableAttributedString()
+        fullLine.append(NSAttributedString(
+            string: "現在時間 ",
+            attributes: [
+                .font: labelFont,
+                .foregroundColor: UIColor.systemCyan
+            ]
+        ))
+        fullLine.append(NSAttributedString(
+            string: timeText,
+            attributes: [
+                .font: timeFont,
+                .foregroundColor: UIColor.white
+            ]
+        ))
+
+        let textSize = fullLine.size()
+
+        let paddingX: CGFloat = 6
+        let paddingY: CGFloat = 4
+
+        // 背景矩形
+        let bgRect = CGRect(
+            x: (size.width - textSize.width) / 2 - paddingX,   // 水平置中
+            y: 40, // 往下移，避免遮到左上按鈕，可調整
+            width: textSize.width + paddingX * 2,
+            height: textSize.height + paddingY * 2
+        )
+
+        // 畫背景
+        cg.setFillColor(UIColor.black.withAlphaComponent(0.45).cgColor)
+        cg.fill(bgRect)
+
+        // 畫文字
+        UIGraphicsPushContext(cg)
+        let textPoint = CGPoint(x: bgRect.minX + paddingX, y: bgRect.minY + paddingY)
+        fullLine.draw(at: textPoint)
+        UIGraphicsPopContext()
+    }
+
+    private func createPixelBuffer(from cgImage: CGImage, size: CGSize) -> CVPixelBuffer? {
+        var pixelBuffer: CVPixelBuffer?
+        let attrs: CFDictionary = [
+            kCVPixelBufferCGImageCompatibilityKey: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey: true,
+            kCVPixelBufferIOSurfacePropertiesKey: [:]
+        ] as CFDictionary
+
+        guard CVPixelBufferCreate(kCFAllocatorDefault,
+                                  Int(size.width),
+                                  Int(size.height),
+                                  kCVPixelFormatType_32BGRA,
+                                  attrs,
+                                  &pixelBuffer) == kCVReturnSuccess,
+              let pb = pixelBuffer else { return nil }
+
+        CVPixelBufferLockBaseAddress(pb, [])
+        defer { CVPixelBufferUnlockBaseAddress(pb, []) }
+
+        guard let baseAddress = CVPixelBufferGetBaseAddress(pb) else { return nil }
+
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(pb)
+        let height = CVPixelBufferGetHeight(pb)
+        memset(baseAddress, 0, bytesPerRow * height)
+
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        if let context = CGContext(data: baseAddress,
+                                   width: Int(size.width),
+                                   height: Int(size.height),
+                                   bitsPerComponent: 8,
+                                   bytesPerRow: bytesPerRow,
+                                   space: colorSpace,
+                                   bitmapInfo: CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.premultipliedFirst.rawValue) {
+            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: Int(size.width), height: Int(size.height)))
+        }
+
+        return pb
+    }
+
+    private func createSampleBuffer(from pixelBuffer: CVPixelBuffer) -> CMSampleBuffer? {
+        var formatDesc: CMVideoFormatDescription?
+        guard CMVideoFormatDescriptionCreateForImageBuffer(
+                allocator: kCFAllocatorDefault,
+                imageBuffer: pixelBuffer,
+                formatDescriptionOut: &formatDesc) == noErr,
+              let fmt = formatDesc else { return nil }
+
+
+
+
+        let now = CACurrentMediaTime()
+        if self.basePTS == nil { self.basePTS = now }
+        let relativeTime = now - (self.basePTS ?? now)
+        let delta = now - self.lastRenderTime
+        let pts = CMTime(seconds: relativeTime, preferredTimescale: 600)
+        let duration = CMTime(seconds: delta, preferredTimescale: 600)
+        var timing = CMSampleTimingInfo(duration: duration,
+                                        presentationTimeStamp: pts,
+                                        decodeTimeStamp: .invalid)
+        self.lastRenderTime = now
+
+
+        var sb: CMSampleBuffer?
+        CMSampleBufferCreateForImageBuffer(allocator: kCFAllocatorDefault,
+                                           imageBuffer: pixelBuffer,
+                                           dataReady: true,
+                                           makeDataReadyCallback: nil,
+                                           refcon: nil,
+                                           formatDescription: fmt,
+                                           sampleTiming: &timing,
+                                           sampleBufferOut: &sb)
+
+        if let attachments = sb.flatMap({ CMSampleBufferGetSampleAttachmentsArray($0, createIfNecessary: true) }) {
+            let dict = unsafeBitCast(CFArrayGetValueAtIndex(attachments, 0), to: CFMutableDictionary.self)
+            CFDictionarySetValue(dict,
+                                 Unmanaged.passUnretained(kCMSampleAttachmentKey_DisplayImmediately).toOpaque(),
+                                 Unmanaged.passUnretained(kCFBooleanTrue).toOpaque())
+        }
+
+        return sb
+    }
+
+    private var lastHashTime: CFTimeInterval = 0
+    private let hashInterval: CFTimeInterval = 0.5
+    // 每 0.2 秒計算一次 hash
+
+    private var debugImageView: UIImageView?
+    private let pipStartThreshold: Int64 = 3 // 改成 3 幀
+
+    // MARK: - Adaptive FPS
+    private var currentFPS: Double = 30
+
+    private let defaultFPS: Double = 1       // 平常 FPS
+    private let decayRate: Double = 0.90     // 每次渲染衰減比例
+
+    private var lastRenderTime = CACurrentMediaTime()
+    private var lastImageHash: UInt64 = 0
+
+    private var lastRenderedHash: UInt64 = 0
+    private var previousImage: CGImage?
+
+    var isMark = false
+
+    private var decayDeadline: DispatchTime?
+    private let decayDelay: TimeInterval = 0.8
+
+    private var decayTimer: DispatchSourceTimer?
+
+    @MainActor
+    func startDecayAfterAnimation() {
+        startDecayTimer()
+    }
+   
+
+    // 自動調降FPS
+    private func startDecayTimer() {
+        if decayTimer == nil {
+            decayTimer = DispatchSource.makeTimerSource(queue: renderQueue)
+            decayTimer?.schedule(deadline: .now() + 0.2, repeating: 0.2)
+            decayTimer?.setEventHandler { [weak self] in
+                guard let self = self else { return }
+
+                // 檢查是否到期
+                if let deadline = self.decayDeadline, .now() >= deadline {
+
+                    if self.currentFPS > self.defaultFPS {
+                        self.currentFPS = max(self.defaultFPS, self.currentFPS * self.decayRate)
+                        PIPLogTo("📉 decay fps -> \(self.currentFPS)")
+                    }
+
+                }
+
+            }
+            decayTimer?.resume()
+        }
+    }
+
+
+    @MainActor
+    func markDirty() {
+        lastRenderedHash = 0 // force renderIncremental 渲染新畫面
+        isMark = true
+        currentFPS = 60      // 事件觸發時暫時提升 FPS
+        decayDeadline = .now() + decayDelay
 
     }
 
-    // MARK: - Properties
-    private var debugWindow: UIWindow?
-    private var debugImageView: UIImageView?
-    private var enableDebugPreview: Bool = false
+    // MARK: 快速圖片計算
+    private func imageHash(_ cgImage: CGImage) -> UInt64 {
+//        let width = thumbSize.width
+//        let height = thumbSize.height
+
+        let renderer = UIGraphicsImageRenderer(size: thumbSize)
+        let img = renderer.image { ctx in
+            ctx.cgContext.draw(
+                cgImage,
+                in: CGRect(origin: .zero, size: thumbSize)
+            )
+        }
+
+        guard let data = img.cgImage?.dataProvider?.data,
+              let ptr = CFDataGetBytePtr(data) else { return 0 }
+
+        var hash: UInt64 = 0
+        let count = CFDataGetLength(data)
+        for i in stride(from: 0, to: count, by: 16) {
+            hash &+= UInt64(ptr[i])
+        }
+        return hash
+    }
+
+
+
+    
+    // MARK: 動態調整
+    private func adjustFPS(newHash: UInt64) {
+        lastImageHash = newHash
+
+        if !isMark {
+
+            // 平滑衰減
+            currentFPS = max(defaultFPS, currentFPS * decayRate)
+        }
+
+        PIPLogTo("📉 adaptive fps -> \(currentFPS)")
+    }
+
+
+    func setupDebugImageView(in parentView: UIView, frame: CGRect) {
+        let imageView = UIImageView(frame: frame)
+        imageView.contentMode = .scaleAspectFit
+        imageView.backgroundColor = .lightGray
+        parentView.addSubview(imageView)
+        self.debugImageView = imageView
+    }
 
     private var renderTimer: DispatchSourceTimer?
-    private var hostingController: UIHostingController<AnyView>?
+    var messagesContainerView: UIView?
+
     private var displayLayer: AVSampleBufferDisplayLayer?
     private var pipController: AVPictureInPictureController?
+
+    private var basePTS: CFTimeInterval?
 
     private let dummyDelegate = DummyPlaybackDelegate()
     private let renderQueue = DispatchQueue(label: "com.pip.render", qos: .userInteractive)
     private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
 
-    private var frameSize: CGSize = .zero
+    var frameSize: CGSize = .zero
+
     private var frameCount: Int64 = 0
 
-    // --- 增量檢測 ---
-    private var previousThumb: Data? = nil
+
     private let thumbSize = CGSize(width: 64, height: 64)
+
+    private let renderScale = UIScreen.main.scale
+
+    private var lastDebugUpdate: CFTimeInterval = 0
+
 
     // MARK: - Audio
     func setupAudioSession() {
-        DispatchQueue.main.async {
-            do {
-                let session = AVAudioSession.sharedInstance()
-                try session.setCategory(
-.playAndRecord,
-                                        mode: .default,
-options: [
-    .mixWithOthers,
-    .allowBluetoothHFP
-]
-                )
-                try session.setActive(true, options: .notifyOthersOnDeactivation)
-            } catch {
-                logTo("AVAudioSession setup error: \(error)")
-            }
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playAndRecord, mode: .default, options: [.mixWithOthers, .allowBluetoothHFP])
+            try session.setActive(true, options: .notifyOthersOnDeactivation)
+        } catch {
+            PIPLogTo("AVAudioSession setup error: \(error)")
         }
     }
 
-    // MARK: - Foreground Window
-    private func foregroundWindow() -> UIWindow? {
-        // 找到前景 Scene
-        guard let scene = UIApplication.shared.connectedScenes
-                .compactMap({ $0 as? UIWindowScene })
-                .first(where: { $0.activationState == .foregroundActive }) else {
-            return nil
+
+    @MainActor
+    func addMessage(
+        user: String = "測試",
+        msg: String,
+        imgURL: String? = nil,
+        giftURL: String? = nil,
+        isMain:Bool = true
+    ) {
+        // 1️⃣ 先下載 avatar 和 gift
+        var avatarImage: UIImage? = nil
+        var giftImage: UIImage? = nil
+        let group = DispatchGroup()
+
+        if let imgURL = imgURL {
+            group.enter()
+            PiPImageCache.shared.load(urlString: imgURL) { img in
+                avatarImage = img
+                group.leave()
+            }
         }
 
-        // 從該 Scene 取 key window
-        return scene.windows.first(where: { $0.isKeyWindow }) ?? scene.windows.first
+        if let giftURL = giftURL {
+            group.enter()
+            PiPImageCache.shared.load(urlString: giftURL) { img in
+                giftImage = img
+                group.leave()
+            }
+        }
+
+        group.notify(queue: .main) { [weak self] in
+            guard let self = self else { return }
+            // 2️⃣ 下載完成後再呼叫舊的 addMessage
+            self.addMessage(user: user, msg: msg, img: avatarImage, giftImg: giftImage,isMain: isMain)
+        }
+    }
+    @MainActor func addMessage(
+        user: String,
+        msg: String,
+        img: UIImage? = nil,
+        giftImg: UIImage? = nil,
+        isMain: Bool = true
+
+    ) {
+        messagesLayer?
+            .addMessage(
+                user: user,
+                message: msg,
+                img: img,
+                giftImg: giftImg,
+                isMain: isMain
+            )
+
+        markDirty() // 提醒 renderIncremental() 更新畫面
     }
 
     // MARK: - Start PiP
-    func startPiP<Content: View>(with content: Content,
-                                 size: CGSize = CGSize(width: 300, height: 200),
-                                 enableDebugPreview: Bool = false) {
-
+    @MainActor
+    func startPiP(size: CGSize = CGSize(width: 300, height: 200)) {
         stopPiP()
         setupAudioSession()
-        self.enableDebugPreview = enableDebugPreview
+
         self.frameSize = size
         self.frameCount = 0
-        self.previousThumb = nil
 
 
+        // 建立容器 UIView
+            let containerView = UIView(frame: CGRect(origin: .zero, size: size))
+            containerView.backgroundColor = .clear
+            containerView.isOpaque = false
+            self.messagesContainerView = containerView
 
-        DispatchQueue.main.async {
-            // Hosting Controller
-            let hosting = UIHostingController(rootView: AnyView(content.frame(width: size.width, height: size.height)))
-            hosting.view.backgroundColor = .clear
-            hosting.view.frame = CGRect(origin: .zero, size: size)
-            self.hostingController = hosting
+            if let window = UIApplication.shared
+                .connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .first?
+                .windows
+                .first {
+                window.backgroundColor = .clear
+                window.addSubview(containerView)
+            }
+
+            // 建立訊息 Layer
+            messagesLayer = PIPServiceMessages(size: size)
+            if let messagesLayer = messagesLayer {
+                containerView.layer.addSublayer(messagesLayer.container)
+            }
+
+
 
             // Display Layer
             let layer = AVSampleBufferDisplayLayer()
+
             layer.videoGravity = .resizeAspect
-            layer.backgroundColor = UIColor.clear.cgColor
+            layer.backgroundColor = UIColor.black.cgColor
             self.displayLayer = layer
 
             // PiP Controller
             self.pipController = AVPictureInPictureController(
                 contentSource: .init(sampleBufferDisplayLayer: layer, playbackDelegate: self.dummyDelegate)
             )
+
+            self.pipController?.requiresLinearPlayback = false
+            self.pipController?.setValue(1, forKey: "controlsStyle")
+
             self.pipController?.delegate = self
 
-            // Debug 預覽
-            if enableDebugPreview { self.setupDebugWindow(size: size) }
+            // Attach displayLayer
+            self.attachToForegroundWindow {
+                PIPLogTo("OK Frame?")
+                Task { @MainActor in
 
-            // 延遲 attach，等待 scene active
-
-            guard let hosting = self.hostingController,
-                  let layer = self.displayLayer,
-                  let window = self.foregroundWindow() else {
-                 logTo("noWindow!!")
-                return
-            }
-
-
-            if hosting.view.window == nil { window.addSubview(hosting.view) }
-            hosting.view.frame = CGRect(origin: .zero, size: self.frameSize)
-
-            if layer.superlayer == nil { window.layer.addSublayer(layer) }
-
-
-            // 先送一個空幀增加成功率
-            let emptyBuffer = self.makeEmptySampleBuffer(size: self.frameSize)
-            layer.enqueue(emptyBuffer)
-
-            // 嘗試啟動 PiP
-            self.tryStartPiP()
-
-            //self.attachWhenSceneActive()
-            self.startRenderTimer()
-        }
-    }
-
-    // MARK: - Attach to active scene
-    private func attachWhenSceneActive(retries: Int = 10) {
-        guard retries > 0 else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            guard let hosting = self.hostingController,
-                  let layer = self.displayLayer,
-                  let window = self.foregroundWindow() else {
-                self.attachWhenSceneActive(retries: retries - 1)
-                return
-            }
-
-
-                if hosting.view.window == nil { window.addSubview(hosting.view) }
-                hosting.view.frame = CGRect(origin: .zero, size: self.frameSize)
-
-                if layer.superlayer == nil { window.layer.addSublayer(layer) }
-
-
-            // 先送一個空幀增加成功率
-            let emptyBuffer = self.makeEmptySampleBuffer(size: self.frameSize)
-            layer.enqueue(emptyBuffer)
-
-            // 嘗試啟動 PiP
-            logTo("TRY PIP")
-            self.tryStartPiP()
-        }
-    }
-
-    private func makeEmptySampleBuffer(size: CGSize) -> CMSampleBuffer {
-        var pixelBuffer: CVPixelBuffer?
-        let attrs: CFDictionary = [
-            kCVPixelBufferCGImageCompatibilityKey: true,
-            kCVPixelBufferCGBitmapContextCompatibilityKey: true
-        ] as CFDictionary
-
-        CVPixelBufferCreate(kCFAllocatorDefault,
-                            Int(size.width),
-                            Int(size.height),
-                            kCVPixelFormatType_32BGRA,
-                            attrs,
-                            &pixelBuffer)
-        guard let pb = pixelBuffer else { fatalError("無法生成 PixelBuffer") }
-
-        CVPixelBufferLockBaseAddress(pb, [])
-        memset(CVPixelBufferGetBaseAddress(pb), 0, CVPixelBufferGetDataSize(pb))
-        CVPixelBufferUnlockBaseAddress(pb, [])
-
-        let pts = CMTime(value: 0, timescale: 30)
-        let duration = CMTime(value: 1, timescale: 30)
-        var timing = CMSampleTimingInfo(duration: duration, presentationTimeStamp: pts, decodeTimeStamp: pts)
-
-        var formatDesc: CMVideoFormatDescription?
-        CMVideoFormatDescriptionCreateForImageBuffer(allocator: kCFAllocatorDefault,
-                                                     imageBuffer: pb,
-                                                     formatDescriptionOut: &formatDesc)
-
-        var sb: CMSampleBuffer?
-        CMSampleBufferCreateForImageBuffer(allocator: kCFAllocatorDefault,
-                                           imageBuffer: pb,
-                                           dataReady: true,
-                                           makeDataReadyCallback: nil,
-                                           refcon: nil,
-                                           formatDescription: formatDesc!,
-                                           sampleTiming: &timing,
-                                           sampleBufferOut: &sb)
-        return sb!
-    }
-
-    // MARK: - Debug Window
-    private func setupDebugWindow(size: CGSize) {
-        DispatchQueue.main.async {
-            self.debugWindow?.isHidden = true
-            self.debugWindow = nil
-            self.debugImageView = nil
-
-            guard let window = self.foregroundWindow() else { return }
-
-            let win = UIWindow(windowScene: window.windowScene!)
-            win.windowLevel = .alert + 1
-            win.frame = CGRect(x: 20, y: 300, width: size.width, height: size.height)
-            win.backgroundColor = .clear
-            win.isHidden = false
-
-            let debugView = UIImageView(frame: CGRect(origin: .zero, size: size))
-            debugView.contentMode = .scaleAspectFit
-            debugView.layer.borderColor = UIColor.red.cgColor
-            debugView.layer.borderWidth = 1
-            debugView.backgroundColor = .black
-
-            win.addSubview(debugView)
-            win.makeKeyAndVisible()
-
-            self.debugWindow = win
-            self.debugImageView = debugView
-        }
-    }
-
-    // MARK: - Render Timer + 智慧送幀
-    private func startRenderTimer() {
-        renderQueue.async { [weak self] in
-            guard let self = self else { return }
-            var currentFPS: Double = 30
-            var noChangeCount = 0
-
-            let timer = DispatchSource.makeTimerSource(queue: self.renderQueue)
-            timer.schedule(deadline: .now(), repeating: 1.0 / currentFPS)
-            timer.setEventHandler { [weak self] in
-                guard let self = self else { return }
-                let didSendFrame = self.renderIncremental()
-
-                if didSendFrame {
-                    noChangeCount = 0
-                    if currentFPS < 30 {
-                        currentFPS = 30
-                        timer.schedule(deadline: .now(), repeating: 1.0 / currentFPS)
-                    }
-                } else {
-                    noChangeCount += 1
-                    if noChangeCount > 3 && currentFPS != 1 {
-                        currentFPS = 1
-                        timer.schedule(deadline: .now(), repeating: 1.0 / currentFPS)
-                    }
+                    self.startRenderTimer()
                 }
             }
-            timer.resume()
-            self.renderTimer = timer
+
+    }
+
+    // MARK: - Attach displayLayer
+    private func attachToForegroundWindow(completion: @escaping () -> Void) {
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+
+            guard let windowScene = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .first(where: { $0.activationState == .foregroundActive }) else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    self.attachToForegroundWindow(completion: completion)
+                }
+                return
+            }
+
+            guard let layer = self.displayLayer else { return }
+
+            if layer.superlayer == nil, let containerLayer = windowScene.windows.first?.rootViewController?.view.layer ?? windowScene.windows.first?.layer {
+                containerLayer.addSublayer(layer)
+                layer.frame = CGRect(origin: .zero, size: self.frameSize)
+
+                // ControlTimebase
+                if layer.controlTimebase == nil {
+                    var timebase: CMTimebase?
+                    CMTimebaseCreateWithSourceClock(allocator: kCFAllocatorDefault, sourceClock: CMClockGetHostTimeClock(), timebaseOut: &timebase)
+                    if let tb = timebase {
+                        layer.controlTimebase = tb
+                        CMTimebaseSetTime(tb, time: .zero)
+                        CMTimebaseSetRate(tb, rate: 1.0)
+                    }
+                }
+
+                layer.flushAndRemoveImage()
+            }
+
+            completion()
         }
     }
 
-    // MARK: Stop PiP
+    // MARK: - Safe Start PiP
+    private var didStartPiP = false
+    private func safeTryStartPiP() {
+        guard !didStartPiP else { return }
+        DispatchQueue.main.async {
+            guard let pip = self.pipController, pip.isPictureInPicturePossible else { return }
+            pip.startPictureInPicture()
+            self.didStartPiP = true
+            PIPLogTo("PiP started successfully")
+        }
+    }
+
+    // MARK: - Render Timer
+    private func startRenderTimer() {
+        renderQueue.async { [weak self] in
+            self?.scheduleNextRender()
+        }
+    }
+
+
+    private func scheduleNextRender() {
+        if renderTimer == nil {
+            renderTimer = DispatchSource.makeTimerSource(queue: renderQueue)
+            renderTimer?.schedule(deadline: .now(), repeating: 1.0/60.0)
+            // 固定 60FPS timer
+            renderTimer?.setEventHandler { [weak self] in
+                guard let self = self else { return }
+
+                let now = CACurrentMediaTime()
+                let elapsed = now - self.lastRenderTime
+                if elapsed >= 1.0 / self.currentFPS {
+                    _ = self.renderIncremental()
+                    self.lastRenderTime = now
+                }
+            }
+            renderTimer?.resume()
+        }
+    }
+
+
+    func cleanupMessagesContainer() {
+        // 移除所有子層
+        messagesContainerView?.layer.sublayers?.forEach { $0.removeFromSuperlayer() }
+
+        // 從 superview 移除
+        messagesContainerView?.removeFromSuperview()
+
+        // 清空引用
+        messagesContainerView = nil
+    }
+    // MARK: - Stop PiP
     func stopPiP() {
         renderTimer?.cancel()
         renderTimer = nil
-
         self.pipController?.stopPictureInPicture()
         self.pipController = nil
-
         self.displayLayer?.removeFromSuperlayer()
         self.displayLayer = nil
 
-        DispatchQueue.main.async {
-            self.hostingController?.view.removeFromSuperview()
-            self.hostingController = nil
-
-            self.debugWindow?.isHidden = true
-            self.debugWindow = nil
-            self.debugImageView = nil
-        }
-
         self.frameCount = 0
-        self.previousThumb = nil
+        didStartPiP = false
+
+        previousImage = nil
+        lastRenderTime = CACurrentMediaTime()
+        basePTS = nil
+
+        cleanupMessagesContainer()
+
+        decayTimer?.cancel()
+        decayTimer = nil
 
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
-    // MARK: Try Start PiP
-    func tryStartPiP() {
-        guard let pip = pipController, pip.isPictureInPicturePossible else { return }
-        pip.startPictureInPicture()
-    }
 
-    // MARK: 增量渲染
+
+
+
+    // MARK: - Incremental Render
     private func renderIncremental() -> Bool {
-        guard let hosting = hostingController,
-              let displayLayer = displayLayer else { return false }
 
-        var newThumbData: Data?
-        var thumbChanged = false
+        guard let containerView = messagesContainerView, let displayLayer = displayLayer else { return false }
 
+        // 取得當前時間
+        let now = CACurrentMediaTime()
+
+        if !isAnimatingMessages {
+            let elapsed = now - lastRenderTime
+            if elapsed < 1.0 / currentFPS { return false } // 幀跳過
+        }
+
+        lastRenderTime = now
+
+        let renderSize = frameSize   // ← 用 pt，不要乘 scale
+
+        let shouldForceRender = isAnimatingMessages
+
+        // 1️⃣ 在主線程渲染 UIView 成 CGImage（最小範圍）
+        var newCGImage: CGImage?
         DispatchQueue.main.sync {
-            let renderer = UIGraphicsImageRenderer(size: thumbSize)
-            let thumbImage = renderer.image { ctx in hosting.view.layer.render(in: ctx.cgContext) }
 
-            if let data = thumbImage.pngData() {
-                newThumbData = data
-                thumbChanged = (previousThumb != data)
-            } else {
-                thumbChanged = true
+            let format = UIGraphicsImageRendererFormat.default()
+            format.scale = renderScale
+            format.opaque = false
+            let renderer = UIGraphicsImageRenderer(size: renderSize, format: format)
+            newCGImage = renderer.image { ctx in
+
+                let cg = ctx.cgContext
+                //hosting.view.layer.render(in: cg)
+                containerView.layer.render(in: cg)
+                // 2️⃣ 再畫時間（疊在最上面）
+                drawTimeOverlay(in: cg, size: renderSize)
+
+            }.cgImage
+        }
+
+
+        guard let cgImage = newCGImage else { return false }
+
+
+
+        // hash / pixelbuffer / samplebuffer 直接執行
+
+            var hash = self.lastRenderedHash
+            if CACurrentMediaTime() - self.lastHashTime > self.hashInterval {
+                hash = self.imageHash(cgImage)
+                self.lastHashTime = CACurrentMediaTime()
             }
-        }
 
-        if !thumbChanged { return false }
-        previousThumb = newThumbData
 
-        // full-resolution
-        var cgImageFull: CGImage?
-        DispatchQueue.main.sync {
-            let renderer = UIGraphicsImageRenderer(size: frameSize)
-            cgImageFull = renderer.image { ctx in hosting.view.layer.render(in: ctx.cgContext) }.cgImage
-        }
-        guard let cgImage = cgImageFull else { return false }
+        let shouldRender = shouldForceRender || (hash != self.lastRenderedHash)
 
-        if enableDebugPreview {
-            DispatchQueue.main.async { self.debugImageView?.image = UIImage(cgImage: cgImage) }
-        }
 
-        // pixel buffer
-        var pixelBuffer: CVPixelBuffer?
-        let attrs: CFDictionary = [
-            kCVPixelBufferCGImageCompatibilityKey: true,
-            kCVPixelBufferCGBitmapContextCompatibilityKey: true
-        ] as CFDictionary
+            self.lastRenderedHash = hash
+            self.adjustFPS(newHash: hash)
 
-        guard CVPixelBufferCreate(kCFAllocatorDefault,
-                                  Int(frameSize.width),
-                                  Int(frameSize.height),
-                                  kCVPixelFormatType_32BGRA,
-                                  attrs,
-                                  &pixelBuffer) == kCVReturnSuccess,
-              let pb = pixelBuffer else { return false }
-
-        CVPixelBufferLockBaseAddress(pb, [])
-        ciContext.render(CIImage(cgImage: cgImage), to: pb)
-        CVPixelBufferUnlockBaseAddress(pb, [])
-
-        let pts = CMTime(value: frameCount, timescale: 30)
-        let duration = CMTime(value: 1, timescale: 30)
-        var timing = CMSampleTimingInfo(duration: duration, presentationTimeStamp: pts, decodeTimeStamp: pts)
-
-        var formatDesc: CMVideoFormatDescription?
-        CMVideoFormatDescriptionCreateForImageBuffer(allocator: kCFAllocatorDefault,
-                                                     imageBuffer: pb,
-                                                     formatDescriptionOut: &formatDesc)
-
-        var sb: CMSampleBuffer?
-        CMSampleBufferCreateForImageBuffer(allocator: kCFAllocatorDefault,
-                                           imageBuffer: pb,
-                                           dataReady: true,
-                                           makeDataReadyCallback: nil,
-                                           refcon: nil,
-                                           formatDescription: formatDesc!,
-                                           sampleTiming: &timing,
-                                           sampleBufferOut: &sb)
-        guard let sampleBuffer = sb else { return false }
-
-        DispatchQueue.main.async {
-            if displayLayer.isReadyForMoreMediaData {
-                displayLayer.enqueue(sampleBuffer)
-                self.frameCount += 1
-                if self.frameCount == 1 { self.tryStartPiP() }
+            if shouldRender {
+                self.previousImage = cgImage
             }
-        }
+
+            guard let imageToRender = self.previousImage else { return false }
+
+            // 生成 PixelBuffer
+        let imagePixelSize = CGSize(
+            width: imageToRender.width,
+            height: imageToRender.height
+        )
+
+        guard let pixelBuffer = self.createPixelBuffer(
+            from: imageToRender,
+            size: imagePixelSize
+        ) else { return false }
+
+
+
+            if self.basePTS == nil { self.basePTS = CACurrentMediaTime() }
+
+            guard let sampleBuffer = self.createSampleBuffer(from: pixelBuffer) else { return false }
+
+            // 3️⃣ 主線程 enqueue
+            DispatchQueue.main.async {
+                if displayLayer.isReadyForMoreMediaData {
+                    displayLayer.enqueue(sampleBuffer)
+                    self.frameCount += 1
+
+                    // 更新 debugImageView
+                    if CACurrentMediaTime() - self.lastDebugUpdate > 0.1 {
+                        self.debugImageView?.image = UIImage(cgImage: imageToRender, scale: UIScreen.main.scale, orientation: .up)
+                        self.lastDebugUpdate = CACurrentMediaTime()
+                    }
+
+                    // 啟動 PiP
+                    if !self.didStartPiP && self.frameCount >= self.pipStartThreshold {
+                        self.safeTryStartPiP()
+                    }
+                }
+            }
+
+
 
         return true
+    }
+
+}
+
+
+
+func PIPLogTo(_ message:String){
+    if LPConfig.shared.PIPLog {
+        sendlog(title:"[PIP]",message: message)
     }
 }
 
@@ -416,6 +695,242 @@ func logTo(_ message:String){
 // AVPictureInPictureControllerDelegate
 // =========================
 extension PIPService: AVPictureInPictureControllerDelegate {
+    internal func pictureInPictureControllerDidStartPictureInPicture(
+        _ pictureInPictureController: AVPictureInPictureController
+    ) {
+
+
+        logTo("PIP Open")
+
+
+    }
+    internal func pictureInPictureControllerDidStopPictureInPicture(
+        _ pictureInPictureController: AVPictureInPictureController
+    ) {
+        logTo("PIP Stop")
+        PIPService.shared.stopPiP()
+    }
+    func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController,
+                                    failedToStartPictureInPictureWithError error: Error) {
+
+        logTo("PIP Error \(error)")
+    }
+}
+
+
+
+
+
+final class PIPTestService: NSObject {
+    static let shared = PIPTestService()
+    private override init() {}
+
+    private var displayLayer: AVSampleBufferDisplayLayer?
+    private var pipController: AVPictureInPictureController?
+    private var renderTimer: DispatchSourceTimer?
+    private var frameCount: Int64 = 0
+    private var didStartPiP = false
+    private let pipStartThreshold: Int64 = 3
+    private var frameSize: CGSize = CGSize(width: 300, height: 200)
+
+    private let playbackDelegate = DummyPlaybackDelegate()
+
+    // MARK: - Audio
+    func setupAudioSession() {
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playAndRecord, mode: .default, options: [.mixWithOthers, .allowBluetoothHFP])
+            try session.setActive(true, options: .notifyOthersOnDeactivation)
+        } catch {
+            logTo("AVAudioSession setup error: \(error)")
+        }
+    }
+    // MARK: - Start PiP
+    func startPiPTest(size: CGSize = CGSize(width: 300, height: 200)) {
+        stopPiP()
+        setupAudioSession()
+
+        self.frameSize = size
+        self.frameCount = 0
+        self.didStartPiP = false
+
+        let layer = AVSampleBufferDisplayLayer()
+        layer.videoGravity = .resizeAspect
+        layer.backgroundColor = UIColor.black.cgColor
+
+        layer.isOpaque = true
+
+
+        // ⭐️⭐️⭐️ 正確建立 timebase ⭐️⭐️⭐️
+        var timebase: CMTimebase?
+        let status = CMTimebaseCreateWithSourceClock(
+            allocator: kCFAllocatorDefault,
+            sourceClock: CMClockGetHostTimeClock(),
+            timebaseOut: &timebase
+        )
+
+        if status == noErr, let tb = timebase {
+            layer.controlTimebase = tb
+            CMTimebaseSetTime(tb, time: .zero)
+            CMTimebaseSetRate(tb, rate: 1.0)
+        } else {
+            logTo("❌ Failed to create CMTimebase: \(status)")
+        }
+
+
+
+        self.displayLayer = layer
+
+        if let windowScene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive }),
+           let window = windowScene.windows.first,
+           let rootView = window.rootViewController?.view
+        {
+            rootView.layer.addSublayer(layer)
+            layer.frame = CGRect(origin: .zero, size: size)
+        }
+
+        self.pipController = AVPictureInPictureController(
+            contentSource: .init(
+                sampleBufferDisplayLayer: layer,
+                playbackDelegate: playbackDelegate
+            )
+        )
+        self.pipController?.delegate = self
+
+        // 先送幾幀白畫面
+        for _ in 0..<5 {
+            renderWhiteFrame()
+        }
+
+        startRenderTimer()
+    }
+
+    // MARK: - Render Timer
+    private func startRenderTimer() {
+        let queue = DispatchQueue(label: "com.pip.render", qos: .userInteractive)
+        renderTimer = DispatchSource.makeTimerSource(queue: queue)
+        renderTimer?.schedule(deadline: .now(), repeating: 1.0 / 30.0)
+        renderTimer?.setEventHandler { [weak self] in
+            self?.renderWhiteFrame()
+        }
+        renderTimer?.resume()
+    }
+
+    // MARK: - Stop PiP
+    func stopPiP() {
+        renderTimer?.cancel()
+        renderTimer = nil
+        pipController?.stopPictureInPicture()
+        pipController = nil
+        displayLayer?.removeFromSuperlayer()
+        displayLayer = nil
+        frameCount = 0
+        didStartPiP = false
+
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    // MARK: - 渲染白畫面幀
+    private func renderWhiteFrame() {
+        guard let displayLayer = displayLayer else { return }
+
+        let width = Int(frameSize.width)
+        let height = Int(frameSize.height)
+        var pixelBuffer: CVPixelBuffer?
+        let attrs: CFDictionary = [
+            kCVPixelBufferCGImageCompatibilityKey: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey: true,
+            kCVPixelBufferIOSurfacePropertiesKey: [:]   // ⭐️⭐️⭐️ 關鍵 ⭐️⭐️⭐️
+        ] as CFDictionary
+
+        guard CVPixelBufferCreate(kCFAllocatorDefault, width, height,
+                                  kCVPixelFormatType_32BGRA, attrs, &pixelBuffer) == kCVReturnSuccess,
+              let pb = pixelBuffer else { return }
+
+
+
+        CVPixelBufferLockBaseAddress(pb, [])
+        if let baseAddress = CVPixelBufferGetBaseAddress(pb) {
+            // 填滿白色: ARGB => A=255, R=255, G=255, B=255
+            let bufferPtr = baseAddress.assumingMemoryBound(to: UInt32.self)
+            let count = CVPixelBufferGetDataSize(pb) / MemoryLayout<UInt32>.size
+            for i in 0..<count {
+                bufferPtr[i] = 0xFFFFFFFF
+            }
+        }
+        CVPixelBufferUnlockBaseAddress(pb, [])
+
+        // Timing
+        let duration = CMTime(value: 1, timescale: 30)
+        let pts = CMTime(value: frameCount, timescale: 30)
+        var timing = CMSampleTimingInfo(duration: duration,
+                                        presentationTimeStamp: pts,
+                                        decodeTimeStamp: .invalid)
+
+        // SampleBuffer
+        var formatDesc: CMVideoFormatDescription?
+        CMVideoFormatDescriptionCreateForImageBuffer(allocator: kCFAllocatorDefault,
+                                                     imageBuffer: pb,
+                                                     formatDescriptionOut: &formatDesc)
+        var sb: CMSampleBuffer?
+        CMSampleBufferCreateForImageBuffer(allocator: kCFAllocatorDefault,
+                                           imageBuffer: pb,
+                                           dataReady: true,
+                                           makeDataReadyCallback: nil,
+                                           refcon: nil,
+                                           formatDescription: formatDesc!,
+                                           sampleTiming: &timing,
+                                           sampleBufferOut: &sb)
+        guard let sampleBuffer = sb else { return }
+
+
+        // ⭐️⭐️⭐️ 就加在這裡 ⭐️⭐️⭐️
+        if let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: true) {
+            let dict = unsafeBitCast(
+                CFArrayGetValueAtIndex(attachments, 0),
+                to: CFMutableDictionary.self
+            )
+            CFDictionarySetValue(
+                dict,
+                Unmanaged.passUnretained(kCMSampleAttachmentKey_DisplayImmediately).toOpaque(),
+                Unmanaged.passUnretained(kCFBooleanTrue).toOpaque()
+            )
+        }
+
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+
+
+            print("[R]status:", displayLayer.status.rawValue)
+            print("ready:", displayLayer.isReadyForMoreMediaData)
+            print("pip active:", pipController?.isPictureInPictureActive as Any)
+
+            if displayLayer.isReadyForMoreMediaData {
+
+
+                displayLayer.enqueue(sampleBuffer)
+                self.frameCount += 1
+                logTo("FrameC:\(frameCount)")
+
+
+                if !self.didStartPiP && self.frameCount >= self.pipStartThreshold {
+                    self.pipController?.startPictureInPicture()
+                    self.didStartPiP = true
+                }
+            }
+        }
+    }
+}
+
+
+
+// =========================
+// AVPictureInPictureControllerDelegate
+// =========================
+extension PIPTestService: AVPictureInPictureControllerDelegate {
     internal func pictureInPictureControllerDidStartPictureInPicture(
         _ pictureInPictureController: AVPictureInPictureController
     ) {
@@ -438,150 +953,3 @@ extension PIPService: AVPictureInPictureControllerDelegate {
 
 
 
-
-//final class PIPServiceRR: NSObject {
-//    static let shared = PIPServiceRR()
-//    private override init() {}
-//
-//    private let dummyDelegate = DummyPlaybackDelegate()
-//    private var playerLayer: AVPlayerLayer?
-//    private var pipController: AVPictureInPictureController?
-//    private var customView: UIView?
-//    private var textView: UITextView?
-//    private var displayLink: CADisplayLink?
-//
-//    func startPiP() {
-//        guard AVPictureInPictureController.isPictureInPictureSupported() else {
-//            print("❌ 裝置不支援 PiP")
-//            return
-//        }
-//
-//        setupAudioSession()
-//        setupPlayer()
-//        setupPiP()
-//        setupCustomView()
-//
-//        
-//        print("✅ PiP possible: \(pipController?.isPictureInPicturePossible ?? false)")
-//
-//        pipController?.startPictureInPicture()
-//    }
-//    func stopPIP(){
-//        pipController?.startPictureInPicture()
-//
-//    }
-//    private func setupAudioSession() {
-//        do {
-//            try AVAudioSession.sharedInstance().setCategory(.playback)
-//            try AVAudioSession.sharedInstance().setActive(true, options: .notifyOthersOnDeactivation)
-//        } catch {
-//            print("❌ 音訊設定失敗：\(error)")
-//        }
-//    }
-//
-//    private func setupPlayer() {
-//        let playerLayer = AVPlayerLayer()
-//        playerLayer.frame = CGRect(x: 0, y: 0, width: 300, height: 200)
-//
-//
-//        guard let url = Bundle.main.url(forResource: "竖向视频", withExtension: "mp4") else { return }
-//        let asset = AVAsset(url: url)
-//        let item = AVPlayerItem(asset: asset)
-//        let player = AVPlayer(playerItem: item)
-//        player.isMuted = true
-//        player.play()
-//
-//        playerLayer.player = player
-//        self.playerLayer = playerLayer
-//
-//        // 加到主視窗（不顯示）
-//        if let windowScene = UIApplication.shared.connectedScenes
-//            .compactMap({ $0 as? UIWindowScene })
-//            .first(where: { $0.activationState == .foregroundActive }),
-//           let window = windowScene.windows.first {
-//            window.layer.addSublayer(playerLayer)
-//        }
-//
-//    }
-//
-//    private func setupPiP() {
-//        guard let playerLayer = playerLayer else { return }
-//        let pip = AVPictureInPictureController(playerLayer: playerLayer)
-//
-//        pip?.delegate = self
-//        pip?.setValue(1, forKey: "controlsStyle") // 隱藏控制項
-//        if #available(iOS 14.2, *) {
-//            pip?.canStartPictureInPictureAutomaticallyFromInline = true
-//        }
-//        self.pipController = pip
-//    }
-//
-//    private func setupCustomView() {
-//        let view = UIView()
-//        view.backgroundColor = .clear
-//
-//        let textView = UITextView()
-//        textView.text = (0..<20).map { _ in "這是自定義內容" }.joined(separator: "\n")
-//        textView.backgroundColor = .black
-//        textView.textColor = .white
-//        textView.isUserInteractionEnabled = false
-//
-//        view.addSubview(textView)
-//        textView.frame = view.bounds
-//        textView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-//
-//        self.customView = view
-//        self.textView = textView
-//    }
-//
-//    private func startScrolling() {
-//        displayLink?.invalidate()
-//        displayLink = CADisplayLink(target: self, selector: #selector(scrollText))
-//        displayLink?.preferredFramesPerSecond = 30
-//        displayLink?.add(to: .main, forMode: .default)
-//    }
-//
-//    private func stopScrolling() {
-//        displayLink?.invalidate()
-//        displayLink = nil
-//    }
-//
-//    @objc private func scrollText() {
-//        guard let textView = textView else { return }
-//        let offsetY = textView.contentOffset.y + 1
-//        if offsetY > textView.contentSize.height {
-//            textView.contentOffset = .zero
-//        } else {
-//            textView.contentOffset = CGPoint(x: 0, y: offsetY)
-//        }
-//    }
-//}
-//
-//extension PIPServiceRR: AVPictureInPictureControllerDelegate {
-//    func pictureInPictureControllerWillStartPictureInPicture(_ controller: AVPictureInPictureController) {
-//
-//        if let windowScene = UIApplication.shared.connectedScenes
-//            .compactMap({ $0 as? UIWindowScene })
-//            .first(where: { $0.activationState == .foregroundActive }),
-//           let window = windowScene.windows.first,
-//           let customView = customView {
-//            window.addSubview(customView)
-//            customView.frame = window.bounds
-//            customView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-//        }
-//
-//    }
-//
-//
-//
-//    func pictureInPictureControllerDidStartPictureInPicture(_ controller: AVPictureInPictureController) {
-//        startScrolling()
-//    }
-//
-//    func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
-//        stopScrolling()
-//        customView?.removeFromSuperview()
-//    }
-//
-//
-//}
