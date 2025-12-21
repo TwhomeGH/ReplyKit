@@ -369,16 +369,27 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     }
 
     private func recycleOutput(_ outSet: ReusableOutputSet) {
-        outputPoolLock.lock()
-        defer { outputPoolLock.unlock() }
 
         outSet.lastUsed = Date()
-        while outputPool.count >= maxPoolSize {
-            let removed = outputPool.removeFirst()
-            removed.cvY = nil
-            removed.cvUV = nil
+        let removed: ReusableOutputSet?
+
+        outputPoolLock.lock()
+
+        if outputPool.count >= maxPoolSize {
+
+            removed = outputPool.removeFirst()
+            outputPool.append(outSet)
+
+        } else {
+            removed = nil
+            outputPool.append(outSet)
         }
-        outputPool.append(outSet)
+
+        outputPoolLock.unlock()
+
+        removed?.cvY = nil
+        removed?.cvUV = nil
+
     }
 
     private func makeTexture(from pixelBuffer: CVPixelBuffer, planeIndex: Int) -> (cv: CVMetalTexture, tex: MTLTexture)? {
