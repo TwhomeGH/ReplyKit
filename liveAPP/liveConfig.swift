@@ -10,15 +10,6 @@
 final class LPConfig {
     static let shared = LPConfig()
 
-    private init() {
-
-        logMode=userDefaults?.integer(forKey: "logMode") ?? 0
-        onLogPage=userDefaults?.bool(forKey: "onlogPage") ?? false
-        enableLog=userDefaults?.bool(forKey: "Enablelog") ?? false
-        logURL = userDefaults?.string(forKey: "logURL") ?? "http://192.168.0.242:3000/post"
-
-    }
-
     // 日誌相關
     var enableLog: Bool = false
     var logMode: Int = 1
@@ -27,5 +18,19 @@ final class LPConfig {
 
     // 其他配置
     var maxInflightFrames: Int = 4
+
+    var PIPLog: Bool = false
+
+    private init() {
+
+        PIPLog = userDefaults?.bool(forKey: "PIPLog") ?? false
+        
+        logMode=userDefaults?.integer(forKey: "logMode") ?? 0
+        onLogPage=userDefaults?.bool(forKey: "onlogPage") ?? false
+        enableLog=userDefaults?.bool(forKey: "Enablelog") ?? false
+        logURL = userDefaults?.string(forKey: "logURL") ?? "http://192.168.0.242:3000/post"
+
+    }
+
 
 }
