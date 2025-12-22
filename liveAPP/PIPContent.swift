@@ -133,6 +133,8 @@ final class MessageLayerTuple:Equatable {
     var targetY: CGFloat = 0     // 動畫目標 y
     var height: CGFloat = 0      // 訊息總高度
 
+    var overflowHeight: CGFloat?
+
     // ⚡ 新增支援訊息大小的屬性
     var font: UIFont?             // 訊息字體
     var avatarSize: CGFloat?      // avatar 尺寸
@@ -170,7 +172,9 @@ final class PIPServiceMessages {
 
     // MARK: - Properties
     let container = CALayer()
-    private var stackedMessages: [MessageLayerTuple] = []   // 一般聊天
+
+    var stackedMessages: [MessageLayerTuple] = []   // 一般聊天
+
     private var bottomMessage: MessageLayerTuple?           // 底部固定
 
     private var animatingMessages: [MessageLayerTuple] = []
@@ -210,7 +214,8 @@ final class PIPServiceMessages {
 
 
     // MARK: - Build Message Tuple（抽出來重用）
-    private func buildMessageTuple(
+
+    func buildMessageTuple(
         user: String,
         message: String,
         img: UIImage?,
@@ -288,7 +293,14 @@ final class PIPServiceMessages {
             - avatarSizeLocal
             - horizontalSpacing
 
-        let nameHeight = showName
+
+        Task.detached { [weak self] in
+            guard let self = self else { return }
+
+
+            // 背景線程計算高度
+
+            let nameHeight = showName
             ? (user as NSString).boundingRect(
                 with: CGSize(width: maxNameWidth, height: .greatestFiniteMagnitude),
                 options: [.usesLineFragmentOrigin, .usesFontLeading],
@@ -297,21 +309,30 @@ final class PIPServiceMessages {
             ).height
             : 0
 
-        let maxMessageWidth = container.bounds.width
+            let maxMessageWidth = container.bounds.width
             - leftPadding * 2
             - avatarSizeLocal
             - horizontalSpacing
             - (giftLayer != nil ? giftSizeLocal + 2 : 0)
 
-        let messageHeight = (message as NSString).boundingRect(
-            with: CGSize(width: maxMessageWidth, height: .greatestFiniteMagnitude),
-            options: [.usesLineFragmentOrigin, .usesFontLeading],
-            attributes: [.font: font],
-            context: nil
-        ).height
+            let messageHeight = (message as NSString).boundingRect(
+                with: CGSize(width: maxMessageWidth, height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                attributes: [.font: font],
+                context: nil
+            ).height
 
-        let textBlockHeight = nameHeight + tuple.verticalSpacing + messageHeight
-        tuple.height = max(avatarSizeLocal, textBlockHeight) + tuple.verticalSpacing
+            let textBlockHeight = nameHeight + tuple.verticalSpacing + messageHeight
+
+
+            await MainActor.run {
+
+                tuple.height = max(avatarSizeLocal, textBlockHeight) + tuple.verticalSpacing
+
+
+            }
+
+        }
 
         return tuple
     }
@@ -319,47 +340,6 @@ final class PIPServiceMessages {
     private var lastDirtyTime: CFTimeInterval = 0
 
 
-    // MARK: 切分訊息 如果太長
-    private func splitMessageIntoChunks(
-        message: String,
-        font: UIFont,
-        maxWidth: CGFloat,
-        maxHeight: CGFloat
-    ) -> [String] {
-
-        var result: [String] = []
-        var current = ""
-
-        let lines = message.components(separatedBy: "\n")
-
-        for line in lines {
-            let test = current.isEmpty ? line : current + "\n" + line
-
-            let height = (test as NSString).boundingRect(
-                with: CGSize(width: maxWidth, height: .greatestFiniteMagnitude),
-                options: [.usesLineFragmentOrigin, .usesFontLeading],
-                attributes: [.font: font],
-                context: nil
-            ).height
-
-            if height > maxHeight {
-                if !current.isEmpty {
-                    result.append(current)
-                    current = line
-                } else {
-                    result.append(line)
-                }
-            } else {
-                current = test
-            }
-        }
-
-        if !current.isEmpty {
-            result.append(current)
-        }
-
-        return result
-    }
 
 
 
@@ -367,8 +347,8 @@ final class PIPServiceMessages {
     func addMessage(
         user: String,
         message: String,
-        img: UIImage? = nil,
-        giftImg: UIImage? = nil,
+        imgURL: String? = nil,
+        giftURL: String? = nil,
         isMain: Bool = true
     ) {
 
@@ -384,12 +364,12 @@ final class PIPServiceMessages {
 
             // secondary 不 chunk
             if type == .secondary {
-                await MainActor.run {
+
                     let tuple = self.buildMessageTuple(
                         user: user,
                         message: message,
-                        img: img,
-                        giftImg: giftImg,
+                        img: nil,
+                        giftImg: nil,
                         showAvatar: true,
                         showName: true,
                         font: font,
@@ -397,55 +377,38 @@ final class PIPServiceMessages {
                         giftSizeLocal: giftSizeLocal
                     )
                     self.replaceBottomMessage(tuple)
-                }
+
                 return
             }
 
-            let maxMessageWidth =
-            self.container.bounds.width
-            - self.leftPadding * 2
-            - avatarSizeLocal
-            - self.horizontalSpacing
-            - (giftImg != nil ? giftSizeLocal + 2 : 0)
 
-            let maxChunkHeight =
-            self.container.bounds.height
-            - self.topMargin
-            - (self.bottomMessage?.height ?? 0)
-            - 8
-            - avatarSizeLocal
-
-            logger.debug("MaxCW:\(maxMessageWidth) MaxCH:\(maxChunkHeight)")
-
-
-
-            let chunks = self.splitMessageIntoChunks(
+            let tuple = self.buildMessageTuple(
+                user: user,
                 message: message,
+                img: nil,
+                giftImg: nil,
+                showAvatar: true,
+                showName: true,
                 font: font,
-                maxWidth: maxMessageWidth,
-                maxHeight: maxChunkHeight
+                avatarSizeLocal: avatarSizeLocal,
+                giftSizeLocal: giftSizeLocal
             )
+            self.stackedMessages.append(tuple)
+            self.layoutTargetsAndStartAnimation()
 
-            await MainActor.run {
-                for (index, chunk) in chunks.enumerated() {
-
-                    logger.debug("index:\(index) chunk:\(chunk)")
-
-                    let tuple = self.buildMessageTuple(
-                        user: user,
-                        message: chunk,
-                        img: img,
-                        giftImg: giftImg,
-                        showAvatar: index == 0,
-                        showName: index == 0,
-                        font: font,
-                        avatarSizeLocal: avatarSizeLocal,
-                        giftSizeLocal: giftSizeLocal
-                    )
-                    self.stackedMessages.append(tuple)
+            // 2️⃣ 非阻塞下載圖片，下載完成再更新 tuple
+            if let imgURL = imgURL {
+                PiPImageCache.shared.load(urlString: imgURL) { image in
+                    tuple.avatar.contents = image?.cgImage
                 }
-                self.layoutTargetsAndStartAnimation()
             }
+
+            if let giftURL = giftURL {
+                PiPImageCache.shared.load(urlString: giftURL) { image in
+                    tuple.gift?.contents = image?.cgImage
+                }
+            }
+
         }
 
     }
@@ -485,14 +448,14 @@ final class PIPServiceMessages {
 
 
     // MARK: - Layout + Animation 修正版（可直接替換）
-    private func layoutTargetsAndStartAnimation() {
+    func layoutTargetsAndStartAnimation() {
 
         visible.removeAll()
 
         var yCursor = topMargin
 
         // 重新排 targetY，同時決定 visible
-        for msg in stackedMessages {
+        for msg in stackedMessages where msg.alpha > 0  {
 
             // 設定 targetY，保證不壓到底部訊息
             //yCursor += msg.height + msg.verticalSpacing
@@ -500,10 +463,22 @@ final class PIPServiceMessages {
             // 設定 targetY，避開底部固定訊息
             let bottomPadding: CGFloat = 8
             let bottomMsgHeight = bottomMessage?.height ?? 0
-            let maxY = container.bounds.height - bottomMsgHeight - bottomPadding
+
 
             yCursor += msg.height + msg.verticalSpacing
-            msg.targetY = min(yCursor - msg.height, maxY - msg.height)
+
+            
+            let overflowHeight = (yCursor + msg.height) - (
+                container.bounds.height - bottomMsgHeight - bottomPadding
+            )
+
+            msg.overflowHeight = overflowHeight
+
+            msg.targetY = min(
+                yCursor - msg.height - max(overflowHeight, 0),
+                container.bounds.height - bottomMsgHeight - bottomPadding
+            )
+
 
             visible.append(msg)
             logTo("visible \(visible.count)")
@@ -587,21 +562,26 @@ final class PIPServiceMessages {
         let fadeThreshold: CGFloat = 1.0
 
         // Fade 超出底部訊息區的最上方訊息
-        if let topMsg = stackedMessages.filter({ $0.alpha > 0 })
-                                        .min(by: { $0.startY < $1.startY }) {
+        // 逐塊判斷 fade，每塊 alpha 獨立
 
+        logTo("STACK:\(stackedMessages.count)")
 
+        for msg in stackedMessages where msg.alpha > 0 {
+
+            logTo(
+                "SMSG:\(String(describing: msg.name.string))\n\(String(describing: msg.message.string))"
+            )
             let canFade = stackedMessages.count > minVisibleCount
-            if canFade && topMsg.startY <= topMargin + fadeThreshold {
-                topMsg.alpha -= 0.04
-                if topMsg.alpha < 0.01 {
-                    topMsg.alpha = 0
+            if canFade && msg.startY <= topMargin + fadeThreshold {
+                msg.alpha -= 0.04
+                if msg.alpha < 0.01 {
+                    msg.alpha = 0
                 }
 
-                topMsg.avatar.opacity = Float(topMsg.alpha)
-                topMsg.name.opacity = Float(topMsg.alpha)
-                topMsg.message.opacity = Float(topMsg.alpha)
-                topMsg.gift?.opacity = Float(topMsg.alpha)
+                msg.avatar.opacity = Float(msg.alpha)
+                msg.name.opacity = Float(msg.alpha)
+                msg.message.opacity = Float(msg.alpha)
+                msg.gift?.opacity = Float(msg.alpha)
             }
         }
 
@@ -693,6 +673,16 @@ final class PIPServiceMessages {
 
 
     private func layout(msg: MessageLayerTuple, y: CGFloat) {
+
+
+        var adjustedY = y
+
+        // ✅ 這裡加上補償，讓超長訊息往上移
+        if let overflow = msg.overflowHeight {
+            adjustedY -= overflow
+        }
+
+
         let font = msg.font ?? self.font
         let avatarSizeLocal = msg.avatarSize ?? self.avatarSize
         let giftSizeLocal = msg.giftSize ?? self.giftSize
@@ -782,78 +772,68 @@ struct DebugImageViewWrapper: UIViewRepresentable {
 
 struct PIPView: View {
 
-    var body: some View {
+    // 狀態管理哪個 PiP 正在啟用
+    @State private var isChatPiPActive = false
+    @State private var isTestPiPActive = false
 
+    var body: some View {
         VStack(spacing: 20) {
             Text("Chat")
 
+            // 水平排列聊天組與測試組按鈕
+            HStack(spacing: 20) {
+                VStack(spacing: 10) {
+                    Button("[聊天組]啟動 PiP") {
+                        let pipSize = CGSize(width: 300, height: 200)
+                        PIPService.shared.startPiP(size: pipSize)
+                        isChatPiPActive = true
+                    }
+                    .disabled(isTestPiPActive) // 測試組啟用時灰掉
 
-            Button("TestB"){
-                // 新訊息
-                let imgA = "https://img.icons8.com/?size=100&id=12860&format=png&color=000000"
+                    Button("[聊天室]停止 PiP") {
+                        PIPService.shared.stopPiP()
+                        isChatPiPActive = false
+                    }
+                    .disabled(!isChatPiPActive)
+                }
 
-                let imgG = "https://img.icons8.com/?size=100&id=y5xu7jml0MTU&format=png&color=000000"
+                VStack(spacing: 10) {
+                    Button("[測試組]啟動 PiP") {
+                        PIPTestService.shared.startPiPTest(size: CGSize(width: 300, height: 200))
+                        isTestPiPActive = true
+                    }
+                    .disabled(isChatPiPActive) // 聊天組啟用時灰掉
 
-
-                PIPService.shared.addMessage(
-                    user: "小明2",
-                    msg: "Hello!",
-                    imgURL: imgA,
-                    giftURL: imgG
-                )
+                    Button("[測試組]停止 PiP") {
+                        PIPTestService.shared.stopPiP()
+                        isTestPiPActive = false
+                    }
+                    .disabled(!isTestPiPActive)
+                }
             }
-            Button("Test次要訊息"){
-                // 新訊息
+
+            Button("測試長訊息") {
+                PIPService.shared.addMessage(user: "小明2", msg: "Hello!")
+
+            }
+            Button("TestB") {
                 let imgA = "https://img.icons8.com/?size=100&id=12860&format=png&color=000000"
-
                 let imgG = "https://img.icons8.com/?size=100&id=y5xu7jml0MTU&format=png&color=000000"
+                PIPService.shared.addMessage(user: "小明2", msg: "Hello!", imgURL: imgA, giftURL: imgG)
+            }
 
-
-                PIPService.shared.addMessage(
-                    user: "小明2",
-                    msg: "Hello!",
-                    imgURL: imgA,
-                    giftURL: imgG,
-                    isMain: false
-                )
+            Button("Test次要訊息") {
+                let imgA = "https://img.icons8.com/?size=100&id=12860&format=png&color=000000"
+                let imgG = "https://img.icons8.com/?size=100&id=y5xu7jml0MTU&format=png&color=000000"
+                PIPService.shared.addMessage(user: "小明2", msg: "Hello!", imgURL: imgA, giftURL: imgG, isMain: false)
             }
 
             Button("新增訊息") {
-                PIPService.shared
-                    .addMessage(
-                        msg:"測試訊息圖片",imgURL: "https://img.icons8.com/?size=100&id=12860&format=png&color=000000",giftURL: "https://img.icons8.com/?size=100&id=y5xu7jml0MTU&format=png&color=000000"
-                    )
-            }
-
-            Button("[測試組]啟動 PiP") {
-
-                // 設定 PiP 顯示尺寸
-
-
-                // 啟動測試 PiP
-                PIPTestService.shared.startPiPTest(size: CGSize(width: 300, height: 200))
-
-
-            }
-            
-            Button("[測試組]停止 PiP") {
-                PIPTestService.shared.stopPiP()
-
-            }
-            Button("[聊天組]啟動 PiP"){
-                let pipSize = CGSize(width: 300, height: 200)
-
-
-                // 啟動 PiP
-                PIPService.shared
-                    .startPiP(
-                        size: pipSize
-
-                    )
-
-            }
-            Button("[聊天室]停止PIP") {
-                PIPService.shared.stopPiP()
+                PIPService.shared.addMessage(
+                    msg: "測試訊息圖片",
+                    imgURL: "https://img.icons8.com/?size=100&id=12860&format=png&color=000000",
+                    giftURL: "https://img.icons8.com/?size=100&id=y5xu7jml0MTU&format=png&color=000000"
+                )
             }
 
             // 將 debugImageView 顯示在 SwiftUI
@@ -861,7 +841,7 @@ struct PIPView: View {
                 .frame(width: 150, height: 100)
                 .border(Color.red)
         }
+        .padding()
     }
 }
-
 // 這是一個你自訂的內容（聊天室/動畫等）

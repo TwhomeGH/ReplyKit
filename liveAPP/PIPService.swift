@@ -193,7 +193,7 @@ final class PIPService: NSObject, @unchecked Sendable {
     // 每 0.5 秒計算一次 hash
 
     private var debugImageView: UIImageView?
-    private let pipStartThreshold: Int64 = 3 // 改成 3 幀
+    private let pipStartThreshold: Int64 = 1 
 
     // MARK: - Adaptive FPS
     private var currentFPS: Double = 30
@@ -338,60 +338,28 @@ final class PIPService: NSObject, @unchecked Sendable {
     }
 
 
-    @MainActor
+
     func addMessage(
         user: String = "測試",
         msg: String,
         imgURL: String? = nil,
         giftURL: String? = nil,
-        isMain:Bool = true
-    ) {
-        // 1️⃣ 先下載 avatar 和 gift
-        var avatarImage: UIImage? = nil
-        var giftImage: UIImage? = nil
-        let group = DispatchGroup()
-
-        if let imgURL = imgURL {
-            group.enter()
-            PiPImageCache.shared.load(urlString: imgURL) { img in
-                avatarImage = img
-                group.leave()
-            }
-        }
-
-        if let giftURL = giftURL {
-            group.enter()
-            PiPImageCache.shared.load(urlString: giftURL) { img in
-                giftImage = img
-                group.leave()
-            }
-        }
-
-        group.notify(queue: .main) { [weak self] in
-            guard let self = self else { return }
-            // 2️⃣ 下載完成後再呼叫舊的 addMessage
-            self.addMessage(user: user, msg: msg, img: avatarImage, giftImg: giftImage,isMain: isMain)
-        }
-    }
-    @MainActor func addMessage(
-        user: String,
-        msg: String,
-        img: UIImage? = nil,
-        giftImg: UIImage? = nil,
         isMain: Bool = true
-
     ) {
+        // 1️⃣ 先生成 tuple，先不帶圖片
+
         messagesLayer?
             .addMessage(
                 user: user,
                 message: msg,
-                img: img,
-                giftImg: giftImg,
-                isMain: isMain
+                imgURL: imgURL,
+                giftURL: giftURL
             )
 
-        markDirty() // 提醒 renderIncremental() 更新畫面
+
     }
+
+
 
     // MARK: - Start PiP
     @MainActor
