@@ -79,6 +79,7 @@ final class LogModel: ObservableObject {
 
     private var timer: DispatchSourceTimer?
 
+    
     /// UI 更新頻率（秒）
     private let refreshInterval: TimeInterval = 0.2
     /// 每次最多吃幾筆 log
@@ -108,14 +109,19 @@ final class LogModel: ObservableObject {
         for msg in logs {
             messages.append(LogItem(message: msg))
         }
+
         if messages.count > maxMessages {
             messages.removeFirst(messages.count - maxMessages)
         }
+
+
+
     }
 
 
     func clearLogs() {
         messages.removeAll()
+
         LogBuffer.shared.clear()
     }
 

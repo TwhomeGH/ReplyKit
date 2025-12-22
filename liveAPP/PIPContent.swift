@@ -141,6 +141,8 @@ final class MessageLayerTuple:Equatable {
     // 透明度控制，用於漸隱
     var alpha: CGFloat = 1.0
 
+    var needV: Bool = false
+
     // ⚡ 主要屬性比較用
     static func == (lhs: MessageLayerTuple, rhs: MessageLayerTuple) -> Bool {
         return lhs === rhs // 使用物件引用判斷是否為同一個實例
@@ -204,6 +206,7 @@ final class PIPServiceMessages {
         container.frame = CGRect(origin: .zero, size: size)
         container.masksToBounds = true
     }
+
 
 
     // MARK: - Build Message Tuple（抽出來重用）
@@ -399,18 +402,22 @@ final class PIPServiceMessages {
             }
 
             let maxMessageWidth =
-                self.container.bounds.width
-                - self.leftPadding * 2
-                - avatarSizeLocal
-                - self.horizontalSpacing
-                - (giftImg != nil ? giftSizeLocal + 2 : 0)
+            self.container.bounds.width
+            - self.leftPadding * 2
+            - avatarSizeLocal
+            - self.horizontalSpacing
+            - (giftImg != nil ? giftSizeLocal + 2 : 0)
 
             let maxChunkHeight =
-                self.container.bounds.height
-                - self.topMargin
-                - (self.bottomMessage?.height ?? 0)
-                - 8
-                - avatarSizeLocal
+            self.container.bounds.height
+            - self.topMargin
+            - (self.bottomMessage?.height ?? 0)
+            - 8
+            - avatarSizeLocal
+
+            logger.debug("MaxCW:\(maxMessageWidth) MaxCH:\(maxChunkHeight)")
+
+
 
             let chunks = self.splitMessageIntoChunks(
                 message: message,
@@ -421,6 +428,9 @@ final class PIPServiceMessages {
 
             await MainActor.run {
                 for (index, chunk) in chunks.enumerated() {
+
+                    logger.debug("index:\(index) chunk:\(chunk)")
+
                     let tuple = self.buildMessageTuple(
                         user: user,
                         message: chunk,
@@ -437,6 +447,7 @@ final class PIPServiceMessages {
                 self.layoutTargetsAndStartAnimation()
             }
         }
+
     }
 
 
@@ -449,6 +460,9 @@ final class PIPServiceMessages {
         layout(msg: msg, y: y)
     }
     private func replaceBottomMessage(_ newMsg: MessageLayerTuple) {
+
+
+
 
         // 移除舊的
         if let old = bottomMessage {
@@ -469,29 +483,45 @@ final class PIPServiceMessages {
 
     let minVisibleCount = 2
 
+
     // MARK: - Layout + Animation 修正版（可直接替換）
     private func layoutTargetsAndStartAnimation() {
-        visible.removeAll()
 
+        visible.removeAll()
 
         var yCursor = topMargin
 
         // 重新排 targetY，同時決定 visible
         for msg in stackedMessages {
 
-            // 未 fade 的訊息
-            msg.targetY = yCursor
+            // 設定 targetY，保證不壓到底部訊息
+            //yCursor += msg.height + msg.verticalSpacing
 
-            visible.append(msg)
-
+            // 設定 targetY，避開底部固定訊息
+            let bottomPadding: CGFloat = 8
+            let bottomMsgHeight = bottomMessage?.height ?? 0
+            let maxY = container.bounds.height - bottomMsgHeight - bottomPadding
 
             yCursor += msg.height + msg.verticalSpacing
+            msg.targetY = min(yCursor - msg.height, maxY - msg.height)
 
+            visible.append(msg)
+            logTo("visible \(visible.count)")
             // 新訊息從底部進入動畫
             if msg.isNew && !animatingMessages.contains(msg) {
-                let bottomY = bottomMessage?.avatar.frame.origin.y ?? container.bounds.height
-                msg.startY = bottomY - msg.height - msg.verticalSpacing
+                // 如果是原本底部固定訊息（次要訊息），就從原本位置開始
+                let startY: CGFloat
+                if msg === bottomMessage {
+
+                    startY = bottomMessage?.avatar.frame.origin.y ?? container.bounds.height
+                } else {
+                    startY = container.bounds.height - (bottomMessage?.height ?? 0)
+                    // 新主要訊息從底部滑上
+                }
+
+                msg.startY = startY
                 animatingMessages.append(msg)
+
             }
         }
 
@@ -506,20 +536,21 @@ final class PIPServiceMessages {
         }
 
         // Debug 輸出
-        print("--- layoutTargets ---")
+        logTo("--- layoutTargets ---")
         for (i, msg) in stackedMessages.enumerated() {
-            print(
+
+            logTo(
                 "stacked[\(i)]  [\(String(describing: msg.message.string))] alpha:\(msg.alpha) startY:\(msg.startY) targetY:\(msg.targetY) isNew:\(msg.isNew)"
             )
         }
         if let bottom = bottomMessage {
-            print("bottomMessage startY:\(bottom.avatar.frame.origin.y)")
+            logTo("bottomMessage startY:\(bottom.avatar.frame.origin.y)")
         }
+
     }
 
     // MARK: - 每幀動畫
     @objc private func stepAnimationDisplayLink() {
-//        let maxVisibleY = container.bounds.height - (bottomMessage?.height ?? 0) - 8
 
         // 動畫每幀滑動
         let snapThreshold: CGFloat = 0.5
@@ -543,6 +574,8 @@ final class PIPServiceMessages {
         }
 
 
+        logTo("VB:\(visible.count)")
+
         // 舊訊息向 targetY 移動
         for msg in visible {
             let distance = msg.targetY - msg.startY
@@ -550,34 +583,37 @@ final class PIPServiceMessages {
             layout(msg: msg, y: msg.startY)
         }
 
-        // Fade 超出底部訊息
-        // 只處理最上面的訊息
-        guard let topMsg = stackedMessages.min(by: { $0.startY < $1.startY }) else { return }
 
         let fadeThreshold: CGFloat = 1.0
 
-        let canFade = stackedMessages.count > minVisibleCount
+        // Fade 超出底部訊息區的最上方訊息
+        if let topMsg = stackedMessages.filter({ $0.alpha > 0 })
+                                        .min(by: { $0.startY < $1.startY }) {
 
-        if canFade && topMsg.startY <= topMargin + fadeThreshold {
-            topMsg.alpha -= 0.04
-            if topMsg.alpha < 0.01 {
-                topMsg.alpha = 0
+
+            let canFade = stackedMessages.count > minVisibleCount
+            if canFade && topMsg.startY <= topMargin + fadeThreshold {
+                topMsg.alpha -= 0.04
+                if topMsg.alpha < 0.01 {
+                    topMsg.alpha = 0
+                }
+
+                topMsg.avatar.opacity = Float(topMsg.alpha)
+                topMsg.name.opacity = Float(topMsg.alpha)
+                topMsg.message.opacity = Float(topMsg.alpha)
+                topMsg.gift?.opacity = Float(topMsg.alpha)
             }
-
-            topMsg.avatar.opacity = Float(topMsg.alpha)
-            topMsg.name.opacity = Float(topMsg.alpha)
-            topMsg.message.opacity = Float(topMsg.alpha)
-            topMsg.gift?.opacity = Float(topMsg.alpha)
         }
 
 
-        // ✅ 新增：重新排剩下的訊息 targetY
+        // ✅ 重新排剩下的訊息 targetY
         var yCursor = topMargin
 
-        for msg in stackedMessages where msg.alpha > 0 {
+        for msg in stackedMessages where msg.alpha > 0  {
             msg.targetY = yCursor
             yCursor += msg.height + msg.verticalSpacing
         }
+
 
 
         // 刪除完全透明訊息
@@ -588,6 +624,7 @@ final class PIPServiceMessages {
             msg.name.removeFromSuperlayer()
             msg.message.removeFromSuperlayer()
             msg.gift?.removeFromSuperlayer()
+
             animatingMessages.removeAll { $0 === msg }
             return true
         }
@@ -618,8 +655,13 @@ final class PIPServiceMessages {
 
 
         if !hasAnimatingMessages && !hasMovingMessages && !hasFadingMessages {
+
             displayLink?.invalidate()
             displayLink = nil
+
+
+
+
 
             animatingMessages.forEach { $0.isNew = false }
             animatingMessages.removeAll()
@@ -632,9 +674,9 @@ final class PIPServiceMessages {
         }
 
         // Debug: 每幀輸出 animatingMessages 狀態
-        print("--- stepAnimation ---")
+        logger.debug("--- stepAnimation ---")
         for (i, msg) in animatingMessages.enumerated() {
-            print(
+            logger.debug(
                 "animating[\(i)] [\(String(describing: msg.message.string))] alpha:\(msg.alpha) startY:\(msg.startY) targetY:\(msg.targetY)"
             )
         }

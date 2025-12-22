@@ -876,11 +876,21 @@ enum LogMode: Int, CaseIterable, Identifiable {
 
 
 // MARK: 高效能 Log 顯示 TextView（避免 SwiftUI ScrollView 卡頓）
+
+
+
+// MARK: 高效能 Log 顯示 TextView
 struct LogTextView: UIViewRepresentable {
-    let messages: [String]
+
+    @ObservedObject var logModel: LogModel
+
+    final class LogUITextView: UITextView {
+        var lastDisplayedID: UUID?
+        var autoScrollEnabled: Bool = true
+    }
 
     func makeUIView(context: Context) -> UITextView {
-        let textView = UITextView()
+        let textView = LogUITextView()
         textView.isEditable = false
         textView.isSelectable = true
         textView.backgroundColor = UIColor.systemBackground
@@ -888,19 +898,67 @@ struct LogTextView: UIViewRepresentable {
         textView.textColor = UIColor.label
         textView.textContainerInset = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
         textView.alwaysBounceVertical = true
+        textView.isScrollEnabled = true
+        textView.showsVerticalScrollIndicator = true
+        textView.layoutManager.allowsNonContiguousLayout = true // 高效能設定
         return textView
     }
 
     func updateUIView(_ uiView: UITextView, context: Context) {
-        // 將 messages 轉成一整段文字（避免逐行 diff）
-        uiView.text = messages.joined(separator: "\n")
-        // 自動捲到底部
-        let bottom = NSMakeRange(uiView.text.count - 1, 1)
-        uiView.scrollRangeToVisible(bottom)
+        guard let textView = uiView as? LogUITextView else { return }
+
+        let messages = logModel.messages
+        // 🔹 找出最後顯示過的訊息位置
+        let newMessages: [LogItem]
+        if let lastID = textView.lastDisplayedID,
+           let lastIndex = messages.firstIndex(where: { $0.id == lastID }) {
+            newMessages = Array(messages[(lastIndex + 1)...])
+        } else {
+            newMessages = messages
+        }
+
+        guard !newMessages.isEmpty else { return }
+
+        // 🔹 追加文字
+        let appendedText = newMessages.map(\.message).joined(separator: "\n") + "\n"
+        textView.textStorage.beginEditing()
+        textView.textStorage.append(
+            NSAttributedString(
+                string: appendedText,
+                attributes: [
+                    .font: textView.font!,
+                    .foregroundColor: textView.textColor!
+                ]
+            )
+        )
+        textView.textStorage.endEditing()
+
+        // 🔹 更新最後顯示的 UUID
+        textView.lastDisplayedID = newMessages.last?.id
+
+        // 🔹 判斷是否自動滾動
+        let visibleHeight = textView.bounds.height - textView.adjustedContentInset.top - textView.adjustedContentInset.bottom
+        let contentHeight = textView.contentSize.height
+        let threshold: CGFloat = 5
+
+        let isUserScrollingUp = textView.contentOffset.y + visibleHeight < contentHeight - threshold
+
+        if textView.autoScrollEnabled || !isUserScrollingUp {
+            textView.autoScrollEnabled = true
+
+            if let lastRange = textView.text.range(of: textView.text, options: .backwards) {
+                let nsRange = NSRange(lastRange, in: textView.text)
+                textView.scrollRangeToVisible(nsRange)
+            }
+
+
+        } else {
+            textView.autoScrollEnabled = false
+        }
     }
 }
 
-struct logView: View {
+struct LogView: View {
     @EnvironmentObject var logModel: LogModel
 
     @AppStorage("logMode",store:userDefaults) private var logMode = 1
@@ -945,41 +1003,42 @@ struct logView: View {
                 .foregroundColor(.gray)
 
             VStack {
-                        Button("開啟日誌設定") {
-                            showLogSettings = true
-                        }
-                        .padding()
-                        .background(Color.green)
-                        .foregroundColor(.white)
-                        .cornerRadius(8)
-                    }
-                    .sheet(isPresented: $showLogSettings) {
-                        LogSettingsView()
-                    }
+                Button("開啟日誌設定") {
+                    showLogSettings = true
+                }
+                .padding()
+                .background(Color.green)
+                .foregroundColor(.white)
+                .cornerRadius(8)
+            }
+            .sheet(isPresented: $showLogSettings) {
+                LogSettingsView()
+            }
 
             Button("清除日誌") {
                 logModel.clearLogs()
                 // 清空 log.txt 檔案
-                 if let containerURL =
+                if let containerURL =
                     FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.nuclear.liveAPP") {
-                     let logURL = containerURL.appendingPathComponent("log.txt")
-                     do {
-                         try "".write(to: logURL, atomically: true, encoding: .utf8)
-                         sendlog(message: "✅ log.txt 已清空")
-                     } catch {
-                         sendlog(message: "❌ 無法清空 log.txt：\(error)")
-                     }
-                 } else {
-                     sendlog(message: "❌ 無法取得 containerURL")
-                 }
+                    let logURL = containerURL.appendingPathComponent("log.txt")
+                    do {
+                        try "".write(to: logURL, atomically: true, encoding: .utf8)
+                        sendlog(message: "✅ log.txt 已清空")
+                    } catch {
+                        sendlog(message: "❌ 無法清空 log.txt：\(error)")
+                    }
+                } else {
+                    sendlog(message: "❌ 無法取得 containerURL")
+                }
             }
 
 
-            LogTextView(messages: logModel.messages.map(\.message))
+            LogTextView(logModel: logModel)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
         }
     }
+
 }
 
 
@@ -2011,7 +2070,7 @@ struct ContentView: View {
                 .tabItem { Label("測試頁", systemImage: "testtube.2") }
                 .tag(AppPage.testpage)
 
-            logView()
+            LogView()
                 .environmentObject(logModel)
                 .tabItem { Label("日誌", systemImage: "apple.terminal") }
                 .tag(AppPage.log)
