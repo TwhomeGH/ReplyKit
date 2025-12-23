@@ -79,13 +79,12 @@ final class LogModel: ObservableObject {
 
     private var timer: DispatchSourceTimer?
 
-    
     /// UI 更新頻率（秒）
-    private let refreshInterval: TimeInterval = 0.2
+    private let refreshInterval: TimeInterval = 0.1
     /// 每次最多吃幾筆 log
-    private let batchLimit = 10
+    private let batchLimit = 50
     /// UI 最多保留筆數
-    private let maxMessages = 300
+    private let maxMessages = 1000
 
     init() {
         startLogPump()
@@ -98,25 +97,22 @@ final class LogModel: ObservableObject {
             guard let self else { return }
             let logs = LogBuffer.shared.drain(max: self.batchLimit)
             guard !logs.isEmpty else { return }
-            self.appendLogs(logs)
+
+
+            // 直接 append 到 messages，不再使用 pendingLogs
+            self.messages.append(contentsOf: logs.map { LogItem(message: $0) })
+
+            // 限制最大條數
+            if self.messages.count > self.maxMessages {
+                self.messages.removeFirst(self.messages.count - self.maxMessages)
+            }
+
+
         }
         t.resume()
         timer = t
     }
 
-
-    private func appendLogs(_ logs: [String]) {
-        for msg in logs {
-            messages.append(LogItem(message: msg))
-        }
-
-        if messages.count > maxMessages {
-            messages.removeFirst(messages.count - maxMessages)
-        }
-
-
-
-    }
 
 
     func clearLogs() {

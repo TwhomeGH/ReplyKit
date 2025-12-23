@@ -899,15 +899,52 @@ struct LogTextView: UIViewRepresentable {
 
         weak var textView: UITextView?
 
+        var scrollWorkItem: DispatchWorkItem?
+        private let scrollDelay: TimeInterval = 0.2
+
         func scrollToBottom(animated: Bool = false) {
             guard let tv = textView else { return }
-            let y = max(0,
-                        tv.contentSize.height
-                        - tv.bounds.height
-                        + tv.adjustedContentInset.bottom
-            )
-            tv.setContentOffset(CGPoint(x: 0, y: y), animated: false)
 
+
+            if scrollWorkItem == nil {
+
+                let workItem = DispatchWorkItem { [weak self, weak tv] in
+                    guard let tv = tv else { return }
+
+                    let y = max(0, tv.contentSize.height - tv.bounds.height + tv.adjustedContentInset.bottom)
+                    tv.setContentOffset(CGPoint(x: 0, y: y), animated: true)
+
+                    self?.scrollWorkItem = nil // 執行完畢，清空
+
+                }
+
+                scrollWorkItem = workItem
+                DispatchQueue.main
+                    .asyncAfter(
+                        deadline: .now() + scrollDelay,
+                        execute: workItem
+                    )
+
+            }
+
+        }
+
+        func scrollToBottomImmediate(after delay: TimeInterval = 0.05) {
+            guard let tv = textView else { return }
+
+            // 先取消任何正在等待的 debounced 任務
+            scrollWorkItem?.cancel()
+            scrollWorkItem = nil
+
+            // 延遲執行滾動
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak tv] in
+                guard let tv = tv else { return }
+                tv.layoutIfNeeded() // 確保 contentSize 正確
+                let y = max(0, tv.contentSize.height - tv.bounds.height + tv.adjustedContentInset.bottom)
+                tv.setContentOffset(CGPoint(x: 0, y: y), animated: false)
+
+
+            }
         }
 
         func textViewDidChangeSelection(_ textView: UITextView) {
@@ -943,6 +980,8 @@ struct LogTextView: UIViewRepresentable {
         return textView
     }
 
+
+
     func updateUIView(_ uiView: UITextView, context: Context) {
         guard let textView = uiView as? LogUITextView else { return }
 
@@ -956,7 +995,12 @@ struct LogTextView: UIViewRepresentable {
             newMessages = messages
         }
 
-        guard !newMessages.isEmpty else { return }
+        // 判斷是否有新增 log
+        guard !newMessages.isEmpty else {
+            // 沒有新 log，可以認為是已 flush 完
+            context.coordinator.scrollToBottomImmediate() // 立即滾到底
+            return
+        }
 
         // 🔹 追加文字
         let appendedText = newMessages.map(\.message).joined(separator: "\n") + "\n"
@@ -964,13 +1008,11 @@ struct LogTextView: UIViewRepresentable {
         textView.textStorage.append(
             NSAttributedString(
                 string: appendedText,
-                attributes: [
-                    .font: textView.font!,
-                    .foregroundColor: textView.textColor!
-                ]
+                attributes: [.font: textView.font!, .foregroundColor: textView.textColor!]
             )
         )
         textView.textStorage.endEditing()
+
 
 
         let visibleHeight = textView.bounds.height
@@ -989,25 +1031,15 @@ struct LogTextView: UIViewRepresentable {
         // 🔹 更新最後顯示的 UUID
         textView.lastDisplayedID = newMessages.last?.id
 
+
         // 🔹 判斷是否自動滾動
         // 只在使用者沒有選取文字、沒有拖動或滑動時才滾動
         let userHasInteracted = textView.selectedRange.length > 0
 
         if !userHasInteracted {
-
-
-            DispatchQueue.main.async {
-
-                let y = max(0,
-                            textView.contentSize.height
-                            - textView.bounds.height
-                            + textView.adjustedContentInset.bottom
-                )
-                textView.setContentOffset(CGPoint(x: 0, y: y), animated: true)
-
-            }
-
+            context.coordinator.scrollToBottom()
         }
+
     }
 
 
