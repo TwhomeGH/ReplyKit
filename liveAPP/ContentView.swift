@@ -886,7 +886,6 @@ struct LogTextView: UIViewRepresentable {
 
     final class LogUITextView: UITextView {
         var lastDisplayedID: UUID?
-        var autoScrollEnabled: Bool = true
     }
 
     func makeUIView(context: Context) -> UITextView {
@@ -937,23 +936,16 @@ struct LogTextView: UIViewRepresentable {
         textView.lastDisplayedID = newMessages.last?.id
 
         // 🔹 判斷是否自動滾動
-        let visibleHeight = textView.bounds.height - textView.adjustedContentInset.top - textView.adjustedContentInset.bottom
-        let contentHeight = textView.contentSize.height
-        let threshold: CGFloat = 5
+        // 只在使用者沒有選取文字、沒有拖動或滑動時才滾動
+        let shouldAutoScroll = textView.selectedRange.length == 0 &&
+                               !textView.isTracking &&
+                               !textView.isDragging &&
+                               !textView.isDecelerating
+        if shouldAutoScroll {
+            // 滾動到最後
+            let bottom = NSRange(location: textView.text.count, length: 0)
+            textView.scrollRangeToVisible(bottom)
 
-        let isUserScrollingUp = textView.contentOffset.y + visibleHeight < contentHeight - threshold
-
-        if textView.autoScrollEnabled || !isUserScrollingUp {
-            textView.autoScrollEnabled = true
-
-            if let lastRange = textView.text.range(of: textView.text, options: .backwards) {
-                let nsRange = NSRange(lastRange, in: textView.text)
-                textView.scrollRangeToVisible(nsRange)
-            }
-
-
-        } else {
-            textView.autoScrollEnabled = false
         }
     }
 }
