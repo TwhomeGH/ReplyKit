@@ -60,7 +60,9 @@ final class VideoFrameProcessor {
 
     func process(_ sampleBuffer: CMSampleBuffer, timestamp: CMTime) {
 
-        processingQueue.async {
+        processingQueue.async { [weak self] in
+            guard let self = self, self.isActive else { return }
+
             guard self.isActive else { return }
 
             // 延遲初始化 rotator
