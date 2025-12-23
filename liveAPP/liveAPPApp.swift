@@ -134,9 +134,28 @@ final class LogReceiver {
     private let groupID = "group.nuclear.liveAPP"
     private let logFileName = "log.txt"
 
+    private let bufferQueue = DispatchQueue(label: "com.nuclear.LogReceiver.bufferQueue")
+
+
     private var lastReadOffset: UInt64 = 0
     private var buffer: [String] = []
-    private var timer: Timer?
+
+    private var flushTimer: DispatchSourceTimer?
+
+
+    private func startFlushTimer() {
+        flushTimer = DispatchSource.makeTimerSource(queue: bufferQueue)
+        flushTimer?.schedule(deadline: .now() + flushInterval, repeating: flushInterval)
+        flushTimer?.setEventHandler { [weak self] in
+            self?.flushBuffer()
+        }
+        flushTimer?.resume()
+    }
+
+    private func stopFlushTimer() {
+        flushTimer?.cancel()
+        flushTimer = nil
+    }
 
     init() {
         // 讀取上次儲存 offset
@@ -153,13 +172,12 @@ final class LogReceiver {
         )
 
         // Timer 批次發送 buffer
-        timer = Timer.scheduledTimer(withTimeInterval: flushInterval, repeats: true) { [weak self] _ in
-            self?.flushBuffer()
-        }
+        startFlushTimer()
     }
 
     deinit {
-        timer?.invalidate()
+        stopFlushTimer()
+
         CFNotificationCenterRemoveObserver(
             CFNotificationCenterGetDarwinNotifyCenter(),
             UnsafeRawPointer(Unmanaged.passUnretained(self).toOpaque()),
@@ -171,12 +189,16 @@ final class LogReceiver {
     // MARK: - C callback
     private static let notificationCallback: CFNotificationCallback = { _, observer, _, _, _ in
         guard let observer else { return }
+
         let mySelf = Unmanaged<LogReceiver>.fromOpaque(observer).takeUnretainedValue()
+
         mySelf.readNewLines()
+
     }
 
     // MARK: - 讀新增 log
     private func readNewLines() {
+
         guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupID) else {
             sendlog(message:"❌ LogReceiver: 無法取得 containerURL")
             return
@@ -239,27 +261,41 @@ final class LogReceiver {
                 // 限制推送行數
                 let newLines = Array(lines.suffix(self.maxPush))
 
-                self.buffer.append(contentsOf: newLines)
+                // 讀取新的 lines
+                bufferQueue.async {
+                    self.buffer.append(contentsOf: newLines)
+                    // 更新 offset
+                    self.lastReadOffset += UInt64(data.count)
+
+                }
+
             }else {
                 sendlog(message:"⚠️ LogReceiver: 讀取到的資料沒有換行符號")
             }
 
-            // 更新 offset
-            self.lastReadOffset += UInt64(data.count)
-            UserDefaults.standard.set(Int(self.lastReadOffset), forKey: "lastReadOffset")
+
+
         }
     }
 
     // MARK: - 批次推送 buffer
     private func flushBuffer() {
-        guard !buffer.isEmpty else { return }
-        let linesToSend = buffer
 
-        buffer.removeAll()
 
-        for line in linesToSend {
-            LogBuffer.shared.push(line)
-        }
+            guard !self.buffer.isEmpty else { return }
+            let linesToSend = self.buffer
+
+            self.buffer.removeAll()
+
+            for line in linesToSend {
+                LogBuffer.shared.push(line)
+            }
+
+        // ✅ 批次更新 offset，降低 UserDefaults I/O
+            UserDefaults.standard.set(Int(lastReadOffset), forKey: "lastReadOffset")
+
+
+
 
 
         
