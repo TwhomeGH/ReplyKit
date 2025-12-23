@@ -35,11 +35,30 @@ import HaishinKit
 // MARK: - Safe Batch Video Rotator (Async/Await)
 final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
+
+    enum QualityMode: CustomStringConvertible {
+        case live      // bilinear
+        case quality   // bicubic
+
+        var description: String {
+            switch self {
+            case .live:    return "Live (Bilinear)"
+            case .quality: return "Quality (Bicubic)"
+            }
+        }
+
+    }
+
+    var qualityMode: QualityMode = .live
+
     enum RotationAngle: UInt32, CaseIterable { case angle0 = 0, angle90 = 90, angle180 = 180, angle270 = 270 }
 
     private var device: MTLDevice?
     private var queue: MTLCommandQueue?
-    private var computePipeline: MTLComputePipelineState!
+
+    private var pipelineBilinear: MTLComputePipelineState?
+    private var pipelineBicubic: MTLComputePipelineState?
+
     private(set) var textureCache: CVMetalTextureCache?
 
     private var isActive = true
@@ -156,61 +175,86 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         }
         textureCache = nil
         queue = nil
-        computePipeline = nil
+
+        pipelineBilinear = nil
+        pipelineBicubic = nil
 
         logTo("cleanup called")
     }
 
     // MARK: Init
     init?(dstW: Int = 0, dstH: Int = 0, debug: Bool = false,
-          maxPoolSize: Int = 3) {
+          maxPoolSize: Int = 3 , useBic:QualityMode = .live) {
 
-
+        self.qualityMode = useBic
         self.dstWW = dstW
         self.dstHH = dstH
         self.debug = debug
         self.maxPoolSize = maxPoolSize
 
+        sendlog(
+            message:"GPU Rotator init:\(dstWW)x\(dstHH) Debug:\(debug) 使用:\(qualityMode)",
+            flush: true
+        )
+
     }
 
     private func ensureMetalResources() -> Bool {
-        // 初始化 MTLDevice + CommandQueue
-        if self.queue == nil {
+        // 1️⃣ 初始化 MTLDevice + CommandQueue
+        if queue == nil {
             guard let dev = MTLCreateSystemDefaultDevice(),
                   let q = dev.makeCommandQueue() else { return false }
-            self.device = dev
-            self.queue = q
+            device = dev
+            queue = q
         }
 
-        // 初始化 TextureCache
+        // 2️⃣ 初始化 TextureCache
         if textureCache == nil {
-            guard let dev = device, CVMetalTextureCacheCreate(
-                nil,
-                nil,
-                dev,
-                nil,
-                &textureCache
-            ) == kCVReturnSuccess,
+            guard let dev = device,
+                  CVMetalTextureCacheCreate(
+                    nil,
+                    nil,
+                    dev,
+                    nil,
+                    &textureCache
+                  ) == kCVReturnSuccess,
                   textureCache != nil else { return false }
         }
 
-        // 初始化 ComputePipeline
-        if computePipeline == nil, !buildComputePipeline() {
-            return false
+        // 3️⃣ 初始化「兩條」 ComputePipeline
+        // ❗只要任一條還沒建，就建一次
+        if pipelineBilinear == nil || pipelineBicubic == nil {
+            if !buildComputePipeline() { return false }
         }
 
         return true
     }
-
+    
 
     private func buildComputePipeline() -> Bool {
         do {
-            guard let dev = device ,let lib = dev.makeDefaultLibrary(),
-                  let kernel = lib.makeFunction(name: "rotateNV12_tileBicubicUV") else { return false }
-            computePipeline = try dev.makeComputePipelineState(function: kernel)
+            guard let dev = device,
+                  let lib = dev.makeDefaultLibrary() else { return false }
+
+            // --- Pipeline A：直播（bilinear）---
+            if pipelineBilinear == nil {
+                guard let fn = lib.makeFunction(name: "rotateNV12_bilinear") else { return false }
+                pipelineBilinear = try dev.makeComputePipelineState(function: fn)
+            }
+
+            // --- Pipeline B：高品質（bicubic）---
+            if pipelineBicubic == nil {
+                guard let fn = lib.makeFunction(name: "rotateNV12_bicubic") else { return false }
+                pipelineBicubic = try dev.makeComputePipelineState(function: fn)
+            }
+
             return true
-        } catch { return false }
+        } catch {
+            return false
+        }
     }
+
+
 
     private func logTo(_ message: String) { if debug { sendlog(message: "[GPU Rotator] \(message)") } }
 
@@ -446,8 +490,23 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                                 dstY: MTLTexture, dstUV: MTLTexture,
                                 angle: RotationAngle) {
 
-        guard let compute = computePipeline, let encoder = cmd.makeComputeCommandEncoder() else { return }
+
+        let pipeline: MTLComputePipelineState?
+
+        switch qualityMode {
+        case .live:
+            pipeline = pipelineBilinear
+        case .quality:
+            pipeline = pipelineBicubic
+        }
+
+        guard let compute = pipeline,
+              let encoder = cmd.makeComputeCommandEncoder() else { return }
+
+
+
         encoder.setComputePipelineState(compute)
+
         encoder.setTexture(srcY, index: 0)
         encoder.setTexture(srcUV, index: 1)
         encoder.setTexture(dstY, index: 2)

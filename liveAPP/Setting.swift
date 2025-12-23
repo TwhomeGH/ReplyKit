@@ -48,6 +48,8 @@ struct GPURotateView: View {
     @FocusState private var isDstHFocused: Bool
     @FocusState var isFocusedMax: Bool
 
+    @AppStorage("useBic",store:userDefaults) private var useBic = false
+
 
     var body: some View {
         Form {
@@ -145,6 +147,22 @@ struct GPURotateView: View {
                         .foregroundColor(.secondary)
                         .padding(.bottom, 5)
 
+                Toggle(isOn:$useBic){
+                    Text("啟用Bicubic")
+                }
+                Text("雙三次插值算法經常用於圖像或者影片的縮放，它能比占主導地位的雙線性濾波算法保留更好的細節品質"
+                )
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                        .padding(.bottom, 5)
+                Text("預設使用：雙線性內插值算法放大後的圖像質量較高，不會出現像素值不連續的的情況。然而此算法具有低通濾波器的性質，使高頻分量受損，所以可能會使圖像輪廓在一定程度上變得模糊"
+                )
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                        .padding(.bottom, 5)
+
+
+
             }
         }
         .navigationTitle("GPU輸出設置")
@@ -162,6 +180,8 @@ struct LogSettingView:View {
     @AppStorage("onlogPage",store:userDefaults) private var onlogPage = false
 
     @AppStorage("PIPLog",store:userDefaults) private var PIPLog = false
+
+    @AppStorage("PIPChatLog",store:userDefaults) private var PIPChatLog = false
 
 
     @AppStorage("BacklogTime",store:userDefaults) private var logTime = false
@@ -233,6 +253,18 @@ struct LogSettingView:View {
             }
 
             Text("啟用後顯示, 關於PIP畫面情況")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .padding(.bottom, 5)
+
+            Toggle(isOn: $PIPChatLog){
+                Text("啟用PIP子母窗口 訊息處理 調試日誌 ！")
+            }.onChange(of:PIPChatLog) { newValue in
+                logger.debug("PIPChatLog:\(newValue)")
+                LPConfig.shared.PIPChatLog = newValue
+            }
+
+            Text("啟用後顯示, 關於PIP訊息處理動畫日誌")
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .padding(.bottom, 5)

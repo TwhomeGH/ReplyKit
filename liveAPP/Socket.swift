@@ -413,11 +413,16 @@ class SocketServer {
                     "rtmpKey": userDefaults?.string(forKey: "rtmpKey") ?? "test",
                     "BitRate": userDefaults?.integer(forKey: "bitRate") ?? 3_900_000,
                     "ChangeBit": userDefaults?.bool(forKey: "ChangeBit") ?? false,
+
                     "h264level": userDefaults?
                         .string(forKey: "h264level") ?? "AutoHigh",
                     
-                    
-                    
+
+                    "useBic": userDefaults?
+                        .bool(forKey: "useBic") ?? false,
+
+
+
                     "dstW": userDefaults?.integer(forKey: "dstW") ?? 0,
                     "dstH": userDefaults?.integer(forKey: "dstH") ?? 0,
                     

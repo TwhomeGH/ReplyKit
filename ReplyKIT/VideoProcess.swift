@@ -66,14 +66,20 @@ final class VideoFrameProcessor {
             // 延遲初始化 rotator
             if self.rotator == nil {
 
-                let Debugg = SharedDefaults.group?.bool(forKey: "EnableRotatelog") ?? false
-                let dstRW = SharedDefaults.group?.integer(forKey: "dstW") ?? 0
-                let dstRH = SharedDefaults.group?.integer(forKey: "dstH") ?? 0
+                let Debugg = RPConfig.shared.enableRotateLog
+
+                let dstRW = RPConfig.shared.ADWidth
+                let dstRH = RPConfig.shared.ADHeight
+
+                let useBic = RPConfig.shared.useBic
+
+                let mode: RPVideoRotatorNV12BatchQueueOptimized.QualityMode = useBic ? .quality : .live
 
                 if let rot = RPVideoRotatorNV12BatchQueueOptimized(
                     dstW: dstRW,
                     dstH: dstRH,
-                    debug: Debugg
+                    debug: Debugg,
+                    useBic: mode
                 ) {
                     self.rotator = rot
                     self.sendlog("🟢 RPVideoRotatorNV12BatchQueue 延遲初始化成功")

@@ -217,9 +217,11 @@ final class LogManager {
 
     func setMode(_ Num:Int = 1){
 
+
         switch Num {
         case 0:
             self.mode = .remote
+            
             remoteLogger?.addDebugLog("logMode : 只在外部")
 
         case 1:
@@ -242,9 +244,11 @@ final class LogManager {
 
 
 
-    private func addDebugLog(_ msg:String = ""){
+    private func addDebugLog(title:String = "ReplyKit[Local]", _ msg:String = ""){
 
-        self.localLogBuffer.append(msg)
+        let logMessage = "\(formattedTime()): \(title) : \(msg) \n"
+
+        self.localLogBuffer.append(logMessage)
         self.localLogSize += msg.utf8.count
 
         logger.debug("LogBuffer:\(msg)")
@@ -268,6 +272,7 @@ final class LogManager {
 
     func log(title: String = "ReplyKit", message: String, flushImmediately: Bool = false) {
         guard isActive else { return }
+
         let logMessage = "\(formattedTime()): \(title): \(message)\n"
 
         logQueue.async {
@@ -389,6 +394,8 @@ final class RPConfig {
     
     var ChangeBit : Bool
 
+    var useBic : Bool
+
     // 音訊
     var AppVolumeAdd : Double
     var MicVolumeAdd : Double
@@ -401,6 +408,7 @@ final class RPConfig {
 
 
     // 日誌相關
+    var enableRotateLog: Bool = false
     var enableLog: Bool = false
     var logMode: Int = 1
     var onLogPage: Bool = false
@@ -414,10 +422,15 @@ final class RPConfig {
 
     private init() {
 
+
+
         logMode=SharedDefaults.group?.integer(forKey: "logMode")
         ?? 1
 
         logURL = SharedDefaults.group?.string(forKey: "logURL") ?? "http://192.168.0.242:3000/post"
+
+
+        enableRotateLog = SharedDefaults.group?.bool(forKey: "EnableRotatelog") ?? false
 
 
         enableLog=SharedDefaults.group?.bool(forKey: "Enablelog")
@@ -442,6 +455,8 @@ final class RPConfig {
         BitRate = SharedDefaults.group?.integer(forKey: "bitRate") ?? 3_900_000
 
         ChangeBit = SharedDefaults.group?.bool(forKey: "ChangeBit") ?? false
+
+        useBic = SharedDefaults.group?.bool(forKey: "useBic") ?? false
 
         h264level = SharedDefaults.group?.string(forKey: "h264level") ?? "AutoHigh"
 
@@ -476,7 +491,7 @@ var lastlogT = Date()
 var IntTime:TimeInterval = 5.0
 
 
-func sendlog(title: String = "ReplyKit", message: String, mode: Int = 0,flush:Bool = false) {
+func sendlog(title: String = "ReplyKit", message: String, flush:Bool = false) {
 
     let noww=Date()
 

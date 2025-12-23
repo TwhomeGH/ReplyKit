@@ -353,7 +353,7 @@ final class PIPService: NSObject, @unchecked Sendable {
                 user: user,
                 message: msg,
                 imgURL: imgURL,
-                giftURL: giftURL
+                giftURL: giftURL,isMain: isMain
             )
 
 

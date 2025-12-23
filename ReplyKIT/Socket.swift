@@ -244,10 +244,10 @@ class SocketClient {
         sendPayload(payload)
     }
 
-    func logTo(_ message:String){
+    func logTo(_ message:String,flush:Bool = false){
         logger.debug("SocketDebug:\(message)")
 
-        sendlog(title:"ReplyKit_Socket",message: message)
+        sendlog(title:"ReplyKit_Socket",message: message,flush: flush)
     }
 
     func cancelAllPendingUPSet() {
@@ -303,6 +303,8 @@ class SocketClient {
         let ChangeBit: Bool
         let h264level: String
 
+        let useBic : Bool
+
         let dstW: Int
         let dstH: Int
 
@@ -335,9 +337,11 @@ class SocketClient {
         RPConfig.shared.RTMPURL = c.rtmpURL
         RPConfig.shared.RTMPKey = c.rtmpKey
 
-        logTo("[Get]Bit:\(c.BitRate):\(c.ChangeBit)")
+        logTo("[Get]Bit:\(c.BitRate):\(c.ChangeBit) useBic:\(c.useBic)")
         RPConfig.shared.BitRate = c.BitRate
         RPConfig.shared.ChangeBit = c.ChangeBit
+
+        RPConfig.shared.useBic = c.useBic
 
         logTo("[Get]H264:\(c.h264level) : \(c.dstW)x\(c.dstH)")
         RPConfig.shared.h264level = c.h264level
@@ -347,7 +351,7 @@ class SocketClient {
 
 
         logTo(
-            "[Get]Audio App:\(c.appVolume) Mic:\(c.micVolume) AppAdd:\(c.appVolumeAdd) MicAdd:\(c.micVolumeAdd)"
+            "[Get]Audio App:\(c.appVolume) Mic:\(c.micVolume) AppAdd:\(c.appVolumeAdd) MicAdd:\(c.micVolumeAdd)",flush: true
         )
         RPConfig.shared.AppVolume = c.appVolume
         RPConfig.shared.MicVolume = c.micVolume

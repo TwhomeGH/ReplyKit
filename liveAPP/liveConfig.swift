@@ -20,11 +20,15 @@ final class LPConfig {
     var maxInflightFrames: Int = 4
 
     var PIPLog: Bool = false
+    var PIPChatLog:Bool = false
+
 
     private init() {
 
         PIPLog = userDefaults?.bool(forKey: "PIPLog") ?? false
-        
+        PIPChatLog = userDefaults?.bool(forKey: "PIPChatLog") ?? false
+
+
         logMode=userDefaults?.integer(forKey: "logMode") ?? 0
         onLogPage=userDefaults?.bool(forKey: "onlogPage") ?? false
         enableLog=userDefaults?.bool(forKey: "Enablelog") ?? false

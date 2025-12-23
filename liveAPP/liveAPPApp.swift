@@ -229,14 +229,16 @@ final class LogReceiver {
 
             let normalizedContent = content.replacingOccurrences(of: "\r\n", with: "\n")
 
-            let lines = normalizedContent
-                            .split(separator: "\n")
-                            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-                            .filter { !$0.isEmpty }
-            
+
+            let lines = Array(normalizedContent
+                                .split(separator: "\n")
+                                .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                                .filter { !$0.isEmpty })
+
             if !lines.isEmpty {
                 // 限制推送行數
-                let newLines = lines.suffix(self.maxPush)
+                let newLines = Array(lines.suffix(self.maxPush))
+
                 self.buffer.append(contentsOf: newLines)
             }else {
                 sendlog(message:"⚠️ LogReceiver: 讀取到的資料沒有換行符號")
