@@ -884,9 +884,41 @@ struct LogTextView: UIViewRepresentable {
 
     @ObservedObject var logModel: LogModel
 
+    @Binding var isNearBottom: Bool
+    @Binding var coordinatorHolder: Coordinator?
+
+
     final class LogUITextView: UITextView {
         var lastDisplayedID: UUID?
     }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+    final class Coordinator: NSObject, UITextViewDelegate {
+
+        weak var textView: UITextView?
+
+        func scrollToBottom(animated: Bool = false) {
+            guard let tv = textView else { return }
+            let y = max(0,
+                        tv.contentSize.height
+                        - tv.bounds.height
+                        + tv.adjustedContentInset.bottom
+            )
+            tv.setContentOffset(CGPoint(x: 0, y: y), animated: false)
+
+        }
+
+        func textViewDidChangeSelection(_ textView: UITextView) {
+            // 有選取文字 = 使用者互動
+        }
+
+        func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+            // 交給 updateUIView 判斷即可
+        }
+    }
+
 
     func makeUIView(context: Context) -> UITextView {
         let textView = LogUITextView()
@@ -900,6 +932,14 @@ struct LogTextView: UIViewRepresentable {
         textView.isScrollEnabled = true
         textView.showsVerticalScrollIndicator = true
         textView.layoutManager.allowsNonContiguousLayout = true // 高效能設定
+
+
+        textView.delegate = context.coordinator
+        context.coordinator.textView = textView
+
+        coordinatorHolder = context.coordinator
+
+
         return textView
     }
 
@@ -932,22 +972,45 @@ struct LogTextView: UIViewRepresentable {
         )
         textView.textStorage.endEditing()
 
+
+        let visibleHeight = textView.bounds.height
+            - textView.adjustedContentInset.top
+            - textView.adjustedContentInset.bottom
+
+        let contentHeight = textView.contentSize.height
+        let offsetY = textView.contentOffset.y
+
+        let lineHeight = textView.font?.lineHeight ?? 18
+        let nearBottomThreshold = lineHeight * 2
+
+        isNearBottom =
+            offsetY + visibleHeight >= contentHeight - nearBottomThreshold
+
         // 🔹 更新最後顯示的 UUID
         textView.lastDisplayedID = newMessages.last?.id
 
         // 🔹 判斷是否自動滾動
         // 只在使用者沒有選取文字、沒有拖動或滑動時才滾動
-        let shouldAutoScroll = textView.selectedRange.length == 0 &&
-                               !textView.isTracking &&
-                               !textView.isDragging &&
-                               !textView.isDecelerating
-        if shouldAutoScroll {
-            // 滾動到最後
-            let bottom = NSRange(location: textView.text.count, length: 0)
-            textView.scrollRangeToVisible(bottom)
+        let userHasInteracted = textView.selectedRange.length > 0
+
+        if !userHasInteracted {
+
+
+            DispatchQueue.main.async {
+
+                let y = max(0,
+                            textView.contentSize.height
+                            - textView.bounds.height
+                            + textView.adjustedContentInset.bottom
+                )
+                textView.setContentOffset(CGPoint(x: 0, y: y), animated: true)
+
+            }
 
         }
     }
+
+
 }
 
 struct LogView: View {
@@ -955,6 +1018,10 @@ struct LogView: View {
 
     @AppStorage("logMode",store:userDefaults) private var logMode = 1
     @State private var showLogSettings = false
+    @State private var coordinator: LogTextView.Coordinator?
+
+
+    @State private var isNearBottom = false
 
 
     var logC: LogMode {
@@ -994,6 +1061,7 @@ struct LogView: View {
                 .font(.caption)
                 .foregroundColor(.gray)
 
+
             VStack {
                 Button("開啟日誌設定") {
                     showLogSettings = true
@@ -1024,9 +1092,33 @@ struct LogView: View {
                 }
             }
 
+            ZStack(alignment: .bottomTrailing) {
 
-            LogTextView(logModel: logModel)
+
+                LogTextView(
+                    logModel: logModel,
+
+                    isNearBottom: $isNearBottom, coordinatorHolder: $coordinator
+                )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+
+                if !isNearBottom {
+                    Button {
+                        coordinator?.scrollToBottom()
+
+                    } label: {
+                        Text("↓ Jump to bottom")
+                            .font(.caption)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(.ultraThinMaterial)
+                            .clipShape(Capsule())
+                    }
+                    .padding(16)
+                }
+            }
+
 
         }
     }
