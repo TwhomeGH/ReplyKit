@@ -86,7 +86,7 @@ final class LogModel: ObservableObject {
     /// 每次最多吃幾筆 log
     private let batchLimit = 50
     /// UI 最多保留筆數
-    private let maxMessages = 1000
+    private let maxMessages = 10000
 
     init() {
         startLogPump()
