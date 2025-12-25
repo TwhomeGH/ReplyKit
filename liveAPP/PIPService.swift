@@ -353,7 +353,7 @@ final class PIPService: NSObject, @unchecked Sendable {
                 user: user,
                 message: msg,
                 imgURL: imgURL,
-                giftURL: giftURL,isMain: isMain
+                giftURL: giftURL,isMain:isMain
             )
 
 
@@ -502,6 +502,12 @@ final class PIPService: NSObject, @unchecked Sendable {
     }
 
 
+    func cleanupMessageslayer() {
+
+        messagesLayer?.canncel()
+        messagesLayer = nil
+
+    }
     func cleanupMessagesContainer() {
         // 移除所有子層
         messagesContainerView?.layer.sublayers?.forEach { $0.removeFromSuperlayer() }
@@ -524,10 +530,12 @@ final class PIPService: NSObject, @unchecked Sendable {
         self.frameCount = 0
         didStartPiP = false
 
+
         previousImage = nil
         lastRenderTime = CACurrentMediaTime()
         basePTS = nil
 
+        cleanupMessageslayer()
         cleanupMessagesContainer()
 
         decayTimer?.cancel()
