@@ -907,7 +907,7 @@ struct LogTextView: UIViewRepresentable {
 
         var onNearBottomChanged: ((Bool) -> Void)?
 
-        var indexCount = 0
+
 
         private var lastNearBottom: Bool?
 
@@ -944,7 +944,7 @@ struct LogTextView: UIViewRepresentable {
             guard currentLineCount > maxLines else { return }
 
             let excessLines = currentLineCount - maxLines
-            currentLineCount = maxLines
+            currentLineCount = 0
 
             var linesToRemove = excessLines
             let fullText = tv.textStorage.string
@@ -963,7 +963,7 @@ struct LogTextView: UIViewRepresentable {
             }
 
 
-            let trimmed = fullText[cutIndex...] + "\n目前最多保留:\(maxLines)以內的日誌可視"
+            let trimmed = fullText[cutIndex...] + "\n目前最多保留:\(maxLines)以內的日誌可視\n"
 
             tv.textStorage.setAttributedString(
                 NSAttributedString(
@@ -980,9 +980,9 @@ struct LogTextView: UIViewRepresentable {
 
             tv.textStorage.beginEditing()
             for (i, msg) in messages.enumerated() {
-                indexCount += 1
+                currentLineCount += 1
                 let attrText = NSAttributedString(
-                    string: "\(indexCount):\(i): \(msg.message)\n",
+                    string: "\(currentLineCount):\(i): \(msg.message)\n",
                     attributes: [.font: tv.font!, .foregroundColor: tv.textColor!]
                 )
                 tv.textStorage.append(attrText)
