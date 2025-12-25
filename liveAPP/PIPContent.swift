@@ -915,7 +915,7 @@ final class PIPServiceMessages {
             lastFadeTriggerTime != 0 &&
         now - lastFadeTriggerTime < fadeInterval  // fadeDelay
 
-        PIPChatLog("hasMoving?\(hasMovingOrFading) - isWaitFor:\(isWaitingForFadeDelay)")
+        PIPChatLog("hasMoving?\(hasMovingOrFading) - isWaitFor:\(isWaitingForFadeDelay) NowWait:\(now-lastFadeTriggerTime) < \(fadeInterval)?")
 
 
         if !hasMovingOrFading && !isWaitingForFadeDelay || safeCanncel {

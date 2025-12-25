@@ -897,9 +897,11 @@ struct LogTextView: UIViewRepresentable {
 
         private var bufferedMessages: [LogItem] = []
 
+        var currentLineCount = 0
+        let maxLines = 10000
+
         var hasInitialLoad = false
 
-        var lastDisplayedID: UUID?
 
         var userIsInteracting = false
 
@@ -938,6 +940,41 @@ struct LogTextView: UIViewRepresentable {
 
         }
 
+        private func trimTextStorageIfNeeded(_ tv: UITextView) {
+            guard currentLineCount > maxLines else { return }
+
+            let excessLines = currentLineCount - maxLines
+            currentLineCount = maxLines
+
+            var linesToRemove = excessLines
+            let fullText = tv.textStorage.string
+
+            var cutIndex = fullText.startIndex
+
+            for ch in fullText {
+                if ch == "\n" {
+                    linesToRemove -= 1
+                    if linesToRemove == 0 {
+                        cutIndex = fullText.index(after: cutIndex)
+                        break
+                    }
+                }
+                cutIndex = fullText.index(after: cutIndex)
+            }
+
+
+            let trimmed = fullText[cutIndex...] + "\n目前最多保留:\(maxLines)以內的日誌可視"
+
+            tv.textStorage.setAttributedString(
+                NSAttributedString(
+                    string: String(trimmed),
+                    attributes: [
+                        .font: tv.font!,
+                        .foregroundColor: tv.textColor!
+                    ]
+                )
+            )
+        }
         private func performAppend(_ messages: [LogItem]) {
             guard let tv = textView else { return }
 
@@ -949,10 +986,15 @@ struct LogTextView: UIViewRepresentable {
                     attributes: [.font: tv.font!, .foregroundColor: tv.textColor!]
                 )
                 tv.textStorage.append(attrText)
+
             }
             tv.textStorage.endEditing()
 
-            lastDisplayedID = messages.last?.id
+
+            // ✅ 超過上限就裁掉前面的行
+            trimTextStorageIfNeeded(tv)
+
+
             scrollIfNeeded()
         }
 
@@ -989,7 +1031,7 @@ struct LogTextView: UIViewRepresentable {
                 let wasNearBottom = offsetY + visibleHeight >= contentHeight - nearBottomThreshold
 
 
-                if wasNearBottom {
+                if !wasNearBottom {
                     scrollToBottom()
                 }
             }
@@ -1098,6 +1140,7 @@ struct LogTextView: UIViewRepresentable {
         textView.isScrollEnabled = true
         textView.showsVerticalScrollIndicator = true
 
+        textView.layoutManager.allowsNonContiguousLayout = true
 
         textView.delegate = context.coordinator
         context.coordinator.textView = textView
@@ -1149,6 +1192,7 @@ struct LogTextView: UIViewRepresentable {
 
 struct LogView: View {
     @EnvironmentObject var logModel: LogModel
+
 
     @AppStorage("logMode",store:userDefaults) private var logMode = 1
     @State private var showLogSettings = false
@@ -1235,10 +1279,11 @@ struct LogView: View {
                     isNearBottom: $isNearBottom, coordinatorHolder: $coordinator
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .onReceive(logModel.$messages) { messages in
+                .onReceive(logModel.newMessages) { newItems in
                     guard let coordinator = coordinator else { return }
                     // 交給 Coordinator 處理 append + 滾動
-                    coordinator.appendMessages(messages)
+                    coordinator.appendMessages(newItems)
+
                 }
 
 

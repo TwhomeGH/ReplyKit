@@ -77,6 +77,8 @@ final class LogModel: ObservableObject {
 
     @Published private(set) var messages: [LogItem] = []
 
+    let newMessages = PassthroughSubject<[LogItem], Never>()
+
     private var timer: DispatchSourceTimer?
 
     /// UI 更新頻率（秒）
@@ -99,13 +101,17 @@ final class LogModel: ObservableObject {
             guard !logs.isEmpty else { return }
 
 
-            // 直接 append 到 messages，不再使用 pendingLogs
-            self.messages.append(contentsOf: logs.map { LogItem(message: $0) })
+            let items = logs.map { LogItem(message: $0) }
+
+            self.messages.append(contentsOf: items)
 
             // 限制最大條數
             if self.messages.count > self.maxMessages {
                 self.messages.removeFirst(self.messages.count - self.maxMessages)
             }
+
+            // ⭐️ 關鍵：只送「這次新增的」
+            self.newMessages.send(items)
 
 
         }
