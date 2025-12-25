@@ -879,7 +879,7 @@ enum LogMode: Int, CaseIterable, Identifiable {
 
 
 
-// MARK: 高效能 Log 顯示 TextView
+// MARK: 高效能 Log 顯示 TextView (kit1)
 struct LogTextView: UIViewRepresentable {
 
     @ObservedObject var logModel: LogModel
@@ -888,10 +888,6 @@ struct LogTextView: UIViewRepresentable {
     @Binding var coordinatorHolder: Coordinator?
 
 
-    final class LogUITextView: UITextView {
-        var lastDisplayedID: UUID?
-    }
-
     func makeCoordinator() -> Coordinator {
         Coordinator()
     }
@@ -899,8 +895,105 @@ struct LogTextView: UIViewRepresentable {
 
         weak var textView: UITextView?
 
+        private var bufferedMessages: [LogItem] = []
+
+        var hasInitialLoad = false
+
+        var lastDisplayedID: UUID?
+
+        var userIsInteracting = false
+
+        var onNearBottomChanged: ((Bool) -> Void)?
+
+        var indexCount = 0
+
+        private var lastNearBottom: Bool?
+
+        var isOK = false
+
         var scrollWorkItem: DispatchWorkItem?
         private let scrollDelay: TimeInterval = 0.2
+
+        private func updateNearBottom() {
+            guard let tv = textView else { return }
+            guard userIsInteracting == false else { return  }
+
+            let visibleHeight = tv.bounds.height
+                - tv.adjustedContentInset.top
+                - tv.adjustedContentInset.bottom
+
+            let contentHeight = tv.contentSize.height
+            let offsetY = tv.contentOffset.y
+
+            let lineHeight = tv.font?.lineHeight ?? 18
+            let threshold = lineHeight * 2
+
+            let isNearBottom = offsetY + visibleHeight >= contentHeight - threshold
+
+            if lastNearBottom != isNearBottom {
+                lastNearBottom = isNearBottom
+                onNearBottomChanged?(isNearBottom)
+            }
+
+
+        }
+
+        private func performAppend(_ messages: [LogItem]) {
+            guard let tv = textView else { return }
+
+            tv.textStorage.beginEditing()
+            for (i, msg) in messages.enumerated() {
+                indexCount += 1
+                let attrText = NSAttributedString(
+                    string: "\(indexCount):\(i): \(msg.message)\n",
+                    attributes: [.font: tv.font!, .foregroundColor: tv.textColor!]
+                )
+                tv.textStorage.append(attrText)
+            }
+            tv.textStorage.endEditing()
+
+            lastDisplayedID = messages.last?.id
+            scrollIfNeeded()
+        }
+
+
+        // 新增訊息
+        func appendMessages(_ newMessages: [LogItem]) {
+            guard !newMessages.isEmpty else { return }
+
+            // 如果 App 在背景，先緩存訊息
+            if UIApplication.shared.applicationState != .active {
+                bufferedMessages.append(contentsOf: newMessages)
+                return
+            }
+
+            // App 在前景，直接 append
+            performAppend(newMessages)
+
+        }
+
+
+        // 判斷是否滾動
+            func scrollIfNeeded() {
+                guard let tv = textView else { return }
+                guard userIsInteracting == false else { return }
+
+                let visibleHeight = tv.bounds.height - tv.adjustedContentInset.top - tv.adjustedContentInset.bottom
+                let contentHeight = tv.contentSize.height
+                let offsetY = tv.contentOffset.y
+
+                let lineHeight = tv.font?.lineHeight ?? 18
+
+                let nearBottomThreshold = lineHeight * 2
+
+                let wasNearBottom = offsetY + visibleHeight >= contentHeight - nearBottomThreshold
+
+
+                if wasNearBottom {
+                    scrollToBottom()
+                }
+            }
+
 
         func scrollToBottom(animated: Bool = false) {
             guard let tv = textView else { return }
@@ -946,19 +1039,55 @@ struct LogTextView: UIViewRepresentable {
 
             }
         }
+        
 
         func textViewDidChangeSelection(_ textView: UITextView) {
-            // 有選取文字 = 使用者互動
+
+            logger.debug("Get change select")
+            if userIsInteracting == false {
+                userIsInteracting = true
+            }
         }
 
-        func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
-            // 交給 updateUIView 判斷即可
+
+
+        func scrollViewDidScroll(_ scrollView: UIScrollView) {
+            guard userIsInteracting == false else { return }
+            updateNearBottom()
         }
+
+
+
+        func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+            logger.debug("Get change scroll")
+            userIsInteracting = true
+
+        }
+        func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+            logger.debug("Get change scrollend")
+            if !decelerate {
+                userIsInteracting = false
+            }
+        }
+
+
     }
 
 
     func makeUIView(context: Context) -> UITextView {
-        let textView = LogUITextView()
+
+        let textStorage = NSTextStorage()
+        let layoutManager = NSLayoutManager()
+        let textContainer = NSTextContainer(size: .zero)
+
+        layoutManager.addTextContainer(textContainer)
+        textStorage.addLayoutManager(layoutManager)
+
+        let textView = UITextView(
+            frame: .zero,
+            textContainer: textContainer
+        )
+
         textView.isEditable = false
         textView.isSelectable = true
         textView.backgroundColor = UIColor.systemBackground
@@ -968,13 +1097,27 @@ struct LogTextView: UIViewRepresentable {
         textView.alwaysBounceVertical = true
         textView.isScrollEnabled = true
         textView.showsVerticalScrollIndicator = true
-        textView.layoutManager.allowsNonContiguousLayout = true // 高效能設定
 
 
         textView.delegate = context.coordinator
         context.coordinator.textView = textView
 
-        coordinatorHolder = context.coordinator
+        // 🔑 關鍵：把 nearBottom 回傳給 SwiftUI
+        context.coordinator.onNearBottomChanged = { value in
+                self.isNearBottom = value
+
+        }
+
+        // 🔑 關鍵：只綁定一次 coordinator
+
+        if self.coordinatorHolder == nil {
+            self.coordinatorHolder = context.coordinator
+        }
+
+
+
+
+
 
 
         return textView
@@ -983,67 +1126,26 @@ struct LogTextView: UIViewRepresentable {
 
 
     func updateUIView(_ uiView: UITextView, context: Context) {
-        guard let textView = uiView as? LogUITextView else { return }
+        context.coordinator.textView = uiView
+
+        guard !context.coordinator.hasInitialLoad else { return }
 
         let messages = logModel.messages
-        // 🔹 找出最後顯示過的訊息位置
-        let newMessages: [LogItem]
-        if let lastID = textView.lastDisplayedID,
-           let lastIndex = messages.firstIndex(where: { $0.id == lastID }) {
-            newMessages = Array(messages[(lastIndex + 1)...])
-        } else {
-            newMessages = messages
-        }
+        guard !messages.isEmpty else { return }
 
-        // 判斷是否有新增 log
-        guard !newMessages.isEmpty else {
-            // 沒有新 log，可以認為是已 flush 完
-            context.coordinator.scrollToBottomImmediate() // 立即滾到底
-            return
-        }
+        // 🔹 先 append 現有訊息
+        context.coordinator.appendMessages(messages)
 
-        // 🔹 追加文字
-        let appendedText = newMessages.map(\.message).joined(separator: "\n") + "\n"
-        textView.textStorage.beginEditing()
-        textView.textStorage.append(
-            NSAttributedString(
-                string: appendedText,
-                attributes: [.font: textView.font!, .foregroundColor: textView.textColor!]
-            )
-        )
-        textView.textStorage.endEditing()
-
-
-
-        let visibleHeight = textView.bounds.height
-            - textView.adjustedContentInset.top
-            - textView.adjustedContentInset.bottom
-
-        let contentHeight = textView.contentSize.height
-        let offsetY = textView.contentOffset.y
-
-        let lineHeight = textView.font?.lineHeight ?? 18
-        let nearBottomThreshold = lineHeight * 2
-
-        isNearBottom =
-            offsetY + visibleHeight >= contentHeight - nearBottomThreshold
-
-        // 🔹 更新最後顯示的 UUID
-        textView.lastDisplayedID = newMessages.last?.id
-
-
-        // 🔹 判斷是否自動滾動
-        // 只在使用者沒有選取文字、沒有拖動或滑動時才滾動
-        let userHasInteracted = textView.selectedRange.length > 0
-
-        if !userHasInteracted {
-            context.coordinator.scrollToBottom()
-        }
-
+        context.coordinator.hasInitialLoad = true
     }
 
-
 }
+
+
+
+
+
+
 
 struct LogView: View {
     @EnvironmentObject var logModel: LogModel
@@ -1133,6 +1235,15 @@ struct LogView: View {
                     isNearBottom: $isNearBottom, coordinatorHolder: $coordinator
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .onReceive(logModel.$messages) { messages in
+                    guard let coordinator = coordinator else { return }
+                    // 交給 Coordinator 處理 append + 滾動
+                    coordinator.appendMessages(messages)
+                }
+
+
+
+
 
 
                 if !isNearBottom {
