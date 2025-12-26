@@ -84,9 +84,9 @@ final class LogModel: ObservableObject {
     /// UI 更新頻率（秒）
     private let refreshInterval: TimeInterval = 0.1
     /// 每次最多吃幾筆 log
-    private let batchLimit = 50
-    /// UI 最多保留筆數
-    private let maxMessages = 10000
+    private let batchLimit = 100
+    /// Buffer安全大下
+    private let maxMessages = 1000
 
     init() {
         startLogPump()

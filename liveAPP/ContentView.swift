@@ -920,6 +920,13 @@ struct LogTextView: UIViewRepresentable {
             guard let tv = textView else { return }
             guard userIsInteracting == false else { return  }
 
+            // 如果 App 在背景，先緩存訊息
+            guard UIApplication.shared.applicationState == .active else {
+                logger.debug("App is Background")
+                return
+            }
+
+
             let visibleHeight = tv.bounds.height
                 - tv.adjustedContentInset.top
                 - tv.adjustedContentInset.bottom
@@ -994,7 +1001,6 @@ struct LogTextView: UIViewRepresentable {
             // ✅ 超過上限就裁掉前面的行
             trimTextStorageIfNeeded(tv)
 
-
             scrollIfNeeded()
         }
 
@@ -1018,7 +1024,10 @@ struct LogTextView: UIViewRepresentable {
         // 判斷是否滾動
             func scrollIfNeeded() {
                 guard let tv = textView else { return }
-                guard userIsInteracting == false else { return }
+                guard userIsInteracting == false else {
+                    logger.debug("正在交互")
+                    return
+                }
 
                 let visibleHeight = tv.bounds.height - tv.adjustedContentInset.top - tv.adjustedContentInset.bottom
                 let contentHeight = tv.contentSize.height
@@ -1028,12 +1037,15 @@ struct LogTextView: UIViewRepresentable {
 
                 let nearBottomThreshold = lineHeight * 2
 
-                let wasNearBottom = offsetY + visibleHeight >= contentHeight - nearBottomThreshold
+                let isNearBottom = offsetY + visibleHeight >= contentHeight - nearBottomThreshold
 
 
-                if !wasNearBottom {
-                    scrollToBottom()
+
+                if !isNearBottom {
+                    scrollToBottomUsingRange()
+                    updateNearBottom()
                 }
+
             }
 
 
@@ -1064,32 +1076,57 @@ struct LogTextView: UIViewRepresentable {
 
         }
 
-        func scrollToBottomImmediate(after delay: TimeInterval = 0.05) {
+        func scrollToBottomAnimatedSafe() {
             guard let tv = textView else { return }
 
-            // 先取消任何正在等待的 debounced 任務
-            scrollWorkItem?.cancel()
-            scrollWorkItem = nil
-
-            // 延遲執行滾動
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak tv] in
+            DispatchQueue.main.async { [weak tv] in
                 guard let tv = tv else { return }
-                tv.layoutIfNeeded() // 確保 contentSize 正確
-                let y = max(0, tv.contentSize.height - tv.bounds.height + tv.adjustedContentInset.bottom)
-                tv.setContentOffset(CGPoint(x: 0, y: y), animated: false)
 
+                tv.layoutIfNeeded()
 
+                let y = max(
+                    0,
+                    tv.contentSize.height
+                    - tv.bounds.height
+                    + tv.adjustedContentInset.bottom
+                )
+
+                // 先動畫
+                tv.setContentOffset(CGPoint(x: 0, y: y), animated: true)
+
+                // 🔑 再強制定位一次（避免 animation 被打斷）
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+
+                    tv.layoutIfNeeded()
+                    tv.setContentOffset(CGPoint(x: 0, y: y), animated: false)
+                }
             }
         }
-        
+
+        func scrollToBottomUsingRange() {
+            guard let tv = textView else { return }
+            let length = tv.textStorage.length
+            guard length > 0 else { return }
+
+            let range = NSRange(location: length - 1, length: 1)
+            tv.scrollRangeToVisible(range)
+        }
+
+
 
         func textViewDidChangeSelection(_ textView: UITextView) {
 
             logger.debug("Get change select")
-            if userIsInteracting == false {
+            if ((textView.selectedTextRange?.isEmpty) != nil) {
+                userIsInteracting = false
+                logger.debug("Get Range is Empty")
+            }
+            else {
                 userIsInteracting = true
+                logger.debug("Get Range is not Empty")
             }
         }
+
 
 
 
@@ -1102,13 +1139,16 @@ struct LogTextView: UIViewRepresentable {
 
         func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
             logger.debug("Get change scroll")
+
             userIsInteracting = true
 
         }
         func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
             logger.debug("Get change scrollend")
+
             if !decelerate {
                 userIsInteracting = false
+                updateNearBottom()
             }
         }
 
@@ -1293,7 +1333,7 @@ struct LogView: View {
 
                 if !isNearBottom {
                     Button {
-                        coordinator?.scrollToBottom()
+                        coordinator?.scrollToBottomUsingRange()
 
                     } label: {
                         Text("↓ Jump to bottom")
