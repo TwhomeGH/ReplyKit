@@ -689,6 +689,9 @@ final class PIPServiceMessages {
         let y = container.bounds.height - msg.height - bottomPadding
         //let x = 80.0
 
+        PIPChatLog(
+            "Debug Bottom? \(String(describing: msg.message?.string)) \(String(describing: msg.message?.opacity))"
+        )
         layout(msg: msg, y: y)
     }
 
@@ -712,6 +715,20 @@ final class PIPServiceMessages {
 
 
 
+
+    func IshasOverFlow() -> Bool {
+        stackedMessages.contains { msg in
+
+            PIPChatLog(
+                "MSG:\(String(describing: msg.message?.string)) \(msg.startY)-\(msg.targetY) H:\(msg.height) TH:\(msg.targetY + msg.height) "
+            )
+            let bottomY = msg.targetY + msg.height
+
+            return bottomY > container.bounds.height - bottomPadding
+        }
+
+
+    }
 
     // MARK: - Layout + Animation 修正版（可直接替換）
     func layoutTargetsAndStartAnimation() {
@@ -742,6 +759,8 @@ final class PIPServiceMessages {
             }
         }
 
+
+
         // 啟動 displayLink
         if displayLink == nil {
             displayLink = CADisplayLink(target: self, selector: #selector(stepAnimationDisplayLink))
@@ -750,20 +769,34 @@ final class PIPServiceMessages {
         }
 
 
+    }
+
+
+
+    func showBottom(_ shouldHideBottom:Bool = false) {
         if let bottom = bottomMessage {
+
             PIPChatLog(
-                "bottomMessage startY:\(String(describing: bottom.avatar?.frame.origin.y)) H:\(bottom.height)"
+                "bottomMessage startY:\(String(describing: bottom.avatar?.frame.origin.y)) H:\(bottom.height) IsShow:\(shouldHideBottom)"
             )
+
+            let targetOpacity: Float = shouldHideBottom ? 0.0 : 1.0
+
+            bottom.avatar?.opacity = targetOpacity
+            bottom.name?.opacity = targetOpacity
+            bottom.message?.opacity = targetOpacity
+            bottom.gift?.opacity = targetOpacity
         }
 
     }
 
 
+    let snapThreshold: CGFloat = 0.5
+
     // MARK: - 每幀動畫
     @objc private func stepAnimationDisplayLink() {
 
 
-        let snapThreshold: CGFloat = 0.5
 
         PIPChatLog("Debug step is doing \(Date().formatted())")
 
@@ -783,48 +816,11 @@ final class PIPServiceMessages {
 
 
 
-        // 檢查最後一條訊息是否已經超出可視範圍
-        let bottomTopY = container.bounds.height - bottomPadding
-
-
-        let isOverlappingBottom = stackedMessages.contains { msg in
-
-            PIPChatLog(
-                "OverBottom?:\(msg.targetY)+\(msg.height) = \(msg.targetY+msg.height) > ? \(bottomTopY)"
-            )
-            return msg.targetY + msg.height > bottomTopY
-        }
-
-
-
-        if let bottom = bottomMessage {
-            let shouldHideBottom = isOverlappingBottom
-
-            let targetOpacity: Float = shouldHideBottom ? 0.0 : 1.0
-
-            bottom.avatar?.opacity = targetOpacity
-            bottom.name?.opacity = targetOpacity
-            bottom.message?.opacity = targetOpacity
-            bottom.gift?.opacity = targetOpacity
-        }
-
-        // 1️⃣ 檢查是否有訊息超出可視範圍
-        let hasOverflow = stackedMessages.contains { msg in
-
-            PIPChatLog(
-                "MSG:\(String(describing: msg.message?.string)) \(msg.startY)-\(msg.targetY) H:\(msg.height) TH:\(msg.targetY + msg.height) "
-            )
-            let bottomY = msg.targetY + msg.height
-            return bottomY > container.bounds.height - bottomPadding
-        }
-
-
-
         let now = CACurrentMediaTime()
 
 
         // 2️⃣ 如果有超出，就淡出最前面一條還在可視範圍的訊息
-        if hasOverflow && !isAnyMessageFadingOut , let firstMsg = stackedMessages
+        if IshasOverFlow() && !isAnyMessageFadingOut , let firstMsg = stackedMessages
             .filter({ $0.targetY + $0.height > fadeOutThreshold })
             .min(
             by: { $0.targetY < $1.targetY
@@ -851,8 +847,11 @@ final class PIPServiceMessages {
                 }
 
             }
-        }
 
+            showBottom(true)
+        } else {
+            showBottom(false)
+        }
 
         for msg in stackedMessages where msg.isFadingOut {
             msg.alpha -= 0.04
@@ -909,9 +908,7 @@ final class PIPServiceMessages {
         }
 
 
-        let isWaitingForFadeDelay =
-            hasOverflow ||
-            !isAnyMessageFadingOut &&
+        let isWaitingForFadeDelay = IshasOverFlow() || !isAnyMessageFadingOut &&
             lastFadeTriggerTime != 0 &&
         now - lastFadeTriggerTime < fadeInterval  // fadeDelay
 
