@@ -194,6 +194,23 @@ final class PIPServiceMessages {
     private let fadeInterval: CFTimeInterval = 1.0
 
 
+    private func updateFadeCandidateIfNeeded() {
+        guard !isAnyMessageFadingOut else { return }
+        guard IshasOverFlow() else {        // ✅ 沒 overflow 絕對不 fade
+            fadeCandidate = nil
+            return
+        }
+
+
+        fadeCandidate = stackedMessages
+            .filter { $0.alpha > 0 && $0.targetY + $0.height > fadeOutThreshold }
+            .min(by: { $0.targetY < $1.targetY })
+
+        if fadeCandidate != nil {
+            lastFadeTriggerTime = CACurrentMediaTime()
+        }
+    }
+
 
     // MARK: - Properties
     let container = CALayer()
@@ -221,6 +238,12 @@ final class PIPServiceMessages {
 
     private var isAnyMessageFadingOut: Bool = false
     private var needsRelayoutAfterRemoval = false
+
+    // ✅ 新增（動畫狀態計數）
+    private var fadingCount: Int = 0
+
+    // ✅ 新增（fade 決策只算一次）
+    private weak var fadeCandidate: MessageLayerTuple?
 
     let bottomPadding: CGFloat = 4
 
@@ -290,6 +313,8 @@ final class PIPServiceMessages {
         }
 
         layoutBottomMessage()
+        updateFadeCandidateIfNeeded()
+        updateBottomVisibility()
     }
 
 
@@ -708,6 +733,7 @@ final class PIPServiceMessages {
         bottomMessage = newMsg
 
         layoutBottomMessage()
+        updateBottomVisibility()
         PIPService.shared.markDirty()
 
     }
@@ -729,6 +755,24 @@ final class PIPServiceMessages {
 
 
     }
+
+    func updateBottomVisibility() {
+        guard let bottom = bottomMessage else { return }
+
+        let shouldHide = IshasOverFlow()
+
+        let targetOpacity: Float = shouldHide ? 0.0 : 1.0
+
+        if bottom.avatar?.opacity != targetOpacity {
+            bottom.avatar?.opacity = targetOpacity
+            bottom.name?.opacity = targetOpacity
+            bottom.message?.opacity = targetOpacity
+            bottom.gift?.opacity = targetOpacity
+        }
+    }
+
+
+    let snapThreshold: CGFloat = 0.2
 
     // MARK: - Layout + Animation 修正版（可直接替換）
     func layoutTargetsAndStartAnimation() {
@@ -756,6 +800,7 @@ final class PIPServiceMessages {
                 }
 
                 animatingMessages.append(msg)
+
             }
         }
 
@@ -773,32 +818,18 @@ final class PIPServiceMessages {
 
 
 
-    func showBottom(_ shouldHideBottom:Bool = false) {
-        if let bottom = bottomMessage {
-
-            PIPChatLog(
-                "bottomMessage startY:\(String(describing: bottom.avatar?.frame.origin.y)) H:\(bottom.height) IsShow:\(shouldHideBottom)"
-            )
-
-            let targetOpacity: Float = shouldHideBottom ? 0.0 : 1.0
-
-            bottom.avatar?.opacity = targetOpacity
-            bottom.name?.opacity = targetOpacity
-            bottom.message?.opacity = targetOpacity
-            bottom.gift?.opacity = targetOpacity
-        }
-
-    }
-
-
-    let snapThreshold: CGFloat = 0.5
 
     // MARK: - 每幀動畫
     @objc private func stepAnimationDisplayLink() {
 
 
 
+
+
         PIPChatLog("Debug step is doing \(Date().formatted())")
+        PIPChatLog(
+            "DL step | anim:\(animatingMessages.count) fade:\(fadingCount)"
+        )
 
         // 2️⃣ 更新 animatingMessages 位置
         for msg in animatingMessages {
@@ -818,39 +849,16 @@ final class PIPServiceMessages {
 
         let now = CACurrentMediaTime()
 
+        // ✅ fade 延遲判斷（只處理單一 candidate）
+        if let candidate = fadeCandidate,
+           !candidate.isMoving,
+           !candidate.isFadingOut,
+           CACurrentMediaTime() - lastFadeTriggerTime >= fadeInterval {
 
-        // 2️⃣ 如果有超出，就淡出最前面一條還在可視範圍的訊息
-        if IshasOverFlow() && !isAnyMessageFadingOut , let firstMsg = stackedMessages
-            .filter({ $0.targetY + $0.height > fadeOutThreshold })
-            .min(
-            by: { $0.targetY < $1.targetY
-            }){
-
-            PIPChatLog("firstMsg:\(String(describing: firstMsg.message?.string))")
-
-
-
-            if firstMsg.isMoving == false {
-
-                // 第一次觸發時記錄時間
-                if lastFadeTriggerTime == 0 {
-                    lastFadeTriggerTime = now
-                }
-
-                // 達到延遲時間才開始淡出
-                if now - lastFadeTriggerTime >= fadeInterval {
-
-                    PIPChatLog("等待淡出")
-                    firstMsg.isFadingOut = true
-                    isAnyMessageFadingOut = true
-                    lastFadeTriggerTime = now
-                }
-
-            }
-
-            showBottom(true)
-        } else {
-            showBottom(false)
+            candidate.isFadingOut = true
+            isAnyMessageFadingOut = true
+            fadingCount += 1
+            fadeCandidate = nil
         }
 
         for msg in stackedMessages where msg.isFadingOut {
@@ -877,8 +885,11 @@ final class PIPServiceMessages {
                 animatingMessages.removeAll { $0 === msg }
                 stackedMessages.remove(at: i)
 
-                relayoutTargetsOnly()
+                fadingCount = max(0, fadingCount - 1)   // ✅ 新增
                 isAnyMessageFadingOut = false
+                needsRelayoutAfterRemoval = true        // ✅ 改用 flag
+
+                continue
 
             } else {
                 i += 1
@@ -886,26 +897,17 @@ final class PIPServiceMessages {
         }
 
 
-        relayoutTargetsOnly(updateTargetY: false)
 
+        let hasMoving = stackedMessages.contains { msg in
+            abs(msg.startY - msg.targetY) >= snapThreshold
+        }
 
         // 5️⃣ 動畫完成判斷
-        let hasMovingOrFading = stackedMessages.contains { msg in
+        let hasMovingOrFading = hasMoving || fadingCount > 0
 
 
-            let isMoving = abs(msg.startY - msg.targetY) >= snapThreshold
-
-            let isFading = msg.alpha > 0.01 && msg.alpha < 1.0
-
-            PIPChatLog(
-                "hasM:\(String(describing: msg.message?.string)) TY:\(msg.targetY) SY:\(msg.startY) TY-SY\(msg.startY - msg.targetY) snap:\(snapThreshold) alpha:\(msg.alpha) Moving:\(isMoving) Fading:\(isFading)"
-            )
-
-            msg.isMoving = isMoving
-
-            return isMoving || isFading
-
-        }
+        let shouldContinueBecauseOverflow =
+            IshasOverFlow() && (fadeCandidate != nil || isAnyMessageFadingOut)
 
 
         let isWaitingForFadeDelay = IshasOverFlow() || !isAnyMessageFadingOut &&
@@ -915,7 +917,7 @@ final class PIPServiceMessages {
         PIPChatLog("hasMoving?\(hasMovingOrFading) - isWaitFor:\(isWaitingForFadeDelay) NowWait:\(now-lastFadeTriggerTime) < \(fadeInterval)?")
 
 
-        if !hasMovingOrFading && !isWaitingForFadeDelay || safeCanncel {
+        if !hasMovingOrFading && !isWaitingForFadeDelay && !shouldContinueBecauseOverflow || safeCanncel {
 
             for msg in animatingMessages {
                   msg.startY = msg.targetY
@@ -946,6 +948,18 @@ final class PIPServiceMessages {
             needsRelayoutAfterRemoval = false
             relayoutTargetsOnly(updateTargetY: true)
 
+            // 2️⃣ 把「位置改變的舊訊息」加入動畫
+                for msg in stackedMessages {
+                    guard msg.alpha > 0 else { continue }
+
+                    let distance = abs(msg.startY - msg.targetY)
+                    if distance >= snapThreshold && !animatingMessages.contains(msg) {
+                        animatingMessages.append(msg)
+
+                    }
+                }
+
+
         }
 
 
@@ -957,6 +971,7 @@ final class PIPServiceMessages {
             PIPService.shared.isAnimatingMessages = true
         }
     }
+
 
     private func layout(msg: MessageLayerTuple, y: CGFloat,x:CGFloat? = nil) {
 
