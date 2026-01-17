@@ -284,8 +284,8 @@ final class AudioProcessor : @unchecked Sendable {
         if let mic = mic { self.micVolume = mic }
     }
 
-    func updatePage(status: Bool?) {
-        self.onAudioPage = status ?? false
+    func updatePage(status: Bool = false) {
+        self.onAudioPage = status
     }
 
 

@@ -124,8 +124,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
 
-    private var onAudioPage :Bool?
-    //
+
     private var needVideoConfiguration = true
     private var needAudioConfiguration = true
 
@@ -740,10 +739,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 if audioProcessor != nil {
 
-                    onAudioPage = APage
-                    audioProcessor?.updatePage(status: onAudioPage)
+                    RPConfig.shared.onAudioPage = APage
+                    audioProcessor?.updatePage(status: RPConfig.shared.onAudioPage)
                     sendlog(
-                        message:"[Audio] Page \(String(describing: onAudioPage))"
+                        message:"[Audio] Page \(String(describing: RPConfig.shared.onAudioPage))"
                     )
 
                 }
@@ -794,18 +793,16 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                         micAddVolume: micAddVolume,
                         appVolume: appVolume,
                         micVolume: micVolume,
-                        onAudioPage: onAudioPage ?? false
+                        onAudioPage: RPConfig.shared.onAudioPage
                     )
                 
-                    // 假設 AudioProcessor 有無參數的初始化方法
-                        audioProcessor?.updatePage(status: onAudioPage)
 
 
                 }
 
 
 
-            sendlog(message: "AudioPage:\(String(describing: onAudioPage))")
+            sendlog(message: "AudioPage:\(String(describing: RPConfig.shared.onAudioPage))")
 
 
         case "PauseStream":
@@ -1067,7 +1064,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             DHeight = ADHeight
         }
 
-        onAudioPage = RPConfig.shared.onAudioPage
 
 
         // MARK: Volume
@@ -1238,7 +1234,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 micAddVolume: micAddVolume,
                 appVolume: appVolume,
                 micVolume: micVolume,
-                onAudioPage: onAudioPage ?? false
+                onAudioPage: RPConfig.shared.onAudioPage
             )
 
 
@@ -1563,7 +1559,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 micAddVolume: micAddVolume,
                 appVolume: appVolume,
                 micVolume: micVolume,
-                onAudioPage: onAudioPage ?? false
+                onAudioPage: RPConfig.shared.onAudioPage
             )
             sendlog(message: "🎧 AudioProcessor 重建完成")
         }

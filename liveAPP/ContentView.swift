@@ -625,7 +625,7 @@ struct LiveVolumeView: View {
 
             }
 
-           
+
 
 
             VStack(alignment: .leading) {
@@ -2438,6 +2438,8 @@ struct ContentView: View {
 
             switch newPhase {
             case .active:
+
+                SocketServer.shared.ensureRunning()
 
                 if pageState.onlogPage {
                     if onlogPage == false {

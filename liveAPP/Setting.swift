@@ -269,7 +269,7 @@ struct LogSettingView:View {
 
                 LPConfig.shared.SocketLog = newValue
 
-                SocketServer.shared?.broadcast(type:"log",key: "Rebuild Socket", value: "OK Socket")
+                SocketServer.shared.broadcast(type:"log",key: "Rebuild Socket", value: "OK Socket")
 
                 CFNotificationCenterPostNotification(cfCenter, CFNotificationName("SocketLog" as CFString), nil, nil, true)
             }
@@ -308,8 +308,9 @@ struct LogSettingView:View {
             Button("測試擴展通信傳遞"){
                 AppMessagePort.shared.send(toExtension: ["ping": "From_App"])
 
-                SocketServer.shared?.broadcast(type:"log",key: "test3", value: "OK Socket")
-                SocketServer.shared?.broadcast(type: "testRTMP", key: "test3", value: "OK")
+                SocketServer.shared
+                    .broadcast(type:"log",key: "test3", value: "OK Socket")
+                SocketServer.shared.broadcast(type: "testRTMP", key: "test3", value: "OK")
 
             }
             Button("Socket重連"){

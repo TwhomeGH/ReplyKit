@@ -695,7 +695,7 @@ struct liveAPPApp: App {
 
         }
 
-        SocketServer.shared?.debugRTMP()
+        SocketServer.shared.start()
 
         AppMessagePort.shared.setupReceiver()
 

@@ -26,7 +26,8 @@ class SocketServer {
 
     // MARK: - Properties
 
-    static let shared = try? SocketServer()
+    static let shared = SocketServer()
+
 
     private var receiveBuffers: [ObjectIdentifier: Data] = [:]
 
@@ -38,14 +39,71 @@ class SocketServer {
     private let sendSemaphore = DispatchSemaphore(value: 4) // 同時最多 4 條連線
 
 
-    // MARK: - Init
-    init(port: UInt16 = 9322) throws {
-        listener = try NWListener(using: .tcp, on: NWEndpoint.Port(rawValue: port)!)
-        listener?.newConnectionHandler = { [weak self] connection in
-            self?.handleNewConnection(connection)
+    private var restartWorkItem: DispatchWorkItem?
+    private var isStopping = false
+
+    private func scheduleRestart(delay: TimeInterval = 1.5) {
+        guard !isStopping else { return }
+
+        restartWorkItem?.cancel()
+
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.logTo("Restarting SocketServer...")
+            self.stopInternal()
+            self.start()
+
         }
-        listener?.start(queue: queue)
-        logTo("SocketServer started on port \(port)")
+
+        restartWorkItem = work
+        queue.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    init() {
+
+    }
+    // MARK: - start
+    func start(port: UInt16 = 9322) {
+
+        guard listener == nil else {
+            logTo("SocketServer already running")
+            return
+        }
+
+        do {
+            listener = try NWListener(using: .tcp, on: NWEndpoint.Port(rawValue: port)!)
+            listener?.newConnectionHandler = { [weak self] connection in
+                self?.handleNewConnection(connection)
+            }
+            listener?.start(queue: queue)
+
+            listener?.stateUpdateHandler = { [weak self] state in
+                guard let self else { return }
+
+                switch state {
+                case .ready:
+                    self.logTo("Listener ready")
+
+                case .failed(let error):
+                    self.logTo("Listener failed: \(error)")
+                    self.scheduleRestart()
+
+                case .cancelled:
+                    self.logTo("Listener cancelled")
+
+                default:
+                    break
+                }
+            }
+
+            logTo("SocketServer started on port \(port)")
+
+        } catch {
+            logTo("SocketServer start failed: \(error)")
+            scheduleRestart()
+        }
+
+
     }
 
     func logTo(_ mes:String,title:String? = nil){
@@ -55,6 +113,13 @@ class SocketServer {
             sendlog(message: "\(mes)")
         }
 
+    }
+
+    func ensureRunning() {
+        if listener == nil {
+            logTo("Listener missing, restarting")
+            scheduleRestart(delay: 0.3)
+        }
     }
 
     // MARK: - Handle New Connection
@@ -82,6 +147,12 @@ class SocketServer {
             case .failed(let error):
                 self.logTo("Connection failed: \(error.localizedDescription)")
                 self.removeConnection(connection)
+
+                if self.connections.isEmpty {
+                    self.logTo("All connections lost, ensuring listener alive")
+                    self.ensureRunning()
+                }
+
             case .cancelled:
                 self.logTo("Connection cancelled")
                 self.removeConnection(connection)
@@ -420,7 +491,9 @@ class SocketServer {
 
 
                 ]
+                logTo("RTMP DebugLogConfig[Socket]\(payload)")
                 
+
                 sendToAll(payload: payload)
                 
             case "requestRTMP":
@@ -507,7 +580,8 @@ class SocketServer {
                     CPayloadKey["rtmpKey"] = fixlogSafeKey(key)
                 }
                 
-                logTo("RTMP DebugAdd[Socket]\(CPayloadKey)")
+                logTo("RTMP DebugRTMP[Socket]\(CPayloadKey)")
+
                 sendToAll(payload: payload)
                 
             case "requestSettings":
@@ -631,8 +705,17 @@ class SocketServer {
     }
 
     func stop() {
+        isStopping = true
+        stopInternal()
+    }
+
+
+    func stopInternal() {
         listener?.stateUpdateHandler = nil
         listener?.cancel()
+
+        listener = nil
+
         for (_, conn) in connections {
             conn.stateUpdateHandler = nil
             conn.cancel()

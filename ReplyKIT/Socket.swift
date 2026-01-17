@@ -295,6 +295,7 @@ class SocketClient {
         }
         guard var data = try? JSONSerialization.data(withJSONObject: payload, options: []) else { return }
         data.append(0x0A) // '\n'
+        
         con.send(content: data, completion: .contentProcessed({ error in
             if let error = error {
                 self.logTo("Socket Send error: \(error.localizedDescription)")
