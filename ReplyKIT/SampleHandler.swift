@@ -431,7 +431,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             var Rlog=SharedDefaults.group?.bool(forKey: "EnableSocketlog") ?? false
 
             Task {
-                if RPConfig.shared.enableSocketLog {
+              
                     if let raw = await SocketClient.shared.requestSet(for: "EnableSocketlog", type: "Bool") {
 
                         if let av = raw as? Bool {
@@ -445,7 +445,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                         }
 
                     }
-                }
+
 
             }
 
