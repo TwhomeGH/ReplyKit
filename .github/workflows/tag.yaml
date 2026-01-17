@@ -8,6 +8,10 @@ on:
       - "liveApp*/**"
       - "ReplyKIT*/**"
   workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag to release'
+        required: true
 
 jobs:
   detect-changes:
