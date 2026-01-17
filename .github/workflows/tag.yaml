@@ -5,7 +5,7 @@ on:
     branches:
       - main      # 或你想要監控的分支
     paths:
-      - "liveApp*/**"
+      - "liveAPP*/**"
       - "ReplyKIT*/**"
   workflow_dispatch:
 
