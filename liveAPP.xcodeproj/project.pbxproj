@@ -639,7 +639,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = liveAPP/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "松鼠推流工具";
+				INFOPLIST_KEY_CFBundleDisplayName = "松鼠推流";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "使用本地網路通信";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "使用麥克風直播";
@@ -685,7 +685,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = liveAPP/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "松鼠推流工具";
+				INFOPLIST_KEY_CFBundleDisplayName = "松鼠推流";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "使用本地網路通信";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "使用麥克風直播";

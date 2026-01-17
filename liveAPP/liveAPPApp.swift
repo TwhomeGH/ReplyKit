@@ -165,6 +165,9 @@ final class LogReceiver {
 
     init() {
         // 讀取上次儲存 offset
+
+
+
         lastReadOffset = UInt64(UserDefaults.standard.integer(forKey: "lastReadOffset"))
 
         // 註冊 Darwin 通知
@@ -594,7 +597,8 @@ struct liveAPPApp: App {
     let notificationDelegate = NotificationDelegate()
 
     @StateObject var logModel = LogModel()
-    let logReceiver = LogReceiver()
+
+   
 
 
     #if os(iOS)
@@ -678,9 +682,18 @@ struct liveAPPApp: App {
 
         // App 啟動時就啟動 Socket Server
         // 啟動一次
-        //SocketUserDefaluts.shared.startSettingsServer()
-        //CFMessagePortServer.shared.start()
 
+
+        if LPConfig.shared.SocketLog  {
+
+            sendlog(message: "已啟用Socket轉送 不依賴日誌文件變動監聽")
+
+        } else {
+            sendlog(message: "已停用Socket轉送 使用日誌文件變動監聽")
+
+            SharedResources.shared.setupLogReceiver()
+
+        }
         SocketServer.shared?.sendInitialUserDefaults()
 
         AppMessagePort.shared.setupReceiver()

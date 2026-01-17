@@ -5,6 +5,36 @@
 //  Created by user on 2025/11/2.
 //
 
+import os
+import Foundation
+
+final class SharedResources {
+    static let shared = SharedResources()
+
+    private(set) var logReceiver: LogReceiver?
+    private let groupID = "group.nuclear.liveAPP"
+
+    private init() {}
+
+    // 嘗試建立 LogReceiver
+    func setupLogReceiver() {
+        if FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupID) != nil {
+            if logReceiver == nil {
+                logReceiver = LogReceiver()
+                sendlog(message:"✅ LogReceiver 已建立")
+            }
+        } else {
+            sendlog(message:"⚠️ App Group 無效，不建立 LogReceiver")
+            logReceiver = nil
+        }
+    }
+
+    // 主動釋放 LogReceiver
+    func releaseLogReceiver() {
+        logReceiver = nil
+        sendlog(message:"🗑 LogReceiver 已釋放")
+    }
+}
 
 
 final class LPConfig {
@@ -22,6 +52,8 @@ final class LPConfig {
     var PIPLog: Bool = false
     var PIPChatLog:Bool = false
 
+    var SocketLog:Bool = false
+
 
     private init() {
 
@@ -33,6 +65,7 @@ final class LPConfig {
         onLogPage=userDefaults?.bool(forKey: "onlogPage") ?? false
         enableLog=userDefaults?.bool(forKey: "Enablelog") ?? false
         logURL = userDefaults?.string(forKey: "logURL") ?? "http://192.168.0.242:3000/post"
+        SocketLog = userDefaults?.bool(forKey: "EnableSocketlog") ?? false
 
     }
 

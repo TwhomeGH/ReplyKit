@@ -252,8 +252,23 @@ struct LogSettingView:View {
                 Text("啟用Socket轉送日誌 ！")
             }
             .onChange(of:EnableSocketlog) { newValue in
+
+                if newValue {
+                    sendlog(message: "停用監聽日誌文件 已使用Socket轉送")
+                    SharedResources.shared.releaseLogReceiver()
+
+                } else {
+
+                    sendlog(message: "啟用監聽日誌文件 已停用Socket轉送")
+                    SharedResources.shared.setupLogReceiver()
+
+                }
+
+                LPConfig.shared.SocketLog = newValue
+
                 CFNotificationCenterPostNotification(cfCenter, CFNotificationName("SocketLog" as CFString), nil, nil, true)
             }
+
             Text("啟用備用Socket顯示傳遞日誌,當你處於側載時使用它代替AppGroup更新共享文件")
                     .font(.footnote)
                     .foregroundColor(.secondary)
