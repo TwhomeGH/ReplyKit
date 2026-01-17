@@ -46,7 +46,7 @@ jobs:
       - name: Get latest tag
         id: get_tag
         run: |
-          latest_tag=$(git tag --list 'v*' --sort=-creatordate | head -n1)
+          latest_tag=$(git tag --sort=-creatordate | head -n1)
           echo "latest_tag=$latest_tag" >> $GITHUB_OUTPUT
           echo "Latest tag: $latest_tag"
 
