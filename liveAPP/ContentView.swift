@@ -625,22 +625,8 @@ struct LiveVolumeView: View {
 
             }
 
-            Button("儲存音量") {
-                setUserDefault(appVolume, forKey: "appVolume")
-                setUserDefault(micVolume, forKey: "micVolume")
+           
 
-
-#if os(iOS)
-
-                CFNotificationCenterPostNotification(cfCenter, CFNotificationName("micVolumeChanged" as CFString), nil, nil, true)
-                CFNotificationCenterPostNotification(cfCenter, CFNotificationName("appVolumeChanged" as CFString), nil, nil, true)
-#else
-                NotificationCenter.default.post(name: Notification.Name("appVolumeChanged"), object: nil)
-                NotificationCenter.default.post(name: Notification.Name("micVolumeChanged"), object: nil)
-#endif
-
-
-            }
 
             VStack(alignment: .leading) {
                 Text("Mic Volume \(model.micVolumeLive)")

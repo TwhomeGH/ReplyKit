@@ -448,6 +448,7 @@ class SocketServer {
                         .double(forKey: "appVolume") ?? 1.0,
                     "micVolume": userDefaults?
                         .double(forKey: "micVolume") ?? 1.0,
+                    
                     "appVolumeAdd": userDefaults?
                         .double(forKey: "appAddVolume") ?? 1.0,
                     "micVolumeAdd": userDefaults?
