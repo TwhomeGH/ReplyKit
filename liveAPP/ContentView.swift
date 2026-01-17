@@ -918,6 +918,8 @@ struct LogTextView: UIViewRepresentable {
             }
 
 
+
+
             let visibleHeight = tv.bounds.height
                 - tv.adjustedContentInset.top
                 - tv.adjustedContentInset.bottom
@@ -992,6 +994,9 @@ struct LogTextView: UIViewRepresentable {
             // ✅ 超過上限就裁掉前面的行
             trimTextStorageIfNeeded(tv)
 
+            userIsInteracting = false
+
+
             scrollIfNeeded()
         }
 
@@ -1003,6 +1008,7 @@ struct LogTextView: UIViewRepresentable {
             // 如果 App 在背景，先緩存訊息
             if UIApplication.shared.applicationState != .active {
                 bufferedMessages.append(contentsOf: newMessages)
+
                 return
             }
 
