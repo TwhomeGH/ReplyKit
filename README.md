@@ -167,21 +167,73 @@ SocketApi服務端參閱以下:
 3. 發送方式（Python 範例）
 
     ```python
-
     import socket
     import json
+    import time
 
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect(("伺服器IP", 9322))
+    HOST = "伺服器IP"
+    PORT = 9322
 
-    message = {
-        "type": "StreamMessage",
-        "user": "user3333",
-        "message": "Hello World",
-        "img": "https://img.icons8.com/?size=100&id=L8HgZUgz2jWS&format=png&color=000000",
-        "giftImg": "https://img.icons8.com/?size=100&id=124077&format=png&color=000000",
-        "isMain": True
-    }
+    def create_connection():
+        while True:
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.connect((HOST, PORT))
+                print("Connected to server")
+                return s
+            except Exception as e:
+                print("Connection failed, retrying in 3s...", e)
+                time.sleep(3)
 
-    s.sendall((json.dumps(message) + "\n").encode("utf-8"))
+    s = create_connection()
+
+    while True:
+        message = {
+            "type": "StreamMessage",
+            "user": "user3333",
+            "message": "Hello World",
+            "img": "https://img.icons8.com/?size=100&id=L8HgZUgz2jWS&format=png&color=000000",
+            "giftImg": "https://img.icons8.com/?size=100&id=124077&format=png&color=000000",
+            "isMain": True
+        }
+
+        try:
+            s.sendall((json.dumps(message) + "\n").encode("utf-8"))
+            print("Message sent")
+        except BrokenPipeError:
+            print("Broken pipe! Reconnecting...")
+            s.close()
+            s = create_connection()
+            s.sendall((json.dumps(message) + "\n").encode("utf-8"))
+
+        time.sleep(5)  # 每 5 秒發送一次
+        
     ```
+
+4. 長連線建議
+
+    為了提升訊息傳輸的穩定性和效率，建議使用 長連線模式：
+	
+    1. 保持連線活躍
+	
+        - 在建立連線後持續使用同一個 socket 發送多條訊息，避免每次發送都重新建立連線。
+
+        -	適合頻繁推送資料的場景，例如直播聊天室、持續訊息流。
+
+    2. 自動重連
+
+        -	伺服器可能因超時或網路波動斷開連線，這時程式會捕獲 BrokenPipeError 自動重連，確保訊息不中斷。
+
+    3.	範例程式特點
+
+        -	使用 create_connection() 函數安全建立 TCP 連線。
+      
+        - 在無窮迴圈中發送訊息，每次發送前捕獲斷線錯誤。
+
+        -	支援自動重連後繼續發送訊息。
+
+    4.	其他建議
+
+        -	可搭配心跳訊息，定期維持連線活躍。
+
+        -	長連線需要注意網路穩定性與錯誤處理，避免程式崩潰。
