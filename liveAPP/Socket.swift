@@ -444,8 +444,10 @@ class SocketServer {
                     "dstW": userDefaults?.integer(forKey: "dstW") ?? 0,
                     "dstH": userDefaults?.integer(forKey: "dstH") ?? 0,
                     
-                    "appVolume": userDefaults?.float(forKey: "appVolume") ?? 1.0,
-                    "micVolume": userDefaults?.float(forKey: "micVolume") ?? 1.0,
+                    "appVolume": userDefaults?
+                        .double(forKey: "appVolume") ?? 1.0,
+                    "micVolume": userDefaults?
+                        .double(forKey: "micVolume") ?? 1.0,
                     "appVolumeAdd": userDefaults?
                         .double(forKey: "appAddVolume") ?? 1.0,
                     "micVolumeAdd": userDefaults?
