@@ -171,8 +171,25 @@ final class VolumeNotifier {
             queue.async { [weak self, pendingAppVolume, pendingMicVolume] in
                 guard let self = self, self.isActive else { return }
 
-                SharedDefaults.group?.set(pendingAppVolume, forKey: "appVolumeLive")
-                SharedDefaults.group?.set(pendingMicVolume, forKey: "micVolumeLive")
+
+                if RPConfig.shared.enableSocketLog {
+                    SocketClient.shared
+                        .sendSettings(
+                            key: "appVolumeLive",
+                            value: pendingAppVolume
+                        )
+                    SocketClient.shared
+                        .sendSettings(
+                            key: "micVolumeLive",
+                            value: pendingMicVolume
+                        )
+
+                } else {
+                    SharedDefaults.group?.set(pendingAppVolume, forKey: "appVolumeLive")
+                    SharedDefaults.group?.set(pendingMicVolume, forKey: "micVolumeLive")
+
+                }
+
                 CFNotificationCenterPostNotification(
                     CFNotificationCenterGetDarwinNotifyCenter(),
                     CFNotificationName("LiveVolumeUpdated" as CFString),
@@ -301,6 +318,7 @@ final class AudioProcessor : @unchecked Sendable {
             }
 
             let now = CACurrentMediaTime()
+
             if self.onAudioPage, now - self.lastRMSUpdateTime > self.rmsInterval {
                 self.lastRMSUpdateTime = now
                 if let rms = rmsSIMD(from: amplified) {
@@ -313,7 +331,10 @@ final class AudioProcessor : @unchecked Sendable {
                     var adjustedRMS = rms * safeUserVolume
                     if !adjustedRMS.isFinite { adjustedRMS = 0 }
 
+
+                    
                     self.volumeNotifier.updateVolume(volume: adjustedRMS, track: Int(trackType.rawValue))
+
 
                 }
             }

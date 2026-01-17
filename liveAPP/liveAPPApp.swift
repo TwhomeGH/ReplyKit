@@ -606,9 +606,11 @@ struct liveAPPApp: App {
 
 
         // 明確使用 App Group
-        let userDefaults = UserDefaults(suiteName: "group.nuclear.liveAPP")
+        let userDefaults = UserDefaults(
+            suiteName: "group.nuclear.liveAPP"
+        ) ?? .standard
 
-        userDefaults?.set(deviceOrientation.rawValue, forKey: "LOrientation")
+        userDefaults.set(deviceOrientation.rawValue, forKey: "LOrientation")
         
     }
     #else
@@ -637,13 +639,8 @@ struct liveAPPApp: App {
         StableLockRotationDetector.shared.debugMode=true
         StableLockRotationDetector.shared.onLockStateDetected = { isLocked in
 
-            // 明確使用 App Group
-            let userDefaults = UserDefaults(suiteName: "group.nuclear.liveAPP")
 
             if isLocked {
-
-                
-                userDefaults?.set(true, forKey: "LockIN")
 
                 let cfCenter = CFNotificationCenterGetDarwinNotifyCenter()
 
@@ -654,8 +651,6 @@ struct liveAPPApp: App {
 
                 print("使用者可能開了螢幕鎖定 🔒")
             } else {
-                userDefaults?.set(false, forKey: "LockIN")
-
 
                 let cfCenter = CFNotificationCenterGetDarwinNotifyCenter()
 

@@ -32,7 +32,9 @@ import Foundation
 let logger = Logger(subsystem: "nuclear.liveAPP.ReplyKit", category: "extension")
 
 class SharedDefaults {
-    static let group = UserDefaults(suiteName: "group.nuclear.liveAPP")
+    static let group:UserDefaults? = UserDefaults(
+        suiteName: "group.nuclear.liveAPP"
+    ) ?? .standard
 }
 
 

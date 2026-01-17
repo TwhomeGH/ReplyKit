@@ -323,7 +323,14 @@ final class LogManager {
         localLogBuffer.removeAll()
         localLogSize = 0
 
-        guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupID) else { return }
+        let containerURL: URL
+
+        if let groupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupID) {
+            containerURL = groupURL
+        } else {
+            containerURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        }
+        
         let fileURL = containerURL.appendingPathComponent(logFileName)
 
         if let data = bufferCopy.data(using: .utf8) {

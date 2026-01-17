@@ -7,16 +7,16 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "AB5261F7-D848-44A6-8771-7FE2AF0726D2"
+            uuid = "2ACD66BF-9EF7-4704-B62C-5484DFECC002"
             shouldBeEnabled = "Yes"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
-            filePath = "liveAPP/Socket.swift"
+            filePath = "ReplyKIT/SampleHandler.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "354"
-            endingLineNumber = "354"
-            landmarkName = "handleReceivedData(_:from:)"
+            startingLineNumber = "766"
+            endingLineNumber = "766"
+            landmarkName = "handleEvent(eventName:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>

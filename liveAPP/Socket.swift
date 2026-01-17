@@ -363,7 +363,7 @@ class SocketServer {
                     res = userDefaults?.string(forKey: key)
                 case "Bool":
                     res = userDefaults?.bool(forKey: key)
-                    
+
                 case "Double":
                     res =  userDefaults?.double(forKey: key)
                 case "Int":
@@ -482,7 +482,7 @@ class SocketServer {
                     let safeValueStr = String(describing: safeValue)
                     logTo("Updated UserDefaults: \(key) = \(safeValueStr)")
                     
-                    UserDefaults.standard.set(valueAny, forKey: key) // 用原值存 UserDefaults
+                    userDefaults?.set(valueAny, forKey: key) // 用原值存 UserDefaults
                     
                     broadcast(key: key, value: safeValue) // 型別明確，不再報錯
                 }

@@ -19,7 +19,9 @@ let cfCenter = CFNotificationCenterGetDarwinNotifyCenter()
 
 
 #if os(iOS)
-let userDefaults: UserDefaults? = UserDefaults(suiteName: "group.nuclear.liveAPP")
+let userDefaults: UserDefaults? = UserDefaults(
+    suiteName: "group.nuclear.liveAPP"
+) ?? .standard
 #else
 let userDefaults: UserDefaults = .standard
 #endif
@@ -2357,15 +2359,11 @@ struct ContentView: View {
     @AppStorage("onlogPage",store:userDefaults) private var onlogPage = false
 
 
-
     @AppStorage("onAudioPage",store:userDefaults) private var onAudioPage = false
 
    
 
-    init(){
 
-        onAudioPage=false
-    }
 
 
     var body: some View {
@@ -2428,7 +2426,7 @@ struct ContentView: View {
             if newValue == .audio {
 
                 onAudioPage=true
-                sendlog(message:"true page \(onAudioPage)")
+                sendlog(message:"onAudioPage: \(onAudioPage)")
 
                 CFNotificationCenterPostNotification(cfCenter,
                                                      CFNotificationName("onAudioPage" as CFString),
@@ -2437,7 +2435,7 @@ struct ContentView: View {
 
 
                 onAudioPage=false
-                sendlog(message:"false page \(onAudioPage)")
+                sendlog(message:"onAudioPage: \(onAudioPage)")
 
 
                 CFNotificationCenterPostNotification(cfCenter,
