@@ -1,12 +1,14 @@
 name: iOS Archive & Release via Tag
 
 on:
-  push:
-    tags:
-      - '*'
+  workflow_run:
+    workflows: ["Check Changes & Trigger Tag"]
+    types:
+      - completed
 
 jobs:
   build:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: macos-26
     env:
       FASTLANE_USER: ${{ secrets.APPID }}
@@ -68,7 +70,7 @@ jobs:
           mv *.app Payload/
 
           
-          TAG=${GITHUB_REF##*/} 
+          TAG=$(git tag --sort=-creatordate | head -n1)
 
           zip -r liveApp_${TAG}.ipa Payload
 
