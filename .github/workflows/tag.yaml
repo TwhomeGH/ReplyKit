@@ -92,7 +92,7 @@ jobs:
               major=$((major + 1))
             fi
 
-            NEW_TAG="v$major.$minor.$patch"
+            NEW_TAG="$major.$minor.$patch"
           fi
 
           echo "New tag: $NEW_TAG"
