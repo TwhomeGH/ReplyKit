@@ -458,10 +458,10 @@ class SocketServer {
                     
                 ]
 
-                if let BCount = payload["BufferCount"] as? Int {
+                if let BCount = payload["videoBuffer"] as? Int {
                     if BCount < 1 {
                         userDefaults?.set(3, forKey: "BufferCount")
-                        payload["BufferCount"] = 3
+                        payload["videoBuffer"] = 3
                         sendlog(message: "修正BufferCount -> 3")
                     }
                 }
