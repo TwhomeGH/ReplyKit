@@ -78,7 +78,7 @@ class SocketServer {
                 }
 
 
-                //self?.sendInitialUserDefaults(to: connection)
+     
             case .failed(let error):
                 self.logTo("Connection failed: \(error.localizedDescription)")
                 self.removeConnection(connection)
@@ -599,6 +599,7 @@ class SocketServer {
     }
 
     func sendInitialUserDefaults(to connection: NWConnection? = nil) {
+
         let defaults = UserDefaults.standard.dictionaryRepresentation()
         for (key, value) in defaults {
             let payload: [String: Any] = [
@@ -606,11 +607,8 @@ class SocketServer {
                 "key": key,
                 "value": safeJSONValue(value)
             ]
-            if let conn = connection {
-                sendTo(conn, payload: payload)
-            } else {
-                sendToAll(payload: payload)
-            }
+
+            sendToAll(payload: payload)
         }
     }
 

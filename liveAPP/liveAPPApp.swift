@@ -694,7 +694,8 @@ struct liveAPPApp: App {
             SharedResources.shared.setupLogReceiver()
 
         }
-        SocketServer.shared?.sendInitialUserDefaults()
+
+        SocketServer.shared?.debugRTMP()
 
         AppMessagePort.shared.setupReceiver()
 

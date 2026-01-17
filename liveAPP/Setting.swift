@@ -522,6 +522,7 @@ final class LocalNetworkPermissionManager: ObservableObject {
 
     func requestPermission(completion: @escaping (Bool) -> Void) {
 
+        
         let params = NWParameters.tcp
         params.includePeerToPeer = true
 
