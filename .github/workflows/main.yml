@@ -18,6 +18,21 @@ jobs:
       # 1️⃣ Checkout repository
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Get latest tag
+        run: |
+          TAG=$(git tag --sort=-creatordate | head -n1)
+
+          if [ -z "$TAG" ]; then
+            echo "❌ No tag found"
+            exit 1
+          fi
+
+          echo "TAG=$TAG" >> $GITHUB_ENV
+          echo "Using tag: $TAG"
 
       
       # 2️⃣ Detect default scheme
@@ -70,7 +85,7 @@ jobs:
           mv *.app Payload/
 
           
-          TAG=$(git tag --sort=-creatordate | head -n1)
+          TAG=${TAG}
 
           zip -r liveApp_${TAG}.ipa Payload
 
