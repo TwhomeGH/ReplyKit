@@ -269,6 +269,8 @@ struct LogSettingView:View {
 
                 LPConfig.shared.SocketLog = newValue
 
+                SocketServer.shared?.broadcast(type:"log",key: "Rebuild Socket", value: "OK Socket")
+
                 CFNotificationCenterPostNotification(cfCenter, CFNotificationName("SocketLog" as CFString), nil, nil, true)
             }
 
