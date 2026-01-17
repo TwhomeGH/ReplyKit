@@ -190,6 +190,9 @@ struct LogSettingView:View {
 
     @AppStorage("EnableRotatelog",store:userDefaults) private var EnableRotatelog = false
 
+    @AppStorage("EnableSocketlog",store:userDefaults) private var EnableSocketlog = false
+
+
     @AppStorage("ChangeBit",store:userDefaults) private var ChangeBit = true
 
     var body: some View {
@@ -244,6 +247,18 @@ struct LogSettingView:View {
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .padding(.bottom, 5)
+
+            Toggle(isOn: $EnableSocketlog){
+                Text("啟用Socket轉送日誌 ！")
+            }
+            .onChange(of:EnableSocketlog) { newValue in
+                CFNotificationCenterPostNotification(cfCenter, CFNotificationName("SocketLog" as CFString), nil, nil, true)
+            }
+            Text("啟用備用Socket顯示傳遞日誌,當你處於側載時使用它代替AppGroup更新共享文件")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .padding(.bottom, 5)
+
 
             Toggle(isOn: $PIPLog){
                 Text("啟用PIP子母窗口調試用日誌 ！")

@@ -227,27 +227,65 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         switch eventName {
         case "micAdd":
 
-            let newVolume = SharedDefaults.group?.double(forKey: "micAddVolume") ?? 1.0
+            var newVolume = SharedDefaults.group?.double(forKey: "micAddVolume") ?? 1.0
 
-
-            micAddVolume=Float(newVolume)
             guard let audioProcessor else { return }
 
             Task {
+                if RPConfig.shared.enableSocketLog {
+                    if let raw = await SocketClient.shared.requestSet(for: "micAddVolume", type: "Double") {
+
+                        if let av = raw as? Double {
+                            let oldV = newVolume
+                            newVolume = av
+
+                            logger.debug("MicAddVol \(av)")
+                            sendlog(message: "Socket原始MicAddVolume數據包:\(av) -> \(oldV)")
+                        } else {
+                            logger.error("MicAddVolume 型別錯誤: \(type(of: raw))")
+                        }
+
+                    }
+                }
+
+                micAddVolume=Float(newVolume)
                 audioProcessor.updateVolumes(micAdd: micAddVolume)
             }
+
             sendlog(message: String(
                 format: "麥克風音量放大: %.5f%%",
                 newVolume
             ))
+
         case "appAdd":
 
-            let newVolume = SharedDefaults.group?.double(forKey: "appAddVolume") ?? 1.0
-            appAddVolume=Float(newVolume)
+            var newVolume = SharedDefaults.group?.double(forKey: "appAddVolume") ?? 1.0
+
             guard let audioProcessor else { return }
+
             Task {
+
+                if RPConfig.shared.enableSocketLog {
+                    if let raw = await SocketClient.shared.requestSet(for: "appAddVolume", type: "Double") {
+
+                        if let av = raw as? Double {
+                            let oldV = newVolume
+                            newVolume = av
+
+                            logger.debug("AppAddVol \(av)")
+                            sendlog(message: "Socket原始AppAddVolume數據包:\(av) -> \(oldV)")
+                        } else {
+                            logger.error("AppAddVolume 型別錯誤: \(type(of: raw))")
+                        }
+
+                    }
+                }
+
+                appAddVolume=Float(newVolume)
                 audioProcessor.updateVolumes(appAdd: appAddVolume)
+
             }
+
             sendlog(message: String(
                 format: "App音量放大: %.5f%%",
                 newVolume
@@ -256,47 +294,82 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         case "micVolumeChanged":
             
-            let newVolume = SharedDefaults.group?.double(forKey: "micVolume") ?? 1.0
-            micVolume=Float(newVolume)
+            var
+            newVolume = SharedDefaults.group?.double(forKey: "micVolume") ?? 1.0
 
             guard let audioProcessor else { return }
+
             Task {
-                audioProcessor.updateVolumes(mic: micVolume)
-            }
-            sendlog(message: String(
-                format: "麥克風音量更新: %.2f%% (原始值: %.5f)",
-                volumeToPercentage(newVolume),
-                newVolume
-            ))
-            Task { await updateMicAudioVolume(Float(newVolume)) }
 
-        case "appVolumeChanged":
-            let newVolume = SharedDefaults.group?.double(forKey: "appVolume") ?? 1.0
+                if RPConfig.shared.enableSocketLog {
+                    if let raw = await SocketClient.shared.requestSet(for: "micVolume", type: "Double") {
 
+                        if let av = raw as? Double {
+                            let oldV = newVolume
+                            newVolume = av
 
+                            logger.debug("MicVol \(av)")
+                            sendlog(message: "Socket原始MicVolume數據包:\(av) -> \(oldV)")
+                        } else {
+                            logger.error("MicVolume 型別錯誤: \(type(of: raw))")
+                        }
 
-
-            guard let audioProcessor else { return }
-            Task {
-                if let av = await SocketClient.shared.requestSet(for: "appVolume", type: "Double") {
-
-                    sendlog(message: "原始AppVolume數據包:\(av)")
-
+                    }
                 }
 
-                appVolume=Float(newVolume)
+                sendlog(message: String(
+                    format: "麥克風音量更新: %.2f%% (原始值: %.5f)",
+                    volumeToPercentage(newVolume),
+                    newVolume
+                ))
 
-                audioProcessor.updateVolumes(app: appVolume)
+                micVolume=Float(newVolume)
+                audioProcessor.updateVolumes(mic: micVolume)
+
+
+                await updateMicAudioVolume(Float(newVolume))
             }
 
-            sendlog(message: String(
-                format: "!!應用音量更新: %.2f%% (原始值: %.5f)",
-                volumeToPercentage(newVolume),
-                newVolume
-            ))
+        case "appVolumeChanged":
 
-            Task { await updateAppAudioVolume(Float(newVolume)) }
-            
+            var newVolume = SharedDefaults.group?.double(forKey: "appVolume") ?? 1.0
+
+            guard let audioProcessor else { return }
+
+
+            Task {
+
+                if RPConfig.shared.enableSocketLog {
+                    if let raw = await SocketClient.shared.requestSet(for: "appVolume", type: "Double") {
+
+                        if let av = raw as? Double {
+                            let oldV = newVolume
+                            newVolume = av
+
+                            logger.debug("AppVol \(av)")
+                            sendlog(message: "Socket原始AppVolume數據包:\(av) -> \(oldV)")
+                        } else {
+                            logger.error("appVolume 型別錯誤: \(type(of: raw))")
+                        }
+
+                    }
+                }
+
+                    sendlog(message: String(
+                        format: "!!應用音量更新: %.2f%% (原始值: %.5f)",
+                        volumeToPercentage(newVolume),
+                        newVolume
+                    ))
+
+
+                    appVolume=Float(newVolume)
+                    audioProcessor.updateVolumes(app: appVolume)
+
+                    await updateAppAudioVolume(Float(newVolume))
+
+
+            }
+
         case "orientationChanged":
 #if os(iOS)
             let orientationValue = SharedDefaults.group?.integer(
@@ -326,15 +399,82 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
        
 
         case "DebugRotate":
-            let Rlog=SharedDefaults.group?.bool(forKey: "EnableRotatelog") ?? false
+            var Rlog=SharedDefaults.group?.bool(forKey: "EnableRotatelog") ?? false
+
+            Task {
+                if RPConfig.shared.enableSocketLog {
+                    if let raw = await SocketClient.shared.requestSet(for: "EnableRotatelog", type: "Bool") {
+
+                        if let av = raw as? Bool {
+                            let oldV = Rlog
+                            Rlog = av
+
+                            logger.debug("EnableRotate \(av)")
+                            sendlog(message: "Socket原始EnableRotate數據包:\(av) -> \(oldV)")
+                        } else {
+                            logger.error("EnableRotate 型別錯誤: \(type(of: raw))")
+                        }
+
+                    }
+                }
+            }
+
+
             videoProcessor?.rotator?.debug = Rlog
             sendlog(message:"[旋轉日誌變化] VideoRotate \(Rlog)")
 
-        case "ChangeBit":
-            let Rlog=SharedDefaults.group?.bool(forKey: "ChangeBit") ?? false
+
+
+        case "SocketLog":
+            var Rlog=SharedDefaults.group?.bool(forKey: "EnableSocketlog") ?? false
+
             Task {
+                if RPConfig.shared.enableSocketLog {
+                    if let raw = await SocketClient.shared.requestSet(for: "EnableSocketlog", type: "Bool") {
+
+                        if let av = raw as? Bool {
+                            let oldV = Rlog
+                            Rlog = av
+
+                            logger.debug("EnableSocket \(av)")
+                            sendlog(message: "Socket原始EnableSocketLog數據包:\(av) -> \(oldV)")
+                        } else {
+                            logger.error("EnableSocketLog 型別錯誤: \(type(of: raw))")
+                        }
+
+                    }
+                }
+
+            }
+
+            RPConfig.shared.enableSocketLog = Rlog
+            sendlog(message:"[Socket日誌開關]  \(Rlog)")
+
+
+
+        case "ChangeBit":
+            var Rlog=SharedDefaults.group?.bool(forKey: "ChangeBit") ?? false
+            Task {
+
+                if RPConfig.shared.enableSocketLog {
+                    if let raw = await SocketClient.shared.requestSet(for: "ChangeBit", type: "Bool") {
+
+                        if let av = raw as? Bool {
+                            let oldV = Rlog
+                            Rlog = av
+
+                            logger.debug("ChangeBit \(av)")
+                            sendlog(message: "Socket原始ChangeBit數據包:\(av) -> \(oldV)")
+                        } else {
+                            logger.error("ChangeBit 型別錯誤: \(type(of: raw))")
+                        }
+
+                    }
+                }
+
                 await streamStataus?.isChangBit(Rlog)
             }
+
             sendlog(message:"[網路]碼率控制: \(Rlog)")
 
 
@@ -342,22 +482,84 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "bitRateChange":
-            sendlog(message: "NewBit: \(String(describing: bitrate))")
 
-            bitrate=SharedDefaults.group?.integer(forKey: "bitRate") ?? 3_900_000
+            var Rlog = SharedDefaults.group?.integer(forKey: "bitRate") ?? 3_900_000
+
+            Task {
+                if RPConfig.shared.enableSocketLog {
+                    if let raw = await SocketClient.shared.requestSet(for: "bitRate", type: "Int") {
+
+                        if let av = raw as? Int {
+                            let oldV = Rlog
+                            Rlog = av
+
+                            logger.debug("BitRate \(av)")
+                            sendlog(message: "Socket原始BitRate數據包:\(av) -> \(oldV)")
+                        } else {
+                            logger.error("BitRate 型別錯誤: \(type(of: raw))")
+                        }
+
+                    }
+                }
+
+            }
+
+
+            bitrate = Rlog
+
+            sendlog(message: "NewBit: \(String(describing: bitrate))")
 
 
         case "logURL":
-            let logM=SharedDefaults.group?.string(
+            var logM=SharedDefaults.group?.string(
                 forKey: "logURL"
             ) ?? "http://192.168.0.242/post"
+
+            Task {
+                if RPConfig.shared.enableSocketLog {
+                    if let raw = await SocketClient.shared.requestSet(for: "logURL", type: "String") {
+
+                        if let av = raw as? String {
+                            let oldV = logM
+                            logM = av
+
+                            logger.debug("logURL \(av)")
+                            sendlog(message: "Socket原始logURL數據包:\(av) -> \(oldV)")
+                        } else {
+                            logger.error("logURL 型別錯誤: \(type(of: raw))")
+                        }
+
+                    }
+                }
+
+            }
+
             RPConfig.shared.logURL = logM
+
             sendlog(message: "LOG URL: \(logM)")
 
 
         case "logMode":
-            let logM=SharedDefaults.group?.integer(forKey: "logMode") ?? 0
+            var logM=SharedDefaults.group?.integer(forKey: "logMode") ?? 0
 
+            Task {
+                if RPConfig.shared.enableSocketLog {
+                    if let raw = await SocketClient.shared.requestSet(for: "logMode", type: "Int") {
+
+                        if let av = raw as? Int {
+                            let oldV = logM
+                            logM = av
+
+                            logger.debug("logMode \(av)")
+                            sendlog(message: "Socket原始logMode數據包:\(av) -> \(oldV)")
+                        } else {
+                            logger.error("logMode 型別錯誤: \(type(of: raw))")
+                        }
+
+                    }
+                }
+
+            }
 
 
             sendlog(message: "LOG Mode \(logM)")
@@ -367,7 +569,26 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "onlogPage":
-            let logPage=SharedDefaults.group?.bool(forKey: "onlogPage") ?? false
+            var logPage=SharedDefaults.group?.bool(forKey: "onlogPage") ?? false
+
+            Task {
+                if RPConfig.shared.enableSocketLog {
+                    if let raw = await SocketClient.shared.requestSet(for: "onlogPage", type: "Bool") {
+
+                        if let av = raw as? Bool {
+                            let oldV = logPage
+                            logPage = av
+
+                            logger.debug("logPage \(av)")
+                            sendlog(message: "Socket原始logPage數據包:\(av) -> \(oldV)")
+                        } else {
+                            logger.error("logPage 型別錯誤: \(type(of: raw))")
+                        }
+
+                    }
+                }
+
+            }
 
             RPConfig.shared.onLogPage=logPage
             if logPage {
@@ -408,7 +629,26 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             }
 
         case "OutW":
-            let dstRW=SharedDefaults.group?.integer(forKey: "dstW") ?? 0
+            var dstRW=SharedDefaults.group?.integer(forKey: "dstW") ?? 0
+
+            Task {
+                if RPConfig.shared.enableSocketLog {
+                    if let raw = await SocketClient.shared.requestSet(for: "dstW", type: "Int") {
+
+                        if let av = raw as? Int {
+                            let oldV = dstRW
+                            dstRW = av
+
+                            logger.debug("OutW \(av)")
+                            sendlog(message: "Socket原始OutW數據包:\(av) -> \(oldV)")
+                        } else {
+                            logger.error("OutW 型別錯誤: \(type(of: raw))")
+                        }
+
+                    }
+                }
+
+            }
 
             ADWidth = dstRW
             videoProcessor?.rotator?.dstWW = dstRW
@@ -416,7 +656,27 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "OutH":
-            let dstRH=SharedDefaults.group?.integer(forKey: "dstH") ?? 0
+            var dstRH=SharedDefaults.group?.integer(forKey: "dstH") ?? 0
+
+            Task {
+                if RPConfig.shared.enableSocketLog {
+                    if let raw = await SocketClient.shared.requestSet(for: "dstH", type: "Int") {
+
+                        if let av = raw as? Int {
+                            let oldV = dstRH
+                            dstRH = av
+
+                            logger.debug("OutH \(av)")
+                            sendlog(message: "Socket原始OutH數據包:\(av) -> \(oldV)")
+                        } else {
+                            logger.error("OutH 型別錯誤: \(type(of: raw))")
+                        }
+
+                    }
+                }
+
+            }
+
             ADHeight = dstRH
             videoProcessor?.rotator?.dstHH = dstRH
 
@@ -426,21 +686,59 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "Enablelog":
-            let Enablelog=SharedDefaults.group?.bool(forKey: "Enablelog") ?? false
+            var Enablelog=SharedDefaults.group?.bool(forKey: "Enablelog") ?? false
 
-            sendlog(message: "開關日誌log")
+            Task {
+                if RPConfig.shared.enableSocketLog {
+                    if let raw = await SocketClient.shared.requestSet(for: "Enablelog", type: "Bool") {
+
+                        if let av = raw as? Bool {
+                            let oldV = Enablelog
+                            Enablelog = av
+
+                            logger.debug("EnableLog \(av)")
+                            sendlog(message: "Socket原始EnableLog數據包:\(av) -> \(oldV)")
+                        } else {
+                            logger.error("EnableLog 型別錯誤: \(type(of: raw))")
+                        }
+
+                    }
+                }
+
+            }
+
+            sendlog(message: "開關日誌log \(Enablelog)")
             RPConfig.shared.enableLog=Enablelog
 
             
 
 
         case "onAudioPage":
-            onAudioPage=SharedDefaults.group?.bool(forKey: "onAudioPage") ?? false
+            var APage=SharedDefaults.group?.bool(forKey: "onAudioPage") ?? false
 
+            Task {
+                if RPConfig.shared.enableSocketLog {
+                    if let raw = await SocketClient.shared.requestSet(for: "onAudioPage", type: "Bool") {
+
+                        if let av = raw as? Bool {
+                            let oldV = APage
+                            APage = av
+
+                            logger.debug("onAudioPage \(av)")
+                            sendlog(message: "Socket原始onAudioPage數據包:\(av) -> \(oldV)")
+                        } else {
+                            logger.error("onAudioPage 型別錯誤: \(type(of: raw))")
+                        }
+
+                    }
+                }
+
+            }
 
 
                 if audioProcessor != nil {
 
+                    onAudioPage = APage
                     audioProcessor?.updatePage(status: onAudioPage)
                     sendlog(
                         message:"[Audio] Page \(String(describing: onAudioPage))"
@@ -449,9 +747,30 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 }
                 
                 else {
-                    let onPause=SharedDefaults.group?.bool(
+
+                    var onPause=SharedDefaults.group?.bool(
                         forKey: "PauseStream"
                     ) ?? false
+
+                    Task {
+                        if RPConfig.shared.enableSocketLog {
+                            if let raw = await SocketClient.shared.requestSet(for: "PauseStream", type: "Bool") {
+
+                                if let av = raw as? Bool {
+                                    let oldV = onPause
+                                    onPause = av
+
+                                    logger.debug("PauseStream \(av)")
+                                    sendlog(message: "Socket原始PauseStream數據包:\(av) -> \(oldV)")
+                                } else {
+                                    logger.error("PauseStream 型別錯誤: \(type(of: raw))")
+                                }
+
+                            }
+                        }
+
+                    }
+
 
                     if onPause {
                         sendlog(message: "正在暫停 取消重建Audio")

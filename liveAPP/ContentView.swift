@@ -794,7 +794,13 @@ struct LogSettingsView: View {
                 tempEndpoint = logURL
             }
             .onDisappear {
+
                 logURL = tempEndpoint.trimmingCharacters(in: .whitespaces)
+
+                logger.debug("logURL:\(logURL)")
+
+                LPConfig.shared.logURL = logURL
+
                 CFNotificationCenterPostNotification(cfCenter, CFNotificationName("logURL" as CFString), nil, nil, true)
 
 
@@ -875,11 +881,8 @@ enum LogMode: Int, CaseIterable, Identifiable {
 
 
 
-// MARK: 高效能 Log 顯示 TextView（避免 SwiftUI ScrollView 卡頓）
+// MARK: Log 顯示 UIViewRepresentable
 
-
-
-// MARK: 高效能 Log 顯示 TextView (kit1)
 struct LogTextView: UIViewRepresentable {
 
     @ObservedObject var logModel: LogModel
@@ -1116,22 +1119,19 @@ struct LogTextView: UIViewRepresentable {
 
         func textViewDidChangeSelection(_ textView: UITextView) {
 
-            logger.debug("Get change select")
-            if ((textView.selectedTextRange?.isEmpty) != nil) {
+            guard let range = textView.selectedTextRange else {
                 userIsInteracting = false
-                logger.debug("Get Range is Empty")
+                return
             }
-            else {
-                userIsInteracting = true
-                logger.debug("Get Range is not Empty")
-            }
+
+            // 只有「有選取範圍」才算互動
+            userIsInteracting = !range.isEmpty
         }
 
 
 
 
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
-            guard userIsInteracting == false else { return }
             updateNearBottom()
         }
 

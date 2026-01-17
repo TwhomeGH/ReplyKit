@@ -491,6 +491,11 @@ final class PIPServiceMessages {
                 height: avatarSizeLocal
             )
 
+            // ✅ 讓圖片圓形
+            layer.cornerRadius = avatarSizeLocal / 2
+            layer.masksToBounds = true
+
+
             container.addSublayer(layer)
             avatarLayer = layer
 

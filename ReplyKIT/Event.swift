@@ -408,6 +408,8 @@ final class RPConfig {
 
 
     // 日誌相關
+    var enableSocketLog: Bool = false
+
     var enableRotateLog: Bool = false
     var enableLog: Bool = false
     var logMode: Int = 1
@@ -431,6 +433,7 @@ final class RPConfig {
 
 
         enableRotateLog = SharedDefaults.group?.bool(forKey: "EnableRotatelog") ?? false
+        enableSocketLog = SharedDefaults.group?.bool(forKey: "EnableSocketlog") ?? false
 
 
         enableLog=SharedDefaults.group?.bool(forKey: "Enablelog")
@@ -506,9 +509,15 @@ func sendlog(title: String = "ReplyKit", message: String, flush:Bool = false) {
 
     if RPConfig.shared.enableLog {
         if RPConfig.shared.onLogPage {
-            LogManager.shared
-                .log(title:title,message: message,flushImmediately: flush)
-            //SocketClient.shared.sendLog(title: title, message: message)
+
+            if RPConfig.shared.enableSocketLog {
+                SocketClient.shared.sendLog(message: message)
+            } else {
+                LogManager.shared
+                    .log(title:title,message: message,flushImmediately: flush)
+
+            }
+
         }
 
     }

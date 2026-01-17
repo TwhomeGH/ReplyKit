@@ -40,6 +40,7 @@ class SocketClient {
 
     private var logConfigContinuation: CheckedContinuation<Bool, Never>?
 
+    private var isConnection: Bool = false
 
     private var connection: NWConnection?
 
@@ -52,7 +53,6 @@ class SocketClient {
     init(host: String = "localhost", port: UInt16 = 9322) {
         setupConnection(host: host, port: port)
         //observeLocalChanges()
-        sendlog(message: "test socket!!!")
     }
 
   
@@ -89,13 +89,20 @@ class SocketClient {
             guard let self = self else { return }
             switch state {
             case .ready:
-                sendlog(message:"SocketClient connected")
+                logTo("SocketClient connected")
+                isConnection = true
                 self.receive()
             case .failed(let error):
                 logTo("SocketClient failed: \(String(describing: error))")
+                isConnection = false
+
                 self.retry()
             case .cancelled:
+
+
                 logTo("SocketClient cancelled")
+
+                isConnection = false
                 self.retry()
             default:
                 break
@@ -166,6 +173,7 @@ class SocketClient {
 
 
         logTo("嘗試請求特定設定Socket")
+
         let payload: [String: Any] = [
             "type": "UPSet",
             "key": key,
@@ -221,7 +229,10 @@ class SocketClient {
     func requestLogConfig(completion: @escaping (Bool) -> Void) {
 
         logTo("嘗試請求設定Socket logConfig")
-        let payload: [String: Any] = ["type": "logConfig"]
+        let payload: [String: Any] = [
+            "type": "logConfig"
+        ]
+
         sendPayload(payload)
     }
 
@@ -235,16 +246,21 @@ class SocketClient {
         sendPayload(payload)
     }
 
-    func sendLog(title: String = "Extension", message: String) {
-        LogManager.shared.log(title: title, message: message)
+    func sendLog(title: String = "ReplyKitE_Sokcet", message: String) {
+        guard connection != nil else {
+            logger.debug("Socket可能沒上線!")
+            return
+        }
         let payload: [String: Any] = [
             "type": "log",
-            "message": "\(title): \(message)"
+            "title": title,
+            "message": message
         ]
         sendPayload(payload)
     }
 
     func logTo(_ message:String,flush:Bool = false){
+
         logger.debug("SocketDebug:\(message)")
 
         sendlog(title:"ReplyKit_Socket",message: message,flush: flush)
@@ -274,7 +290,7 @@ class SocketClient {
     
     private func sendPayload(_ payload: [String: Any]) {
         guard let con = connection else {
-            logTo("Socket可能沒上線!")
+            logger.debug("Socket可能沒上線!")
             return
         }
         guard var data = try? JSONSerialization.data(withJSONObject: payload, options: []) else { return }
@@ -302,6 +318,7 @@ class SocketClient {
         let BitRate: Int
         let ChangeBit: Bool
         let h264level: String
+        let videoBuffer: Int
 
         let useBic : Bool
 
@@ -320,7 +337,8 @@ class SocketClient {
         let logURL: String
         let onlogPage: Bool
         let onAudioPage: Bool
-        let enablelog: Bool
+        let enableLog: Bool
+        let enableSocketLog:Bool
     }
 
     struct LogMessage: Codable {
@@ -343,9 +361,10 @@ class SocketClient {
 
         RPConfig.shared.useBic = c.useBic
 
-        logTo("[Get]H264:\(c.h264level) : \(c.dstW)x\(c.dstH)")
+        logTo("[Get]H264:\(c.h264level) : \(c.dstW)x\(c.dstH) \(c.videoBuffer)")
         RPConfig.shared.h264level = c.h264level
 
+        RPConfig.shared.BufferCount = c.videoBuffer
         RPConfig.shared.ADWidth = c.dstW
         RPConfig.shared.ADHeight = c.dstH
 
@@ -450,6 +469,7 @@ class SocketClient {
                        cont.resume(returning: value)
                 }
 
+
             case "logConfig":
                 let env = try decoder.decode(LogConfig.self, from: data)
                 RPConfig.shared.logMode = env.logMode
@@ -457,13 +477,16 @@ class SocketClient {
 
                 RPConfig.shared.onLogPage = env.onlogPage
                 RPConfig.shared.onAudioPage = env.onAudioPage
-                RPConfig.shared.enableLog = env.enablelog
+                RPConfig.shared.enableLog = env.enableLog
+                RPConfig.shared.enableSocketLog = env.enableSocketLog
 
                 RPConfig.shared.applyLogMode()
 
-                logTo("[Get]logMode:\(env.logMode) logURL:\(env.logURL)")
                 logTo(
-                    "[Get]onLog:\(env.onlogPage) onAudio:\(env.onAudioPage) EnableLog:\(env.enablelog)"
+                    "[Get]logMode:\(env.logMode) logURL:\(env.logURL) SocketLog:\(env.enableSocketLog)"
+                )
+                logTo(
+                    "[Get]onLog:\(env.onlogPage) onAudio:\(env.onAudioPage) EnableLog:\(env.enableLog)"
                 )
 
                 // ✅ 通知所有等待的 callback

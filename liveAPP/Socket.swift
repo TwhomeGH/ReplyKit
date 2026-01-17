@@ -48,8 +48,13 @@ class SocketServer {
         logTo("SocketServer started on port \(port)")
     }
 
-    func logTo(_ mes:String){
-        sendlog(message: "\(mes)")
+    func logTo(_ mes:String,title:String? = nil){
+        if let title {
+            sendlog(title:title,message: "\(mes)")
+        } else {
+            sendlog(message: "\(mes)")
+        }
+
     }
 
     // MARK: - Handle New Connection
@@ -176,6 +181,15 @@ class SocketServer {
         let giftImg:String?
         var isMain:Bool?
     }
+    struct SLogMessage:Codable {
+        let title:String
+        let message:String
+    }
+    struct UPSet:Codable {
+        let key:String
+        let ValueType:String
+    }
+
     enum JSONValue: Codable {
         case string(String)
         case int(Int)
@@ -333,15 +347,13 @@ class SocketServer {
 
                 // 假設你解析 JSON 得到 resultValue
                 let dict = try decoder.decode(
-                    [String: JSONValue].self,
+                    UPSet.self,
                     from: data
                 )
 
-                guard let key = dict["key"]?.rawValue as? String,
-                      let VType = dict["ValueType"]?.rawValue as? String else {
-                    return
-                }
-                
+                let key = dict.key
+                let VType = dict.ValueType
+
                 
                 var res : Any?
                 
@@ -379,10 +391,9 @@ class SocketServer {
                     "value": result
                 ]
                 
-                sendTo(connection,payload: payload)
+                sendToAll(payload: payload)
                 
-                
-                
+
             case "logConfig":
                 let payload: [String: Any] = [
                     "type": "logConfig",
@@ -400,8 +411,13 @@ class SocketServer {
                     ?? false,
                     "onAudioPage":userDefaults?.bool(forKey: "onAudioPage") ?? false,
                     
-                    "enablelog":userDefaults?.bool(forKey: "Enablelog")
+                    "enableLog":userDefaults?.bool(forKey: "Enablelog")
+                    ?? false,
+                    
+                    "enableSocketLog":userDefaults?.bool(forKey: "EnableSocketlog")
                     ?? false
+
+
                 ]
                 
                 sendToAll(payload: payload)
@@ -416,7 +432,9 @@ class SocketServer {
 
                     "h264level": userDefaults?
                         .string(forKey: "h264level") ?? "AutoHigh",
-                    
+                    "videoBuffer": userDefaults?
+                        .integer(forKey: "BufferCount") ?? 5,
+
 
                     "useBic": userDefaults?
                         .bool(forKey: "useBic") ?? false,
@@ -471,17 +489,16 @@ class SocketServer {
                 
             case "log":
                 // 假設你解析 JSON 得到 resultValue
-                let dict = try decoder.decode(
-                    [String: JSONValue].self,
+                let dict = try decoder.decode(SLogMessage.self,
                     from: data
                 )
 
-
-                if let message = dict["message"]?.rawValue as? String {
-                    appendLogToFile(message)
-                    logTo("Received log: \(message)")
-                }
+                let title = dict.title
+                let message = dict.message
+         
+                logTo("\(message)",title: title)
                 
+
             default:
                 logTo("Unknown message type: \(base.type)")
 
@@ -606,23 +623,6 @@ class SocketServer {
         }
     }
 
-    private func appendLogToFile(_ log: String) {
-        let fileName = "extension.log"
-        let urls = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
-        guard let documentsURL = urls.first else { return }
-        let fileURL = documentsURL.appendingPathComponent(fileName)
-
-        if let data = (log + "\n").data(using: .utf8) {
-            if FileManager.default.fileExists(atPath: fileURL.path),
-               let fileHandle = try? FileHandle(forWritingTo: fileURL) {
-                defer { fileHandle.closeFile() }
-                fileHandle.seekToEndOfFile()
-                fileHandle.write(data)
-            } else {
-                try? data.write(to: fileURL, options: .atomic)
-            }
-        }
-    }
 }
 
 
