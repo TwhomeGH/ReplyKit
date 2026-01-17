@@ -135,6 +135,7 @@ class SocketServer {
             "rtmpKey": userDefaults?.string(forKey: "rtmpKey") ?? "test",
             "BitRate": userDefaults?.integer(forKey: "bitRate") ?? 3_900_000,
             "ChangeBit": userDefaults?.bool(forKey: "ChangeBit") ?? false,
+
             "h264level": userDefaults?
                 .string(forKey: "h264level") ?? "AutoHigh",
 
@@ -423,7 +424,7 @@ class SocketServer {
                 sendToAll(payload: payload)
                 
             case "requestRTMP":
-                let payload: [String: Any] = [
+                var payload: [String: Any] = [
                     "type": "RTMP",
                     "rtmpURL": userDefaults?.string(forKey: "rtmpURL") ?? "rtmp://192.168.0.102/live",
                     "rtmpKey": userDefaults?.string(forKey: "rtmpKey") ?? "test",
@@ -432,13 +433,12 @@ class SocketServer {
 
                     "h264level": userDefaults?
                         .string(forKey: "h264level") ?? "AutoHigh",
+
                     "videoBuffer": userDefaults?
                         .integer(forKey: "BufferCount") ?? 5,
 
-
                     "useBic": userDefaults?
                         .bool(forKey: "useBic") ?? false,
-
 
 
                     "dstW": userDefaults?.integer(forKey: "dstW") ?? 0,
@@ -457,7 +457,50 @@ class SocketServer {
                     
                     
                 ]
-                
+
+                if let BCount = payload["BufferCount"] as? Int {
+                    if BCount < 1 {
+                        userDefaults?.set(3, forKey: "BufferCount")
+                        payload["BufferCount"] = 3
+                        sendlog(message: "修正BufferCount -> 3")
+                    }
+                }
+
+                if let AppVol = payload["appVolume"] as? Double {
+                    if AppVol == 0.0 {
+                        userDefaults?.set(1.0, forKey: "appVolume")
+                        payload["appVolume"] = 1.0
+                        sendlog(message: "修正AppVol -> 1.0")
+                    }
+                }
+
+                if let micVol = payload["micVolume"] as? Double {
+                    if micVol == 0.0 {
+                        userDefaults?.set(1.0, forKey: "micVolume")
+                        payload["micVolume"] = 1.0
+                        sendlog(message: "修正MicVol -> 1.0")
+                    }
+                }
+
+                if let AppVol = payload["appVolumeAdd"] as? Double {
+                    if AppVol == 0.0 {
+                        userDefaults?.set(1.0, forKey: "appAddVolume")
+                        payload["appVolumeAdd"] = 1.0
+                        sendlog(message: "修正AppVolAdd -> 1.0")
+                    }
+                }
+
+                if let micVolAdd = payload["micVolumeAdd"] as? Double {
+                    if micVolAdd == 0.0 {
+                        userDefaults?.set(1.0, forKey: "micAddVolume")
+                        payload["micVolumeAdd"] = 1.0
+                        sendlog(message: "修正MicVolAdd -> 1.0")
+                    }
+                }
+
+
+
+
                 var CPayloadKey = payload
                 
                 if let key = payload["rtmpKey"] as? String {

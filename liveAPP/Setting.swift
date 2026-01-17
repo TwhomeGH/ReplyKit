@@ -28,6 +28,7 @@ final class GPUSettingsViewModel: ObservableObject {
         selectedConfig = GPUOutputConfig.loadSelected() ?? configs.first
         dstW = selectedConfig?.width ?? 0
         dstH = selectedConfig?.height ?? 0
+
     }
 
     func updateSelectedConfig() {
@@ -138,7 +139,9 @@ struct GPURotateView: View {
                     in: 1...100
                 )
                     .onChange(of: viewModel.BufferCount) { _ in
+
                         logTo("VBuffer -> \(viewModel.BufferCount) ")
+
                     }
 
                 Text("建議值: 5或3 太大可能爆內存"

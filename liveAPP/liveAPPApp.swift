@@ -700,6 +700,8 @@ struct liveAPPApp: App {
 
         cacheInitialOrientation()
 
+        
+
 
         UserDefaults.standard.set(0, forKey: "lastReadLineCount")
 
