@@ -573,6 +573,7 @@ class SocketServer {
 
 
 
+                LPConfig.shared.streamStartTime = Date()
 
                 var CPayloadKey = payload
                 

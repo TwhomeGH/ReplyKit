@@ -55,6 +55,70 @@ final class PIPService: NSObject, @unchecked Sendable {
 
     // MARK: 時間顯示
     private func drawTimeOverlay(in cg: CGContext, size: CGSize) {
+
+        let elapsedSeconds: Double
+        if let start = LPConfig.shared.streamStartTime {
+            elapsedSeconds = Date().timeIntervalSince(start)
+        } else {
+            elapsedSeconds = 0
+        }
+
+
+        let totalSeconds = Int(elapsedSeconds)
+
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let seconds = totalSeconds % 60
+
+        // 格式化成 04:00:00
+        let elapsedString = String(format: "%02d:%02d:%02d", hours, minutes, seconds)
+
+
+        // 建立字串屬性
+        let elapsedFont = UIFont.monospacedDigitSystemFont(ofSize: 14, weight: .regular)
+        let elapsedLabelFont = UIFont.systemFont(ofSize: 14, weight: .medium)
+
+        let elapsedAttr = NSMutableAttributedString()
+
+        let lightRed3 = UIColor(red: 1.0, green: 0.6, blue: 0.6, alpha: 1.0)
+
+        // "已過" 紅色
+        elapsedAttr.append(NSAttributedString(
+            string: "已過 ",
+            attributes: [
+                .font: elapsedLabelFont,
+                .foregroundColor: lightRed3
+            ]
+        ))
+
+        // 數字白色
+        elapsedAttr.append(NSAttributedString(
+            string: elapsedString,
+            attributes: [
+                .font: elapsedFont,
+                .foregroundColor: UIColor.white
+            ]
+        ))
+
+        // "秒" 紅色
+        elapsedAttr.append(NSAttributedString(
+            string: " 秒",
+            attributes: [
+                .font: elapsedLabelFont,
+                .foregroundColor: lightRed3
+            ]
+        ))
+
+        // 計算位置（上方偏右）
+        //let elapsedSize = elapsedAttr.size()
+
+        let elapsedPoint = CGPoint(
+            x: 60 ,
+            y: 20
+        )
+
+
+
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "zh_TW")
         formatter.dateFormat = "yyyy/MM/dd aHH:mm:ss"
@@ -102,7 +166,11 @@ final class PIPService: NSObject, @unchecked Sendable {
         // 畫文字
         UIGraphicsPushContext(cg)
         let textPoint = CGPoint(x: bgRect.minX + paddingX, y: bgRect.minY + paddingY)
+
+        elapsedAttr.draw(at: elapsedPoint)
+
         fullLine.draw(at: textPoint)
+
         UIGraphicsPopContext()
     }
 
@@ -305,6 +373,8 @@ final class PIPService: NSObject, @unchecked Sendable {
     private var renderTimer: DispatchSourceTimer?
     var messagesContainerView: UIView?
 
+
+
     private var displayLayer: AVSampleBufferDisplayLayer?
     private var pipController: AVPictureInPictureController?
 
@@ -361,6 +431,7 @@ final class PIPService: NSObject, @unchecked Sendable {
 
 
 
+
     // MARK: - Start PiP
     @MainActor
     func startPiP(size: CGSize = CGSize(width: 300, height: 200)) {
@@ -372,7 +443,10 @@ final class PIPService: NSObject, @unchecked Sendable {
 
 
         // 建立容器 UIView
-            let containerView = UIView(frame: CGRect(origin: .zero, size: size))
+        let containerView = UIView(
+            frame: CGRect(origin: .zero, size: size)
+        )
+
             containerView.backgroundColor = .clear
             containerView.isOpaque = false
             self.messagesContainerView = containerView
@@ -401,6 +475,10 @@ final class PIPService: NSObject, @unchecked Sendable {
             layer.videoGravity = .resizeAspect
             layer.backgroundColor = UIColor.black.cgColor
             self.displayLayer = layer
+
+
+
+
 
             // PiP Controller
             self.pipController = AVPictureInPictureController(
@@ -442,7 +520,12 @@ final class PIPService: NSObject, @unchecked Sendable {
 
             if layer.superlayer == nil, let containerLayer = windowScene.windows.first?.rootViewController?.view.layer ?? windowScene.windows.first?.layer {
                 containerLayer.addSublayer(layer)
+
+
                 layer.frame = CGRect(origin: .zero, size: self.frameSize)
+
+
+
 
                 // ControlTimebase
                 if layer.controlTimebase == nil {
@@ -497,6 +580,7 @@ final class PIPService: NSObject, @unchecked Sendable {
                     self.lastRenderTime = now
                 }
             }
+
             renderTimer?.resume()
         }
     }
@@ -522,8 +606,11 @@ final class PIPService: NSObject, @unchecked Sendable {
     func stopPiP() {
         renderTimer?.cancel()
         renderTimer = nil
+
+
         self.pipController?.stopPictureInPicture()
         self.pipController = nil
+
         self.displayLayer?.removeFromSuperlayer()
         self.displayLayer = nil
 
@@ -574,6 +661,7 @@ final class PIPService: NSObject, @unchecked Sendable {
             let format = UIGraphicsImageRendererFormat.default()
             format.scale = renderScale
             format.opaque = false
+
             let renderer = UIGraphicsImageRenderer(size: renderSize, format: format)
             newCGImage = renderer.image { ctx in
 

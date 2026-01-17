@@ -49,6 +49,9 @@ final class LPConfig {
     // 其他配置
     var maxInflightFrames: Int = 4
 
+    var streamStartTime: Date?
+
+
     var PIPLog: Bool = false
     var PIPChatLog:Bool = false
 
