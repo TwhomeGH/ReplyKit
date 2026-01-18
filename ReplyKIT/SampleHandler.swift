@@ -1431,114 +1431,113 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     // MARK: 直播暫停
     override func broadcastPaused() {
 
-        guard !isCleanup else {
-            sendlog(message: "⚠️ 正在重建中，忽略重複 Resume")
-            return
-        }
-        isCleanup = true
-        defer { isCleanup = false }
-
-
-        stateQueue.sync {
-            guard !isPause else {
-                sendlog(message: "⚠️ 已處於暫停狀態（防重複觸發）")
-                return
-            }
-            isPause = true
-            pausedFrameIndex = 0
-            pausedStartTime = CACurrentMediaTime()
-            pausedFrameTimestamp = .zero
-            sendlog(title: "SampleHandler", message: "⚠️ Broadcast paused - sending paused frame repeatedly")
-        }
+//        guard !isCleanup else {
+//            sendlog(message: "⚠️ 正在重建中，忽略重複 Resume")
+//            return
+//        }
+//        isCleanup = true
+//        defer { isCleanup = false }
+//
+//
+//        stateQueue.sync {
+//            guard !isPause else {
+//                sendlog(message: "⚠️ 已處於暫停狀態（防重複觸發）")
+//                return
+//            }
+//            isPause = true
+//            pausedFrameIndex = 0
+//            pausedStartTime = CACurrentMediaTime()
+//            pausedFrameTimestamp = .zero
+//            sendlog(title: "SampleHandler", message: "⚠️ Broadcast paused - sending paused frame repeatedly")
+//        }
 
         // 停止 Audio / Video 處理
-        audioProcessor?.cleanup()
+        //audioProcessor?.cleanup()
 
 
-        videoProcessor?.cleanup()
+        //videoProcessor?.cleanup()
 
-
-        audioProcessor = nil
-        videoProcessor = nil
+//        audioProcessor = nil
+//        videoProcessor = nil
 
         // MARK: === 建立暫停畫面資源 ===
         // 呼叫專門處理暫停畫面邏輯
-        startPausedFrameLoop()
+        //startPausedFrameLoop()
 
 
     }
 
     // MARK: 直播恢復
     override func broadcastResumed() {
-        guard !isRebuilding else {
-            sendlog(message: "⚠️ 正在重建中，忽略重複 Resume")
-            return
-        }
-        isRebuilding = true
-        defer { isRebuilding = false }
-
-
-        stateQueue.sync {
-            guard isPause else {
-                sendlog(message: "⚠️ 非暫停狀態，忽略恢復操作（防重複觸發）")
-                return
-            }
-            isPause = false
-        }
-
-
-        sendlog(title: "SampleHandler", message: "🎬 Broadcast resumed - stopping paused frame timer")
-
-        // 停止暫停畫面定時器
-        if let timer = pauseTimer {
-            timer.cancel()
-            pauseTimer = nil
-            sendlog(message: "🛑 已停止暫停畫面定時器")
-        }
-
-        // 清理暫停畫面資源
-        pausedBGRABuffer = nil
-        pausedBGRAcontext = nil
-        pausedNV12PixelBuffer = nil
-
-        // 重建或啟用音量監聽器
-        if volumeNotifier == nil {
-            volumeNotifier = VolumeNotifier()
-            sendlog(message: "🔊 VolumeNotifier 重新建立")
-        }
-
-        // MARK: 重建 VideoProcessor
-        if videoProcessor == nil {
-
-
-            videoProcessor = VideoFrameProcessor(
-                mediaMixer: mediaMixer,
-                rtmpStream: rtmpStream,
-                sendlog: { message in
-                    sendlog(message: message)
-                }
-            )
-            sendlog(message: "🎥 VideoProcessor 重建完成")
-        }
-
-        // MARK: 重建 AudioProcessor
-        if audioProcessor == nil {
-            audioProcessor = AudioProcessor(
-                mediaMixer: mediaMixer,
-                volumeNotifier: volumeNotifier!,
-                appAddVolume: appAddVolume,
-                micAddVolume: micAddVolume,
-                appVolume: appVolume,
-                micVolume: micVolume,
-                onAudioPage: RPConfig.shared.onAudioPage
-            )
-            sendlog(message: "🎧 AudioProcessor 重建完成")
-        }
-
-        // 重新啟用音視頻處理
-        videoProcessor?.isActive = true
-        audioProcessor?.isActive = true
-        sendlog(message: "✅ 已重新啟用音視頻處理")
+//        guard !isRebuilding else {
+//            sendlog(message: "⚠️ 正在重建中，忽略重複 Resume")
+//            return
+//        }
+//        isRebuilding = true
+//        defer { isRebuilding = false }
+//
+//
+//        stateQueue.sync {
+//            guard isPause else {
+//                sendlog(message: "⚠️ 非暫停狀態，忽略恢復操作（防重複觸發）")
+//                return
+//            }
+//            isPause = false
+//        }
+//
+//
+//        sendlog(title: "SampleHandler", message: "🎬 Broadcast resumed - stopping paused frame timer")
+//
+//        // 停止暫停畫面定時器
+//        if let timer = pauseTimer {
+//            timer.cancel()
+//            pauseTimer = nil
+//            sendlog(message: "🛑 已停止暫停畫面定時器")
+//        }
+//
+//        // 清理暫停畫面資源
+//        pausedBGRABuffer = nil
+//        pausedBGRAcontext = nil
+//        pausedNV12PixelBuffer = nil
+//
+//        // 重建或啟用音量監聽器
+//        if volumeNotifier == nil {
+//            volumeNotifier = VolumeNotifier()
+//            sendlog(message: "🔊 VolumeNotifier 重新建立")
+//        }
+//
+//        // MARK: 重建 VideoProcessor
+//        if videoProcessor == nil {
+//
+//
+//            videoProcessor = VideoFrameProcessor(
+//                mediaMixer: mediaMixer,
+//                rtmpStream: rtmpStream,
+//                sendlog: { message in
+//                    sendlog(message: message)
+//                }
+//            )
+//            sendlog(message: "🎥 VideoProcessor 重建完成")
+//        }
+//
+//        // MARK: 重建 AudioProcessor
+//        if audioProcessor == nil {
+//            audioProcessor = AudioProcessor(
+//                mediaMixer: mediaMixer,
+//                volumeNotifier: volumeNotifier!,
+//                appAddVolume: appAddVolume,
+//                micAddVolume: micAddVolume,
+//                appVolume: appVolume,
+//                micVolume: micVolume,
+//                onAudioPage: RPConfig.shared.onAudioPage
+//            )
+//            sendlog(message: "🎧 AudioProcessor 重建完成")
+//        }
+//
+//        // 重新啟用音視頻處理
+//        videoProcessor?.isActive = true
+//        audioProcessor?.isActive = true
+        //sendlog(message: "✅ 已重新啟用音視頻處理")
     }
 
     
