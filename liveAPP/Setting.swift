@@ -16,6 +16,16 @@ final class GPUSettingsViewModel: ObservableObject {
     @AppStorage("dstH", store: userDefaults) var dstH = 0
     @AppStorage("BufferCount", store: userDefaults) var BufferCount = 5
 
+    @AppStorage(
+        "Rotate",
+        store: userDefaults
+    ) var RotateRawValue:Int = RotateDirection.landscapeRight.rawValue
+
+    var Rotate: RotateDirection {
+        get { RotateDirection(rawValue: RotateRawValue) ?? .landscapeRight }
+        set { RotateRawValue = newValue.rawValue }
+    }
+
     @Published var configs: [GPUOutputConfig] = []
     @Published var selectedConfig: GPUOutputConfig? = nil
 
@@ -28,6 +38,7 @@ final class GPUSettingsViewModel: ObservableObject {
         selectedConfig = GPUOutputConfig.loadSelected() ?? configs.first
         dstW = selectedConfig?.width ?? 0
         dstH = selectedConfig?.height ?? 0
+        Rotate = selectedConfig?.Rotate ?? RotateDirection.landscapeRight
 
     }
 
@@ -35,6 +46,8 @@ final class GPUSettingsViewModel: ObservableObject {
         if let index = configs.firstIndex(where: { $0.id == selectedConfig?.id }) {
             configs[index].width = dstW
             configs[index].height = dstH
+            configs[index].Rotate = Rotate
+
             selectedConfig = configs[index]
             GPUOutputConfig.save(configs)
             GPUOutputConfig.saveSelected(selectedConfig)
@@ -45,21 +58,75 @@ final class GPUSettingsViewModel: ObservableObject {
 
 struct GPURotateView: View {
     @ObservedObject var viewModel: GPUSettingsViewModel
-    @FocusState private var isDstWFocused: Bool
-    @FocusState private var isDstHFocused: Bool
-    @FocusState var isFocusedMax: Bool
+
 
     @AppStorage("useBic",store:userDefaults) private var useBic = false
+
+    @AppStorage("RotateOriginal",store:userDefaults) private var RotateOriginal = false
 
 
     var body: some View {
         Form {
             Section(header: Text("GPU旋轉處理 輸出設置")) {
+                Toggle(isOn:$RotateOriginal){
+                    Text("只改輸出寬高[畫布本身]")
+                }
+                Text("開啟後GPU旋轉處理 會忽視寬高設定按原始")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .padding(.bottom, 5)
+
                 Text("輸出寬高 [\(viewModel.dstW) x \(viewModel.dstH)]")
                 Text("0代表 使用原始寬高")
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .padding(.bottom, 5)
+
+                HStack(spacing: 20) {
+
+
+                    Picker("選擇方向", selection: Binding(
+                        get: { viewModel.selectedConfig?.Rotate ?? .landscapeRight },
+                        set: { newRotate in
+                            guard var cfg = viewModel.selectedConfig else { return }
+
+                            cfg.Rotate = newRotate
+
+                            logTo("Rotate->\(cfg.Rotate)")
+
+                            viewModel.Rotate = newRotate
+                            viewModel.updateSelectedConfig()
+
+                            GPUOutputConfig.saveSelected(viewModel.selectedConfig)
+
+
+                            CFNotificationCenterPostNotification(cfCenter, CFNotificationName("Rotate" as CFString), nil, nil, true)
+
+                        }
+                    )) {
+                        ForEach(RotateDirection.allCases) { direction in
+                            Text(direction.description).tag(direction)
+                        }
+                    }
+
+                    // 假設 ipad.landscape 本身是 90°，我們要扣掉這個 90°
+                    let baseOffset: Double = 90
+
+                    // 圖示
+                        Image(systemName: "ipad.landscape") // 基礎箭頭
+                            .rotationEffect(
+                                Angle(
+                                degrees:
+                                    Double(
+                                        viewModel.selectedConfig?.Rotate.rawValue ?? 0
+                                    ) - baseOffset
+                                )
+                            )
+                            .font(.title) // 大小可調整
+                            .animation(.easeInOut, value: viewModel.selectedConfig?.Rotate.rawValue)
+
+
+                }
 
                 Picker("選擇配置", selection: $viewModel.selectedConfig) {
                     ForEach(viewModel.configs) { config in
@@ -70,10 +137,13 @@ struct GPURotateView: View {
                     guard let cfg else { return }
                     viewModel.dstW = cfg.width
                     viewModel.dstH = cfg.height
+                    viewModel.Rotate = cfg.Rotate
+
                     CFNotificationCenterPostNotification(cfCenter, CFNotificationName("OutW" as CFString), nil, nil, true)
                     CFNotificationCenterPostNotification(cfCenter, CFNotificationName("OutH" as CFString), nil, nil, true)
 
                     GPUOutputConfig.saveSelected(viewModel.selectedConfig)
+
                 }
 
                 Button("新增自訂配置") {
@@ -96,22 +166,22 @@ struct GPURotateView: View {
 
                 TextField("寬度", value: $viewModel.dstW, format: .number)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .focused($isDstWFocused)
-                    .onChange(of: isDstWFocused) { focused in
-                        if !focused {
+
+                    .onChange(of: viewModel.dstW) { _ in
+
                             viewModel.updateSelectedConfig()
                             CFNotificationCenterPostNotification(cfCenter, CFNotificationName("OutW" as CFString), nil, nil, true)
-                        }
+
                     }
 
                 TextField("高度", value: $viewModel.dstH, format: .number)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .focused($isDstHFocused)
-                    .onChange(of: isDstHFocused) { focused in
-                        if !focused {
+
+                    .onChange(of: viewModel.dstH) { _ in
+
                             viewModel.updateSelectedConfig()
                             CFNotificationCenterPostNotification(cfCenter, CFNotificationName("OutH" as CFString), nil, nil, true)
-                        }
+
                     }
 
                
@@ -124,13 +194,12 @@ struct GPURotateView: View {
                     .frame(maxWidth: .infinity)
                      .textFieldStyle(RoundedBorderTextFieldStyle())
                      .keyboardType(.numberPad)
-                     .focused($isFocusedMax)
-                     .onChange(of: isFocusedMax) { newValue in
 
-                         if newValue {
+                     .onChange(of: viewModel.dstW) { _ in
+
                              // 將數值發送到 Extension 或 Rotator
                              CFNotificationCenterPostNotification(cfCenter, CFNotificationName("MaxInfilght" as CFString), nil, nil, true)
-                         }
+
                     }
 
                 Stepper(

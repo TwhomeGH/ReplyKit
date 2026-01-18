@@ -694,7 +694,8 @@ struct liveAPPApp: App {
             SharedResources.shared.setupLogReceiver()
 
         }
-
+        SocketServer.shared.stop()
+        
         SocketServer.shared.start()
 
         AppMessagePort.shared.setupReceiver()

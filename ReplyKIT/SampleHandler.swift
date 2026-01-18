@@ -45,6 +45,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     var DWidth = 1920
     var DHeight = 1334
 
+
     var rtmpURL:String?
     var rtmpKey:String?
 
@@ -226,6 +227,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     // MARK: 統一處理事件
     func handleEvent(eventName: String) {
         switch eventName {
+
         case "micAdd":
 
             var newVolume = SharedDefaults.group?.double(forKey: "micAddVolume") ?? 1.0
@@ -425,6 +427,101 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             sendlog(message:"[旋轉日誌變化] VideoRotate \(Rlog)")
 
 
+        case "RotateOriginal":
+            var Rlog=SharedDefaults.group?.bool(
+                forKey: "RotateOriginal"
+            ) ?? false
+
+            Task {
+
+                if RPConfig.shared.enableSocketLog {
+                    if let raw = await SocketClient.shared.requestSet(for: "RotateOriginal", type: "Bool") {
+
+                        if let av = raw as? Bool {
+                            let oldV = Rlog
+                            Rlog = av
+
+                            logger.debug("RotateOriginal \(av)")
+                            sendlog(message: "Socket原始RotateOriginal數據包:\(av) -> \(oldV)")
+                        } else {
+                            logger.error("RotateOriginal 型別錯誤: \(type(of: raw))")
+                        }
+
+                    }
+                }
+
+            }
+
+            RPConfig.shared.RotateOriginal = Rlog
+            sendlog(message:"[RotateOriginal 變換]  \(Rlog)")
+
+
+
+
+
+        case "Rotate":
+            var Rlog=SharedDefaults.group?.integer(forKey: "Rotate") ?? 90
+
+            Task {
+
+                if RPConfig.shared.enableSocketLog {
+                    if let raw = await SocketClient.shared.requestSet(for: "Rotate", type: "Int") {
+
+                        if let av = raw as? Int {
+                            let oldV = Rlog
+                            Rlog = av
+
+                            logger.debug("Rotate \(av)")
+                            sendlog(message: "Socket原始Rotate數據包:\(av) -> \(oldV)")
+                        } else {
+                            logger.error("Rotate 型別錯誤: \(type(of: raw))")
+                        }
+
+                    }
+                }
+
+                var vset = await rtmpStream.videoSettings
+                var NewVW = DWidth
+                var NewVH = DHeight
+
+                if ADWidth > 0 || ADHeight > 0 {
+                    NewVW = ADWidth
+                    NewVH = ADHeight
+                }
+
+                let Rotate = RotationAngle(rawValue: UInt32(Rlog))
+
+                switch Rotate {
+                case .landscapeLeft,.landscapeRight:
+                        vset.videoSize.width = CGFloat(NewVW)
+                        vset.videoSize.height = CGFloat(NewVH)
+
+                case .portrait,.portraitUpsideDown:
+                        vset.videoSize.width = CGFloat(NewVH)
+                        vset.videoSize.height = CGFloat(NewVW)
+
+                    default:
+                        vset.videoSize.width = CGFloat(NewVH)
+                        vset.videoSize.height = CGFloat(NewVW)
+
+                        break
+
+                }
+
+
+                sendlog(message: "RVideoSET:\(vset)")
+
+                try await rtmpStream.setVideoSettings(vset)
+
+
+            }
+
+
+
+            RPConfig.shared.Rotate = Rlog
+            sendlog(message:"[Rotate變換]  \(Rlog)")
+
+
 
         case "SocketLog":
             var Rlog=SharedDefaults.group?.bool(forKey: "EnableSocketlog") ?? false
@@ -599,12 +696,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
 
-                sendlog(message: "正在LOG NTime:\(LogManager.shared.notifyThrottle)")
+                sendlog(message: "正在LOG")
 
             } else {
                 LogManager.shared.forceFlush()
 
-                sendlog(message: "非LOG NTime:\(LogManager.shared.notifyThrottle)")
+                sendlog(message: "非LOG")
             }
 
         case "VideoSet":
@@ -649,6 +746,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     }
                 }
 
+                var VSET = await rtmpStream.videoSettings
+                VSET.videoSize.width = CGFloat(dstRW)
+
+                try await rtmpStream.setVideoSettings(VSET)
+
             }
 
             ADWidth = dstRW
@@ -675,6 +777,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                     }
                 }
+
+                var VSET = await rtmpStream.videoSettings
+                VSET.videoSize.height = CGFloat(dstRH)
+
+                try await rtmpStream.setVideoSettings(VSET)
+
 
             }
 
@@ -1697,8 +1805,15 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             sendlog(message: "ReplayKit 當前畫面方向: \(orientationValue)")
         }
 
-        let avfrom = lastVideoOrientation
+        var avfrom = lastVideoOrientation
         let newSize: CGSize
+
+        switch RPConfig.shared.Rotate {
+            case 0,180:
+                avfrom = .portrait
+            default:
+                break
+        }
 
         switch avfrom {
         case .portrait, .portraitUpsideDown:
@@ -1774,6 +1889,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         videoSettings.profileLevel = profilelvl
         videoSettings.maxKeyFrameIntervalDuration = 2
+        videoSettings.scalingMode = .letterbox
 
         if lastConfiguredSize != newSize {
             try? await rtmpStream.setVideoSettings(videoSettings)

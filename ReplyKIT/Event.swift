@@ -176,7 +176,12 @@ final class LogManager {
 
     enum Mode { case local, remote, both }
 
-    private let logQueue = DispatchQueue(label: "com.liveapp.logQueue", qos: .utility)
+    private let logQueue = DispatchQueue(
+        label: "com.liveapp.logQueue",
+        qos: .utility,
+        attributes: .concurrent
+    )
+
     private var localLogBuffer: [String] = []
 
     private let logFileName = "log.txt"
@@ -244,14 +249,19 @@ final class LogManager {
 
 
 
-    private func addDebugLog(title:String = "ReplyKit[Local]", _ msg:String = ""){
+    func addDebugLog(title:String = "ReplyKit[Local]", _ msg:String = ""){
 
         let logMessage = "\(formattedTime()): \(title) : \(msg) \n"
 
-        self.localLogBuffer.append(logMessage)
-        self.localLogSize += msg.utf8.count
+        logQueue.async(flags: .barrier) { [weak self] in
+            guard let self = self else { return }
 
-        logger.debug("LogBuffer:\(msg)")
+            self.localLogBuffer.append(logMessage)
+            self.localLogSize += logMessage.utf8.count
+
+            logger.debug("LogBuffer:\(msg)")
+        }
+        
     }
 
     private init() {
@@ -261,7 +271,9 @@ final class LogManager {
     // MARK: 提前結束
     func forceFlush() {
         logQueue.sync {
+
             flushLocalLogs(forceNotify: true)
+
             flushTimer?.cancel()
             flushTimer = nil
             remoteLogger?.flush()
@@ -275,7 +287,10 @@ final class LogManager {
 
         let logMessage = "\(formattedTime()): \(title): \(message)\n"
 
-        logQueue.async {
+        logQueue.async(flags: .barrier)  { [weak self] in
+            guard let self = self else { return }
+
+
             switch self.mode {
             case .local:
                 self.localLogBuffer.append(logMessage)
@@ -317,40 +332,58 @@ final class LogManager {
     }
 
     private func flushLocalLogs(forceNotify: Bool = false) {
-        guard !localLogBuffer.isEmpty else { return }
 
-        let bufferCopy = localLogBuffer.joined()
-        localLogBuffer.removeAll()
-        localLogSize = 0
+            guard !localLogBuffer.isEmpty else { return }
 
-        let containerURL: URL
+            let bufferCopy = localLogBuffer.joined()
+            localLogBuffer.removeAll()
+            localLogSize = 0
 
-        if let groupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupID) {
-            containerURL = groupURL
-        } else {
-            containerURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        }
-        
-        let fileURL = containerURL.appendingPathComponent(logFileName)
+            let containerURL: URL
 
-        if let data = bufferCopy.data(using: .utf8) {
-            if FileManager.default.fileExists(atPath: fileURL.path),
-               let fileHandle = try? FileHandle(forWritingTo: fileURL) {
-                defer { fileHandle.closeFile() }
-                fileHandle.seekToEndOfFile()
-                fileHandle.write(data)
+            if let groupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupID) {
+                containerURL = groupURL
             } else {
-                try? data.write(to: fileURL, options: .atomic)
+                containerURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
             }
-        }
 
-        notifyMainAppIfNeeded(forceNotify: forceNotify)
+            let fileURL = containerURL.appendingPathComponent(logFileName)
+
+            if let data = bufferCopy.data(using: .utf8) {
+                if FileManager.default.fileExists(atPath: fileURL.path),
+                   let fileHandle = try? FileHandle(forWritingTo: fileURL) {
+                    defer { fileHandle.closeFile() }
+                    fileHandle.seekToEndOfFile()
+                    fileHandle.write(data)
+                } else {
+                    try? data.write(to: fileURL, options: .atomic)
+                }
+            }
+
+            notifyMainAppIfNeeded(forceNotify: forceNotify)
+
     }
 
     // MARK: - 通知主 App（優化版）
     private func notifyMainAppIfNeeded(forceNotify: Bool = false) {
+
         let now = Date()
-        guard forceNotify || now.timeIntervalSince(lastNotifyTime) > notifyThrottle else { return }
+
+        logger
+            .debug(
+                "last?:\(self.lastNotifyTime.timeIntervalSinceNow) 通知->\(self.notifyThrottle)"
+            )
+
+        if !forceNotify && lastNotifyTime
+            .timeIntervalSinceNow > -notifyThrottle {
+            logger
+                .debug(
+                    "last:\(self.lastNotifyTime.timeIntervalSinceNow) 跳過通知->\(self.notifyThrottle)"
+                )
+            return
+        }
+
+
         lastNotifyTime = now
 
         // 直接在 logQueue 執行，避免不必要的 context switch
@@ -402,6 +435,9 @@ final class RPConfig {
     var ChangeBit : Bool
 
     var useBic : Bool
+
+    var Rotate : Int
+    var RotateOriginal : Bool
 
     // 音訊
     var AppVolumeAdd : Double
@@ -484,6 +520,11 @@ final class RPConfig {
         // Width
         ADWidth = SharedDefaults.group?.integer(forKey: "dstW") ?? 0
         ADHeight = SharedDefaults.group?.integer(forKey: "dstH") ?? 0
+
+        Rotate =  SharedDefaults.group?.integer(forKey: "Rotate") ?? 90
+
+        RotateOriginal = SharedDefaults.group?.bool(forKey: "RotateOriginal") ?? false
+
 
 
     }

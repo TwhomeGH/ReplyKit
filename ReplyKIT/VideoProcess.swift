@@ -35,6 +35,8 @@ final class VideoFrameProcessor {
     private let sendlog: (String) -> Void
     private let processingQueue = DispatchQueue(label: "video.processor.queue", qos: .userInitiated)
 
+    var Rotate = RPConfig.shared.Rotate
+
     var isActive = true
 
     var hasPublished = false
@@ -129,10 +131,13 @@ final class VideoFrameProcessor {
                 guard self.isActive else { return }
                 guard let rotator else { return }
 
+                let RotateAngle = UInt32(RPConfig.shared.Rotate)
 
                 let rotated = await rotator.rotateAsync(
                     sampleBuffer: sampleBuffer,
-                    angle: .angle90
+                    angle: RotationAngle(
+                        rawValue: RotateAngle
+                    ) ?? .landscapeRight
                 )
 
                 guard !Task.isCancelled, self.isActive else { return }

@@ -660,18 +660,46 @@ struct LiveVolumeView: View {
 
 
 
+enum RotateDirection: Int, Codable, CaseIterable, Identifiable, CustomStringConvertible {
+    case portrait = 0          // 直向
+    case landscapeRight = 90   // 橫向，Home鍵右側
+    case portraitUpsideDown = 180 // 反向直向
+    case landscapeLeft = 270   // 橫向，Home鍵左側
+
+    var id: Int { rawValue }
+
+    
+    var description: String {
+        switch self {
+        case .portrait: return "直向"
+        case .landscapeRight: return "橫向  (Home鍵在右側)"
+        case .portraitUpsideDown: return "反向直向"
+        case .landscapeLeft: return "橫向 (Home鍵在左側)"
+        }
+    }
+}
+
 
 struct GPUOutputConfig: Identifiable, Hashable, Codable {
     let id: UUID
     var name: String
     var width: Int
     var height: Int
+    var Rotate: RotateDirection
 
-    init(id: UUID = UUID(), name: String, width: Int, height: Int) {
+    init(
+        id: UUID = UUID(),
+        name: String,
+        width: Int,
+        height: Int,
+        Rotate:RotateDirection = .landscapeRight
+     ) {
         self.id = id
         self.name = name
         self.width = width
         self.height = height
+        self.Rotate = Rotate
+
     }
 
     // MARK: - 保存 & 讀取 整個配置列表

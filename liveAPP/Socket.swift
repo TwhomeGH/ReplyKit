@@ -37,7 +37,23 @@ class SocketServer {
 
     private let queue = DispatchQueue(label: "SocketServerQueue")
 
+    private var idleTimers: [ObjectIdentifier: DispatchSourceTimer] = [:]
 
+    private func resetIdleTimer(for conn: NWConnection) {
+        let id = ObjectIdentifier(conn)
+
+        idleTimers[id]?.cancel()
+
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + 60) // 60 秒沒動靜就踢
+        timer.setEventHandler { [weak self] in
+            self?.logTo("Idle timeout, closing connection")
+            self?.removeConnection(conn)
+        }
+        timer.resume()
+
+        idleTimers[id] = timer
+    }
 
 
     private var restartWorkItem: DispatchWorkItem?
@@ -70,6 +86,12 @@ class SocketServer {
     }
 
     init() {
+
+    }
+
+    deinit {
+        logTo("Socket Server deinit is Call CleanUP")
+        stop()
 
     }
     // MARK: - start
@@ -186,6 +208,10 @@ class SocketServer {
         let id = ObjectIdentifier(connection)
 
         guard connections[id] != nil else { return } // 連線已被移除，直接 return
+
+        resetIdleTimer(for: connection)
+
+        logTo("Connections alive: \(connections.count)")
 
         connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
             guard let self = self else { return }
@@ -445,6 +471,10 @@ class SocketServer {
             "dstW": userDefaults?.integer(forKey: "dstW") ?? 0,
             "dstH": userDefaults?.integer(forKey: "dstH") ?? 0,
 
+            "Rotate": userDefaults?.integer(forKey: "Rotate") ?? 90 ,
+            
+            "RotateOriginal":userDefaults?.bool(forKey: "RotateOriginal") ?? false ,
+
             "appVolume": userDefaults?
                 .double(forKey: "appVolume") ?? 1.0,
             "micVolume": userDefaults?
@@ -595,8 +625,6 @@ class SocketServer {
                 let isMain: Bool? = dict.isMain
 
 
-
-
                 renderChatMessage(
                     user: user,
                     msg: msg,
@@ -656,8 +684,8 @@ class SocketServer {
                     "key": key,
                     "value": result
                 ]
-                
-                queueSend(payload: payload)
+
+                sendTo(connection, payload: payload) // ← 只回應發送請求的 client
 
 
             case "batch":
@@ -705,7 +733,8 @@ class SocketServer {
                 for (index, resp) in responses.enumerated() {
 
                     // 先發送給客戶端
-                    queueSend(payload: resp)
+                    sendTo(connection, payload: resp) // ← 只回應發送請求的 client
+
 
                     // 只對第一個元素做檢查
                     if index == 0, let type = resp["type"] as? String, type == "RTMP" {
@@ -732,18 +761,23 @@ class SocketServer {
 
                 let payload: [String: Any] = GetLogConfig()
 
-                queueSend(payload: payload)
+                sendTo(connection, payload: payload) // ← 只回應發送請求的 client
+
+
 
             case "requestRTMP":
 
                 let payload: [String: Any] = GetRTMPConfig()
-                queueSend(payload: payload)
+
+                sendTo(connection, payload: payload) // ← 只回應發送請求的 client
+
 
 
             case "requestSettings":
                 logTo("Sync UserDefaults to client")
                 sendInitialUserDefaults(to: connection)
-                
+
+
             case "settings":
 
                 // 假設你解析 JSON 得到 resultValue
@@ -760,7 +794,11 @@ class SocketServer {
                     
                     userDefaults?.set(valueAny, forKey: key) // 用原值存 UserDefaults
                     
-                    broadcast(key: key, value: safeValue) // 型別明確，不再報錯
+                    broadcast(
+                        key: key,
+                        value: safeValue,
+                        to: connection
+                    ) // 型別明確，不再報錯
                 }
                 
             case "log":
@@ -793,6 +831,8 @@ class SocketServer {
     private var sendQueues: [ObjectIdentifier: [[String: Any]]] = [:]
     private var sendingFlags: [ObjectIdentifier: Bool] = [:]
 
+
+    // MARK: 群播
     func queueSend(payload: [String: Any]) {
         for conn in connections.values {
             enqueue(payload, to: conn)
@@ -815,6 +855,8 @@ class SocketServer {
 
     private func sendNextPayload(for conn: NWConnection) {
         let id = ObjectIdentifier(conn)
+
+
         queue.async {
             guard var queue = self.sendQueues[id], !queue.isEmpty else {
                 self.sendingFlags[id] = false
@@ -832,20 +874,40 @@ class SocketServer {
             var dataWithNewline = data
             dataWithNewline.append(0x0A)
 
+            self.resetIdleTimer(for: conn)
+
+
+            // ⚠️ 啟動 watchdog timer
+            let sendTimeout: DispatchWorkItem = DispatchWorkItem { [weak self, weak conn] in
+
+                guard let self, let conn else { return }
+                self.logTo("Send timeout, removing connection")
+                self.removeConnection(conn)
+            }
+
+            self.queue.asyncAfter(deadline: .now() + 10, execute: sendTimeout)
+
             conn.send(content: dataWithNewline, completion: .contentProcessed { [weak self] error in
+
+                sendTimeout.cancel() // 成功回來就取消 watchdog
+
+                guard let self = self else { return }
+
+
                 if let error {
-                    self?.removeConnection(conn)
-                    self?.logTo("Send error: \(error)")
+                    self.removeConnection(conn)
+                    self.logTo("Send error: \(error)")
                     return
                 }
-                self?.sendNextPayload(for: conn) // 完成後再發下一個
+
+                self.sendNextPayload(for: conn) // 完成後再發下一個
             })
         }
     }
 
 
 
-    func broadcast(type:String = "settings",key: String, value: Any) {
+    func broadcast(type:String = "settings",key: String, value: Any,to connection: NWConnection? = nil) {
         var payload: [String: Any] = [
             "type": type,
             "key": key,
@@ -856,10 +918,19 @@ class SocketServer {
             payload["message"] = value
         }
 
-        queueSend(payload: payload)
-    }
+        if let conn = connection {
+            logTo("使用單一廣播")
+            sendTo(conn, payload: payload) // ← 只回應發送請求的 client
+        } else {
 
-    func sendInitialUserDefaults(to connection: NWConnection? = nil) {
+            logTo("廣播給所有已連線")
+            queueSend(payload: payload)
+        }
+
+
+        }
+
+    func sendInitialUserDefaults(to connection: NWConnection) {
 
         let defaults = UserDefaults.standard.dictionaryRepresentation()
         for (key, value) in defaults {
@@ -869,26 +940,46 @@ class SocketServer {
                 "value": safeJSONValue(value)
             ]
 
-            queueSend(payload: payload)
+            sendTo(connection, payload: payload) // ← 只回應發送請求的 client
+
+
         }
     }
 
+    // MARK: 一對一
     private func sendTo(_ connection: NWConnection, payload: [String: Any]) {
-        guard let data = try? JSONSerialization.data(withJSONObject: payload, options: []) else { return }
-        connection.send(content: data, completion: .contentProcessed { _ in })
+        let id = ObjectIdentifier(connection)
+        queue.async {
+            var queue = self.sendQueues[id] ?? []
+            queue.append(payload)
+            self.sendQueues[id] = queue
+
+            if self.sendingFlags[id] != true {
+                self.sendingFlags[id] = true
+                self.sendNextPayload(for: connection)
+            }
+        }
     }
+
 
     // MARK: - Connection Cleanup
     private func removeConnection(_ connection: NWConnection) {
         let id = ObjectIdentifier(connection)
         guard connections[id] != nil else { return } // 已被移除
+
+        idleTimers[id]?.cancel()
+        idleTimers[id] = nil
+
         connection.stateUpdateHandler = nil
         connection.cancel()
+
         connections[id] = nil
         receiveBuffers[id] = nil
         sendQueues[id] = nil
         sendingFlags[id] = nil
+
         
+
         logTo("Connection removed. Remaining: \(self.connections.count)")
 
 
@@ -919,9 +1010,7 @@ class SocketServer {
         logTo("SocketServer stopped")
     }
 
-    deinit {
-        stop()
-    }
+
 
     // MARK: - Utils
     private func safeJSONValue(_ value: Any) -> Any {

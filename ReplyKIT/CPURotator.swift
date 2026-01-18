@@ -90,9 +90,7 @@ final class VTEncoder {
 //MARK: CPU, sourceFrameRefcon:
 final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
 
-    enum RotationAngle: UInt32, CaseIterable {
-        case angle0 = 0, angle90 = 90, angle180 = 180, angle270 = 270
-    }
+
 
     // MARK: - pool
     private struct PooledBuffer {
@@ -182,8 +180,12 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
 
 
 
-        var dstW = (angle == .angle90 || angle == .angle270) ? srcH : srcW
-        var dstH = (angle == .angle90 || angle == .angle270) ? srcW : srcH
+        var dstW = (
+            angle == .landscapeRight || angle == .landscapeLeft
+        ) ? srcH : srcW
+        var dstH = (
+            angle == .landscapeRight || angle == .landscapeLeft
+        ) ? srcW : srcH
 
 
         if dstWW > 0 && dstHH > 0 { dstW = dstWW; dstH = dstHH }
@@ -310,7 +312,7 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
         let outUV = outUVBase.assumingMemoryBound(to: UInt8.self)
 
         switch angle {
-        case .angle0:
+        case .portrait:
             // copy Y
             for row in 0..<inYHeight {
                 let src = inY.advanced(by: row * inYStride)
@@ -324,7 +326,7 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
                 dst.update(from: src, count: inUVWidth * 2)
             }
 
-        case .angle180:
+        case .portraitUpsideDown:
             for row in 0..<inYHeight {
                 let srcRow = inY.advanced(by: row * inYStride)
                 let dstRow = outY.advanced(by: (outYHeight - 1 - row) * outYStride)
@@ -341,7 +343,7 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
                 }
             }
 
-        case .angle90:
+        case .landscapeRight:
             for y in 0..<inYHeight {
                 let srcRow = inY.advanced(by: y * inYStride)
                 for x in 0..<inYWidth {
@@ -362,7 +364,7 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
                 }
             }
 
-        case .angle270:
+        case .landscapeLeft:
             for y in 0..<inYHeight {
                 let srcRow = inY.advanced(by: y * inYStride)
                 for x in 0..<inYWidth {

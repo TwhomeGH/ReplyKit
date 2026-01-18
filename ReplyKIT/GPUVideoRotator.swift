@@ -31,6 +31,26 @@ import HaishinKit
 //}
 
 
+enum RotationAngle: UInt32, Codable, CaseIterable, Identifiable, CustomStringConvertible {
+    case portrait = 0          // 直向
+    case landscapeRight = 90   // 橫向，Home鍵右側
+    case portraitUpsideDown = 180 // 反向直向
+    case landscapeLeft = 270   // 橫向，Home鍵左側
+
+    var id: UInt32 { rawValue }
+
+
+    var description: String {
+        switch self {
+        case .portrait: return "直向"
+        case .landscapeRight: return "橫向  (Home鍵在右側)"
+        case .portraitUpsideDown: return "反向直向"
+        case .landscapeLeft: return "橫向 (Home鍵在左側)"
+        }
+    }
+}
+
+
 
 // MARK: - Safe Batch Video Rotator (Async/Await)
 final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
@@ -51,7 +71,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     var qualityMode: QualityMode = .live
 
-    enum RotationAngle: UInt32, CaseIterable { case angle0 = 0, angle90 = 90, angle180 = 180, angle270 = 270 }
 
     private var device: MTLDevice?
     private var queue: MTLCommandQueue?
@@ -319,15 +338,27 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         guard let inBuffer = sampleBuffer.imageBuffer else { return nil }
         let srcW = CVPixelBufferGetWidth(inBuffer)
         let srcH = CVPixelBufferGetHeight(inBuffer)
-        var dstW = (angle == .angle90 || angle == .angle270) ? srcH : srcW
-        var dstH = (angle == .angle90 || angle == .angle270) ? srcW : srcH
-        if dstWW > 0 && dstHH > 0 { dstW = dstWW; dstH = dstHH }
+        var dstW = (
+            angle == .landscapeRight || angle == .landscapeLeft
+        ) ? srcH : srcW
+        var dstH = (
+            angle == .landscapeRight || angle == .landscapeLeft
+        ) ? srcW : srcH
+
+
+        if !RPConfig.shared.RotateOriginal && dstWW > 0 && dstHH > 0 {
+            dstW = dstWW; dstH = dstHH
+
+            logTo("GPU進行寬高調整:\(dstWW)x\(dstWW)")
+        } else {
+            logTo("GPU使用原始寬高:\(srcW)x\(srcH)")
+        }
 
 
         //        let infoGPU=await gpuSemaphore.info()
         //        self.logTo("GPU Info:\(infoGPU.now):\(infoGPU.max)")
 
-        self.logTo("\(srcW)x\(srcH) -> \(dstW)x\(dstH)")
+        self.logTo("\(srcW)x\(srcH) -> \(dstW)x\(dstH) angle:\(angle)")
 
         guard let outSet = getReusableOutput(width: dstW, height: dstH) else { return nil }
         guard let ycvTexIn = makeTexture(from: inBuffer, planeIndex: 0),

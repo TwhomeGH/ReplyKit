@@ -515,6 +515,8 @@ class SocketClient : @unchecked Sendable {
 
         let dstW: Int
         let dstH: Int
+        let Rotate: Int
+        let RotateOriginal: Bool
 
         let appVolume: Double
         let micVolume: Double
@@ -552,12 +554,15 @@ class SocketClient : @unchecked Sendable {
 
             RPConfig.shared.useBic = c.useBic
 
-            self.logTo("[Get]H264:\(c.h264level) : \(c.dstW)x\(c.dstH) \(c.videoBuffer)")
+            self.logTo("[Get]H264:\(c.h264level) : \(c.dstW)x\(c.dstH) \(c.videoBuffer) 方向:\(c.Rotate)")
             RPConfig.shared.h264level = c.h264level
 
             RPConfig.shared.BufferCount = c.videoBuffer
             RPConfig.shared.ADWidth = c.dstW
             RPConfig.shared.ADHeight = c.dstH
+
+            RPConfig.shared.Rotate = c.Rotate
+            RPConfig.shared.RotateOriginal = c.RotateOriginal
 
 
             self.logTo(
