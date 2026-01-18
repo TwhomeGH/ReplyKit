@@ -51,7 +51,10 @@ final class LPConfig {
 
     var StreamEnded: Bool = false
     var StreamEndMes:String = ""
-    
+
+    // 上一場直播時長
+    var lastStreamTime:Double = 0.0
+
     var streamStartTime: Date?
 
 

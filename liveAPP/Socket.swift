@@ -180,6 +180,7 @@ class SocketServer {
     }
 
 
+
     // MARK: - Receive Data
     private func receive(from connection: NWConnection) {
         let id = ObjectIdentifier(connection)
@@ -191,38 +192,53 @@ class SocketServer {
 
             if let data = data, !data.isEmpty {
                 var buffer = self.receiveBuffers[id] ?? Data()
+
+                logTo("🔹 liveAPP Received \(data.count) bytes: \(String(decoding: data, as: UTF8.self))")
+
                 buffer.append(data)
 
+                // 🔑 與 ReplyKit Client 完全相同的拆包邏輯
                 while let newlineIndex = buffer.firstIndex(of: 0x0A) {
-                    // 安全檢查：避免 buffer 長度不足
-                    guard newlineIndex < buffer.count else {
-                        buffer.removeAll()
-                        break
-                    }
+                    let lineData = buffer[..<newlineIndex]
 
-                    let packet = buffer.prefix(upTo: newlineIndex)
-                    self.handleReceivedData(Data(packet), from: connection)
 
-                    let removeEnd = newlineIndex + 1
-                    if removeEnd <= buffer.count {
-                        buffer.removeFirst(removeEnd)
-                    } else {
-                        buffer.removeAll()
-                        break
-                    }
+                    let removeCount = buffer.distance(
+                        from: buffer.startIndex,
+                        to: buffer.index(after: newlineIndex)
+                    )
+
+                    buffer.removeFirst(removeCount)
+
+                    guard !lineData.isEmpty else { continue }
+
+                    self.handleReceivedData(Data(lineData), from: connection)
+
                 }
 
                 self.receiveBuffers[id] = buffer
+
             }
 
-            // 只在連線仍存在且未完成時再呼叫 receive
-            if self.connections[id] != nil && !isComplete && error == nil {
-                queue.asyncAfter(deadline: .now() + 0.01) { // 10ms 緩衝
-                    self.receive(from: connection)
-                }
-            } else {
+            if let error = error {
+                self.logTo("Receive error: \(error)")
                 self.removeConnection(connection)
+                return
             }
+
+            if isComplete {
+                // EOF 時可選擇處理殘留（通常不用）
+                if let buffer = self.receiveBuffers[id], !buffer.isEmpty {
+                    self.handleReceivedData(buffer, from: connection)
+                }
+                self.receiveBuffers[id] = nil
+                self.removeConnection(connection)
+                return
+            }
+
+            
+            self.receive(from: connection)
+
+
         }
     }
     
@@ -486,6 +502,7 @@ class SocketServer {
 
 
         LPConfig.shared.streamStartTime = Date()
+        LPConfig.shared.StreamEndMes = "直播中"
         LPConfig.shared.StreamEnded = false
 
 

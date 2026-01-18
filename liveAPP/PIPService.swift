@@ -53,6 +53,50 @@ final class PIPService: NSObject, @unchecked Sendable {
 
     private var messagesLayer: PIPServiceMessages?
 
+    func roundedBadgeAttachment(
+        text: String,
+        font: UIFont,
+        textColor: UIColor = .white,
+        bgColor: UIColor = .systemRed,
+        padding: UIEdgeInsets = UIEdgeInsets(top: 2, left: 6, bottom: 2, right: 6)
+    ) -> NSAttributedString {
+
+        let label = UILabel()
+        label.text = text
+        label.font = font
+        label.textColor = textColor
+        label.backgroundColor = bgColor
+        label.textAlignment = .center
+        label.layer.cornerRadius = (font.lineHeight + padding.top + padding.bottom) / 2
+        label.clipsToBounds = true
+
+        label.sizeToFit()
+        label.frame = CGRect(
+            x: 0,
+            y: 0,
+            width: label.bounds.width + padding.left + padding.right,
+            height: label.bounds.height + padding.top + padding.bottom
+        )
+
+        UIGraphicsBeginImageContextWithOptions(label.bounds.size, false, 0)
+        label.layer.render(in: UIGraphicsGetCurrentContext()!)
+        let image = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+
+        let attachment = NSTextAttachment()
+        attachment.image = image
+
+        // 垂直置中對齊文字
+        attachment.bounds = CGRect(
+            x: 0,
+            y: (font.capHeight - label.bounds.height) / 2,
+            width: label.bounds.width,
+            height: label.bounds.height
+        )
+
+        return NSAttributedString(attachment: attachment)
+    }
+
     // MARK: 時間顯示
     private func drawTimeOverlay(in cg: CGContext, size: CGSize) {
 
@@ -60,11 +104,12 @@ final class PIPService: NSObject, @unchecked Sendable {
         if let start = LPConfig.shared.streamStartTime {
             if !LPConfig.shared.StreamEnded {
                 elapsedSeconds = Date().timeIntervalSince(start)
+                LPConfig.shared.lastStreamTime = elapsedSeconds
             }
         }
 
 
-        let totalSeconds = Int(elapsedSeconds)
+        let totalSeconds = Int(LPConfig.shared.lastStreamTime)
 
         let hours = totalSeconds / 3600
         let minutes = (totalSeconds % 3600) / 60
@@ -80,7 +125,7 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         let elapsedAttr = NSMutableAttributedString()
 
-        let lightRed3 = UIColor(red: 1.0, green: 0.6, blue: 0.6, alpha: 1.0)
+        let lightRed3 = #colorLiteral(red: 1.0, green: 0.6, blue: 0.6, alpha: 1.0)
 
         // "已過" 紅色
         elapsedAttr.append(NSAttributedString(
@@ -102,21 +147,28 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         // "秒" 紅色
         elapsedAttr.append(NSAttributedString(
-            string: " 秒",
+            string: " 秒 ",
             attributes: [
                 .font: elapsedLabelFont,
                 .foregroundColor: lightRed3
             ]
         ))
 
-        elapsedAttr.append(NSAttributedString(
-            string: " " + LPConfig.shared.StreamEndMes
-,
-            attributes: [
-                .font: elapsedLabelFont,
-                .foregroundColor: UIColor(.white)
-            ]
-        ))
+        if !LPConfig.shared.StreamEndMes.isEmpty {
+
+            var EndColor = #colorLiteral(red: 1, green: 0.4538183808, blue: 0.1835401952, alpha: 1)
+            if LPConfig.shared.StreamEnded {
+                EndColor = #colorLiteral(red: 0.6608892679, green: 0.9506585002, blue: 0.9486288428, alpha: 1)
+            }
+
+            elapsedAttr.append(
+                roundedBadgeAttachment(
+                    text: " \(LPConfig.shared.StreamEndMes) ",
+                    font: elapsedLabelFont,
+                    bgColor:EndColor
+                )
+            )
+        }
 
 
 
@@ -124,7 +176,7 @@ final class PIPService: NSObject, @unchecked Sendable {
         //let elapsedSize = elapsedAttr.size()
 
         let elapsedPoint = CGPoint(
-            x: 60 ,
+            x: 50 ,
             y: 20
         )
 

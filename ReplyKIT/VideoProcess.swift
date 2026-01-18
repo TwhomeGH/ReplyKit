@@ -4,11 +4,30 @@ import ReplayKit
 import CoreMedia
 
 
+actor FrameTaskManager {
+    private var tasks: [UUID: Task<Void, Never>] = [:]
+
+    func add(_ id: UUID, task: Task<Void, Never>) {
+        tasks[id] = task
+    }
+
+    func remove(_ id: UUID) {
+        tasks.removeValue(forKey: id)
+    }
+
+    func cancelAll() {
+        for task in tasks.values {
+            task.cancel()
+        }
+        tasks.removeAll()
+    }
+}
 
 final class VideoFrameProcessor {
     // 初始化 RotatorPool（在 SampleHandler 或初始化時）
     var rotator: RPVideoRotatorNV12BatchQueueOptimized?
 
+    private let frameTaskManager = FrameTaskManager()
 
     private let mediaMixer: MediaMixer
     //private var rotator: VideoRotator?
@@ -38,6 +57,15 @@ final class VideoFrameProcessor {
     }
     func cleanup() {
         isActive = false
+
+        // 1️⃣ cancel 所有尚未完成的 frame task
+        Task {
+            await self.frameTaskManager.cancelAll()
+        }
+
+
+
+
         // 清空 queue 上未執行的任務
         processingQueue.sync {
 
@@ -91,19 +119,39 @@ final class VideoFrameProcessor {
                 }
             }
 
+            let taskID = UUID()
 
             // 保留 rotator 強引用直到 Task 完成
-            Task(priority: .userInitiated) { [rotator] in
-                if let rotated = await rotator?.rotateAsync(
+            let task = Task(priority: .userInitiated) { [weak self, rotator] in
+
+                guard let self else { return }
+                guard !Task.isCancelled else { return }
+                guard self.isActive else { return }
+                guard let rotator else { return }
+
+
+                let rotated = await rotator.rotateAsync(
                     sampleBuffer: sampleBuffer,
                     angle: .angle90
-                ) {
+                )
+
+                guard !Task.isCancelled, self.isActive else { return }
+
+                if let rotated {
                     await self.mediaMixer.append(rotated)
                 } else {
                     self.sendlog("GPU Fail!")
                 }
+
+                // 🧹 Task 結束時移除自己
+                await self.frameTaskManager.remove(taskID)
+
             }
 
+            // 記錄 Task
+            Task {
+                await self.frameTaskManager.add(taskID, task: task)
+            }
 
 
 
