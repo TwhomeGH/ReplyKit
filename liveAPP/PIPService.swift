@@ -158,7 +158,7 @@ final class PIPService: NSObject, @unchecked Sendable {
 
             var EndColor = #colorLiteral(red: 1, green: 0.4538183808, blue: 0.1835401952, alpha: 1)
             if LPConfig.shared.StreamEnded {
-                EndColor = #colorLiteral(red: 0.6608892679, green: 0.9506585002, blue: 0.9486288428, alpha: 1)
+                EndColor = #colorLiteral(red: 0.2549019754, green: 0.2745098174, blue: 0.3019607961, alpha: 1)
             }
 
             elapsedAttr.append(
