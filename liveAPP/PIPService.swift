@@ -56,11 +56,11 @@ final class PIPService: NSObject, @unchecked Sendable {
     // MARK: 時間顯示
     private func drawTimeOverlay(in cg: CGContext, size: CGSize) {
 
-        let elapsedSeconds: Double
+        var elapsedSeconds: Double = 0
         if let start = LPConfig.shared.streamStartTime {
-            elapsedSeconds = Date().timeIntervalSince(start)
-        } else {
-            elapsedSeconds = 0
+            if !LPConfig.shared.StreamEnded {
+                elapsedSeconds = Date().timeIntervalSince(start)
+            }
         }
 
 
@@ -108,6 +108,17 @@ final class PIPService: NSObject, @unchecked Sendable {
                 .foregroundColor: lightRed3
             ]
         ))
+
+        elapsedAttr.append(NSAttributedString(
+            string: " " + LPConfig.shared.StreamEndMes
+,
+            attributes: [
+                .font: elapsedLabelFont,
+                .foregroundColor: UIColor(.white)
+            ]
+        ))
+
+
 
         // 計算位置（上方偏右）
         //let elapsedSize = elapsedAttr.size()

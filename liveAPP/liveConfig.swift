@@ -49,6 +49,9 @@ final class LPConfig {
     // 其他配置
     var maxInflightFrames: Int = 4
 
+    var StreamEnded: Bool = false
+    var StreamEndMes:String = ""
+    
     var streamStartTime: Date?
 
 

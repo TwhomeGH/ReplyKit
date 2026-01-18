@@ -1261,6 +1261,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             await MainActor.run {
                 // Add output
                 self.isSessionReady = true
+
+                sendlog(message:"🎉 RTMP 推流成功",flush: true)
                 logger.info("🎉 RTMP 推流成功")
 
 
@@ -1281,22 +1283,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     }
 
 
-    enum TimeoutError: Error {
-        case timedOut
-    }
-
-    func withTimeout<T>(_ seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
-        try await withThrowingTaskGroup(of: T.self) { group in
-            group.addTask { try await operation() }
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                throw TimeoutError.timedOut
-            }
-            let result = try await group.next()!
-            group.cancelAll()
-            return result
-        }
-    }
+   
 
     // MARK: 直播開始
     override func broadcastStarted(
@@ -1314,48 +1301,21 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         //self.prepareCompressionSession()
 
 
-        Task {
-
-            do {
-                try await withTimeout(3) {
-                    ExtensionMessagePort.shared.connectToApp()
-                }
-                logger.debug("連線成功或至少嘗試完成")
-            } catch TimeoutError.timedOut {
-                logger.debug("連線主 App 超時")
-            } catch {
-                logger.debug("其他錯誤:\(error)")
-            }
+         Task {
 
 
-            do {
-                // 同時發出兩個請求
-                let rtmpSuccess = try await withTimeout(5) {
-                    await SocketClient.shared.requestRTMPKEY()
-                }
-                let logSuccess = try await withTimeout(5) {
-                    await SocketClient.shared.requestLogConfig()
-                }
-                // 等待兩個結果
+            ExtensionMessagePort.shared.connectToApp()
 
-                sendlog(
-                    message:"RTMP: \(rtmpSuccess) LogConfig : \(logSuccess) 已完成同步",
-                    flush: true
-                )
+             // 同時發出兩個請求
+             let result = await SocketClient.shared.requestRTMPKEYAndLog()
 
-            } catch TimeoutError.timedOut {
-                sendlog(message: "超時！AppGroup有效時不影響")
-                // ❗ 這裡要確保清理 pending continuation
-                    SocketClient.shared.cancelPendingRTMP()
-                    SocketClient.shared.cancelPendingLogConfig()
+            logger.debug("Final result -> RTMP & LogConfig: \(result)")
 
-            } catch {
-                sendlog(message: "請求失敗! \(error)")
+            sendlog(
+                message:"Final result -> RTMP & LogConfig: \(result)",
+            )
 
-                // ❗ 這裡要確保清理 pending continuation
-                    SocketClient.shared.cancelPendingRTMP()
-                    SocketClient.shared.cancelPendingLogConfig()
-            }
+
 
                 // 🔹 從 UserDefaults 拿 RTMP 設定
                 rtmpURL = RPConfig.shared.RTMPURL
@@ -1367,6 +1327,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     streamKey: self.rtmpKey ?? "test"
                 )
 
+
                 logger.debug("✅ RTMP設定: \(String(describing: self.rtmpURL)) \(String(describing: self.rtmpKey))")
 
 
@@ -1374,9 +1335,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 await self.configureAudio()
                 await self.configureMediaMixer()
 
+                sendlog(message:"✅ MediaMixer 配置完成")
+
                 logger.info("✅ MediaMixer 配置完成")
 
                 await self.initProcessors()
+
+                sendlog(message:"✅ Processor 初始化完成")
 
                 logger.info("✅ Processor 初始化完成")
 
@@ -1574,6 +1539,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     // MARK: 直播結束處理
     func broadcastEnd(message:String = "正常結束")  {
         // User has requested to finish the broadcast.
+
+        SocketClient.shared.sendStreamEnd()
 
         // 停止斷線監控 Task
         disconnectMonitorTask?.cancel()

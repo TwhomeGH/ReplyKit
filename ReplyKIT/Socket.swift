@@ -30,15 +30,39 @@ extension SocketClient.JSONValue {
 }
 
 
-class SocketClient {
+enum TimeoutError: Error {
+    case timedOut
+}
+
+func withTimeout<T>(_ seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
+    try await withThrowingTaskGroup(of: T.self) { group in
+        group.addTask { try await operation() }
+        group.addTask {
+            try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            throw TimeoutError.timedOut
+        }
+        let result = try await group.next()!
+        group.cancelAll()
+        return result
+    }
+}
+
+
+class SocketClient : @unchecked Sendable {
 
     static let shared = SocketClient()
 
+    private var isProcessingBatch = false
+
     var requestContinuations: [String: CheckedContinuation<Any?, Never>] = [:]
-    
+
+
+    private var rtmpBatchContinuation: CheckedContinuation<Bool, Never>?
+
     private var rtmpContinuation: CheckedContinuation<Bool, Never>?
 
-    private var logConfigContinuation: CheckedContinuation<Bool, Never>?
+    private var logContinuation: CheckedContinuation<Bool, Never>?
+
 
     private var isConnection: Bool = false
 
@@ -68,6 +92,7 @@ class SocketClient {
 
     func closeConnection() {
 
+        isConnection = false
         connection?.stateUpdateHandler = nil
         connection?.cancel()
         connection = nil
@@ -91,6 +116,12 @@ class SocketClient {
             case .ready:
                 logTo("SocketClient connected")
                 isConnection = true
+
+                // ✅ 喚醒所有等待連線的人
+                connectContinuations.forEach { $0.resume() }
+                connectContinuations.removeAll()
+
+
                 self.receive()
             case .failed(let error):
                 logTo("SocketClient failed: \(String(describing: error))")
@@ -114,30 +145,36 @@ class SocketClient {
     private var isReconnecting = false
 
     func retry() {
-        guard !isReconnecting else { return }   // ✅ 防止重入
-        isReconnecting = true
+        queue.async {
+            guard !self.isReconnecting else { return }
 
-        queue.asyncAfter(deadline: .now() + 2.0) {
-            [weak self] in
-            guard let self = self else { return }
+            guard !self.isReconnecting else { return }   // ✅ 防止重入
+            self.isReconnecting = true
 
-            self.isReconnecting = false
+            self.queue.asyncAfter(deadline: .now() + 2.0) {
+                [weak self] in
+                guard let self = self else { return }
 
-            self.connection?.stateUpdateHandler = nil
-            self.connection?.cancel()
-            self.connection = nil
+                self.isReconnecting = false
 
-            self.receiveBuffer.removeAll()
+                self.connection?.stateUpdateHandler = nil
+                self.connection?.cancel()
+                self.connection = nil
 
-            self.requestContinuations.values.forEach { $0.resume(returning: nil) }
-            self.requestContinuations.removeAll()
+                self.receiveBuffer.removeAll()
 
-            self.cancelPendingRTMP()
-            self.cancelPendingLogConfig()
 
-            self.setupConnection()
+
+                self.requestContinuations.values.forEach { $0.resume(returning: nil) }
+                self.requestContinuations.removeAll()
+
+
+                self.setupConnection()
+            }
+
         }
     }
+
 
 
     // MARK: - 發送
@@ -169,73 +206,161 @@ class SocketClient {
         }
     }
 
-    func requestSet(for key:String, type:String,completion: @escaping (Any?) -> Void) {
+//    func requestSet(for key:String, type:String,completion: @escaping (Any?) -> Void) {
+//
+//
+//        logTo("嘗試請求特定設定Socket")
+//
+//        let payload: [String: Any] = [
+//            "type": "UPSet",
+//            "key": key,
+//            "ValueType":type
+//        ]
+//        sendPayload(payload)
+//
+//    }
 
 
-        logTo("嘗試請求特定設定Socket")
 
-        let payload: [String: Any] = [
-            "type": "UPSet",
-            "key": key,
-            "ValueType":type
-        ]
-        sendPayload(payload)
+
+    func requestRTMPKEYAndLog(timeout: TimeInterval = 5.5) async -> Bool {
+        do {
+            return try await withTimeout(timeout) {
+                await self._requestRTMPKEYAndLog()
+            }
+        } catch TimeoutError.timedOut {
+            logger.debug("RTMPKEY timeout")
+
+            return false
+        } catch {
+            logger.debug("RTMPKEY error: \(error)")
+
+            return false
+        }
+    }
+
+    private func _requestRTMPKEYAndLog() async -> Bool {
+
+        await SocketClient.shared.waitUntilConnected()
+
+
+        return await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+
+                    guard self.rtmpBatchContinuation == nil else {
+                        cont.resume(returning: false) // 已有 pending request，直接返回
+                        return
+                    }
+
+                    self.rtmpBatchContinuation = cont
+
+                    let payload: [String: Any] = [
+                        "type": "batch",
+                        "requests": ["requestRTMP", "logConfig"]
+
+                    ]
+                    self.sendPayload(payload)
+
+
+            }
+
 
     }
 
 
     // MARK: - 發送
-    func requestRTMPKEY() async -> Bool {
-        return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
 
-                // 若前一次還沒完成，直接失敗（避免覆蓋）
-                if self.rtmpContinuation != nil {
-                    continuation.resume(returning: false)
-                    return
-                }
+    func requestRTMPKEY(timeout: TimeInterval = 5.5) async -> Bool {
+        do {
+            return try await withTimeout(timeout) {
+                await self._requestRTMPKEY()
+            }
+        } catch TimeoutError.timedOut {
+            logger.debug("RTMPKEY timeout")
+       
+            return false
+        } catch {
+            logger.debug("RTMPKEY error: \(error)")
 
-                self.rtmpContinuation = continuation
-                let payload: [String: Any] = ["type": "requestRTMP"]
-                self.sendPayload(payload)
-
-
+            return false
         }
     }
-    func requestRTMPKEY(completion: @escaping (Bool) -> Void) {
 
-        logTo("嘗試請求設定Socket RTMPKEY")
-        let payload: [String: Any] = ["type": "requestRTMP"]
-        sendPayload(payload)
+    private func _requestRTMPKEY() async -> Bool {
+
+        await SocketClient.shared.waitUntilConnected()
+
+
+        return await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+
+                    guard self.rtmpContinuation == nil else {
+                        cont.resume(returning: false) // 已有 pending request，直接返回
+                        return
+                    }
+
+                    self.rtmpContinuation = cont
+
+
+                    let payload: [String: Any] = ["type": "requestRTMP"]
+                    self.sendPayload(payload)
+
+
+            }
+
+
     }
 
-    func requestLogConfig() async -> Bool {
-        return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+    func requestLogConfig(timeout: TimeInterval = 5.5) async -> Bool {
+        do {
+            return try await withTimeout(timeout) {
+                await self._requestLogConfig()
+            }
+        } catch TimeoutError.timedOut {
+            logger.debug("LogConfig timeout")
 
-                // 若前一次還沒完成，直接失敗（避免覆蓋）
-                if self.logConfigContinuation != nil {
-                    continuation.resume(returning: false)
+            return false
+        } catch {
+            logger.debug("LogConfig error: \(error)")
+            return false
+        }
+    }
+
+    func _requestLogConfig() async -> Bool {
+
+        await SocketClient.shared.waitUntilConnected()
+
+        self.isProcessingBatch = true
+
+        return await withCheckedContinuation { cont in
+
+                // 如果已經有 pending request，直接回 false
+                guard self.logContinuation == nil else {
+                    cont.resume(returning: false)
                     return
                 }
-                
-                self.logConfigContinuation = continuation
+
+
+                self.logContinuation = cont
+
                 let payload: [String: Any] = ["type": "logConfig"]
                 self.sendPayload(payload)
-                
+
 
 
         }
+
     }
 
-    func requestLogConfig(completion: @escaping (Bool) -> Void) {
 
-        logTo("嘗試請求設定Socket logConfig")
+
+
+    func sendStreamEnd() {
         let payload: [String: Any] = [
-            "type": "logConfig"
+            "type": "Ended",
+            "Message":"直播結束"
+            
         ]
-
         sendPayload(payload)
     }
-
 
     func sendSettings(key: String, value: Any) {
         let payload: [String: Any] = [
@@ -266,6 +391,17 @@ class SocketClient {
         sendlog(title:"ReplyKit_Socket",message: message,flush: flush)
     }
 
+
+    private var connectContinuations: [CheckedContinuation<Void, Never>] = []
+
+    func waitUntilConnected() async {
+        if isConnection { return }
+
+        await withCheckedContinuation { cont in
+            connectContinuations.append(cont)
+        }
+    }
+
     func cancelAllPendingUPSet() {
         queue.async {
             for (_, cont) in self.requestContinuations {
@@ -275,22 +411,40 @@ class SocketClient {
         }
     }
 
+
     func cancelPendingRTMP() {
         queue.async {
-            self.rtmpContinuation?.resume(returning: false)
+            guard let cont = self.rtmpContinuation else { return }
+            self.logTo("取消RTMP請求")
             self.rtmpContinuation = nil
+            cont.resume(returning: false)
         }
     }
-    func cancelPendingLogConfig() {
+
+    func cancelPendingLog() {
         queue.async {
-            self.logConfigContinuation?.resume(returning: false)
-            self.logConfigContinuation = nil
+            guard let cont = self.logContinuation else { return }
+            self.logTo("取消LogConfig請求")
+            self.logContinuation = nil
+            cont.resume(returning: false)
         }
     }
-    
+
+
+
+    func cancelPendingRequest(key: String) {
+        queue.async {
+            if let cont = self.requestContinuations.removeValue(forKey: key) {
+                cont.resume(returning: nil)
+            }
+        }
+    }
+
+
     private func sendPayload(_ payload: [String: Any]) {
         guard let con = connection else {
             logger.debug("Socket可能沒上線!")
+
             return
         }
         guard var data = try? JSONSerialization.data(withJSONObject: payload, options: []) else { return }
@@ -350,38 +504,49 @@ class SocketClient {
 
     private func applyRTMP(_ c: RTMPConfig) {
 
+        queue.async {
+
+            self.logTo("[Get]RTMP:\(c.rtmpURL):\(fixlogSafeKey(c.rtmpKey))")
+            RPConfig.shared.RTMPURL = c.rtmpURL
+            RPConfig.shared.RTMPKey = c.rtmpKey
+
+            self.logTo("[Get]Bit:\(c.BitRate):\(c.ChangeBit) useBic:\(c.useBic)")
+            RPConfig.shared.BitRate = c.BitRate
+            RPConfig.shared.ChangeBit = c.ChangeBit
+
+            RPConfig.shared.useBic = c.useBic
+
+            self.logTo("[Get]H264:\(c.h264level) : \(c.dstW)x\(c.dstH) \(c.videoBuffer)")
+            RPConfig.shared.h264level = c.h264level
+
+            RPConfig.shared.BufferCount = c.videoBuffer
+            RPConfig.shared.ADWidth = c.dstW
+            RPConfig.shared.ADHeight = c.dstH
 
 
-        logTo("[Get]RTMP:\(c.rtmpURL):\(fixlogSafeKey(c.rtmpKey))")
-        RPConfig.shared.RTMPURL = c.rtmpURL
-        RPConfig.shared.RTMPKey = c.rtmpKey
+            self.logTo(
+                "[Get]Audio App:\(c.appVolume) Mic:\(c.micVolume) AppAdd:\(c.appVolumeAdd) MicAdd:\(c.micVolumeAdd)",flush: true
+            )
+            RPConfig.shared.AppVolume = c.appVolume
+            RPConfig.shared.MicVolume = c.micVolume
 
-        logTo("[Get]Bit:\(c.BitRate):\(c.ChangeBit) useBic:\(c.useBic)")
-        RPConfig.shared.BitRate = c.BitRate
-        RPConfig.shared.ChangeBit = c.ChangeBit
+            RPConfig.shared.AppVolumeAdd = c.appVolumeAdd
+            RPConfig.shared.MicVolumeAdd = c.micVolumeAdd
 
-        RPConfig.shared.useBic = c.useBic
+            if !self.isProcessingBatch {
+                // 單請求才 resume rtmpContinuation
 
-        logTo("[Get]H264:\(c.h264level) : \(c.dstW)x\(c.dstH) \(c.videoBuffer)")
-        RPConfig.shared.h264level = c.h264level
+                guard let cont = self.rtmpContinuation else {
+                    self.logTo("[RTMP] no pending continuation, ignore")
+                    return
+                }
 
-        RPConfig.shared.BufferCount = c.videoBuffer
-        RPConfig.shared.ADWidth = c.dstW
-        RPConfig.shared.ADHeight = c.dstH
+                self.rtmpContinuation = nil
+                cont.resume(returning: true)
+            }
 
+        }
 
-        logTo(
-            "[Get]Audio App:\(c.appVolume) Mic:\(c.micVolume) AppAdd:\(c.appVolumeAdd) MicAdd:\(c.micVolumeAdd)",flush: true
-        )
-        RPConfig.shared.AppVolume = c.appVolume
-        RPConfig.shared.MicVolume = c.micVolume
-
-        RPConfig.shared.AppVolumeAdd = c.appVolumeAdd
-        RPConfig.shared.MicVolumeAdd = c.micVolumeAdd
-
-        // ✅ 回調通知所有等待的人
-        self.rtmpContinuation?.resume(returning: true)
-        self.rtmpContinuation = nil
 
     }
 
@@ -422,9 +587,40 @@ class SocketClient {
     }
 
 
-
     private func handleJSONPacket(_ data: Data) {
         do {
+
+
+            let json = try JSONSerialization.jsonObject(with: data)
+
+            logTo("Raw:\n\(json)")
+
+            if let array = json as? [[String: Any]] {
+                // 處理批量
+                for item in array {
+                    if let itemData = try? JSONSerialization.data(withJSONObject: item, options: []) {
+                        handleSingleJSON(itemData)
+                    }
+                }
+            } else if let dict = json as? [String: Any] {
+                // 單條處理
+                if let dictData = try? JSONSerialization.data(withJSONObject: dict, options: []) {
+                    handleSingleJSON(dictData)
+                }
+            } else {
+                logTo("[Socket] Unknown JSON format")
+            }
+
+        } catch {
+            logTo("[Socket] JSON decode failed: \(error)")
+
+            receiveBuffer.removeAll()
+        }
+    }
+
+    private func handleSingleJSON(_ data: Data) {
+        do {
+
             let decoder = JSONDecoder()
 
             // 先只 decode type
@@ -434,82 +630,157 @@ class SocketClient {
             defer { self.isProcessingRemoteUpdate = false }
 
             switch base.type {
+
             case "testRTMP":
-                self.requestRTMPKEY { success in
-                    if success {
-                    // 這裡 logConfig 已經拿到
-                        self.logTo("RTMP 已完成同步")
-                    // 可以進行後續流程
-                    }
-                }
-                self.requestLogConfig { success in
-                    if success {
-                        // 這裡 logConfig 已經拿到
-                        self.logTo("LogConfig 已完成同步")
-                        // 可以進行後續流程
-                    }
+
+                Task { @MainActor in
+
+                    let rtmp = await self.requestRTMPKEY()
+                    let log  = await self.requestLogConfig()
+
+                    self.logTo("RTMP: \(rtmp) LogConfig: \(log)")
 
                 }
+
+            case "BatchEnded":
+                self.logTo("Batch Get All Req")
+
+                guard let cont = self.rtmpBatchContinuation else {
+                    self.logTo("[rtmpBatch] no pending continuation, ignore")
+                    return
+                }
+                self.rtmpBatchContinuation = nil
+                self.isProcessingBatch = true
+                cont.resume(returning: true)
+
+
+
 
             case "UPSet":
                 logTo("UPSet結果得到了！")
                 // 假設你解析 JSON 得到 resultValue
-                let resultValue = try decoder.decode(
+                if let resultValue = try? decoder.decode(
                     [String: JSONValue].self,
                     from: data
-                )
-                let key = resultValue["key"]?.rawValue as? String
-                let value = resultValue["value"]?.rawValue
+                ),
+                   let key = resultValue["key"]?.rawValue as? String,
+                   let value = resultValue["value"]?.rawValue {
 
-                logTo(
-                    "UPGet -> \(String(describing: key)) \(String(describing: value))"
-                )
+                    logTo(
+                        "UPGet -> \(String(describing: key)) \(String(describing: value))"
+                    )
 
-                if let key = key,
-                     let cont = self.requestContinuations.removeValue(forKey: key) {
-                       cont.resume(returning: value)
+                    if let cont = self.requestContinuations.removeValue(forKey: key) {
+                        cont.resume(returning: value)
+                    }
+
                 }
 
 
+
             case "logConfig":
-                let env = try decoder.decode(LogConfig.self, from: data)
-                RPConfig.shared.logMode = env.logMode
-                RPConfig.shared.logURL = env.logURL
 
-                RPConfig.shared.onLogPage = env.onlogPage
-                RPConfig.shared.onAudioPage = env.onAudioPage
-                RPConfig.shared.enableLog = env.enableLog
-                RPConfig.shared.enableSocketLog = env.enableSocketLog
+                queue.async {
 
-                RPConfig.shared.applyLogMode()
 
-                logTo(
-                    "[Get]logMode:\(env.logMode) logURL:\(env.logURL) SocketLog:\(env.enableSocketLog)"
-                )
-                logTo(
-                    "[Get]onLog:\(env.onlogPage) onAudio:\(env.onAudioPage) EnableLog:\(env.enableLog)"
-                )
+                    if let env = try? decoder.decode(LogConfig.self, from: data) {
 
-                // ✅ 通知所有等待的 callback
-                self.logConfigContinuation?.resume(returning: true)
-                self.logConfigContinuation = nil
+                        RPConfig.shared.logMode = env.logMode
+                        RPConfig.shared.logURL = env.logURL
+
+                        RPConfig.shared.onLogPage = env.onlogPage
+                        RPConfig.shared.onAudioPage = env.onAudioPage
+                        RPConfig.shared.enableLog = env.enableLog
+                        RPConfig.shared.enableSocketLog = env.enableSocketLog
+
+                        RPConfig.shared.applyLogMode()
+
+                        self.logTo(
+                            "[Get]logMode:\(env.logMode) logURL:\(env.logURL) SocketLog:\(env.enableSocketLog)"
+                        )
+                        self.logTo(
+                            "[Get]onLog:\(env.onlogPage) onAudio:\(env.onAudioPage) EnableLog:\(env.enableLog)",flush: true
+                        )
+
+
+
+                        if !self.isProcessingBatch {
+                            // 單請求才 resume rtmpContinuation
+
+                            guard let cont = self.logContinuation else {
+                                self.logTo("[LogConfig] no pending continuation, ignore")
+                                return
+                            }
+
+                            self.logContinuation = nil
+                            cont.resume(returning: true)
+
+                        }
+
+
+                    } else {
+
+                        self.logTo("[Socket] logConfig decode failed")
+
+
+                        guard let cont = self.logContinuation else {
+                            self.logTo("[LogConfig] no pending continuation, ignore")
+                            return
+                        }
+                        
+                        self.logContinuation = nil
+                        cont.resume(returning: false)
+
+                    }
+                }
+
 
             case "RTMP":
-                let env = try decoder.decode(RTMPConfig.self, from: data)
-                applyRTMP(env)
+                if let env = try? decoder.decode(RTMPConfig.self, from: data) {
+                    applyRTMP(env)
+                } else {
+                    logTo("[Socket] log decode failed")
+
+                    if !self.isProcessingBatch {
+                        // 單請求才 resume rtmpContinuation
+
+                        guard let cont = self.rtmpContinuation else {
+                            self.logTo("[RTMP] no pending continuation, ignore")
+                            return
+                        }
+
+                        self.rtmpContinuation = nil
+                        cont.resume(returning: true)
+                    }
+                    
+                }
+
+
 
             case "log":
-                let env = try decoder.decode(LogMessage.self, from: data)
-                self.logTo("[Extension] Get \(env.message)")
+                if let env = try? decoder.decode(LogMessage.self, from: data) {
+                    self.logTo("[Extension] Get \(env.message)")
+                } else {
+                    logTo("[Socket] log decode failed")
+                }
+
+
 
             default:
-                break
+                logTo("[Socket] Unknown type: \(base.type)")
             }
 
         } catch {
             logTo("[Socket]Decode failed ❌ \(error)")
             receiveBuffer.removeAll()   // ✅ 防止卡死 buffer
-            
+
+            // 安全處理所有可能的 continuation
+            for (_, cont) in self.requestContinuations {
+                cont.resume(returning: nil)
+            }
+            self.requestContinuations.removeAll()
+
+
         }
     }
 
@@ -529,19 +800,43 @@ class SocketClient {
             }
 
             if let data = data {
+
+                // 先 log raw bytes
+                logTo("🔹 Received \(data.count) bytes: \(String(decoding: data, as: UTF8.self))")
+
                 self.receiveBuffer.append(data)
 
-                while let range = self.receiveBuffer.firstRange(of: Data([0x0A])) {
-                    let packet = self.receiveBuffer.subdata(in: 0..<range.lowerBound)
-                    self.receiveBuffer.removeSubrange(0...range.lowerBound)
-                    self.handleJSONPacket(packet)
+                // 處理每個完整 JSON 行
+                while let newlineIndex = self.receiveBuffer.firstIndex(of: 0x0A) {
+
+                    let lineData = self.receiveBuffer.prefix(upTo: newlineIndex)
+                    self.handleJSONPacket(lineData)
+
+                    // 安全刪除
+                    if newlineIndex < self.receiveBuffer.count {
+                        self.receiveBuffer.removeFirst(newlineIndex + 1)
+                    } else {
+                        self.receiveBuffer.removeAll()
+                    }
+
                 }
+
+
             }
 
-            if isComplete || error != nil {
+            if let error = error {
+                self.logTo("Socket receive error: \(error)")
                 self.retry()
                 return
             }
+
+            if isComplete {
+
+                // 可以選擇什麼都不做，或等下一次 receive
+                self.logTo("Socket receive completed (EOF), keep connection")
+
+            }
+
 
             self.receive()   // ✅ 只有在確認還是同一條連線才繼續
         }

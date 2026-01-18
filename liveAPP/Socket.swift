@@ -22,6 +22,7 @@ extension SocketServer.JSONValue {
         }
     }
 }
+
 class SocketServer {
 
     // MARK: - Properties
@@ -36,14 +37,23 @@ class SocketServer {
 
     private let queue = DispatchQueue(label: "SocketServerQueue")
 
-    private let sendSemaphore = DispatchSemaphore(value: 4) // 同時最多 4 條連線
+
 
 
     private var restartWorkItem: DispatchWorkItem?
     private var isStopping = false
 
+    private var lastRestartTime: Date?
+
+
     private func scheduleRestart(delay: TimeInterval = 1.5) {
         guard !isStopping else { return }
+
+        if let last = lastRestartTime, Date().timeIntervalSince(last) < 3.0 {
+            logTo("Restart skipped to avoid rapid restart")
+            return
+        }
+        lastRestartTime = Date()
 
         restartWorkItem?.cancel()
 
@@ -83,6 +93,7 @@ class SocketServer {
                 switch state {
                 case .ready:
                     self.logTo("Listener ready")
+
 
                 case .failed(let error):
                     self.logTo("Listener failed: \(error)")
@@ -181,23 +192,40 @@ class SocketServer {
             if let data = data, !data.isEmpty {
                 var buffer = self.receiveBuffers[id] ?? Data()
                 buffer.append(data)
-                while let range = buffer.firstRange(of: Data([0x0A])) {
-                    let packet = buffer.subdata(in: 0..<range.lowerBound)
-                    buffer.removeSubrange(0...range.lowerBound)
-                    self.handleReceivedData(packet, from: connection)
+
+                while let newlineIndex = buffer.firstIndex(of: 0x0A) {
+                    // 安全檢查：避免 buffer 長度不足
+                    guard newlineIndex < buffer.count else {
+                        buffer.removeAll()
+                        break
+                    }
+
+                    let packet = buffer.prefix(upTo: newlineIndex)
+                    self.handleReceivedData(Data(packet), from: connection)
+
+                    let removeEnd = newlineIndex + 1
+                    if removeEnd <= buffer.count {
+                        buffer.removeFirst(removeEnd)
+                    } else {
+                        buffer.removeAll()
+                        break
+                    }
                 }
+
                 self.receiveBuffers[id] = buffer
             }
 
             // 只在連線仍存在且未完成時再呼叫 receive
             if self.connections[id] != nil && !isComplete && error == nil {
-                self.receive(from: connection)
+                queue.asyncAfter(deadline: .now() + 0.01) { // 10ms 緩衝
+                    self.receive(from: connection)
+                }
             } else {
                 self.removeConnection(connection)
             }
         }
     }
-
+    
 
     func debugRTMP() {
         let payload: [String: Any] = [
@@ -225,7 +253,7 @@ class SocketServer {
 
 
         ]
-        sendToAll(payload: payload)
+        queueSend(payload: payload)
 
     }
 
@@ -245,6 +273,15 @@ class SocketServer {
     struct TypePayload: Codable {
         let type:String
     }
+    struct StreamEnded: Codable {
+        let Message:String
+    }
+
+    // 1️⃣ 定義 batch request 結構
+    struct BatchRequest: Codable {
+        let requests: [String]
+    }
+
 
     struct ChatMessage: Codable {
         let user:String
@@ -368,6 +405,135 @@ class SocketServer {
 
 
     }
+
+
+    func GetRTMPConfig() -> [String: Any]  {
+
+        var payload: [String: Any] = [
+            "type": "RTMP",
+            "rtmpURL": userDefaults?.string(forKey: "rtmpURL") ?? "rtmp://192.168.0.102/live",
+            "rtmpKey": userDefaults?.string(forKey: "rtmpKey") ?? "test",
+            "BitRate": userDefaults?.integer(forKey: "bitRate") ?? 3_900_000,
+            "ChangeBit": userDefaults?.bool(forKey: "ChangeBit") ?? false,
+
+            "h264level": userDefaults?
+                .string(forKey: "h264level") ?? "AutoHigh",
+
+            "videoBuffer": userDefaults?
+                .integer(forKey: "BufferCount") ?? 5,
+
+            "useBic": userDefaults?
+                .bool(forKey: "useBic") ?? false,
+
+
+            "dstW": userDefaults?.integer(forKey: "dstW") ?? 0,
+            "dstH": userDefaults?.integer(forKey: "dstH") ?? 0,
+
+            "appVolume": userDefaults?
+                .double(forKey: "appVolume") ?? 1.0,
+            "micVolume": userDefaults?
+                .double(forKey: "micVolume") ?? 1.0,
+
+            "appVolumeAdd": userDefaults?
+                .double(forKey: "appAddVolume") ?? 1.0,
+            "micVolumeAdd": userDefaults?
+                .double(forKey: "micAddVolume") ?? 1.0,
+
+
+
+        ]
+
+        if let BCount = payload["videoBuffer"] as? Int {
+            if BCount < 1 {
+                userDefaults?.set(3, forKey: "BufferCount")
+                payload["videoBuffer"] = 3
+                sendlog(message: "修正BufferCount -> 3")
+            }
+        }
+
+        if let AppVol = payload["appVolume"] as? Double {
+            if AppVol == 0.0 {
+                userDefaults?.set(1.0, forKey: "appVolume")
+                payload["appVolume"] = 1.0
+                sendlog(message: "修正AppVol -> 1.0")
+            }
+        }
+
+        if let micVol = payload["micVolume"] as? Double {
+            if micVol == 0.0 {
+                userDefaults?.set(1.0, forKey: "micVolume")
+                payload["micVolume"] = 1.0
+                sendlog(message: "修正MicVol -> 1.0")
+            }
+        }
+
+        if let AppVol = payload["appVolumeAdd"] as? Double {
+            if AppVol == 0.0 {
+                userDefaults?.set(1.0, forKey: "appAddVolume")
+                payload["appVolumeAdd"] = 1.0
+                sendlog(message: "修正AppVolAdd -> 1.0")
+            }
+        }
+
+        if let micVolAdd = payload["micVolumeAdd"] as? Double {
+            if micVolAdd == 0.0 {
+                userDefaults?.set(1.0, forKey: "micAddVolume")
+                payload["micVolumeAdd"] = 1.0
+                sendlog(message: "修正MicVolAdd -> 1.0")
+            }
+        }
+
+
+
+        LPConfig.shared.streamStartTime = Date()
+        LPConfig.shared.StreamEnded = false
+
+
+        var CPayloadKey = payload
+
+        if let key = payload["rtmpKey"] as? String {
+            CPayloadKey["rtmpKey"] = fixlogSafeKey(key)
+        }
+
+
+        logTo("RTMP DebugRTMP[Socket]\(CPayloadKey)")
+
+
+        return payload
+    }
+
+    func GetLogConfig() -> [String: Any]  {
+        let payload: [String: Any] = [
+            "type": "logConfig",
+            "logMode": userDefaults?.integer(forKey: "logMode")
+            ?? 1,
+
+            "logURL": userDefaults?
+                .string(
+                    forKey: "logURL"
+                ) ?? "http://192.168.0.242:3000/post",
+
+
+
+            "onlogPage":userDefaults?.bool(forKey: "onlogPage")
+            ?? false,
+            "onAudioPage":userDefaults?.bool(forKey: "onAudioPage") ?? false,
+
+            "enableLog":userDefaults?.bool(forKey: "Enablelog")
+            ?? false,
+
+            "enableSocketLog":userDefaults?.bool(forKey: "EnableSocketlog")
+            ?? false
+
+
+        ]
+
+        logTo("RTMP DebugLogConfig[Socket]\(payload)")
+
+        return payload
+
+    }
+
     private func handleReceivedData(_ data: Data, from connection: NWConnection) {
 
 
@@ -380,7 +546,18 @@ class SocketServer {
             
             switch base.type {
                 
-                
+            case "Ended":
+                let dict = try decoder.decode(StreamEnded.self,
+                    from: data
+                )
+                let MES = dict.Message
+
+                sendlog(message: "Stream is Ended")
+                LPConfig.shared.StreamEnded = true
+                LPConfig.shared.StreamEndMes = MES
+
+
+
             case "StreamMessage":
 
                 // 假設你解析 JSON 得到 resultValue
@@ -463,128 +640,89 @@ class SocketServer {
                     "value": result
                 ]
                 
-                sendToAll(payload: payload)
+                queueSend(payload: payload)
+
+
+            case "batch":
+
+                let json = try JSONSerialization.jsonObject(with: data)
+
+                sendlog(message: "liveAppBactch Raw:\n\(json)")
+                // 先解析 requests 陣列
+
+                let dict = try decoder.decode(BatchRequest.self,
+                    from: data
+                )
+
+
+                let requests = dict.requests
+                sendlog(message: "liveAppBactch Req:\n\(requests)")
                 
+
+                var responses: [[String: Any]] = []
+
+                for req in requests {
+                    switch req {
+                    case "requestRTMP":
+                        let rtmpPayload: [String: Any] = GetRTMPConfig()
+
+                        responses.append(rtmpPayload)
+
+                    case "logConfig":
+                        let logPayload: [String: Any] = GetLogConfig()
+                        responses.append(logPayload)
+
+                    default:
+                        break
+                    }
+                }
+
+                let lastPayload: [String: Any] = [
+                    "type": "BatchEnded"
+                ]
+
+                responses.append(lastPayload)
+
+
+                // 將 responses 逐條發送給客戶端
+                for (index, resp) in responses.enumerated() {
+
+                    // 先發送給客戶端
+                    queueSend(payload: resp)
+
+                    // 只對第一個元素做檢查
+                    if index == 0, let type = resp["type"] as? String, type == "RTMP" {
+
+                        // 複製 payload 並做修改
+                        var logResp = resp
+                        if let rtmpKey = logResp["rtmpKey"] as? String {
+                            logResp["rtmpKey"] = fixlogSafeKey(rtmpKey)  // 你的自訂修改函數
+                        }
+
+                        // 打印日誌
+                        sendlog(message: "RESBatch-RTMP->\n\(logResp)")
+                    } else {
+                        // 如果不是第一個或不是 RTMP，正常打印或不打印
+                        sendlog(message: "RESBatch->\n\(resp)")
+                    }
+                }
+
+
+
+
 
             case "logConfig":
-                let payload: [String: Any] = [
-                    "type": "logConfig",
-                    "logMode": userDefaults?.integer(forKey: "logMode")
-                    ?? 1,
-                    
-                    "logURL": userDefaults?
-                        .string(
-                            forKey: "logURL"
-                        ) ?? "http://192.168.0.242:3000/post",
-                    
-                    
-                    
-                    "onlogPage":userDefaults?.bool(forKey: "onlogPage")
-                    ?? false,
-                    "onAudioPage":userDefaults?.bool(forKey: "onAudioPage") ?? false,
-                    
-                    "enableLog":userDefaults?.bool(forKey: "Enablelog")
-                    ?? false,
-                    
-                    "enableSocketLog":userDefaults?.bool(forKey: "EnableSocketlog")
-                    ?? false
 
+                let payload: [String: Any] = GetLogConfig()
 
-                ]
-                logTo("RTMP DebugLogConfig[Socket]\(payload)")
-                
+                queueSend(payload: payload)
 
-                sendToAll(payload: payload)
-                
             case "requestRTMP":
-                var payload: [String: Any] = [
-                    "type": "RTMP",
-                    "rtmpURL": userDefaults?.string(forKey: "rtmpURL") ?? "rtmp://192.168.0.102/live",
-                    "rtmpKey": userDefaults?.string(forKey: "rtmpKey") ?? "test",
-                    "BitRate": userDefaults?.integer(forKey: "bitRate") ?? 3_900_000,
-                    "ChangeBit": userDefaults?.bool(forKey: "ChangeBit") ?? false,
 
-                    "h264level": userDefaults?
-                        .string(forKey: "h264level") ?? "AutoHigh",
-
-                    "videoBuffer": userDefaults?
-                        .integer(forKey: "BufferCount") ?? 5,
-
-                    "useBic": userDefaults?
-                        .bool(forKey: "useBic") ?? false,
+                let payload: [String: Any] = GetRTMPConfig()
+                queueSend(payload: payload)
 
 
-                    "dstW": userDefaults?.integer(forKey: "dstW") ?? 0,
-                    "dstH": userDefaults?.integer(forKey: "dstH") ?? 0,
-                    
-                    "appVolume": userDefaults?
-                        .double(forKey: "appVolume") ?? 1.0,
-                    "micVolume": userDefaults?
-                        .double(forKey: "micVolume") ?? 1.0,
-                    
-                    "appVolumeAdd": userDefaults?
-                        .double(forKey: "appAddVolume") ?? 1.0,
-                    "micVolumeAdd": userDefaults?
-                        .double(forKey: "micAddVolume") ?? 1.0,
-                    
-                    
-                    
-                ]
-
-                if let BCount = payload["videoBuffer"] as? Int {
-                    if BCount < 1 {
-                        userDefaults?.set(3, forKey: "BufferCount")
-                        payload["videoBuffer"] = 3
-                        sendlog(message: "修正BufferCount -> 3")
-                    }
-                }
-
-                if let AppVol = payload["appVolume"] as? Double {
-                    if AppVol == 0.0 {
-                        userDefaults?.set(1.0, forKey: "appVolume")
-                        payload["appVolume"] = 1.0
-                        sendlog(message: "修正AppVol -> 1.0")
-                    }
-                }
-
-                if let micVol = payload["micVolume"] as? Double {
-                    if micVol == 0.0 {
-                        userDefaults?.set(1.0, forKey: "micVolume")
-                        payload["micVolume"] = 1.0
-                        sendlog(message: "修正MicVol -> 1.0")
-                    }
-                }
-
-                if let AppVol = payload["appVolumeAdd"] as? Double {
-                    if AppVol == 0.0 {
-                        userDefaults?.set(1.0, forKey: "appAddVolume")
-                        payload["appVolumeAdd"] = 1.0
-                        sendlog(message: "修正AppVolAdd -> 1.0")
-                    }
-                }
-
-                if let micVolAdd = payload["micVolumeAdd"] as? Double {
-                    if micVolAdd == 0.0 {
-                        userDefaults?.set(1.0, forKey: "micAddVolume")
-                        payload["micVolumeAdd"] = 1.0
-                        sendlog(message: "修正MicVolAdd -> 1.0")
-                    }
-                }
-
-
-
-                LPConfig.shared.streamStartTime = Date()
-
-                var CPayloadKey = payload
-                
-                if let key = payload["rtmpKey"] as? String {
-                    CPayloadKey["rtmpKey"] = fixlogSafeKey(key)
-                }
-                
-                logTo("RTMP DebugRTMP[Socket]\(CPayloadKey)")
-
-                sendToAll(payload: payload)
-                
             case "requestSettings":
                 logTo("Sync UserDefaults to client")
                 sendInitialUserDefaults(to: connection)
@@ -634,30 +772,61 @@ class SocketServer {
         
     }
 
-    // MARK: - Send Data
-    private func sendToAll(payload: [String: Any]) {
-        guard var data = try? JSONSerialization.data(withJSONObject: payload, options: []) else { return }
 
-        // ★ 關鍵：加換行符號當封包結尾
-        data.append(0x0A) // '\n'
+    private var sendQueues: [ObjectIdentifier: [[String: Any]]] = [:]
+    private var sendingFlags: [ObjectIdentifier: Bool] = [:]
 
+    func queueSend(payload: [String: Any]) {
+        for conn in connections.values {
+            enqueue(payload, to: conn)
+        }
+    }
 
-        for (_, conn) in connections {
+    private func enqueue(_ payload: [String: Any], to conn: NWConnection) {
+        let id = ObjectIdentifier(conn)
+        queue.async {
+            var queue = self.sendQueues[id] ?? []
+            queue.append(payload)
+            self.sendQueues[id] = queue
 
-            queue.async {
-                self.sendSemaphore.wait()
-                conn.send(content: data, completion: .contentProcessed { [weak self] error in
-
-                    defer { self?.sendSemaphore.signal() } // ✅ 釋放 semaphore
-
-                    if error != nil {
-                        self?.removeConnection(conn)
-                    }
-                })
+            if self.sendingFlags[id] != true {
+                self.sendingFlags[id] = true
+                self.sendNextPayload(for: conn)
             }
         }
-
     }
+
+    private func sendNextPayload(for conn: NWConnection) {
+        let id = ObjectIdentifier(conn)
+        queue.async {
+            guard var queue = self.sendQueues[id], !queue.isEmpty else {
+                self.sendingFlags[id] = false
+                return
+            }
+
+            let payload = queue.removeFirst()
+            self.sendQueues[id] = queue
+
+            guard let data = try? JSONSerialization.data(withJSONObject: payload, options: []) else {
+                self.sendNextPayload(for: conn) // 跳過錯誤 payload
+                return
+            }
+
+            var dataWithNewline = data
+            dataWithNewline.append(0x0A)
+
+            conn.send(content: dataWithNewline, completion: .contentProcessed { [weak self] error in
+                if let error {
+                    self?.removeConnection(conn)
+                    self?.logTo("Send error: \(error)")
+                    return
+                }
+                self?.sendNextPayload(for: conn) // 完成後再發下一個
+            })
+        }
+    }
+
+
 
     func broadcast(type:String = "settings",key: String, value: Any) {
         var payload: [String: Any] = [
@@ -670,7 +839,7 @@ class SocketServer {
             payload["message"] = value
         }
 
-        sendToAll(payload: payload)
+        queueSend(payload: payload)
     }
 
     func sendInitialUserDefaults(to connection: NWConnection? = nil) {
@@ -683,7 +852,7 @@ class SocketServer {
                 "value": safeJSONValue(value)
             ]
 
-            sendToAll(payload: payload)
+            queueSend(payload: payload)
         }
     }
 
@@ -700,6 +869,9 @@ class SocketServer {
         connection.cancel()
         connections[id] = nil
         receiveBuffers[id] = nil
+        sendQueues[id] = nil
+        sendingFlags[id] = nil
+        
         logTo("Connection removed. Remaining: \(self.connections.count)")
 
 
@@ -712,6 +884,7 @@ class SocketServer {
 
 
     func stopInternal() {
+
         listener?.stateUpdateHandler = nil
         listener?.cancel()
 
