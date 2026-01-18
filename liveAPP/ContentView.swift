@@ -2095,17 +2095,6 @@ struct homeView:View{
                                     nil,
                                     true
                                 )
-                            } else {
-                                CFNotificationCenterPostNotification(
-                                    cfCenter,
-                                    CFNotificationName(
-                                        "ResumeStream" as CFString
-                                    ),
-                                    nil,
-                                    nil,
-                                    true
-                                )
-
                             }
 
                         }

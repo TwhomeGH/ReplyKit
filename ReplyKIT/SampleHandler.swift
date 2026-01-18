@@ -806,10 +806,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "PauseStream":
-            self.broadcastPaused()
+            // TODO: 這裡不應該調用系統用函數
+            //self.broadcastPaused()
             sendlog(message: "你暫停直播畫面！")
         case "ResumeStream":
-            self.broadcastResumed()
+            // TODO: 這裡不應該調用系統用函數
+            //self.broadcastResumed()
             sendlog(message: "你恢復了直播畫面！")
 
 
