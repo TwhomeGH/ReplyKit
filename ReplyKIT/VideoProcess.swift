@@ -92,24 +92,18 @@ final class VideoFrameProcessor {
             }
 
 
-            Task(priority: .userInitiated) { [weak self] in
-                guard let self = self, self.isActive else { return }
-
-
-
-                if let rotated = await self.rotator?.rotateAsync(
+            // 保留 rotator 強引用直到 Task 完成
+            Task(priority: .userInitiated) { [rotator] in
+                if let rotated = await rotator?.rotateAsync(
                     sampleBuffer: sampleBuffer,
                     angle: .angle90
                 ) {
                     await self.mediaMixer.append(rotated)
                 } else {
-                    sendlog("GPU Fail!")
+                    self.sendlog("GPU Fail!")
                 }
-
-
-
-
             }
+
 
 
 

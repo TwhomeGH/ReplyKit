@@ -824,6 +824,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     // MARK: 初始化
     override init() {
 
+
         rtmpStream = RTMPStream(connection: rtmpConnection)
         
         ADWidth = RPConfig.shared.ADWidth
@@ -1297,6 +1298,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         isStopping = false
 
+        SocketClient.shared.setupConnection()
+
+
 
         //self.prepareCompressionSession()
 
@@ -1547,8 +1551,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         disconnectMonitorTask = nil
 
         ExtensionMessagePort.shared.disconnectFromApp()
-        SocketClient.shared.closeConnection()
-
 
 
         needVideoConfiguration = true

@@ -75,8 +75,7 @@ class SocketClient : @unchecked Sendable {
     private var isProcessingRemoteUpdate = false
 
     init(host: String = "localhost", port: UInt16 = 9322) {
-        setupConnection(host: host, port: port)
-        //observeLocalChanges()
+        
     }
 
   
@@ -93,6 +92,8 @@ class SocketClient : @unchecked Sendable {
     func closeConnection() {
 
         isConnection = false
+        isProcessingBatch = false
+
         connection?.stateUpdateHandler = nil
         connection?.cancel()
         connection = nil
@@ -223,7 +224,7 @@ class SocketClient : @unchecked Sendable {
 
 
 
-    func requestRTMPKEYAndLog(timeout: TimeInterval = 5.5) async -> Bool {
+    func requestRTMPKEYAndLog(timeout: TimeInterval = 25.0) async -> Bool {
         do {
             return try await withTimeout(timeout) {
                 await self._requestRTMPKEYAndLog()
@@ -356,10 +357,23 @@ class SocketClient : @unchecked Sendable {
     func sendStreamEnd() {
         let payload: [String: Any] = [
             "type": "Ended",
-            "Message":"直播結束"
-            
+            "Message": "直播結束"
         ]
-        sendPayload(payload)
+
+        queue.async { [weak self] in
+            guard let self = self else { return }
+
+            let group = DispatchGroup()
+            group.enter()
+
+            self.sendPayload(payload) { _ in
+                group.leave()
+            }
+
+            group.notify(queue: self.queue) {
+                self.closeConnection()
+            }
+        }
     }
 
     func sendSettings(key: String, value: Any) {
@@ -441,6 +455,28 @@ class SocketClient : @unchecked Sendable {
     }
 
 
+    // MARK: CallBack Payload
+    private func sendPayload(_ payload: [String: Any], completion: ((NWError?) -> Void)? = nil) {
+        guard let con = connection else {
+            logger.debug("Socket可能沒上線!")
+            completion?(nil)
+            return
+        }
+        guard var data = try? JSONSerialization.data(withJSONObject: payload, options: []) else {
+            completion?(nil)
+            return
+        }
+        data.append(0x0A)
+
+        con.send(content: data, completion: .contentProcessed({ error in
+            if let error = error {
+                self.logTo("Socket Send error: \(error.localizedDescription)")
+            }
+            completion?(error)
+        }))
+    }
+
+    // MARK: No CallBack Payload
     private func sendPayload(_ payload: [String: Any]) {
         guard let con = connection else {
             logger.debug("Socket可能沒上線!")
@@ -588,33 +624,38 @@ class SocketClient : @unchecked Sendable {
 
 
     private func handleJSONPacket(_ data: Data) {
-        do {
+        // 先轉成 String
+        guard let string = String(data: data, encoding: .utf8) else {
+            logTo("[Socket] Invalid UTF8")
+            return
+        }
 
+        // 按換行拆成多條 JSON
+        let lines = string.split(separator: "\n", omittingEmptySubsequences: true)
 
-            let json = try JSONSerialization.jsonObject(with: data)
+        for line in lines {
+            guard let lineData = line.data(using: .utf8) else { continue }
 
-            logger.debug("Revice Raw:\n\(json as! NSObject)")
+            do {
+                let json = try JSONSerialization.jsonObject(with: lineData)
+                logger.debug("Revice Raw:\n\(json as! NSObject)")
 
-            if let array = json as? [[String: Any]] {
-                // 處理批量
-                for item in array {
-                    if let itemData = try? JSONSerialization.data(withJSONObject: item, options: []) {
-                        handleSingleJSON(itemData)
+                if let array = json as? [[String: Any]] {
+                    // 批量 JSON
+                    for item in array {
+                        if let itemData = try? JSONSerialization.data(withJSONObject: item, options: []) {
+                            handleSingleJSON(itemData)
+                        }
                     }
+                } else if json is [String: Any] {
+                    handleSingleJSON(lineData)
+                } else {
+                    logTo("[Socket] Unknown JSON format")
                 }
-            } else if let dict = json as? [String: Any] {
-                // 單條處理
-                if let dictData = try? JSONSerialization.data(withJSONObject: dict, options: []) {
-                    handleSingleJSON(dictData)
-                }
-            } else {
-                logTo("[Socket] Unknown JSON format")
+
+            } catch {
+                logTo("[Socket] JSON decode failed: \(error)")
             }
-
-        } catch {
-            logTo("[Socket] JSON decode failed: \(error)")
-
-            receiveBuffer.removeAll()
         }
     }
 
@@ -772,7 +813,6 @@ class SocketClient : @unchecked Sendable {
 
         } catch {
             logTo("[Socket]Decode failed ❌ \(error)")
-            receiveBuffer.removeAll()   // ✅ 防止卡死 buffer
 
             // 安全處理所有可能的 continuation
             for (_, cont) in self.requestContinuations {
@@ -784,43 +824,50 @@ class SocketClient : @unchecked Sendable {
         }
     }
 
+    private func processReceiveBuffer() {
+        while true {
+            guard let newlineIndex = receiveBuffer.firstIndex(of: 0x0A) else {
+                break
+            }
+
+            // ① 拿出一行
+            let lineData = receiveBuffer[..<newlineIndex]
+
+            // ② 計算「實際要移除的元素數」
+            let removeCount = receiveBuffer.distance(
+                from: receiveBuffer.startIndex,
+                to: receiveBuffer.index(after: newlineIndex)
+            )
+
+            // ③ 移除
+            receiveBuffer.removeFirst(removeCount)
+
+            // ④ 空行跳過
+            guard !lineData.isEmpty else { continue }
+
+            handleJSONPacket(Data(lineData))
+        }
+        
+    }
+
     // MARK: - 接收資料
     private func receive() {
         guard let con = connection else { return }
 
-        let currentConnection = con   // ✅ 捕獲當下的 connection
+        let currentConnection = con // 捕獲當下的 connection
 
-        con.receive(minimumIncompleteLength: 1, maximumLength: 65536) {
-            [weak self] data, _, isComplete, error in
+        con.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
             guard let self = self else { return }
 
-            // ✅ 如果 connection 已經不是當初那條，直接丟棄
-            guard self.connection === currentConnection else {
-                return
-            }
+            guard self.connection === currentConnection else { return }
 
             if let data = data {
-
-                // 先 log raw bytes
                 logTo("🔹 Received \(data.count) bytes: \(String(decoding: data, as: UTF8.self))")
 
                 self.receiveBuffer.append(data)
 
-                // 處理每個完整 JSON 行
-                while let newlineIndex = self.receiveBuffer.firstIndex(of: 0x0A) {
-
-                    let lineData = self.receiveBuffer.prefix(upTo: newlineIndex)
-                    self.handleJSONPacket(lineData)
-
-                    // 安全刪除
-                    if newlineIndex < self.receiveBuffer.count {
-                        self.receiveBuffer.removeFirst(newlineIndex + 1)
-                    } else {
-                        self.receiveBuffer.removeAll()
-                    }
-
-                }
-
+                // 使用 processReceiveBuffer 處理所有可解析的 JSON
+                self.processReceiveBuffer()
 
             }
 
@@ -830,17 +877,15 @@ class SocketClient : @unchecked Sendable {
                 return
             }
 
-            if isComplete {
-
-                // 可以選擇什麼都不做，或等下一次 receive
-                self.logTo("Socket receive completed (EOF), keep connection")
-
+            // EOF 時處理最後一筆資料（可能沒有換行符）
+            if isComplete, !self.receiveBuffer.isEmpty {
+                self.processReceiveBuffer()
             }
 
-
-            self.receive()   // ✅ 只有在確認還是同一條連線才繼續
+            self.receive() // 繼續接收
         }
     }
+
     private var localChangesObserver: NSObjectProtocol?
 
     // MARK: - 監聽本地 UserDefaults
