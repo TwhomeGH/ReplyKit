@@ -525,7 +525,7 @@ class SocketClient : @unchecked Sendable {
 
 
             self.logTo(
-                "[Get]Audio App:\(c.appVolume) Mic:\(c.micVolume) AppAdd:\(c.appVolumeAdd) MicAdd:\(c.micVolumeAdd)",flush: true
+                "[Get]Audio App:\(c.appVolume) Mic:\(c.micVolume) AppAdd:\(c.appVolumeAdd) MicAdd:\(c.micVolumeAdd)"
             )
             RPConfig.shared.AppVolume = c.appVolume
             RPConfig.shared.MicVolume = c.micVolume
@@ -593,7 +593,7 @@ class SocketClient : @unchecked Sendable {
 
             let json = try JSONSerialization.jsonObject(with: data)
 
-            logTo("Raw:\n\(json)")
+            logger.debug("Revice Raw:\n\(json as! NSObject)")
 
             if let array = json as? [[String: Any]] {
                 // 處理批量
@@ -699,7 +699,7 @@ class SocketClient : @unchecked Sendable {
                             "[Get]logMode:\(env.logMode) logURL:\(env.logURL) SocketLog:\(env.enableSocketLog)"
                         )
                         self.logTo(
-                            "[Get]onLog:\(env.onlogPage) onAudio:\(env.onAudioPage) EnableLog:\(env.enableLog)",flush: true
+                            "[Get]onLog:\(env.onlogPage) onAudio:\(env.onAudioPage) EnableLog:\(env.enableLog)"
                         )
 
 
