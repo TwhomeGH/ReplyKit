@@ -127,14 +127,21 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         let lightRed3 = #colorLiteral(red: 1.0, green: 0.6, blue: 0.6, alpha: 1.0)
 
+        // 1️⃣ 插入圖標代替 "用時" / "已過"
+        let imageAttachment = NSTextAttachment()
+        imageAttachment.image = UIImage(systemName: "clock.fill")?.withTintColor(lightRed3, renderingMode: .alwaysOriginal)
+
+        // 調整圖標大小對齊文字
+        // 調整大小和垂直對齊
+        let imageHeight: CGFloat = elapsedLabelFont.lineHeight  // 用文字高度一致
+        let imageWidth: CGFloat = imageHeight
+        // bounds.y 負值會把圖片往上頂對齊文字基線
+        imageAttachment.bounds = CGRect(x: 0, y: (elapsedLabelFont.capHeight - imageHeight)/2, width: imageWidth, height: imageHeight)
+
+        let imageString = NSAttributedString(attachment: imageAttachment)
+
         // "已過" 紅色
-        elapsedAttr.append(NSAttributedString(
-            string: "已過 ",
-            attributes: [
-                .font: elapsedLabelFont,
-                .foregroundColor: lightRed3
-            ]
-        ))
+        elapsedAttr.append(imageString)
 
         // 數字白色
         elapsedAttr.append(NSAttributedString(
@@ -147,7 +154,7 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         // "秒" 紅色
         elapsedAttr.append(NSAttributedString(
-            string: " 秒 ",
+            string: " ",
             attributes: [
                 .font: elapsedLabelFont,
                 .foregroundColor: lightRed3
