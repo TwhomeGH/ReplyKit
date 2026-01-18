@@ -29,35 +29,66 @@ final class GPUSettingsViewModel: ObservableObject {
     @Published var configs: [GPUOutputConfig] = []
     @Published var selectedConfig: GPUOutputConfig? = nil
 
+    @Published var dstWBuffer: Int = 0
+    @Published var dstHBuffer: Int = 0
+
+
+    func rebuildDefaultsIfMissing() {
+        let defaultConfigs: [GPUOutputConfig] = [
+            GPUOutputConfig(name: "1080p", width: 1552, height: 1080),
+            GPUOutputConfig(name: "720p", width: 1034, height: 720),
+            GPUOutputConfig(name: "原始大小", width: 0, height: 0)
+        ]
+
+        for defaultCfg in defaultConfigs {
+            // 如果 configs 沒有同名的預設配置，就加入
+            if !configs.contains(where: { $0.name == defaultCfg.name }) {
+                configs.append(defaultCfg)
+            }
+        }
+
+        // 排序：先按照 defaultConfigs 的順序，後面接用戶自訂的
+            configs.sort { a, b in
+                let aIndex = defaultConfigs.firstIndex(where: { $0.name == a.name }) ?? Int.max
+                let bIndex = defaultConfigs.firstIndex(where: { $0.name == b.name }) ?? Int.max
+                return aIndex < bIndex
+            }
+
+
+    }
+
+    func updateDstTextFromSelected() {
+        dstWBuffer = selectedConfig.map { $0.width } ?? 0
+        dstHBuffer = selectedConfig.map { $0.height } ?? 0
+    }
+
     init() {
         configs = GPUOutputConfig.load(defaults: [
             GPUOutputConfig(name: "1080p", width: 1552, height: 1080),
             GPUOutputConfig(name: "720p", width: 1034, height: 720),
             GPUOutputConfig(name: "原始大小", width: 0, height: 0)
         ])
+
         selectedConfig = GPUOutputConfig.loadSelected() ?? configs.first
+
+        updateDstTextFromSelected()
+
         dstW = selectedConfig?.width ?? 0
         dstH = selectedConfig?.height ?? 0
         Rotate = selectedConfig?.Rotate ?? RotateDirection.landscapeRight
 
     }
 
-    func updateSelectedConfig() {
-        if let index = configs.firstIndex(where: { $0.id == selectedConfig?.id }) {
-            configs[index].width = dstW
-            configs[index].height = dstH
-            configs[index].Rotate = Rotate
 
-            selectedConfig = configs[index]
-            GPUOutputConfig.save(configs)
-            GPUOutputConfig.saveSelected(selectedConfig)
-        }
-    }
 }
 
 
 struct GPURotateView: View {
     @ObservedObject var viewModel: GPUSettingsViewModel
+
+
+    
+
 
 
     @AppStorage("useBic",store:userDefaults) private var useBic = false
@@ -85,25 +116,29 @@ struct GPURotateView: View {
                 HStack(spacing: 20) {
 
 
-                    Picker("選擇方向", selection: Binding(
-                        get: { viewModel.selectedConfig?.Rotate ?? .landscapeRight },
-                        set: { newRotate in
-                            guard var cfg = viewModel.selectedConfig else { return }
-
-                            cfg.Rotate = newRotate
-
-                            logTo("Rotate->\(cfg.Rotate)")
-
-                            viewModel.Rotate = newRotate
-                            viewModel.updateSelectedConfig()
-
-                            GPUOutputConfig.saveSelected(viewModel.selectedConfig)
+                    Picker(
+"選擇方向",
+ selection: Binding(
+    get: { viewModel.selectedConfig?.Rotate ?? .landscapeRight
+    },
+    set: { newRotate in
+                guard let cfg = viewModel.selectedConfig else {
+                    return
+                }
 
 
-                            CFNotificationCenterPostNotification(cfCenter, CFNotificationName("Rotate" as CFString), nil, nil, true)
+                cfg.Rotate = newRotate
 
-                        }
-                    )) {
+                logTo("Rotate->\(cfg.Rotate)")
+
+                viewModel.Rotate = newRotate
+
+
+                CFNotificationCenterPostNotification(cfCenter, CFNotificationName("Rotate" as CFString), nil, nil, true)
+
+            }
+        )
+) {
                         ForEach(RotateDirection.allCases) { direction in
                             Text(direction.description).tag(direction)
                         }
@@ -128,23 +163,42 @@ struct GPURotateView: View {
 
                 }
 
-                Picker("選擇配置", selection: $viewModel.selectedConfig) {
+                Picker(
+"選擇配置",
+ selection: Binding(
+                    get: { viewModel.selectedConfig?.id ?? UUID()
+ },
+                    set: { newID in
+
+                        if let cfg = viewModel.configs.first(
+                            where: { $0.id == newID
+                            }) {
+
+                            viewModel.selectedConfig = cfg
+                            viewModel.dstW = cfg.width
+                            viewModel.dstH = cfg.height
+                            viewModel.Rotate = cfg.Rotate
+
+
+                            CFNotificationCenterPostNotification(cfCenter, CFNotificationName("OutW" as CFString), nil, nil, true)
+                            CFNotificationCenterPostNotification(cfCenter, CFNotificationName("OutH" as CFString), nil, nil, true)
+
+                            GPUOutputConfig.save(viewModel.configs)
+                            GPUOutputConfig.saveSelected(viewModel.selectedConfig)
+
+
+                        }
+
+
+                    }
+                )
+) {
                     ForEach(viewModel.configs) { config in
-                        Text(config.name).tag(config as GPUOutputConfig?)
+                        Text(config.name).tag(config.id)
                     }
                 }
-                .onChange(of: viewModel.selectedConfig) { cfg in
-                    guard let cfg else { return }
-                    viewModel.dstW = cfg.width
-                    viewModel.dstH = cfg.height
-                    viewModel.Rotate = cfg.Rotate
 
-                    CFNotificationCenterPostNotification(cfCenter, CFNotificationName("OutW" as CFString), nil, nil, true)
-                    CFNotificationCenterPostNotification(cfCenter, CFNotificationName("OutH" as CFString), nil, nil, true)
 
-                    GPUOutputConfig.saveSelected(viewModel.selectedConfig)
-
-                }
 
                 Button("新增自訂配置") {
                     let newConfig = GPUOutputConfig(name: "自訂 \(viewModel.configs.count + 1)", width: viewModel.dstW, height: viewModel.dstH)
@@ -157,34 +211,47 @@ struct GPURotateView: View {
 
                     Button("刪除當前配置: \(viewModel.configs[index].name)") {
                         viewModel.configs.remove(at: index)
-                        viewModel.selectedConfig = viewModel.configs.first
+                        viewModel.selectedConfig = viewModel.configs.last
                         GPUOutputConfig.save(viewModel.configs)
                         GPUOutputConfig.saveSelected(viewModel.selectedConfig)
-                    }.disabled(viewModel.configs.count <= 3)
+                    }.disabled(
+                        viewModel.configs.count <= 1
+                    )
                     // 如果只剩 3 個，按鈕停用
                 }
 
-                TextField("寬度", value: $viewModel.dstW, format: .number)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                Button("重建預設配置") {
+                    viewModel.rebuildDefaultsIfMissing()
+                }
 
-                    .onChange(of: viewModel.dstW) { _ in
+                TextField("寬度", value: $viewModel.dstWBuffer, format: .number)
+                  .textFieldStyle(RoundedBorderTextFieldStyle())
 
-                            viewModel.updateSelectedConfig()
-                            CFNotificationCenterPostNotification(cfCenter, CFNotificationName("OutW" as CFString), nil, nil, true)
+                  .onChange(of: viewModel.dstWBuffer) { newVal in
 
-                    }
+                      viewModel.selectedConfig?.width = newVal
+                      viewModel.dstW = newVal
 
-                TextField("高度", value: $viewModel.dstH, format: .number)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                      CFNotificationCenterPostNotification(cfCenter, CFNotificationName("OutW" as CFString), nil, nil, true)
 
-                    .onChange(of: viewModel.dstH) { _ in
+                  }
 
-                            viewModel.updateSelectedConfig()
-                            CFNotificationCenterPostNotification(cfCenter, CFNotificationName("OutH" as CFString), nil, nil, true)
 
-                    }
 
-               
+                TextField("高度", value: $viewModel.dstHBuffer, format: .number)
+                  .textFieldStyle(RoundedBorderTextFieldStyle())
+
+                  .onChange(of: viewModel.dstHBuffer) { newVal in
+
+                      viewModel.selectedConfig?.height = newVal
+                      viewModel.dstH = newVal
+
+                      CFNotificationCenterPostNotification(cfCenter, CFNotificationName("OutH" as CFString), nil, nil, true)
+
+                  }
+
+
+
 
                 TextField(
                     "直接輸入數量",
@@ -195,7 +262,7 @@ struct GPURotateView: View {
                      .textFieldStyle(RoundedBorderTextFieldStyle())
                      .keyboardType(.numberPad)
 
-                     .onChange(of: viewModel.dstW) { _ in
+                     .onChange(of: viewModel.BufferCount) { _ in
 
                              // 將數值發送到 Extension 或 Rotator
                              CFNotificationCenterPostNotification(cfCenter, CFNotificationName("MaxInfilght" as CFString), nil, nil, true)

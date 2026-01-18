@@ -680,39 +680,59 @@ enum RotateDirection: Int, Codable, CaseIterable, Identifiable, CustomStringConv
 }
 
 
-struct GPUOutputConfig: Identifiable, Hashable, Codable {
+class GPUOutputConfig: Identifiable, ObservableObject, Codable {
     let id: UUID
-    var name: String
-    var width: Int
-    var height: Int
-    var Rotate: RotateDirection
+    @Published var name: String
+    @Published var width: Int
+    @Published var height: Int
+    @Published var Rotate: RotateDirection
 
     init(
         id: UUID = UUID(),
         name: String,
         width: Int,
         height: Int,
-        Rotate:RotateDirection = .landscapeRight
-     ) {
+        Rotate: RotateDirection = .landscapeRight
+    ) {
         self.id = id
         self.name = name
         self.width = width
         self.height = height
         self.Rotate = Rotate
+    }
 
+    // MARK: - Codable 支援
+    enum CodingKeys: CodingKey {
+        case id, name, width, height, Rotate
+    }
+
+    required init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        width = try container.decode(Int.self, forKey: .width)
+        height = try container.decode(Int.self, forKey: .height)
+        Rotate = try container.decode(RotateDirection.self, forKey: .Rotate)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(width, forKey: .width)
+        try container.encode(height, forKey: .height)
+        try container.encode(Rotate, forKey: .Rotate)
     }
 
     // MARK: - 保存 & 讀取 整個配置列表
     static private let userDefaultsKey = "gpuConfigs"
     static private let userDefaultsSelectKey = "gpuConfigsSelect"
 
-
     static func save(_ configs: [GPUOutputConfig]) {
         let encoder = JSONEncoder()
         if let data = try? encoder.encode(configs) {
             UserDefaults.standard.set(data, forKey: userDefaultsKey)
         }
-        
     }
 
     static func load(defaults: [GPUOutputConfig]? = nil) -> [GPUOutputConfig] {
@@ -725,32 +745,31 @@ struct GPUOutputConfig: Identifiable, Hashable, Codable {
     }
 
     // MARK: - 保存當前選擇的配置
-        static func saveSelected(_ config: GPUOutputConfig?) {
-            guard let config else {
-                UserDefaults.standard.removeObject(forKey: userDefaultsSelectKey)
-                return
-            }
-            let encoder = JSONEncoder()
-            if let data = try? encoder.encode(config) {
-                UserDefaults.standard.set(data, forKey: userDefaultsSelectKey)
-            }
-        }
-
-        // MARK: - 讀取當前選擇的配置
-        static func loadSelected() -> GPUOutputConfig? {
-            if let data = UserDefaults.standard.data(forKey: userDefaultsSelectKey),
-               let config = try? JSONDecoder().decode(GPUOutputConfig.self, from: data) {
-                return config
-            }
-            return nil
-        }
-
-        // MARK: - 快速清除所有記錄（可選）
-        static func resetAll() {
-            UserDefaults.standard.removeObject(forKey: userDefaultsKey)
+    static func saveSelected(_ config: GPUOutputConfig?) {
+        guard let config else {
             UserDefaults.standard.removeObject(forKey: userDefaultsSelectKey)
+            return
         }
+        let encoder = JSONEncoder()
+        if let data = try? encoder.encode(config) {
+            UserDefaults.standard.set(data, forKey: userDefaultsSelectKey)
+        }
+    }
 
+    // MARK: - 讀取當前選擇的配置
+    static func loadSelected() -> GPUOutputConfig? {
+        if let data = UserDefaults.standard.data(forKey: userDefaultsSelectKey),
+           let config = try? JSONDecoder().decode(GPUOutputConfig.self, from: data) {
+            return config
+        }
+        return nil
+    }
+
+    // MARK: - 快速清除所有記錄（可選）
+    static func resetAll() {
+        UserDefaults.standard.removeObject(forKey: userDefaultsKey)
+        UserDefaults.standard.removeObject(forKey: userDefaultsSelectKey)
+    }
 }
 
 
