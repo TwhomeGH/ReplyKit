@@ -785,6 +785,9 @@ struct LogSettingsView: View {
 
     @StateObject private var gpuSettings = GPUSettingsViewModel()
 
+    @AppStorage("fadeTime", store: userDefaults) private var fadeTime = 0.5
+    @AppStorage("scrollTime", store: userDefaults) private var scrollTime = 0.2
+
 
 
     var body: some View {
@@ -820,6 +823,88 @@ struct LogSettingsView: View {
                 }
 
 
+                Section(header: Text("PIP 子母窗口")) {
+
+                    TextField(
+                        "淡出時長 直接輸入時長 1.0",
+                        value: $fadeTime,
+                        format: .number
+                    )
+                        .frame(maxWidth: .infinity)
+                         .textFieldStyle(RoundedBorderTextFieldStyle())
+                         .keyboardType(.numberPad)
+
+                         .onChange(of: fadeTime) { _ in
+
+                             logTo("FadeTime -> \(fadeTime) ")
+                             LPConfig.shared.MessageFadeTime = fadeTime
+                             PIPService.shared.fadeTime(fadeTime)
+
+                        }
+
+                    Stepper(
+                        "訊息淡出時間：\(String(format: "%.2f", fadeTime))",
+                        value: $fadeTime,
+                        in: 0...100,
+                        step: 0.1
+
+                    )
+                    .onChange(of: fadeTime) { _ in
+
+                            logTo("FadeTime -> \(fadeTime) ")
+                        LPConfig.shared.MessageFadeTime = fadeTime
+                        PIPService.shared.fadeTime(fadeTime)
+
+
+                        }
+
+                    Text("建議值: 0.5 秒"
+                    )
+                            .font(.footnote)
+                            .foregroundColor(.secondary)
+                            .padding(.bottom, 5)
+
+
+                    TextField(
+                        "滾動時長 直接輸入時長 1.0",
+                        value: $scrollTime,
+                        format: .number
+                    )
+                        .frame(maxWidth: .infinity)
+                         .textFieldStyle(RoundedBorderTextFieldStyle())
+                         .keyboardType(.numberPad)
+
+                         .onChange(of: scrollTime) { _ in
+
+                             logTo("ScrollTime -> \(scrollTime) ")
+                             LPConfig.shared.ScrollTime = scrollTime
+                             PIPService.shared.scrollTime(scrollTime)
+
+                        }
+
+                    Stepper(
+                        "滾動時間：\(String(format: "%.2f", scrollTime))",
+                        value: $scrollTime,
+                        in: 0...100,
+                        step: 0.1
+
+                    )
+                    .onChange(of: scrollTime) { _ in
+
+                        logTo("scrollTime -> \(scrollTime) ")
+                        LPConfig.shared.ScrollTime = scrollTime
+                        PIPService.shared.scrollTime(scrollTime)
+
+
+                        }
+
+                    Text("建議值: 0.2 秒"
+                    )
+                            .font(.footnote)
+                            .foregroundColor(.secondary)
+                            .padding(.bottom, 5)
+
+                }
 
 
 
@@ -995,47 +1080,27 @@ struct LogTextView: UIViewRepresentable {
 
             if let text = tv.text {
                 let lines = text.components(separatedBy: "\n")
-                let trimmedLines = lines.dropFirst(excessLines)
+
+                var trimmedLines = lines
+
+                if lines.count > maxLines {
+                       trimmedLines = Array(lines.suffix(maxLines))
+                   }
+
                 let newText = trimmedLines.joined(separator: "\n") + "\n目前最多保留:\(maxLines)行日誌\n"
-                tv.textStorage.setAttributedString(
-                    NSAttributedString(
-                        string: newText,
-                        attributes: [.font: tv.font!, .foregroundColor: tv.textColor!]
-                    )
-                )
-                currentLineCount = maxLines
+
+                tv.text =  newText
+
+                currentLineCount = trimmedLines.count
             }
         }
         
 
 
-        private func performAppend(_ messages: [LogItem]) {
-            guard let tv = textView else { return }
-
-            tv.textStorage.beginEditing()
-            for (i, msg) in messages.enumerated() {
-                currentLineCount += 1
-                let attrText = NSAttributedString(
-                    string: "\(currentLineCount):\(i): \(msg.message)\n",
-                    attributes: [.font: tv.font!, .foregroundColor: tv.textColor!]
-                )
-                tv.textStorage.append(attrText)
-
-            }
-            tv.textStorage.endEditing()
-
-
-            // ✅ 超過上限就裁掉前面的行
-            trimTextStorageIfNeeded(tv)
-
-            userIsInteracting = false
-
-
-            scrollIfNeeded()
-        }
-
 
         // 新增訊息
+        private var messageLines: [String] = []
+
         private var appendQueue = [LogItem]()
         private var appendWorkItem: DispatchWorkItem?
 
@@ -1050,39 +1115,49 @@ struct LogTextView: UIViewRepresentable {
                 let workItem = DispatchWorkItem { [weak self] in
                     guard let self = self, let tv = self.textView else { return }
 
-                    tv.textStorage.beginEditing()
 
-                    // 一次性生成 NSAttributedString
-                    let combined = NSMutableAttributedString()
-                    for msg in self.appendQueue {
-                        self.currentLineCount += 1
-                        let attrText = NSAttributedString(
-                            string: "\(self.currentLineCount): \(msg.message)\n",
-                            attributes: [.font: tv.font!, .foregroundColor: tv.textColor!]
-                        )
-                        combined.append(attrText)
+                    // 加入純訊息（不含編號）
+                     for msg in self.appendQueue {
+                         self.messageLines.append(msg.message)
+                     }
+
+
+
+                    // 重建 tv.text
+                    var newText = ""
+
+                    for (index, line) in self.messageLines.enumerated() {
+                        newText += "\(index + 1): \(line)\n"
                     }
 
-                    tv.textStorage.append(combined)
-                    tv.textStorage.endEditing()
+                    // 加上提示行
 
+                    if self.messageLines.count >= maxLines {
+
+                        let overflow = self.messageLines.count - self.maxLines
+                        self.messageLines.removeFirst(overflow + (self.maxLines/2))
+
+                        self.messageLines.append("目前最多保留:\(self.maxLines)行日誌\n")
+
+                    }
+
+                    // 更新 UITextView
+                    tv.text = newText
+
+                    self.currentLineCount = self.messageLines.count
+
+                    // 清空 appendQueue
                     self.appendQueue.removeAll()
-
-                    // 裁剪多餘行
-                    self.trimTextStorageIfNeeded(tv)
+                    self.appendWorkItem = nil
 
                     // 自動滾動
                     self.scrollIfNeeded()
-
-                    self.appendWorkItem = nil
                 }
 
                 appendWorkItem = workItem
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: workItem)
             }
         }
-
-
         // 判斷是否滾動
             func scrollIfNeeded() {
                 guard let tv = textView else { return }

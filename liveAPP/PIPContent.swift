@@ -186,12 +186,16 @@ final class PIPServiceMessages {
 
     // 滾動與漸隱
     var containerHeight: CGFloat { container.bounds.height }
-    var scrollSpeed: CGFloat = 1.5           // 每幀上移的像素
+    var scrollSpeed: CGFloat = 0.2           // 每幀上移的像素
+
     var fadeOutThreshold: CGFloat { container.bounds.height * 0.05 }
     // 舊訊息漸隱開始的高度
 
     private var lastFadeTriggerTime: CFTimeInterval = 0
-    private let fadeInterval: CFTimeInterval = 1.0
+
+    var fadeInterval: CFTimeInterval = LPConfig.shared.MessageFadeTime
+    
+
 
 
     private func updateFadeCandidateIfNeeded() {
@@ -267,8 +271,9 @@ final class PIPServiceMessages {
     // Animation
     private var isAnimating = false
     private var displayLink: CADisplayLink?
-    private var animationSteps = 15
-    private var currentStep = 0
+
+  //  private var animationSteps = 60
+  //  private var currentStep = 0
 
     enum MessageType {
         case primary

@@ -49,6 +49,9 @@ final class LPConfig {
     // 其他配置
     var maxInflightFrames: Int = 4
 
+    var MessageFadeTime:Double
+    var ScrollTime:Double
+
     var StreamEnded: Bool = false
     var StreamEndMes:String = ""
 
@@ -75,6 +78,9 @@ final class LPConfig {
         enableLog=userDefaults?.bool(forKey: "Enablelog") ?? false
         logURL = userDefaults?.string(forKey: "logURL") ?? "http://192.168.0.242:3000/post"
         SocketLog = userDefaults?.bool(forKey: "EnableSocketlog") ?? false
+
+        ScrollTime = userDefaults?.double(forKey: "scrollTime") ?? 0.2
+        MessageFadeTime =  userDefaults?.double(forKey: "fadeTime") ?? 0.5
 
     }
 
