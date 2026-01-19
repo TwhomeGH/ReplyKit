@@ -956,7 +956,7 @@ struct LogTextView: UIViewRepresentable {
 
         private func updateNearBottom() {
             guard let tv = textView else { return }
-            guard userIsInteracting == false else { return  }
+
 
             // 如果 App 在背景，先緩存訊息
             guard UIApplication.shared.applicationState == .active else {
@@ -991,37 +991,24 @@ struct LogTextView: UIViewRepresentable {
             guard currentLineCount > maxLines else { return }
 
             let excessLines = currentLineCount - maxLines
-            currentLineCount = 0
+            guard excessLines > 0 else { return }
 
-            var linesToRemove = excessLines
-            let fullText = tv.textStorage.string
-
-            var cutIndex = fullText.startIndex
-
-            for ch in fullText {
-                if ch == "\n" {
-                    linesToRemove -= 1
-                    if linesToRemove == 0 {
-                        cutIndex = fullText.index(after: cutIndex)
-                        break
-                    }
-                }
-                cutIndex = fullText.index(after: cutIndex)
-            }
-
-
-            let trimmed = fullText[cutIndex...] + "\n目前最多保留:\(maxLines)以內的日誌可視\n"
-
-            tv.textStorage.setAttributedString(
-                NSAttributedString(
-                    string: String(trimmed),
-                    attributes: [
-                        .font: tv.font!,
-                        .foregroundColor: tv.textColor!
-                    ]
+            if let text = tv.text {
+                let lines = text.components(separatedBy: "\n")
+                let trimmedLines = lines.dropFirst(excessLines)
+                let newText = trimmedLines.joined(separator: "\n") + "\n目前最多保留:\(maxLines)行日誌\n"
+                tv.textStorage.setAttributedString(
+                    NSAttributedString(
+                        string: newText,
+                        attributes: [.font: tv.font!, .foregroundColor: tv.textColor!]
+                    )
                 )
-            )
+                currentLineCount = maxLines
+            }
         }
+        
+
+
         private func performAppend(_ messages: [LogItem]) {
             guard let tv = textView else { return }
 
@@ -1049,29 +1036,57 @@ struct LogTextView: UIViewRepresentable {
 
 
         // 新增訊息
+        private var appendQueue = [LogItem]()
+        private var appendWorkItem: DispatchWorkItem?
+
         func appendMessages(_ newMessages: [LogItem]) {
             guard !newMessages.isEmpty else { return }
 
-            // 如果 App 在背景，先緩存訊息
-            if UIApplication.shared.applicationState != .active {
-                bufferedMessages.append(contentsOf: newMessages)
+            // 緩存到 queue
+            appendQueue.append(contentsOf: newMessages)
 
-                return
+            // 延遲批量 append，避免每條都操作 UITextView
+            if appendWorkItem == nil {
+                let workItem = DispatchWorkItem { [weak self] in
+                    guard let self = self, let tv = self.textView else { return }
+
+                    tv.textStorage.beginEditing()
+
+                    // 一次性生成 NSAttributedString
+                    let combined = NSMutableAttributedString()
+                    for msg in self.appendQueue {
+                        self.currentLineCount += 1
+                        let attrText = NSAttributedString(
+                            string: "\(self.currentLineCount): \(msg.message)\n",
+                            attributes: [.font: tv.font!, .foregroundColor: tv.textColor!]
+                        )
+                        combined.append(attrText)
+                    }
+
+                    tv.textStorage.append(combined)
+                    tv.textStorage.endEditing()
+
+                    self.appendQueue.removeAll()
+
+                    // 裁剪多餘行
+                    self.trimTextStorageIfNeeded(tv)
+
+                    // 自動滾動
+                    self.scrollIfNeeded()
+
+                    self.appendWorkItem = nil
+                }
+
+                appendWorkItem = workItem
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: workItem)
             }
-
-            // App 在前景，直接 append
-            performAppend(newMessages)
-
         }
 
 
         // 判斷是否滾動
             func scrollIfNeeded() {
                 guard let tv = textView else { return }
-                guard userIsInteracting == false else {
-                    logger.debug("正在交互")
-                    return
-                }
+
 
                 let visibleHeight = tv.bounds.height - tv.adjustedContentInset.top - tv.adjustedContentInset.bottom
                 let contentHeight = tv.contentSize.height
