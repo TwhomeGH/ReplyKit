@@ -257,20 +257,12 @@ final class AudioProcessor : @unchecked Sendable {
 
     func cleanup() {
         isActive = false
-        // 清空 queue 上未執行的任務
-        queue.sync {
-
-
-        } // 確保之前的所有 block 都完成
-        // Task 目前無法強制取消，確保 isActive 檢查能立即返回
-
-
-
 
     }
     deinit {
         sendlog(message:"🧹 AudioProcessor deinit — resources released")
     }
+
 
     func updateVolumes(
         appAdd: Float? = nil,
@@ -342,17 +334,17 @@ final class AudioProcessor : @unchecked Sendable {
             // 音訊 append
 
 
-        Task(priority: .userInitiated) { [weak self] in
-            guard let self = self, self.isActive else { return }
+        appendAsync(amplified, track: trackType.rawValue)
 
-            await self.mediaMixer.append(amplified, track: trackType.rawValue)
+    }
 
+    private func appendAsync(
+        _ buffer: CMSampleBuffer,
+        track: UInt8
+    ) {
+        Task.detached(priority: .userInitiated) {
+            await self.mediaMixer.append(buffer, track: track)
         }
-
-
-
-
-
     }
 
 }
