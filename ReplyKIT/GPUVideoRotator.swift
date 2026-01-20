@@ -117,62 +117,54 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     private let maxPoolSize: Int
 
     
-    // MARK: - Sync GPU semaphore
-    final class SyncSemaphore {
-        private let lock = NSLock()
-        private var availableCount: Int
+    // MARK: - ASync GPU semaphore
+    actor AsyncSemaphore {
         private let capacity: Int
+        private var available: Int
+        private var waiters: [CheckedContinuation<Void, Never>] = []
 
-        init(capacity: Int) {
-            self.capacity = capacity
-            self.availableCount = capacity
+        init(value: Int) {
+            self.capacity = value
+            self.available = value
         }
 
-        func wait() {
-            lock.lock()
-            defer { lock.unlock() }
-            while availableCount <= 0 {
-                // 用最簡單方式阻塞（非 async，等待其他 GPU 完成）
-                lock.unlock()
-                usleep(1000) // 1ms
-                lock.lock()
+        func wait() async {
+            if available > 0 {
+                available -= 1
+                return
             }
-            availableCount -= 1
+
+            await withCheckedContinuation { cont in
+                waiters.append(cont)
+            }
         }
 
         func signal() {
-            lock.lock()
-            availableCount = min(availableCount + 1, capacity)
-            lock.unlock()
+            if !waiters.isEmpty {
+                let cont = waiters.removeFirst()
+                cont.resume()
+            } else {
+                available = min(available + 1, capacity)
+            }
         }
 
-        func waitUntilAllReleased() {
-            lock.lock()
-            while availableCount < capacity {
-                lock.unlock()
-                usleep(1000)
-                lock.lock()
-            }
-            lock.unlock()
+        func reset() {
+            available = capacity
+            waiters.removeAll()
         }
     }
 
-
-    private let gpuSemaphore = SyncSemaphore(capacity: 3)
+    private let gpuSemaphore = AsyncSemaphore(value: 3)
 
 
 
     func cleanup() async {
         guard isActive else { return }
         isActive = false   // 先阻止新 GPU 任務進來
-        cleanGPU()
         cleanupD()
     }
 
-    func cleanGPU() {
-        // 等待所有 in-flight GPU 完成
-        gpuSemaphore.waitUntilAllReleased()
-    }
+
     // MARK: - Cleanup
     func cleanupD() {
         isActive = false
@@ -313,21 +305,9 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     // MARK: - Enqueue Frame
     func rotateAsync(sampleBuffer: CMSampleBuffer, angle: RotationAngle) async -> CMSampleBuffer? {
-            gpuSemaphore.wait()
+        await gpuSemaphore.wait()
 
 
-        // ✅ 只用在 early return 的補救；成功路徑不要走這個
-        var didSignal = false
-
-        func signalIfNeeded() {
-            if didSignal { return }
-            didSignal = true
-            self.gpuSemaphore.signal()
-        }
-
-        defer {
-            signalIfNeeded();
-        }
 
         // 延遲初始化 Metal/TextureCache
         guard ensureMetalResources() else {
@@ -374,8 +354,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                        dstY: outSet.yTex, dstUV: outSet.uvTex, angle: angle)
 
 
-        // ✅ 成功路徑：semaphore 交給 GPU completion
-        didSignal = true
 
         return await withCheckedContinuation { (cont: CheckedContinuation<CMSampleBuffer?, Never>) in
 
@@ -391,7 +369,9 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                 cont.resume(returning: wrapped)
 
                 // ✅ semaphore 一定要在 GPU 真完成後 signal（現在位置正確）
-                self.gpuSemaphore.signal()
+                Task {
+                    await self.gpuSemaphore.signal()
+                }
 
                 self.logTo("GPU Frame down")
 
