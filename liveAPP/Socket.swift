@@ -592,7 +592,10 @@ class SocketServer {
             
             
             switch base.type {
-                
+
+            case "heartbeat":
+                sendlog(message: "收到Socket心跳維持連線")
+
             case "Ended":
                 let dict = try decoder.decode(StreamEnded.self,
                     from: data

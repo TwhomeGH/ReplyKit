@@ -237,3 +237,70 @@ SocketApi服務端參閱以下:
         -	可搭配心跳訊息，定期維持連線活躍。
 
         -	長連線需要注意網路穩定性與錯誤處理，避免程式崩潰。
+
+    5. 心跳訊息
+
+        為了保持連線活躍，防止伺服器判定連線閒置而斷開，客戶端可以定期發送心跳訊息
+
+        設計上是每60秒會清理一次 所以建議每30秒或在50秒時發一次維持
+
+
+        -	發送內容：只需發送一個 JSON，type 設為 "heartbeat"，並以 \n 結尾即可。
+
+        -	伺服器行為：收到心跳訊息後會重置 idleTimer，確保連線不被自動關閉。
+
+        欄位說明
+
+        | 欄位 | 類型 | 說明 |
+        | -- | -- | -- |
+        | type | String | 消息類型，固定 "heartbeat" |
+
+        Python 範例
+
+        ```python
+        import socket
+        import json
+        import time
+
+        HOST = "伺服器IP"
+        PORT = 9322
+
+        def create_connection():
+            while True:
+                try:
+                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    s.connect((HOST, PORT))
+                    print("Connected to server")
+                    return s
+                except Exception as e:
+                    print("Connection failed, retrying in 3s...", e)
+                    time.sleep(3)
+
+        s = create_connection()
+
+        while True:
+            heartbeat = {
+                "type": "heartbeat"
+            }
+
+            try:
+                s.sendall((json.dumps(heartbeat) + "\n").encode("utf-8"))
+                print("Heartbeat sent")
+            except BrokenPipeError:
+                print("Broken pipe! Reconnecting...")
+                s.close()
+                s = create_connection()
+                s.sendall((json.dumps(heartbeat) + "\n").encode("utf-8"))
+
+            time.sleep(30)  # 每 30 秒發送一次
+        ```
+
+        
+
+
+
+
+
+
+
+
