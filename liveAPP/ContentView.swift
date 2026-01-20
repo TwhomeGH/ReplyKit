@@ -788,6 +788,10 @@ struct LogSettingsView: View {
     @AppStorage("fadeTime", store: userDefaults) private var fadeTime = 0.5
     @AppStorage("scrollTime", store: userDefaults) private var scrollTime = 0.2
 
+    @AppStorage("PIPFontMain", store: userDefaults) private var PIPFontMain = 14.0
+    @AppStorage("PIPFontSecond", store: userDefaults) private var PIPFontSecond = 10.0
+
+
 
 
     var body: some View {
@@ -824,6 +828,91 @@ struct LogSettingsView: View {
 
 
                 Section(header: Text("PIP 子母窗口")) {
+
+                    // MARK: 主要訊息
+
+                    TextField(
+                        "主訊息文字與圖片大小 直接輸入大小 14",
+                        value: $PIPFontMain,
+                        format: .number
+                    )
+                        .frame(maxWidth: .infinity)
+                         .textFieldStyle(RoundedBorderTextFieldStyle())
+                         .keyboardType(.numberPad)
+
+                         .onChange(of: PIPFontMain) { _ in
+
+                             logTo("主訊息文字與圖片大小 -> \(PIPFontMain) ")
+                             LPConfig.shared.PIPChatFontMainSize = PIPFontMain
+
+                        }
+
+                    Stepper(
+                        "主訊息文字與圖片大小：\(PIPFontMain)",
+                        value: $PIPFontMain,
+                        in: 0...100,
+                        step:0.1
+
+                    )
+                    .onChange(of: PIPFontMain) { _ in
+
+                        logTo("Main FontSize -> \(PIPFontMain) ")
+                        LPConfig.shared.PIPChatFontMainSize = PIPFontMain
+
+
+                        }
+
+                    Text("建議值: 14.0"
+                    )
+                            .font(.footnote)
+                            .foregroundColor(.secondary)
+                            .padding(.bottom, 5)
+
+
+
+                    // MARK: 次要訊息
+                    TextField(
+                        "次要訊息文字與圖片大小 直接輸入大小 10",
+                        value: $PIPFontSecond,
+                        format: .number
+                    )
+                        .frame(maxWidth: .infinity)
+                         .textFieldStyle(RoundedBorderTextFieldStyle())
+                         .keyboardType(.numberPad)
+
+                         .onChange(of: PIPFontSecond) { _ in
+
+                             logTo("次要訊息文字與圖片大小 -> \(PIPFontSecond) ")
+                             LPConfig.shared.PIPChatFontSecondSize = PIPFontSecond
+
+                        }
+
+                    Stepper(
+                        "主訊息文字大小：\(PIPFontSecond)",
+                        value: $PIPFontSecond,
+                        in: 0...100,
+                        step:0.1
+
+                    )
+                    .onChange(of: PIPFontSecond) { _ in
+
+                            logTo("Second FontSize -> \(PIPFontSecond) ")
+                        LPConfig.shared.PIPChatFontSecondSize = PIPFontSecond
+
+
+                        }
+
+                    Text("建議值: 10.0"
+                    )
+                            .font(.footnote)
+                            .foregroundColor(.secondary)
+                            .padding(.bottom, 5)
+
+
+
+
+
+                    // MARK: FadeTime
 
                     TextField(
                         "淡出時長 直接輸入時長 1.0",
@@ -865,6 +954,8 @@ struct LogSettingsView: View {
                             .padding(.bottom, 5)
 
 
+
+                    // 滾動時長
                     TextField(
                         "滾動時長 直接輸入時長 1.0",
                         value: $scrollTime,

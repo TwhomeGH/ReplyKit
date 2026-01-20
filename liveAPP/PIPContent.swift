@@ -122,6 +122,10 @@ actor PiPImageCache {
 
 
 
+enum MessageType {
+    case primary
+    case secondary
+}
 
 // MARK: Message Model
 final class MessageLayerTuple:Equatable {
@@ -129,6 +133,8 @@ final class MessageLayerTuple:Equatable {
     let name: CATextLayer?
     let message: CATextLayer?
     let gift: CALayer?
+
+    var type: MessageType
 
 
     var isFadingOut: Bool = false
@@ -162,6 +168,8 @@ final class MessageLayerTuple:Equatable {
     var cachedNameSize: CGSize = .zero
     var cachedMessageSize: CGSize = .zero
     var cachedLastLineWidth: CGFloat = 0
+    var cachedLastLineHeight: CGFloat = 0
+
 
 
     // ⚡ 主要屬性比較用
@@ -170,11 +178,18 @@ final class MessageLayerTuple:Equatable {
     }
 
 
-    init(avatar: CALayer?, name: CATextLayer?, message: CATextLayer?, gift: CALayer?) {
+    init(
+        avatar: CALayer?,
+        name: CATextLayer?,
+        message: CATextLayer?,
+        gift: CALayer?,
+        type:MessageType = .primary
+    ) {
         self.avatar = avatar
         self.name = name
         self.message = message
         self.gift = gift
+        self.type = type
     }
 }
 
@@ -188,7 +203,10 @@ final class PIPServiceMessages {
     var containerHeight: CGFloat { container.bounds.height }
     var scrollSpeed: CGFloat = 0.2           // 每幀上移的像素
 
-    var fadeOutThreshold: CGFloat { container.bounds.height * 0.05 }
+    var fadeOutThreshold: CGFloat {
+        // 當 stackedMessages 總高度超過 container，最上面那條就應該 fade
+        return container.bounds.height - (stackedMessages.reduce(0) { $0 + $1.height } - container.bounds.height)
+    }
     // 舊訊息漸隱開始的高度
 
     private var lastFadeTriggerTime: CFTimeInterval = 0
@@ -206,9 +224,20 @@ final class PIPServiceMessages {
         }
 
 
+
         fadeCandidate = stackedMessages
-            .filter { $0.alpha > 0 && $0.targetY + $0.height > fadeOutThreshold }
-            .min(by: { $0.targetY < $1.targetY })
+            .filter {
+                $0.alpha > 0 &&
+                !$0.isNew &&
+                abs($0.startY - $0.targetY) < snapThreshold &&
+                !($0.isFadingOut) &&
+
+                ($0.startY >= 0) &&
+                ($0.startY + $0.height <= container.bounds.height)  // 完全在可視範圍內
+
+
+            }
+            .min(by: { $0.startY < $1.startY })
 
         if fadeCandidate != nil {
             lastFadeTriggerTime = CACurrentMediaTime()
@@ -272,13 +301,8 @@ final class PIPServiceMessages {
     private var isAnimating = false
     private var displayLink: CADisplayLink?
 
-  //  private var animationSteps = 60
-  //  private var currentStep = 0
 
-    enum MessageType {
-        case primary
-        case secondary
-    }
+
 
     init(size: CGSize) {
         container.frame = CGRect(origin: .zero, size: size)
@@ -351,7 +375,7 @@ final class PIPServiceMessages {
             - leftPadding * 2
             - avatarSizeLocal
             - horizontalSpacing
-            - giftSizeLocal - 2
+            - giftSizeLocal
 
 
         var remainingText = message
@@ -465,6 +489,7 @@ final class PIPServiceMessages {
 
     // MARK: - Build Message Tuple（抽出來重用）
     func buildMessageTuple(
+        type:MessageType = .primary,
         user: String,
         message: String,
         img: UIImage?,
@@ -481,6 +506,8 @@ final class PIPServiceMessages {
 
 
     ) -> MessageLayerTuple {
+
+
 
         // Avatar
         var avatarLayer :CALayer?
@@ -518,6 +545,8 @@ final class PIPServiceMessages {
             layer.foregroundColor = UIColor.white.cgColor
             layer.contentsScale = UIScreen.main.scale
             layer.isWrapped = true
+            layer.truncationMode = .none
+
             layer.alignmentMode = .left
 
             container.addSublayer(layer)
@@ -537,6 +566,8 @@ final class PIPServiceMessages {
             layer.foregroundColor = UIColor.white.cgColor
             layer.contentsScale = UIScreen.main.scale
             layer.isWrapped = true
+            layer.truncationMode = .none
+
             layer.alignmentMode = .left
             container.addSublayer(layer)
             messageLayer = layer
@@ -568,6 +599,8 @@ final class PIPServiceMessages {
         tuple.isNew = true
         tuple.alpha = 1.0
 
+        tuple.type = type
+
         // 🔹 同步計算高度
         let maxNameWidth = container.bounds.width
             - leftPadding * 2
@@ -578,7 +611,8 @@ final class PIPServiceMessages {
             - leftPadding * 2
             - avatarSizeLocal
         - tuple.horizontalSpacing
-            - (giftLayer != nil ? giftSizeLocal + 2 : 0)
+            - (giftLayer != nil ? giftSizeLocal : 0)
+
 
         let nameHeight = showName
             ? (user as NSString).boundingRect(
@@ -589,6 +623,7 @@ final class PIPServiceMessages {
             ).height
             : 0
 
+
         let messageHeight = (message as NSString).boundingRect(
             with: CGSize(width: maxMessageWidth, height: .greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
@@ -596,22 +631,29 @@ final class PIPServiceMessages {
             context: nil
         ).height
 
+
+
         tuple.cachedNameSize = CGSize(width: maxNameWidth, height: nameHeight)
         tuple.cachedMessageSize = CGSize(width: maxMessageWidth, height: messageHeight)
+
+        
 
 
         // 計算最後一行文字寬度（用 constrained width 模擬）
         let lines = message.split(separator: "\n")
         let lastLine = String(lines.last ?? "")
 
-        let lastLineWidth = (lastLine as NSString).boundingRect(
-            with: CGSize(width: maxMessageWidth, height: .greatestFiniteMagnitude),
-            options: [.usesLineFragmentOrigin, .usesFontLeading],
-            attributes: [.font: font],
-            context: nil
-        ).width
+        let lastLineWidth = lastLine.isEmpty ? 0 : (lastLine as NSString).size(withAttributes: [.font: font]).width
+
+        let lastLineHeight = font.lineHeight
+
+
 
         tuple.cachedLastLineWidth = lastLineWidth
+
+        tuple.cachedLastLineHeight = lastLineHeight
+
+
 
 
         let textBlockHeight = nameHeight + tuple.verticalSpacing + messageHeight
@@ -639,15 +681,26 @@ final class PIPServiceMessages {
 
             let type: MessageType = isMain ? .primary : .secondary
 
-            let fontSize: CGFloat = (type == .primary) ? 15 : 10
-            let avatarSizeLocal: CGFloat = (type == .primary) ? 20 : 18
-            let giftSizeLocal: CGFloat = (type == .primary) ? 20 : 18
+        let fontSize: CGFloat = (
+            type == .primary
+        ) ? LPConfig.shared.PIPChatFontMainSize : LPConfig.shared.PIPChatFontSecondSize
+
+        let avatarSizeLocal: CGFloat = (
+            type == .primary
+        ) ? LPConfig.shared.PIPChatFontMainSize : LPConfig.shared.PIPChatFontSecondSize
+
+        let giftSizeLocal: CGFloat = (
+            type == .primary
+        ) ? LPConfig.shared.PIPChatFontMainSize : LPConfig.shared.PIPChatFontSecondSize
+
+
             let font = UIFont.systemFont(ofSize: fontSize)
 
             // secondary 不 chunk
             if type == .secondary {
 
                     let tuple = self.buildMessageTuple(
+                        type:.secondary,
                         user: user,
                         message: message,
                         img: nil,
@@ -663,8 +716,10 @@ final class PIPServiceMessages {
                     )
 
 
+                self.stackedMessages.append(tuple)
+                self.layoutTargetsAndStartAnimation()
 
-                    self.replaceBottomMessage(tuple)
+//                    self.replaceBottomMessage(tuple)
 
 
 
@@ -718,7 +773,7 @@ final class PIPServiceMessages {
 
 
     private func layoutBottomMessage() {
-        guard let msg = bottomMessage, (msg.isFadingOut || isAnimating) else { return }
+        guard let msg = bottomMessage else { return }
 
         //let y = bottomPadding
         let y = container.bounds.height - msg.height - bottomPadding
@@ -729,6 +784,7 @@ final class PIPServiceMessages {
         )
         layout(msg: msg, y: y)
     }
+
 
     private func replaceBottomMessage(_ newMsg: MessageLayerTuple) {
 
@@ -756,7 +812,7 @@ final class PIPServiceMessages {
         stackedMessages.contains { msg in
 
             PIPChatLog(
-                "MSG:\(String(describing: msg.message?.string)) \(msg.startY)-\(msg.targetY) H:\(msg.height) TH:\(msg.targetY + msg.height) "
+                "MSG:\(String(describing: msg.message?.string)) \(msg.startY)-\(msg.targetY) H:\(msg.height) TH:\(msg.targetY + msg.height) isNew:\(msg.isNew) "
             )
             let bottomY = msg.targetY + msg.height
 
@@ -771,7 +827,11 @@ final class PIPServiceMessages {
 
         let shouldHide = IshasOverFlow()
 
-        let targetOpacity: Float = shouldHide ? 0.0 : 1.0
+        // 如果是 secondary，永遠顯示
+        let isSecondary = bottom.type == .secondary
+
+        let targetOpacity: Float = isSecondary ? 1.0 : (shouldHide ? 0.0 : 1.0)
+
 
         if bottom.avatar?.opacity != targetOpacity {
             bottom.avatar?.opacity = targetOpacity
@@ -920,14 +980,26 @@ final class PIPServiceMessages {
             IshasOverFlow() && (fadeCandidate != nil || isAnyMessageFadingOut)
 
 
-        let isWaitingForFadeDelay = IshasOverFlow() || !isAnyMessageFadingOut &&
+        let isWaitingForFadeDelay = fadeCandidate != nil && !isAnyMessageFadingOut &&
             lastFadeTriggerTime != 0 &&
         now - lastFadeTriggerTime < fadeInterval  // fadeDelay
 
         PIPChatLog("hasMoving?\(hasMovingOrFading) - isWaitFor:\(isWaitingForFadeDelay) NowWait:\(now-lastFadeTriggerTime) < \(fadeInterval)?")
 
 
-        if !hasMovingOrFading && !isWaitingForFadeDelay && !shouldContinueBecauseOverflow || safeCanncel {
+        if !hasMoving &&
+           !isAnyMessageFadingOut &&
+           fadeCandidate == nil &&
+           IshasOverFlow() {
+
+            updateFadeCandidateIfNeeded()
+        }
+
+        if !hasMovingOrFading &&
+            !isWaitingForFadeDelay &&
+            !shouldContinueBecauseOverflow &&
+            !needsRelayoutAfterRemoval ||
+            safeCanncel {
 
             for msg in animatingMessages {
                   msg.startY = msg.targetY
@@ -935,11 +1007,25 @@ final class PIPServiceMessages {
             }
 
 
+
+            // 🔥 如果還 overflow，立刻重新進入 fade 流程
+            if IshasOverFlow() {
+                updateFadeCandidateIfNeeded()
+                // 強制繼續跑 displayLink
+                if fadeCandidate == nil {
+                        return
+                }
+
+
+                return
+            }
+
+
+
             displayLink?.invalidate()
             displayLink = nil
             isAnimating = false
             animatingMessages.forEach { $0.isNew = false }
-
 
 
 
@@ -1011,7 +1097,7 @@ final class PIPServiceMessages {
         msg.name?.frame = CGRect(
             x: textX,
             y: adjustedY,
-            width: container.bounds.width - textX - leftPadding,
+            width: nameSize.width,
             height: nameSize.height
         )
 
@@ -1037,10 +1123,11 @@ final class PIPServiceMessages {
 
 
         let messageSize = msg.cachedMessageSize
+
         msg.message?.frame = CGRect(
             x: textX,
             y: messageY,
-            width: container.bounds.width - textX - leftPadding,
+            width: messageSize.width,
             height: messageSize.height
         )
 
@@ -1049,16 +1136,27 @@ final class PIPServiceMessages {
         if let gift = msg.gift,
            let messageLayer = msg.message {
 
+            let totalMessageHeight = msg.cachedMessageSize.height
+            let lastLineHeight = msg.cachedLastLineHeight
 
-            let messageBottomY = messageLayer.frame.maxY
-            let lastLineCenterY = messageBottomY - lineHeight / 2
+            // 最後一行頂部 Y
+            let lastLineY = messageLayer.frame.origin.y + totalMessageHeight - lastLineHeight
+
+            // 禮物垂直居中對齊最後一行
+            let giftY = lastLineY + lastLineHeight / 2 - giftSizeLocal / 2
+
+            // 禮物水平放在最後一行文字後
+            let giftX = messageLayer.frame.origin.x + msg.cachedLastLineWidth + 2
+
+
 
             gift.frame = CGRect(
-                x: messageLayer.frame.origin.x + msg.cachedLastLineWidth + 2,
-                y: lastLineCenterY - giftSizeLocal / 2,
-                width: giftSizeLocal,
-                height: giftSizeLocal
-            )
+                    x: giftX,
+                    y: giftY,
+                    width: giftSizeLocal,
+                    height: giftSizeLocal
+                )
+
         }
 
 
@@ -1071,6 +1169,9 @@ final class PIPServiceMessages {
 
 
 func PIPChatLog(_ message:String){
+
+    logger.debug("PIPCHAT \(message)")
+
     if LPConfig.shared.PIPChatLog {
         sendlog(title:"[PIP_Chat]",message: message)
     }
@@ -1094,6 +1195,10 @@ struct PIPView: View {
     // 狀態管理哪個 PiP 正在啟用
     @State private var isChatPiPActive = false
     @State private var isTestPiPActive = false
+
+    // ✅ 新增，用來輸入手動訊息
+    @State private var manualMessage: String = "test"
+    @State private var manualUser: String = "User33"
 
     var body: some View {
         VStack(spacing: 20) {
@@ -1130,6 +1235,38 @@ struct PIPView: View {
                     .disabled(!isTestPiPActive)
                 }
             }
+
+            VStack(spacing: 10) {
+                // ✅ 新增 TextField
+                TextField("輸入手動用戶名", text: $manualUser)
+                    .textFieldStyle(.roundedBorder)
+                    .padding(.horizontal)
+
+                TextField("輸入手動訊息", text: $manualMessage)
+                    .textFieldStyle(.roundedBorder)
+                    .padding(.horizontal)
+
+                // 手動新增訊息按鈕
+                Button("新增訊息") {
+                    let imgA = "https://img.icons8.com/?size=100&id=12860&format=png&color=000000"
+                    let imgG = "https://img.icons8.com/?size=100&id=y5xu7jml0MTU&format=png&color=000000"
+
+                    // 把 TextField 內容傳給 PIPService
+                    PIPService.shared
+                        .addMessage(
+                            user: manualUser,
+                            msg: manualMessage,
+                            imgURL: imgA,
+                            giftURL: imgG
+                        )
+
+
+
+                }
+
+            }
+
+
 
             Button("測試長訊息") {
 

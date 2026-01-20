@@ -61,6 +61,11 @@ final class LPConfig {
     var streamStartTime: Date?
 
 
+
+    var PIPChatFontMainSize: Double = 14.0
+    var PIPChatFontSecondSize: Double = 10.0
+
+
     var PIPLog: Bool = false
     var PIPChatLog:Bool = false
 
@@ -81,6 +86,10 @@ final class LPConfig {
 
         ScrollTime = userDefaults?.double(forKey: "scrollTime") ?? 0.2
         MessageFadeTime =  userDefaults?.double(forKey: "fadeTime") ?? 0.5
+
+        PIPChatFontMainSize = userDefaults?.double(forKey: "PIPFontMain") ?? 14.0
+        PIPChatFontSecondSize =  userDefaults?
+            .double(forKey: "PIPFontSecond") ?? 10.0
 
     }
 
