@@ -193,6 +193,12 @@ struct BroadcastButton: UIViewRepresentable {
             userDefaults?.set(self.UR.rawValue,forKey: "L3Rotate")
         }
         func triggerButton() {
+            let payload = [
+                "type":"log",
+                "message":"Socket連線測試"
+            ]
+            SocketServer.shared.queueSend(payload: payload)
+            
             button?.sendActions(for: .touchUpInside)
         }
     }

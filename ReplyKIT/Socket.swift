@@ -93,6 +93,7 @@ class SocketClient : @unchecked Sendable {
 
         isConnection = false
         isProcessingBatch = false
+        isReconnecting = false
 
         connection?.stateUpdateHandler = nil
         connection?.cancel()
@@ -147,7 +148,6 @@ class SocketClient : @unchecked Sendable {
 
     func retry() {
         queue.async {
-            guard !self.isReconnecting else { return }
 
             guard !self.isReconnecting else { return }   // ✅ 防止重入
             self.isReconnecting = true
@@ -535,7 +535,6 @@ class SocketClient : @unchecked Sendable {
     }
 
     struct LogMessage: Codable {
-        let type:String
         let message: String
     }
 
