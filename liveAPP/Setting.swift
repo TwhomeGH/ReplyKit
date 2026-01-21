@@ -38,13 +38,30 @@ final class GPUSettingsViewModel: ObservableObject {
     //@Published var dstWBuffer: Int = 0
     //@Published var dstHBuffer: Int = 0
 
+    let defaultConfigs: [GPUOutputConfig] = [
+        GPUOutputConfig(name: "原始大小", width: 0, height: 0),
+        GPUOutputConfig(
+            name: "1080p 16:9",
+            width: 1552,
+            height: 1080,
+            owidth: 1920,
+            oheight: 1080
+        ),
+        GPUOutputConfig(
+            name: "720p 16:9",
+            width: 1034,
+            height: 720,
+            owidth: 1280,
+            oheight: 720
+        ),
+
+        GPUOutputConfig(name: "1080p", width: 1552, height: 1080),
+        GPUOutputConfig(name: "720p", width: 1034, height: 720)
+
+    ]
 
     func rebuildDefaultsIfMissing() {
-        let defaultConfigs: [GPUOutputConfig] = [
-            GPUOutputConfig(name: "1080p", width: 1552, height: 1080),
-            GPUOutputConfig(name: "720p", width: 1034, height: 720),
-            GPUOutputConfig(name: "原始大小", width: 0, height: 0)
-        ]
+
 
         for defaultCfg in defaultConfigs {
             // 如果 configs 沒有同名的預設配置，就加入
@@ -66,11 +83,9 @@ final class GPUSettingsViewModel: ObservableObject {
 
 
     init() {
-        configs = GPUOutputConfig.load(defaults: [
-            GPUOutputConfig(name: "1080p", width: 1552, height: 1080),
-            GPUOutputConfig(name: "720p", width: 1034, height: 720),
-            GPUOutputConfig(name: "原始大小", width: 0, height: 0)
-        ])
+        configs = GPUOutputConfig.load(
+            defaults: defaultConfigs
+        )
 
         selectedConfig = GPUOutputConfig.loadSelected() ?? configs.first
 
