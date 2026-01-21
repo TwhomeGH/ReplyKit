@@ -449,6 +449,10 @@ final class RPConfig {
     var ADWidth : Int
     var ADHeight : Int
 
+    var ODWidth : Int
+    var ODHeight : Int
+
+
 
     // 日誌相關
     var enableSocketLog: Bool = false
@@ -517,11 +521,17 @@ final class RPConfig {
         AppVolume =  SharedDefaults.group?.double(forKey: "appVolume") ?? 1.0
         MicVolume =  SharedDefaults.group?.double(forKey: "micVolume") ?? 1.0
 
-        // Width
+        // Width 給GPU處理用的寬高
         ADWidth = SharedDefaults.group?.integer(forKey: "dstW") ?? 0
         ADHeight = SharedDefaults.group?.integer(forKey: "dstH") ?? 0
 
-        Rotate =  SharedDefaults.group?.integer(forKey: "Rotate") ?? 90
+        // 控制輸出畫布寬高
+        ODWidth = SharedDefaults.group?.integer(forKey: "odstW") ?? 0
+        ODHeight = SharedDefaults.group?.integer(forKey: "odstH") ?? 0
+
+
+        Rotate = SharedDefaults.group?.integer(forKey: "Rotate") ?? 90
+
 
         RotateOriginal = SharedDefaults.group?.bool(forKey: "RotateOriginal") ?? false
 

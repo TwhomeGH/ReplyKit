@@ -68,8 +68,45 @@ class SocketClient : @unchecked Sendable {
 
     private var connection: NWConnection?
 
-
     private let queue = DispatchQueue(label: "SocketClientQueue")
+
+    private var HeartbeatTimer: DispatchSourceTimer?
+
+    func startHearbeat(interval: TimeInterval = 50.0) {
+        stopHeartbeat()
+
+        logTo("啟用Socket心跳")
+
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(
+            deadline: .now() + interval,
+            repeating: interval,
+            leeway: .milliseconds(200)
+        )
+
+        timer.setEventHandler { [weak self] in
+            self?.sendHeartbeat()
+        }
+
+        timer.resume()
+        self.HeartbeatTimer = timer
+    }
+
+    func stopHeartbeat() {
+        HeartbeatTimer?.cancel()
+        HeartbeatTimer = nil
+
+        logTo("關閉Socket心跳")
+    }
+
+
+    private func sendHeartbeat() {
+        let payload: [String: Any] = ["type": "heartbeat"]
+        sendPayload(payload)
+        logTo("ReplyKit Socket保活心跳訊息")
+    }
+
+
 
     // 避免循環更新 UserDefaults
     private var isProcessingRemoteUpdate = false
@@ -99,6 +136,8 @@ class SocketClient : @unchecked Sendable {
         connection?.cancel()
         connection = nil
 
+        stopHeartbeat()
+
         receiveBuffer.removeAll()  // ✅ 清空累積 buffer
 
         //stopObservingLocalChanges()
@@ -119,6 +158,7 @@ class SocketClient : @unchecked Sendable {
                 logTo("SocketClient connected")
                 isConnection = true
 
+                startHearbeat()
                 // ✅ 喚醒所有等待連線的人
                 connectContinuations.forEach { $0.resume() }
                 connectContinuations.removeAll()
@@ -515,6 +555,11 @@ class SocketClient : @unchecked Sendable {
 
         let dstW: Int
         let dstH: Int
+
+        let odstW: Int
+        let odstH: Int
+
+
         let Rotate: Int
         let RotateOriginal: Bool
 
@@ -557,8 +602,19 @@ class SocketClient : @unchecked Sendable {
             RPConfig.shared.h264level = c.h264level
 
             RPConfig.shared.BufferCount = c.videoBuffer
+
             RPConfig.shared.ADWidth = c.dstW
             RPConfig.shared.ADHeight = c.dstH
+
+            RPConfig.shared.ODWidth = c.odstW
+            RPConfig.shared.ODHeight = c.odstH
+
+            self.logTo(
+                "[Get]OutDraw:\(c.odstW)x\(c.odstH) RotateOriginal:\(c.RotateOriginal)"
+            )
+
+
+
 
             RPConfig.shared.Rotate = c.Rotate
             RPConfig.shared.RotateOriginal = c.RotateOriginal

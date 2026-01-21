@@ -471,6 +471,11 @@ class SocketServer {
             "dstW": userDefaults?.integer(forKey: "dstW") ?? 0,
             "dstH": userDefaults?.integer(forKey: "dstH") ?? 0,
 
+            "odstW": userDefaults?.integer(forKey: "odstW") ?? 0,
+            "odstH": userDefaults?.integer(forKey: "odstH") ?? 0,
+
+
+
             "Rotate": userDefaults?.integer(forKey: "Rotate") ?? 90 ,
             
             "RotateOriginal":userDefaults?.bool(forKey: "RotateOriginal") ?? false ,

@@ -691,6 +691,11 @@ class GPUOutputConfig: Identifiable, ObservableObject, Codable {
     @Published var name: String
     @Published var width: Int
     @Published var height: Int
+
+    @Published var owidth: Int
+    @Published var oheight: Int
+    @Published var originonly: Bool
+
     @Published var Rotate: RotateDirection
 
     init(
@@ -698,18 +703,27 @@ class GPUOutputConfig: Identifiable, ObservableObject, Codable {
         name: String,
         width: Int,
         height: Int,
+        owidth:Int = 0,
+        oheight:Int = 0,
+        originonly:Bool = false,
         Rotate: RotateDirection = .landscapeRight
     ) {
         self.id = id
         self.name = name
         self.width = width
         self.height = height
+
+        self.owidth = owidth
+        self.oheight = oheight
+        self.originonly = originonly
+
         self.Rotate = Rotate
+
     }
 
     // MARK: - Codable 支援
     enum CodingKeys: CodingKey {
-        case id, name, width, height, Rotate
+        case id, name, width, height, owidth,oheight,originonly,Rotate
     }
 
     required init(from decoder: Decoder) throws {
@@ -718,6 +732,12 @@ class GPUOutputConfig: Identifiable, ObservableObject, Codable {
         name = try container.decode(String.self, forKey: .name)
         width = try container.decode(Int.self, forKey: .width)
         height = try container.decode(Int.self, forKey: .height)
+
+        owidth = try container.decode(Int.self, forKey: .owidth)
+        oheight = try container.decode(Int.self, forKey: .oheight)
+
+        originonly = try container.decode(Bool.self, forKey: .originonly)
+
         Rotate = try container.decode(RotateDirection.self, forKey: .Rotate)
     }
 
@@ -727,6 +747,13 @@ class GPUOutputConfig: Identifiable, ObservableObject, Codable {
         try container.encode(name, forKey: .name)
         try container.encode(width, forKey: .width)
         try container.encode(height, forKey: .height)
+
+        try container.encode(owidth, forKey: .owidth)
+        try container.encode(oheight, forKey: .oheight)
+
+        try container.encode(originonly, forKey: .originonly)
+
+
         try container.encode(Rotate, forKey: .Rotate)
     }
 

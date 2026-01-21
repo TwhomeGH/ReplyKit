@@ -337,7 +337,7 @@ final class PIPService: NSObject, @unchecked Sendable {
     private var currentFPS: Double = 30
 
     private let defaultFPS: Double = 1       // 平常 FPS
-    private let decayRate: Double = 0.80     // 每次渲染衰減比例 (越小越快降
+    private let decayRate: Double = 0.70     // 每次渲染衰減比例 (越小越快降
 
     private var lastRenderTime = CACurrentMediaTime()
     private var lastImageHash: UInt64 = 0
@@ -362,7 +362,11 @@ final class PIPService: NSObject, @unchecked Sendable {
     private func startDecayTimer() {
         if decayTimer == nil {
             decayTimer = DispatchSource.makeTimerSource(queue: renderQueue)
-            decayTimer?.schedule(deadline: .now() + 0.2, repeating: 0.2)
+            decayTimer?.schedule(
+                deadline: .now() + 0.2,
+                repeating: 0.2,
+                leeway: .milliseconds(100)
+            )
             decayTimer?.setEventHandler { [weak self] in
                 guard let self = self else { return }
 
@@ -644,7 +648,10 @@ final class PIPService: NSObject, @unchecked Sendable {
     private func scheduleNextRender() {
         if renderTimer == nil {
             renderTimer = DispatchSource.makeTimerSource(queue: renderQueue)
-            renderTimer?.schedule(deadline: .now(), repeating: 1.0/60.0)
+            renderTimer?.schedule(
+                deadline: .now(), repeating: 1.0/60.0,
+                leeway: .milliseconds(20)
+            )
             // 固定 60FPS timer
             renderTimer?.setEventHandler { [weak self] in
                 guard let self = self else { return }

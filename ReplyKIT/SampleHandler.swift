@@ -81,6 +81,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     var ADWidth : Int
     var ADHeight : Int
 
+    // MARK: 給畫布實際輸出寬高
+    var ODWidth : Int
+    var ODHeight : Int
+
+
+
     private var lastVideoOrientation: AVCaptureVideoOrientation?
 
     var base:Int = 100_000
@@ -163,7 +169,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             appVolume = Float(RPConfig.shared.AppVolume)
             micVolume = Float(RPConfig.shared.MicVolume)
 
-            sendlog(message:"app mic audio update \(appVolume) \(micVolume)")
+            sendlog(message:"Audio update App:\(appVolume) Mic:\(micVolume)")
 
             Task {
                 await updateAppAudioVolume(appVolume)
@@ -940,6 +946,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         ADWidth = RPConfig.shared.ADWidth
         ADHeight = RPConfig.shared.ADHeight
 
+        ODWidth = RPConfig.shared.ODWidth
+        ODHeight = RPConfig.shared.ODHeight
+
         super.init()
 
 
@@ -1170,6 +1179,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         ADWidth = RPConfig.shared.ADWidth
         ADHeight = RPConfig.shared.ADHeight
 
+        // MARK: Out Video 寬高
+
+        ODWidth = RPConfig.shared.ODWidth
+        ODHeight = RPConfig.shared.ODHeight
+
+
         if ADWidth > 0 && ADHeight > 0 {
             DWidth = ADWidth
             DHeight = ADHeight
@@ -1213,6 +1228,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         var DW = 1334
         var DH = 1920
+
         if ADWidth > 0 && ADHeight > 0 {
             sendlog(message: "[CV]用戶設定寬高：\(ADWidth) x \(ADHeight)")
             DW = ADHeight
@@ -1403,14 +1419,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         // User has requested to start the broadcast. Setup info from the UI extension can be suppdlied but optional.
 
 
-
         logger.info("運行通知")
 
         isStopping = false
 
         SocketClient.shared.setupConnection()
-
-
 
         //self.prepareCompressionSession()
 
@@ -1783,8 +1796,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         if didConfigureVideo { return }
         didConfigureVideo = true  // 打上標記
 
-
-
         guard let formatDesc = sampleBuffer.formatDescription else { return }
         let dims = CMVideoFormatDescriptionGetDimensions(formatDesc)
 
@@ -1793,8 +1804,20 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         var width = Int(dims.width)
         var height = Int(dims.height)
 
-        if ADWidth > 0 && ADHeight > 0 {
-            sendlog(message: "用戶設定寬高：\(ADWidth) x \(ADHeight)")
+
+        if ODWidth > 0 && ODHeight > 0 {
+
+            sendlog(
+                message: "使用指定 輸出設定寬高：\(ODWidth) x \(ODHeight) GPU使用:\(ADWidth)x\(ADHeight)"
+            )
+
+
+            width = ODHeight
+            height = ODWidth
+
+
+        } else if ADWidth > 0 && ADHeight > 0 {
+            sendlog(message: "使用與GPU一致設定寬高：\(ADWidth) x \(ADHeight)")
             width = ADHeight
             height = ADWidth
         }
