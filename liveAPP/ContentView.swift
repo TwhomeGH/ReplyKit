@@ -1226,13 +1226,28 @@ struct LogTextView: UIViewRepresentable {
         private var messageLines: [String] = []
 
         private var appendQueue = [LogItem]()
+        private var appendedUUIDs: Set<UUID> = []
+
         private var appendWorkItem: DispatchWorkItem?
 
         func appendMessages(_ newMessages: [LogItem]) {
             guard !newMessages.isEmpty else { return }
 
+
+            // 過濾掉已經 append 過的
+            let uniqueMessages = newMessages.filter { !appendedUUIDs.contains($0.id) }
+            guard !uniqueMessages.isEmpty else { return }
+
             // 緩存到 queue
-            appendQueue.append(contentsOf: newMessages)
+            appendQueue.append(contentsOf: uniqueMessages)
+
+
+
+            if appendedUUIDs.count > maxLines * 2 {
+                let excess = appendedUUIDs.count - maxLines * 2
+                appendedUUIDs = Set(appendedUUIDs.dropFirst(excess))
+            }
+
 
             // 延遲批量 append，避免每條都操作 UITextView
             if appendWorkItem == nil {
@@ -1282,6 +1297,9 @@ struct LogTextView: UIViewRepresentable {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: workItem)
             }
         }
+
+
+
         // 判斷是否滾動
             func scrollIfNeeded() {
                 guard let tv = textView else { return }
@@ -1577,7 +1595,9 @@ struct LogView: View {
                 .onReceive(logModel.newMessages) { newItems in
                     guard let coordinator = coordinator else { return }
                     // 交給 Coordinator 處理 append + 滾動
-                    coordinator.appendMessages(newItems)
+                    DispatchQueue.main.async {
+                        coordinator.appendMessages(newItems)
+                    }
 
                 }
 

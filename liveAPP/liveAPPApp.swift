@@ -81,6 +81,9 @@ final class LogModel: ObservableObject {
 
     private var timer: DispatchSourceTimer?
 
+    let queue = DispatchQueue(label: "liveApp.logModel")
+
+
     /// UI 更新頻率（秒）
     private let refreshInterval: TimeInterval = 0.1
     /// 每次最多吃幾筆 log
@@ -93,8 +96,15 @@ final class LogModel: ObservableObject {
     }
 
     private func startLogPump() {
-        let t = DispatchSource.makeTimerSource(queue: .main)
-        t.schedule(deadline: .now(), repeating: refreshInterval)
+        let t = DispatchSource.makeTimerSource(queue: queue)
+        t.schedule(
+            deadline:
+                    .now(),
+            repeating: refreshInterval,
+            leeway:
+                    .milliseconds(50)
+        )
+
         t.setEventHandler { [weak self] in
             guard let self else { return }
             let logs = LogBuffer.shared.drain(max: self.batchLimit)
@@ -102,6 +112,8 @@ final class LogModel: ObservableObject {
 
 
             let items = logs.map { LogItem(message: $0) }
+
+            DispatchQueue.main.async {
 
             self.messages.append(contentsOf: items)
 
@@ -111,8 +123,11 @@ final class LogModel: ObservableObject {
             }
 
             // ⭐️ 關鍵：只送「這次新增的」
-            self.newMessages.send(items)
+          
 
+                self.newMessages.send(items)
+
+            }
 
         }
         t.resume()
@@ -695,7 +710,7 @@ struct liveAPPApp: App {
 
         }
         SocketServer.shared.stop()
-        
+
         SocketServer.shared.start()
 
         AppMessagePort.shared.setupReceiver()
