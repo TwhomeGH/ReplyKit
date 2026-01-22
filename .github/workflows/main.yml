@@ -108,7 +108,12 @@ jobs:
           TAG_NAME: ${{ steps.get_tag.outputs.tag }}
         run: |
           GITHUB_API="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases"
-          NEW_MESSAGE="Automated unsigned iOS build \nUpdated at $(date +'%Y/%m/%d %H:%M:%S')"
+          
+          # 抓取最近 10 次 commit 訊息
+          COMMITS=$(git log -n 10 --pretty=format:"- %s (%h)")
+
+
+          NEW_MESSAGE="Automated unsigned iOS build ${TAG} \nUpdated at $(date +'%Y/%m/%d %H:%M:%S')\n\nRecent commits:\n$COMMITS"
 
           # 嘗試取得現有 release
           RELEASE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
