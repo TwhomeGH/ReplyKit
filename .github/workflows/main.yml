@@ -113,7 +113,10 @@ jobs:
           COMMITS=$(git log -n 10 --pretty=format:"- %s (%h)")
 
 
-          NEW_MESSAGE="Automated unsigned iOS build ${TAG} \nUpdated at $(date +'%Y/%m/%d %H:%M:%S')\n\nRecent commits:\n$COMMITS"
+          NEW_MESSAGE="Automated unsigned iOS build ${TAG_NAME}
+          Updated at $(date +'%Y/%m/%d %H:%M:%S')
+          
+          Recent commits:$COMMITS"
 
           # 嘗試取得現有 release
           RELEASE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
@@ -126,16 +129,32 @@ jobs:
            # Release 存在 → 合併 body
           
            EXISTING_BODY=$(echo "$RELEASE" | jq -r '.body')
-           MERGED_BODY=$(printf "%s\n\n%s" "$EXISTING_BODY" "$NEW_MESSAGE" | jq -Rs --slurp '.')
+           
+           MEGRED_BODY="$EXISTING_BODY
+           
+           $NEW_MESSAGE"
+           
 
+           PAYLOAD=$(jq -n \
+              --arg body "$MERGED_BODY" \
+              '{body: $body}')
+              
            # 更新 Release
            curl -X PATCH \
             -H "Authorization: token $GITHUB_TOKEN" \
             -H "Accept: application/vnd.github.v3+json" \
             $GITHUB_API/$RELEASE_ID \
-           -d "{\"body\": \"$MERGED_BODY\"}"
+           -d "$PAYLOAD"
+
           else
            # Release 不存在 → 建立 Release
+
+           PAYLOAD=$(jq -n \
+                --arg tag "$TAG_NAME" \
+                --arg name "$TAG_NAME" \
+                --arg body "$NEW_MESSAGE" \
+                '{tag_name:$tag, name:$name, body:$body, draft:false, prerelease:false}')
+
 
            NEW_BODY=$(echo "$NEW_MESSAGE" | jq -Rs --slurp '.')
           
@@ -143,7 +162,7 @@ jobs:
            -H "Authorization: token $GITHUB_TOKEN" \
            -H "Accept: application/vnd.github.v3+json" \
            $GITHUB_API \
-           -d "{\"tag_name\": \"$TAG_NAME\", \"name\": \"$TAG_NAME\", \"body\": \"$NEW_BODY\", \"draft\": false, \"prerelease\": false}"
+           -d "$PAYLOAD"
           fi
 
 
