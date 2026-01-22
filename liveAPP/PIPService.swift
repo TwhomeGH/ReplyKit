@@ -51,6 +51,32 @@ final class PIPService: NSObject, @unchecked Sendable {
 
     var isAnimatingMessages = false
 
+    private var pixelBufferPool: CVPixelBufferPool?
+    private let pixelBufferPoolSize = 3  // 可根據 FPS 調整
+
+    private func setupPixelBufferPool(size: CGSize) {
+        let attrs: [String: Any] = [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferWidthKey as String: Int(size.width),
+            kCVPixelBufferHeightKey as String: Int(size.height),
+            kCVPixelBufferIOSurfacePropertiesKey as String: [:]
+        ]
+
+        let poolAttrs: [String: Any] = [
+            kCVPixelBufferPoolAllocationThresholdKey as String: pixelBufferPoolSize
+        ]
+
+
+        var pool: CVPixelBufferPool?
+        CVPixelBufferPoolCreate(
+            kCFAllocatorDefault,
+            poolAttrs as CFDictionary,
+            attrs as CFDictionary,
+            &pool
+        )
+        self.pixelBufferPool = pool
+    }
+
     private var messagesLayer: PIPServiceMessages?
 
     func roundedBadgeAttachment(
@@ -80,7 +106,9 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         UIGraphicsBeginImageContextWithOptions(label.bounds.size, false, 0)
         label.layer.render(in: UIGraphicsGetCurrentContext()!)
+
         let image = UIGraphicsGetImageFromCurrentImageContext()
+
         UIGraphicsEndImageContext()
 
         let attachment = NSTextAttachment()
@@ -286,9 +314,9 @@ final class PIPService: NSObject, @unchecked Sendable {
     private func createSampleBuffer(from pixelBuffer: CVPixelBuffer) -> CMSampleBuffer? {
         var formatDesc: CMVideoFormatDescription?
         guard CMVideoFormatDescriptionCreateForImageBuffer(
-                allocator: kCFAllocatorDefault,
-                imageBuffer: pixelBuffer,
-                formatDescriptionOut: &formatDesc) == noErr,
+            allocator: kCFAllocatorDefault,
+            imageBuffer: pixelBuffer,
+            formatDescriptionOut: &formatDesc) == noErr,
               let fmt = formatDesc else { return nil }
 
 
@@ -331,7 +359,9 @@ final class PIPService: NSObject, @unchecked Sendable {
     // 每 1 秒計算一次 hash
 
     private var debugImageView: UIImageView?
-    private let pipStartThreshold: Int64 = 1 
+    private var lastDebugUpdate: CFTimeInterval = 0
+
+    private let pipStartThreshold: Int64 = 1
 
     // MARK: - Adaptive FPS
     private var currentFPS: Double = 30
@@ -343,7 +373,6 @@ final class PIPService: NSObject, @unchecked Sendable {
     private var lastImageHash: UInt64 = 0
 
     private var lastRenderedHash: UInt64 = 0
-    private var previousImage: CGImage?
 
     var isMark = false
 
@@ -356,7 +385,7 @@ final class PIPService: NSObject, @unchecked Sendable {
     func startDecayAfterAnimation() {
         startDecayTimer()
     }
-   
+
 
     // 自動調降FPS
     private func startDecayTimer() {
@@ -402,32 +431,26 @@ final class PIPService: NSObject, @unchecked Sendable {
     }
 
     // MARK: 快速圖片計算
-    private func imageHash(_ cgImage: CGImage) -> UInt64 {
-//        let width = thumbSize.width
-//        let height = thumbSize.height
+    private func pixelBufferHash(_ pixelBuffer: CVPixelBuffer) -> UInt64 {
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
 
-        let renderer = UIGraphicsImageRenderer(size: thumbSize)
-        let img = renderer.image { ctx in
-            ctx.cgContext.draw(
-                cgImage,
-                in: CGRect(origin: .zero, size: thumbSize)
-            )
-        }
-
-        guard let data = img.cgImage?.dataProvider?.data,
-              let ptr = CFDataGetBytePtr(data) else { return 0 }
+        guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else { return 0 }
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
 
         var hash: UInt64 = 0
-        let count = CFDataGetLength(data)
-        for i in stride(from: 0, to: count, by: 16) {
-            hash &+= UInt64(ptr[i])
+        for y in 0..<height {
+            let row = baseAddress.advanced(by: y * bytesPerRow)
+            for x in stride(from: 0, to: bytesPerRow, by: 16) { // 每 16 byte 取一次
+                hash &+= UInt64(row.load(fromByteOffset: x, as: UInt8.self))
+            }
         }
         return hash
     }
 
 
 
-    
     // MARK: 動態調整
     private func adjustFPS(newHash: UInt64) {
         lastImageHash = newHash
@@ -447,6 +470,7 @@ final class PIPService: NSObject, @unchecked Sendable {
         imageView.contentMode = .scaleAspectFit
         imageView.backgroundColor = .lightGray
         parentView.addSubview(imageView)
+
         self.debugImageView = imageView
     }
 
@@ -462,7 +486,7 @@ final class PIPService: NSObject, @unchecked Sendable {
 
     private let dummyDelegate = DummyPlaybackDelegate()
     private let renderQueue = DispatchQueue(label: "com.pip.render", qos: .userInteractive)
-    private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
+
 
     var frameSize: CGSize = .zero
 
@@ -472,8 +496,6 @@ final class PIPService: NSObject, @unchecked Sendable {
     private let thumbSize = CGSize(width: 64, height: 64)
 
     private let renderScale = UIScreen.main.scale
-
-    private var lastDebugUpdate: CFTimeInterval = 0
 
 
     // MARK: - Audio
@@ -510,6 +532,59 @@ final class PIPService: NSObject, @unchecked Sendable {
     }
 
 
+    private lazy var ciContext: CIContext? = {
+        let options: [CIContextOption: Any] = [
+            .useSoftwareRenderer: false
+        ]
+        return CIContext(options: options)
+    }()
+
+    @MainActor
+    private func renderUIViewToPixelBuffer(_ view: UIView, size: CGSize) -> CVPixelBuffer? {
+        guard let pool = pixelBufferPool else { return nil }
+
+        var pixelBuffer: CVPixelBuffer?
+        CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pixelBuffer)
+
+        guard let pb = pixelBuffer else { return nil }
+
+        CVPixelBufferLockBaseAddress(pb, [])
+        defer { CVPixelBufferUnlockBaseAddress(pb, []) }
+
+
+        guard let baseAddress = CVPixelBufferGetBaseAddress(pb) else { return nil }
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(pb)
+        let height = CVPixelBufferGetHeight(pb)
+
+        memset(baseAddress, 0, bytesPerRow * height)
+
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+
+
+        guard let context = CGContext(
+            data: baseAddress,
+            width: Int(size.width),
+            height: Int(size.height),
+            bitsPerComponent: 8,
+            bytesPerRow: bytesPerRow,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
+        ) else { return nil }
+
+        context.translateBy(x: 0, y: size.height)
+        context.scaleBy(x: 1, y: -1)
+
+        // ✅ 這裡用 layer.render 而不是 drawHierarchy
+        view.layer.render(in: context)
+
+        // 疊上時間
+        drawTimeOverlay(in: context, size: size)
+
+
+        return pb
+
+    }
+
 
 
     // MARK: - Start PiP
@@ -521,63 +596,64 @@ final class PIPService: NSObject, @unchecked Sendable {
         self.frameSize = size
         self.frameCount = 0
 
+        setupPixelBufferPool(size: size)
 
         // 建立容器 UIView
         let containerView = UIView(
             frame: CGRect(origin: .zero, size: size)
         )
 
-            containerView.backgroundColor = .clear
-            containerView.isOpaque = false
-            self.messagesContainerView = containerView
+        containerView.backgroundColor = .clear
+        containerView.isOpaque = false
+        self.messagesContainerView = containerView
 
-            if let window = UIApplication.shared
-                .connectedScenes
-                .compactMap({ $0 as? UIWindowScene })
-                .first?
-                .windows
-                .first {
-                window.backgroundColor = .clear
-                window.addSubview(containerView)
+        if let window = UIApplication.shared
+            .connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first?
+            .windows
+            .first {
+            window.backgroundColor = .clear
+            window.addSubview(containerView)
+        }
+
+        // 建立訊息 Layer
+        messagesLayer = PIPServiceMessages(size: size)
+        if let messagesLayer = messagesLayer {
+            containerView.layer.addSublayer(messagesLayer.container)
+        }
+
+
+
+        // Display Layer
+        let layer = AVSampleBufferDisplayLayer()
+
+        layer.videoGravity = .resizeAspect
+        layer.backgroundColor = UIColor.black.cgColor
+        self.displayLayer = layer
+
+
+
+
+
+        // PiP Controller
+        self.pipController = AVPictureInPictureController(
+            contentSource: .init(sampleBufferDisplayLayer: layer, playbackDelegate: self.dummyDelegate)
+        )
+
+        self.pipController?.requiresLinearPlayback = false
+        self.pipController?.setValue(1, forKey: "controlsStyle")
+
+        self.pipController?.delegate = self
+
+        // Attach displayLayer
+        self.attachToForegroundWindow {
+            PIPLogTo("OK Frame?")
+            Task { @MainActor in
+
+                self.startRenderTimer()
             }
-
-            // 建立訊息 Layer
-            messagesLayer = PIPServiceMessages(size: size)
-            if let messagesLayer = messagesLayer {
-                containerView.layer.addSublayer(messagesLayer.container)
-            }
-
-
-
-            // Display Layer
-            let layer = AVSampleBufferDisplayLayer()
-
-            layer.videoGravity = .resizeAspect
-            layer.backgroundColor = UIColor.black.cgColor
-            self.displayLayer = layer
-
-
-
-
-
-            // PiP Controller
-            self.pipController = AVPictureInPictureController(
-                contentSource: .init(sampleBufferDisplayLayer: layer, playbackDelegate: self.dummyDelegate)
-            )
-
-            self.pipController?.requiresLinearPlayback = false
-            self.pipController?.setValue(1, forKey: "controlsStyle")
-
-            self.pipController?.delegate = self
-
-            // Attach displayLayer
-            self.attachToForegroundWindow {
-                PIPLogTo("OK Frame?")
-                Task { @MainActor in
-
-                    self.startRenderTimer()
-                }
-            }
+        }
 
     }
 
@@ -649,19 +725,23 @@ final class PIPService: NSObject, @unchecked Sendable {
         if renderTimer == nil {
             renderTimer = DispatchSource.makeTimerSource(queue: renderQueue)
             renderTimer?.schedule(
-                deadline: .now(), repeating: 1.0/60.0,
+                deadline: .now(), repeating: 1.0 / self.currentFPS ,
                 leeway: .milliseconds(20)
             )
             // 固定 60FPS timer
             renderTimer?.setEventHandler { [weak self] in
                 guard let self = self else { return }
 
-                let now = CACurrentMediaTime()
-                let elapsed = now - self.lastRenderTime
-                if elapsed >= 1.0 / self.currentFPS {
-                    _ = self.renderIncremental()
-                    self.lastRenderTime = now
+                self.attachToForegroundWindow {
+
+                    // 使用 Task 轉到 MainActor 執行
+                    Task { @MainActor in
+                        // 這裡呼叫 async 函數，內部可以安全訪問 displayLayer 和 sampleBuffer
+                        _ = await self.renderIncremental()
+                    }
+
                 }
+
             }
 
             renderTimer?.resume()
@@ -691,6 +771,7 @@ final class PIPService: NSObject, @unchecked Sendable {
         renderTimer = nil
 
 
+
         self.pipController?.stopPictureInPicture()
         self.pipController = nil
 
@@ -700,10 +781,11 @@ final class PIPService: NSObject, @unchecked Sendable {
         self.frameCount = 0
         didStartPiP = false
 
-
-        previousImage = nil
         lastRenderTime = CACurrentMediaTime()
         basePTS = nil
+
+        pixelBufferPool = nil
+        ciContext = nil
 
         cleanupMessageslayer()
         cleanupMessagesContainer()
@@ -717,11 +799,12 @@ final class PIPService: NSObject, @unchecked Sendable {
 
 
 
-
     // MARK: - Incremental Render
-    private func renderIncremental() -> Bool {
+    @MainActor
+    private func renderIncremental() async -> Bool {
 
-        guard let containerView = messagesContainerView, let displayLayer = displayLayer else { return false }
+        guard let containerView = messagesContainerView,
+              let displayLayer = displayLayer else { return false }
 
         // 取得當前時間
         let now = CACurrentMediaTime()
@@ -734,94 +817,98 @@ final class PIPService: NSObject, @unchecked Sendable {
         lastRenderTime = now
 
         let renderSize = frameSize   // ← 用 pt，不要乘 scale
+        
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = renderScale
+        format.opaque = false
 
-        let shouldForceRender = isAnimatingMessages
+        // 生成 PixelBuffer
 
-        // 1️⃣ 在主線程渲染 UIView 成 CGImage（最小範圍）
-        var newCGImage: CGImage?
-        DispatchQueue.main.sync {
+        guard let pixelBuffer = renderUIViewToPixelBuffer(containerView, size: renderSize) else {
+            return false
+        }
 
-            let format = UIGraphicsImageRendererFormat.default()
-            format.scale = renderScale
-            format.opaque = false
-
-            let renderer = UIGraphicsImageRenderer(size: renderSize, format: format)
-            newCGImage = renderer.image { ctx in
-
-                let cg = ctx.cgContext
-                //hosting.view.layer.render(in: cg)
-                containerView.layer.render(in: cg)
-                // 2️⃣ 再畫時間（疊在最上面）
-                drawTimeOverlay(in: cg, size: renderSize)
-
-            }.cgImage
+        var hash = self.lastRenderedHash
+        if CACurrentMediaTime() - self.lastHashTime > self.hashInterval {
+            hash = pixelBufferHash(pixelBuffer)
+            self.lastHashTime = CACurrentMediaTime()
         }
 
 
-        guard let cgImage = newCGImage else { return false }
+        self.lastRenderedHash = hash
+        self.adjustFPS(newHash: hash)
 
 
 
-        // hash / pixelbuffer / samplebuffer 直接執行
+        if self.basePTS == nil { self.basePTS = CACurrentMediaTime() }
 
-            var hash = self.lastRenderedHash
-            if CACurrentMediaTime() - self.lastHashTime > self.hashInterval {
-                hash = self.imageHash(cgImage)
-                self.lastHashTime = CACurrentMediaTime()
-            }
+        guard let sampleBuffer = createSampleBuffer(from: pixelBuffer) else {
+            return false
+        }
 
 
-        let shouldRender = shouldForceRender || (hash != self.lastRenderedHash)
+        // 3️⃣ 主線程 enqueue
+
+        if displayLayer.isReadyForMoreMediaData {
+
+            displayLayer.enqueue(sampleBuffer)
+            self.frameCount += 1
+
+            // 更新 debugImageView
+            if UIApplication.shared.applicationState == .active ,
+               CACurrentMediaTime() - self.lastDebugUpdate > 0.1 {
 
 
-            self.lastRenderedHash = hash
-            self.adjustFPS(newHash: hash)
+                self.lastDebugUpdate = CACurrentMediaTime()
 
-            if shouldRender {
-                self.previousImage = cgImage
-            }
+                Task { @MainActor in
+                    let width = CVPixelBufferGetWidth(pixelBuffer)
+                    let height = CVPixelBufferGetHeight(pixelBuffer)
+                    let size = CGSize(width: width, height: height)
 
-            guard let imageToRender = self.previousImage else { return false }
+                    let renderer = UIGraphicsImageRenderer(size: size)
 
-            // 生成 PixelBuffer
-        let imagePixelSize = CGSize(
-            width: imageToRender.width,
-            height: imageToRender.height
-        )
+                    let uiImage = renderer.image { ctx in
+                        // 把 PixelBuffer 轉成 CIImage
+                        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
 
-        guard let pixelBuffer = self.createPixelBuffer(
-            from: imageToRender,
-            size: imagePixelSize
-        ) else { return false }
+                        // 這裡用 CIContext 生成 CGImage
+                        if let cgImg = CIContext().createCGImage(ciImage, from: CGRect(origin: .zero, size: size)) {
+
+                            let context = ctx.cgContext
+
+                            // 翻轉 Y 軸
+                            context.translateBy(x: 0, y: size.height)
+                            context.scaleBy(x: 1, y: -1)
 
 
-
-            if self.basePTS == nil { self.basePTS = CACurrentMediaTime() }
-
-            guard let sampleBuffer = self.createSampleBuffer(from: pixelBuffer) else { return false }
-
-            // 3️⃣ 主線程 enqueue
-            DispatchQueue.main.async {
-                if displayLayer.isReadyForMoreMediaData {
-                    displayLayer.enqueue(sampleBuffer)
-                    self.frameCount += 1
+                            context
+                                .draw(
+                                    cgImg,
+                                    in: CGRect(origin: .zero, size: size)
+                                )
+                        }
+                    }
 
                     // 更新 debugImageView
-                    if CACurrentMediaTime() - self.lastDebugUpdate > 0.1 {
-                        self.debugImageView?.image = UIImage(cgImage: imageToRender, scale: UIScreen.main.scale, orientation: .up)
-                        self.lastDebugUpdate = CACurrentMediaTime()
-                    }
+                    self.debugImageView?.image = uiImage
 
-                    // 啟動 PiP
-                    if !self.didStartPiP && self.frameCount >= self.pipStartThreshold {
-                        self.safeTryStartPiP()
-                    }
                 }
+
+
             }
+
+            // 啟動 PiP
+            if !self.didStartPiP && self.frameCount >= self.pipStartThreshold {
+                self.safeTryStartPiP()
+            }
+
+        }
 
 
 
         return true
+
     }
 
 }
@@ -975,6 +1062,8 @@ final class PIPTestService: NSObject {
         displayLayer = nil
         frameCount = 0
         didStartPiP = false
+
+
 
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }

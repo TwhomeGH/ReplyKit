@@ -162,12 +162,8 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             }
         }
 
-        // nonisolated 包裝
-        nonisolated func signal() {
-            Task { await self._signal() }
-        }
 
-        func _signal() {
+        func signal() {
             if !waiters.isEmpty {
                 let cont = waiters.removeFirst()
                 cont.resume()
@@ -414,9 +410,10 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                 cont.resume(returning: wrapped)
 
                 // ✅ semaphore 一定要在 GPU 真完成後 signal（現在位置正確）
+                Task {
+                    await self.gpuSemaphore.signal()
 
-                self.gpuSemaphore.signal()
-
+                }
                 self.logTo("GPU Frame down")
                 self.recycleOutput(frameC.outSet)
 
