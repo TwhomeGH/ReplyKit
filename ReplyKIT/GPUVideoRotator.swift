@@ -17,18 +17,7 @@ import HaishinKit
 
 
 // MARK: - GPU Video Rotator
-//
-//final class ReusableBuffer {
-//    let pixelBuffer: CVPixelBuffer
-//    var inUse: Bool = false
-//    var yTex: MTLTexture?
-//    var uTex: MTLTexture?
-//    var vTex: MTLTexture?
-//
-//    init(pixelBuffer: CVPixelBuffer) {
-//        self.pixelBuffer = pixelBuffer
-//    }
-//}
+
 
 
 enum RotationAngle: UInt32, Codable, CaseIterable, Identifiable, CustomStringConvertible {
@@ -116,21 +105,55 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     private let outputPoolLock = NSLock()
     private let maxPoolSize: Int
 
-    
+
+
+    final class LockedBox<T> {
+        private var value: T
+        private let lock = NSLock()
+
+        init(_ value: T) {
+            self.value = value
+        }
+
+        func get() -> T {
+            lock.lock()
+            defer { lock.unlock() }
+            return value
+        }
+
+        func set(_ newValue: T) {
+            lock.lock()
+            value = newValue
+            lock.unlock()
+        }
+    }
+
     // MARK: - ASync GPU semaphore
     actor AsyncSemaphore {
         private let capacity: Int
         private var available: Int
         private var waiters: [CheckedContinuation<Void, Never>] = []
 
-        init(value: Int) {
-            self.capacity = value
-            self.available = value
+        struct Info {
+                let now: Int
+                let max: Int
         }
+
+        // ✅ 不可變快照（整包替換）
+        private nonisolated let snapshot = LockedBox(Info(now: 0, max: 0))
+
+        init(value: Int) {
+            capacity = value
+            available = value
+
+            snapshot.set(Info(now: value, max: value))
+        }
+
 
         func wait() async {
             if available > 0 {
                 available -= 1
+                snapshot.set(Info(now: available,  max: capacity))
                 return
             }
 
@@ -139,23 +162,47 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             }
         }
 
-        func signal() {
+        // nonisolated 包裝
+        nonisolated func signal() {
+            Task { await self._signal() }
+        }
+
+        func _signal() {
             if !waiters.isEmpty {
                 let cont = waiters.removeFirst()
                 cont.resume()
             } else {
                 available = min(available + 1, capacity)
+
             }
+
+            snapshot.set(Info(now: available, max: capacity))
         }
 
+        nonisolated func info() -> Info {
+                snapshot.get()
+            }
+
+
         func reset() {
-            available = capacity
+
+            // 1️⃣ 全部 resume
+            for cont in waiters {
+                cont.resume()
+            }
+
+
             waiters.removeAll()
+
+            // 2️⃣ 重置容量
+
+            available = capacity
+            snapshot.set(Info(now: available, max: capacity))
+
         }
     }
 
-    private let gpuSemaphore = AsyncSemaphore(value: 3)
-
+    private let gpuSemaphore = AsyncSemaphore(value: 5)
 
 
     func cleanup() async {
@@ -299,8 +346,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     }
 
-    let timeoutNs: UInt64 = 2_000_000_000
-
 
 
     // MARK: - Enqueue Frame
@@ -335,8 +380,8 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         }
 
 
-        //        let infoGPU=await gpuSemaphore.info()
-        //        self.logTo("GPU Info:\(infoGPU.now):\(infoGPU.max)")
+        let infoGPU=gpuSemaphore.info()
+        self.logTo("GPU Info:\(infoGPU.now):\(infoGPU.max)")
 
         self.logTo("\(srcW)x\(srcH) -> \(dstW)x\(dstH) angle:\(angle)")
 
@@ -369,14 +414,11 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                 cont.resume(returning: wrapped)
 
                 // ✅ semaphore 一定要在 GPU 真完成後 signal（現在位置正確）
-                Task {
-                    await self.gpuSemaphore.signal()
-                }
+
+                self.gpuSemaphore.signal()
 
                 self.logTo("GPU Frame down")
-
                 self.recycleOutput(frameC.outSet)
-
 
             }
             cmd.commit()
@@ -410,10 +452,12 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         guard let pixelBuffer = pb else { return nil }
 
         CVPixelBufferLockBaseAddress(pixelBuffer, [])
+
         memset(CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0), 0,
                CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0) * CVPixelBufferGetHeightOfPlane(pixelBuffer, 0))
         memset(CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 1), 128,
                CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 1) * CVPixelBufferGetHeightOfPlane(pixelBuffer, 1))
+
         CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
 
         guard let yTex = makeTexture(from: pixelBuffer, planeIndex: 0),
