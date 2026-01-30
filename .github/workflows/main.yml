@@ -116,7 +116,9 @@ jobs:
           NEW_MESSAGE="Automated unsigned iOS build ${TAG_NAME}
           Updated at $(date +'%Y/%m/%d %H:%M:%S')
           
-          Recent commits:$COMMITS"
+          Recent commits:
+          
+          $COMMITS"
 
           # 嘗試取得現有 release
           RELEASE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \

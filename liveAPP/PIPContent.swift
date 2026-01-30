@@ -243,6 +243,7 @@ final class MessageLayerTuple:Equatable {
     // 透明度控制，用於漸隱
     var alpha: CGFloat = 1.0
 
+    var resolvedBottomY:CGFloat = 0.0
 
     let name: CATextLayer?
     let message: CATextLayer?
@@ -338,8 +339,8 @@ struct MessageSegmentData {
 
     let font:UIFont?
 
-    let verticalSpacing: CGFloat = 8.0
-    let horizontalSpacing: CGFloat = 8.0
+    var verticalSpacing: CGFloat = 8.0
+    var horizontalSpacing: CGFloat = 8.0
 
 }
 
@@ -564,7 +565,13 @@ final class PIPServiceMessages {
             PIPChatLog(
                 "Name:\(String(describing: msg.name?.string))\nMES:\(String(describing: msg.message?.string))\n\(msg.startY)->\(msg.targetY)\nUID:\(String(describing: msg.parentMessageID))"
             )
-            yCursor += msg.height
+
+            if msg.name == nil {
+                yCursor += msg.height
+
+            } else {
+                yCursor += msg.height + msg.verticalSpacing
+            }
         }
 
 
@@ -614,7 +621,9 @@ final class PIPServiceMessages {
         giftURL: String?,
         font: UIFont,
         avatarSizeLocal: CGFloat,
-        giftSizeLocal: CGFloat
+        giftSizeLocal: CGFloat,
+        vSpacing:CGFloat = 8,
+        hSpacing:CGFloat = 8
     ) -> [MessageSegmentData] {
 
 
@@ -659,7 +668,10 @@ final class PIPServiceMessages {
                     avatarSizeLocal: avatarSizeLocal,
                     giftURL: nil,
                     giftSizeLocal:giftSizeLocal,
-                    font:font
+                    font:font,
+                    verticalSpacing:vSpacing,
+                    horizontalSpacing: hSpacing
+
                 )
 
 
@@ -869,11 +881,12 @@ final class PIPServiceMessages {
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             attributes: [.font: font],
             context: nil
-        ).height : 0
+        ).height : font.lineHeight
 
 
 
         tuple.cachedNameSize = CGSize(width: maxNameWidth, height: nameHeight)
+
         tuple.cachedMessageSize = CGSize(width: maxMessageWidth, height: messageHeight)
 
 
@@ -984,6 +997,10 @@ final class PIPServiceMessages {
 
         tuple.height = textBlockHeight
 
+        if type == .secondary {
+            tuple.height += 2
+        }
+
         tuple.didResolveSize = true
 
 
@@ -1021,56 +1038,30 @@ final class PIPServiceMessages {
         ) ? LPConfig.shared.PIPChatFontMainSize : LPConfig.shared.PIPChatFontSecondSize
 
 
-            let font = UIFont.systemFont(ofSize: fontSize)
+        let font = UIFont.systemFont(ofSize: fontSize)
 
-            // secondary 不 chunk
-            if type == .secondary {
+        // secondary 不 chunk
+        if type == .secondary {
 
-                    let tuple = self.buildMessageTuple(
-                        type:.secondary,
-                        user: user,
-                        message: message,
-                        img: nil,
-                        giftImg: nil,
-                        showAvatar: true,
-                        showName: true,
-                        showGift: true,
-                        font: font,
-                        avatarSizeLocal: avatarSizeLocal,
-                        giftSizeLocal: giftSizeLocal,
-                        verticalSpacing: 4,
-                        horizontalSpacing: 6
-                    )
+//                let tuple = self.buildMessageTuple(
+//                    type:.secondary,
+//                    user: user,
+//                    message: message,
+//                    img: nil,
+//                    giftImg: nil,
+//                    showAvatar: true,
+//                    showName: true,
+//                    showGift: true,
+//                    font: font,
+//                    avatarSizeLocal: avatarSizeLocal,
+//                    giftSizeLocal: giftSizeLocal,
+//
+//                )
 
+//            verticalSpacing = 4.0
+//            horizontalSpacing = 6.0
 
-                needsRelayoutAfterRemoval = true
-                self.stackedMessages.append(tuple)
-                self.layoutTargetsAndStartAnimation()
-                
-//              self.replaceBottomMessage(tuple)
-
-
-
-                // 2️⃣ 非阻塞下載圖片，下載完成再更新 tuple
-                if let imgURL = imgURL {
-                    Task {
-                     await PiPImageCache.shared.loadImage(urlString: imgURL) { image in
-                            tuple.avatar?.contents = image?.cgImage
-                        }
-                    }
-                }
-
-                if let giftURL = giftURL {
-                    Task {
-                       await PiPImageCache.shared.loadImage(urlString: giftURL) { image in
-                            tuple.gift?.contents = image?.cgImage
-                        }
-                    }
-                }
-
-                return
-            }
-
+        }
 
 
             let segments = self.splitLongMessage(
@@ -1153,6 +1144,9 @@ final class PIPServiceMessages {
                 verticalSpacing: data.verticalSpacing,
                 horizontalSpacing: data.horizontalSpacing
                      )
+
+            msg.parentMessageID = data.parentID
+            msg.segmentIndex = data.segmentIndex
 
 
             guard canInsertMessage(msg) else {
@@ -1353,15 +1347,27 @@ final class PIPServiceMessages {
 
 
         var messagesToRemove: [MessageLayerTuple] = []
-        let groups = Dictionary(grouping: animatingMessages) { $0.parentMessageID }
 
-        for (_, group) in groups {
-            guard group
-                .min(by: { $0.segmentIndex < $1.segmentIndex }) != nil else {
-                continue
+
+        var lastBottomYByParent: [UUID: CGFloat] = [:]
+
+        // ⚠️ 一定要用畫面順序（targetY / segmentIndex）
+        let orderedMessages = animatingMessages.sorted {
+            if $0.parentMessageID == $1.parentMessageID {
+                return $0.segmentIndex < $1.segmentIndex
             }
 
-            for msg in group {
+            let i0 = stackedMessages.firstIndex(of: $0) ?? 0
+            let i1 = stackedMessages.firstIndex(of: $1) ?? 0
+
+            return i0 < i1
+        }
+
+
+
+
+
+        for msg in orderedMessages {
 
                 let distance = msg.targetY - msg.startY
 
@@ -1374,14 +1380,21 @@ final class PIPServiceMessages {
                     msg.startY += distance * 0.2
                 }
 
-                layout(msg: msg, y: msg.startY)
+                guard let parentID = msg.parentMessageID else { return }
+
+                let previousBottomY = lastBottomYByParent[parentID]
+
+                layout(msg: msg, y: msg.startY,previousBottomY: previousBottomY)
+
+                // 🔑 layout 完後，更新這個 parent 的最新底部
+            lastBottomYByParent[parentID] = msg.resolvedBottomY
             }
 
 
 
 
 
-        }
+
 
 
         // ✅ move 完畢就清掉 animatingMessages
@@ -1500,10 +1513,36 @@ final class PIPServiceMessages {
 
 
 
-            for msg in animatingMessages {
+            var lastBottomYByParent: [UUID: CGFloat] = [:]
+
+            let orderedMessages = animatingMessages.sorted {
+                if $0.parentMessageID == $1.parentMessageID {
+                    return $0.segmentIndex < $1.segmentIndex
+                }
+
+                let i0 = stackedMessages.firstIndex(of: $0) ?? 0
+                let i1 = stackedMessages.firstIndex(of: $1) ?? 0
+
+                return i0 < i1
+            }
+
+
+            for msg in orderedMessages {
                   msg.startY = msg.targetY
                   msg.isNew = false
-                  layout(msg: msg, y: msg.targetY)
+
+                  guard let parentID = msg.parentMessageID else { return }
+
+                  let previousBottomY = lastBottomYByParent[parentID]
+
+                  layout(
+                        msg: msg,
+                        y: msg.targetY ,
+                        previousBottomY: previousBottomY
+                  )
+
+                  // 🔑 layout 完後，更新這個 parent 的最新底部
+                lastBottomYByParent[parentID] = msg.resolvedBottomY
             }
 
             // ✅ 清掉已經穩定的 animatingMessages（非常重要）
@@ -1576,25 +1615,18 @@ final class PIPServiceMessages {
     }
 
 
-    private func layout(msg: MessageLayerTuple, y: CGFloat,x:CGFloat? = nil) {
-
+    private func layout(msg: MessageLayerTuple, y: CGFloat,x:CGFloat? = nil,previousBottomY: CGFloat? = nil) {
 
         let adjustedY = max(y, topMargin)
 
-
-        msg.adjustedY = y
-
-
+        msg.adjustedY = adjustedY
 
         let avatarSizeLocal = msg.avatarSize ?? self.avatarSize
         let giftSizeLocal = msg.giftSize ?? self.giftSize
 
 
-        var textX = leftPadding + avatarSizeLocal + msg.horizontalSpacing
+        let textX = leftPadding + avatarSizeLocal + msg.horizontalSpacing
 
-        if let x = x {
-            textX = x
-        }
 
         // Avatar
         msg.avatar?.frame.origin.y = adjustedY
@@ -1611,6 +1643,7 @@ final class PIPServiceMessages {
             height: nameSize.height
         )
 
+        
 
         if let nameLayer = msg.name  {
 
@@ -1622,12 +1655,24 @@ final class PIPServiceMessages {
 
 
         // Message（不再計算）
-        let messageY: CGFloat
+        var messageY: CGFloat = 0
+
+        var bottomY = adjustedY
 
         if let nameLayer = msg.name {
             messageY = nameLayer.frame.maxY + msg.verticalSpacing
-        } else {
-            // 👇 沒有 name，就從 本身開始
+
+            bottomY = nameLayer.frame.maxY
+
+
+        } else if let previousBottomY {
+
+            // ② 同 parent 的後續 segment（🔥 你現在的情況）
+            messageY = previousBottomY + msg.verticalSpacing
+
+        }
+
+        else {
             messageY = adjustedY
         }
 
@@ -1646,13 +1691,17 @@ final class PIPServiceMessages {
         if let gift = msg.gift,
            let messageLayer = msg.message {
 
+            bottomY = max(bottomY, messageLayer.frame.maxY)
+
+
+
             let minX = messageLayer.frame.minX
             let minY = messageLayer.frame.minY
 
             let GiftCX = msg.cachedGiftOffsetX
             let GiftCY = msg.cachedGiftOffsetY
 
-
+            bottomY = max(bottomY, gift.frame.maxY)
 
 
             PIPChatLog("Mes MinX:\(minX) MinY:\(minY) Gift X:\(GiftCX) Y:\(GiftCY)")
@@ -1665,6 +1714,10 @@ final class PIPServiceMessages {
 
 
         }
+
+
+
+        msg.resolvedBottomY = bottomY
 
 
     }
