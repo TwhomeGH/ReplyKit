@@ -57,9 +57,40 @@ class SocketServer {
 
 
     private var restartWorkItem: DispatchWorkItem?
+
     private var isStopping = false
 
     private var lastRestartTime: Date?
+
+    // MARK: Socket 最後一次活動時間Timer
+    private var idleTimerActivity: DispatchSourceTimer?
+
+    func stopActivityIdleTimer() {
+        idleTimerActivity?.cancel()
+        idleTimerActivity = nil
+    }
+
+    func startActivityIdleTimer(
+        _ idleTime:TimeInterval = 3600,
+        reason:IdleReason = .lastClientDisconnected
+    ) {
+        idleTimerActivity?.cancel()
+        idleTimerActivity = nil
+
+        let timer = DispatchSource.makeTimerSource(queue: .global())
+        timer.schedule(deadline: .now() + idleTime, repeating: idleTime)
+
+        timer.setEventHandler { [weak self] in
+            guard let self else { return }
+
+            self.logTo("Idle timeout reached, shutting down socket Reason:\(reason)")
+                self.stop()
+
+        }
+
+        idleTimerActivity = timer
+        timer.resume()
+    }
 
 
     private func scheduleRestart(delay: TimeInterval = 1.5) {
@@ -94,6 +125,13 @@ class SocketServer {
         stop()
 
     }
+
+
+    enum IdleReason {
+        case noClientSinceStart
+        case lastClientDisconnected
+    }
+
     // MARK: - start
     func start(port: UInt16 = 9322) {
 
@@ -101,6 +139,8 @@ class SocketServer {
             logTo("SocketServer already running")
             return
         }
+
+        startActivityIdleTimer(reason: .noClientSinceStart)
 
         do {
             listener = try NWListener(using: .tcp, on: NWEndpoint.Port(rawValue: port)!)
@@ -151,7 +191,7 @@ class SocketServer {
     func ensureRunning() {
         if listener == nil {
             logTo("Listener missing, restarting")
-            scheduleRestart(delay: 0.3)
+            scheduleRestart(delay: 1.0)
         }
     }
 
@@ -162,6 +202,7 @@ class SocketServer {
         
         logTo("New connection added. Total connections: \(self.connections.count)")
 
+        stopActivityIdleTimer()
 
 
         connection.stateUpdateHandler = { [weak self] state in
@@ -392,7 +433,7 @@ class SocketServer {
         if let img = img, let giftImg = giftImg, let isMain = isMain {
              logTo("取得聊天室訊息:\(user):\(msg) Img:\(img) GIFT:\(giftImg) isMain:\(isMain)")
 
-             Task { @MainActor in
+
                  PIPService.shared
                      .addMessage(
                         user:user,
@@ -401,11 +442,11 @@ class SocketServer {
                         giftURL: giftImg,
                         isMain: isMain
                      )
-             }
+
 
         } else if let img = img ,let isMain = isMain {
              logTo("IMG取得聊天室訊息:\(user):\(msg) Img:\(img) GIFT:_ isMain:\(isMain)")
-             Task { @MainActor in
+
                  PIPService.shared
                      .addMessage(
                         user:user,
@@ -414,11 +455,11 @@ class SocketServer {
                         giftURL: giftImg,
                         isMain: isMain
                      )
-             }
+
 
         } else if let giftImg = giftImg ,let isMain = isMain {
              logTo("GIFT取得聊天室訊息:\(user):\(msg) Img:_ GIFT:\(giftImg) isMain:\(isMain)")
-             Task { @MainActor in
+
                  PIPService.shared
                      .addMessage(
                         user:user,
@@ -427,12 +468,12 @@ class SocketServer {
                         giftURL: giftImg,
                         isMain: isMain
                      )
-             }
+
 
          } else {
 
              logTo("U取得聊天室訊息:\(user):\(msg) Img:_ GIFT:_ isMain: True ")
-             Task { @MainActor in
+
                  PIPService.shared
                      .addMessage(
                         user:user,
@@ -441,7 +482,7 @@ class SocketServer {
                         giftURL: giftImg,
                         isMain: true
                      )
-             }
+
 
          }
 
@@ -973,10 +1014,19 @@ class SocketServer {
     // MARK: - Connection Cleanup
     private func removeConnection(_ connection: NWConnection) {
         let id = ObjectIdentifier(connection)
+
         guard connections[id] != nil else { return } // 已被移除
 
         idleTimers[id]?.cancel()
         idleTimers[id] = nil
+
+        let previousCount = connections.count
+
+        if previousCount > 0 && connections.isEmpty {
+            startActivityIdleTimer()
+            self.logTo("已經沒有連線 啟動活動idleTimer")
+        }
+
 
         connection.stateUpdateHandler = nil
         connection.cancel()
@@ -995,6 +1045,8 @@ class SocketServer {
 
     func stop() {
         isStopping = true
+
+        stopActivityIdleTimer()
         stopInternal()
     }
 

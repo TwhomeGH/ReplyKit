@@ -127,14 +127,143 @@ enum MessageType {
     case secondary
 }
 
+
+
+final class PixelBufferPool {
+
+    private var pool: CVPixelBufferPool!
+
+    init(size: CGSize) {
+
+        let pixelAttrs: [String: Any] = [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferWidthKey as String: Int(size.width),
+            kCVPixelBufferHeightKey as String: Int(size.height),
+            kCVPixelBufferMetalCompatibilityKey as String: true,
+            kCVPixelBufferIOSurfacePropertiesKey as String: [:]
+        ]
+
+        let poolAttrs: [String: Any] = [
+            kCVPixelBufferPoolMinimumBufferCountKey as String: 3
+        ]
+
+        CVPixelBufferPoolCreate(
+            nil,
+            poolAttrs as CFDictionary,
+            pixelAttrs as CFDictionary,
+            &pool
+        )
+    }
+
+    func makePixelBuffer() -> CVPixelBuffer {
+        var buffer: CVPixelBuffer?
+        CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
+        return buffer!
+    }
+}
+
+final class MessageGPURenderer {
+
+    private let device = MTLCreateSystemDefaultDevice()!
+
+
+    private var ciContext: CIContext
+    private var pool: PixelBufferPool?
+
+
+    init(size: CGSize,ciText:CIContext) {
+        ciContext = ciText
+        pool = PixelBufferPool(size: size)
+
+    }
+
+    deinit {
+        pool = nil
+    }
+
+
+
+    func render(time:CIImage? = nil,containerSize:CGSize) -> CVPixelBuffer? {
+
+        guard let pixelBuffer = pool?.makePixelBuffer() else { return nil }
+        CVPixelBufferLockBaseAddress(pixelBuffer, [])
+
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+
+
+
+        if let time = time {
+
+            ciContext.render(
+                time,
+                to: pixelBuffer,
+                bounds: CGRect(
+                    x: 0,
+                    y: 0,
+                    width: width,
+                    height: height)
+                ,
+                colorSpace: CGColorSpaceCreateDeviceRGB()
+            )
+
+            CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
+            return pixelBuffer
+
+        }
+
+        // 如果沒有 time，則回傳空透明
+        let blank = CIImage(color: .clear).cropped(to: CGRect(x: 0, y: 0, width: width, height: height))
+
+        ciContext.render(blank, to: pixelBuffer, bounds: blank.extent, colorSpace: CGColorSpaceCreateDeviceRGB())
+
+
+
+
+        CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
+
+        return pixelBuffer
+    }
+
+}
+
+
 // MARK: Message Model
 final class MessageLayerTuple:Equatable {
-    let avatar: CALayer?
-    let name: CATextLayer?
-    let message: CATextLayer?
-    let gift: CALayer?
+
 
     var type: MessageType
+
+    // layout
+    var isNew: Bool = false      // 是否新訊息
+    var startY: CGFloat = 0      // 動畫起始 y
+    var targetY: CGFloat = 0     // 動畫目標 y
+    var height: CGFloat = 0      // 訊息總高度
+
+    // 透明度控制，用於漸隱
+    var alpha: CGFloat = 1.0
+
+
+    let name: CATextLayer?
+    let message: CATextLayer?
+    // ⚡ 新增支援訊息大小的屬性
+    var font: UIFont?             // 訊息字體
+
+
+    let avatar: CALayer?
+    let gift: CALayer?
+
+    var avatarSize: CGFloat?      // avatar 尺寸
+    var giftSize: CGFloat?        // gift 尺寸
+
+    var avatarImage:CGSize?
+    var giftImage:CGSize?
+
+
+
+    var leftPadding: CGFloat = 8
+    var textX: CGFloat = 0
+    var adjustedY:CGFloat = 0
 
 
     var isFadingOut: Bool = false
@@ -149,26 +278,19 @@ final class MessageLayerTuple:Equatable {
     var horizontalSpacing: CGFloat = 6
 
 
-    var isNew: Bool = false      // 是否新訊息
-    var startY: CGFloat = 0      // 動畫起始 y
-    var targetY: CGFloat = 0     // 動畫目標 y
-    var height: CGFloat = 0      // 訊息總高度
+
 
     var overflowHeight: CGFloat?
-
-    // ⚡ 新增支援訊息大小的屬性
-    var font: UIFont?             // 訊息字體
-    var avatarSize: CGFloat?      // avatar 尺寸
-    var giftSize: CGFloat?        // gift 尺寸
-
-    // 透明度控制，用於漸隱
-    var alpha: CGFloat = 1.0
 
     // 🔹 新增快取屬性
     var cachedNameSize: CGSize = .zero
     var cachedMessageSize: CGSize = .zero
-    var cachedLastLineWidth: CGFloat = 0
-    var cachedLastLineHeight: CGFloat = 0
+
+    var cachedGiftOffsetX: CGFloat = 0
+    var cachedGiftOffsetY: CGFloat = 0
+
+    // MessageLayerTuple 新增
+    var lastLineText: String?
 
 
 
@@ -195,6 +317,85 @@ final class MessageLayerTuple:Equatable {
 
 
 
+struct MessageSegmentData {
+    let parentID: UUID
+    let segmentIndex: Int
+
+    let type: MessageType
+    let user: String
+    let message: String
+
+    let showAvatar: Bool
+    let showName: Bool
+    let showMessage: Bool
+    let showGift: Bool
+
+    let avatarURL: String?
+    let avatarSizeLocal: CGFloat?
+
+    let giftURL: String?
+    let giftSizeLocal:CGFloat?
+
+    let font:UIFont?
+
+    let verticalSpacing: CGFloat = 8.0
+    let horizontalSpacing: CGFloat = 8.0
+
+}
+
+final class LayerPool {
+
+    private var textLayers: [CATextLayer] = []
+    private var imageLayers: [CALayer] = []
+
+    private let scale = UIScreen.main.scale
+
+    // MARK: - Text
+
+    func getTextLayer() -> CATextLayer {
+        if let layer = textLayers.popLast() {
+            layer.isHidden = false
+            return layer
+        }
+
+        let layer = CATextLayer()
+        layer.contentsScale = scale
+        layer.isWrapped = true
+        layer.alignmentMode = .left
+        return layer
+    }
+
+    func recycleTextLayer(_ layer: CATextLayer) {
+        layer.string = nil
+        layer.opacity = 1
+        layer.frame = .zero
+        layer.removeFromSuperlayer()
+        textLayers.append(layer)
+    }
+
+    // MARK: - Image (avatar / gift 共用)
+
+    func getImageLayer() -> CALayer {
+        if let layer = imageLayers.popLast() {
+            layer.isHidden = false
+            return layer
+        }
+
+        let layer = CALayer()
+        layer.contentsScale = scale
+        return layer
+    }
+
+    func recycleImageLayer(_ layer: CALayer) {
+        layer.contents = nil
+        layer.opacity = 1
+        layer.frame = .zero
+        layer.removeFromSuperlayer()
+        imageLayers.append(layer)
+    }
+}
+
+
 
 // MARK: - PIP 訊息組（PiP 專用動畫版）
 final class PIPServiceMessages {
@@ -212,35 +413,52 @@ final class PIPServiceMessages {
     private var lastFadeTriggerTime: CFTimeInterval = 0
 
     var fadeInterval: CFTimeInterval = LPConfig.shared.MessageFadeTime
-    
 
+    // 新增：目前正在淡出的組
+    private var fadingParentID: UUID?
+
+
+
+
+    func groupLeader(_ msg: MessageLayerTuple) -> MessageLayerTuple? {
+        stackedMessages
+            .filter { $0.parentMessageID == msg.parentMessageID }
+            .min(by: { $0.segmentIndex < $1.segmentIndex })
+    }
+
+    func isGroupFadingOut(_ msg: MessageLayerTuple) -> Bool {
+        // 只要這個組內有任何一行正在淡出，就視為整組正在淡出
+        return stackedMessages.contains {
+            $0.parentMessageID == msg.parentMessageID && $0.isFadingOut
+        }
+    }
 
 
     private func updateFadeCandidateIfNeeded() {
-        guard !isAnyMessageFadingOut else { return }
-        guard IshasOverFlow() else {        // ✅ 沒 overflow 絕對不 fade
-            fadeCandidate = nil
+        guard fadeCandidate == nil else {
+
             return
         }
 
-
-
-        fadeCandidate = stackedMessages
+        // 只考慮已穩定、可見、未 fade 的 leader
+        let leaders = stackedMessages
+            .filter { !$0.isNew && !$0.isFadingOut && $0.alpha > 0 }
+            .compactMap { groupLeader($0) }
             .filter {
-                $0.alpha > 0 &&
-                !$0.isNew &&
                 abs($0.startY - $0.targetY) < snapThreshold &&
-                !($0.isFadingOut) &&
-
-                ($0.startY >= 0) &&
-                ($0.startY + $0.height <= container.bounds.height)  // 完全在可視範圍內
-
-
+                $0.targetY + $0.height <= container.bounds.height
             }
-            .min(by: { $0.startY < $1.startY })
 
+
+        // 🔑 關鍵：用 targetY，不是 startY
+        fadeCandidate = leaders.min(by: { $0.targetY < $1.targetY })
+        PIPChatLog(
+            "FadeCan:\(String(describing: fadeCandidate?.name?.string))-\(String(describing: fadeCandidate?.message?.string)) \(String(describing: fadeCandidate?.parentMessageID)) SY:\(String(describing: fadeCandidate?.startY)) TY:\(String(describing: fadeCandidate?.targetY))"
+        )
         if fadeCandidate != nil {
             lastFadeTriggerTime = CACurrentMediaTime()
+            fadingParentID = fadeCandidate!.parentMessageID
+
         }
     }
 
@@ -269,14 +487,13 @@ final class PIPServiceMessages {
 
     private var lastDirtyTime: CFTimeInterval = 0
 
-    private var isAnyMessageFadingOut: Bool = false
+    //private var isAnyMessageFadingOut: Bool = false
+
     private var needsRelayoutAfterRemoval = false
 
-    // ✅ 新增（動畫狀態計數）
-    private var fadingCount: Int = 0
 
     // ✅ 新增（fade 決策只算一次）
-    private weak var fadeCandidate: MessageLayerTuple?
+    private var fadeCandidate: MessageLayerTuple?
 
     let bottomPadding: CGFloat = 4
 
@@ -295,12 +512,11 @@ final class PIPServiceMessages {
     }
 
 
-    var leftPadding: CGFloat = 8
 
     // Animation
     private var isAnimating = false
     private var displayLink: CADisplayLink?
-
+    private var hasLaidOutOnce = false
 
 
 
@@ -313,7 +529,7 @@ final class PIPServiceMessages {
 
     private func relayoutTargetsOnly(updateTargetY: Bool = true) {
 
-        let bottomMsgHeight = bottomMessage?.height ?? 0
+        //let bottomMsgHeight = bottomMessage?.height ?? 0
 
         // 🔑 1️⃣ 用「目前畫面順序」排序
         let relayoutMessages = stackedMessages
@@ -322,170 +538,187 @@ final class PIPServiceMessages {
                 $0.didResolveSize
             }
 
-
         var yCursor = topMargin
 
-        for msg in relayoutMessages {
+        // 先按 segmentIndex 排序，保證全局順序
+        let orderedMessages = relayoutMessages
+            .sorted { lhs, rhs in
+                // 先按 parentMessageID 的出現順序
+                if lhs.parentMessageID == rhs.parentMessageID {
+                    return lhs.segmentIndex < rhs.segmentIndex
+                } else {
+                    if lhs.startY <= 0 {
+                        lhs.startY = rhs.startY + lhs.height
+                    }
 
-            let overflowHeight = (yCursor + msg.height) - (
-                container.bounds.height - bottomMsgHeight - bottomPadding
-            )
+                    return stackedMessages.firstIndex(of: lhs)! < stackedMessages.firstIndex(of: rhs)!
+                }
+            }
 
-            msg.overflowHeight = max(overflowHeight, 0)
 
+        for msg in orderedMessages {
             if updateTargetY {
                 msg.targetY = yCursor
 
             }
+            PIPChatLog(
+                "Name:\(String(describing: msg.name?.string))\nMES:\(String(describing: msg.message?.string))\n\(msg.startY)->\(msg.targetY)\nUID:\(String(describing: msg.parentMessageID))"
+            )
             yCursor += msg.height
-
         }
 
-        layoutBottomMessage()
-        updateFadeCandidateIfNeeded()
-        updateBottomVisibility()
+
+
+        //layoutBottomMessage()
+        //updateBottomVisibility()
+
+
+        // ✅ 只在「第一次完成 targetY 計算」後標記
+        if !hasLaidOutOnce {
+            hasLaidOutOnce = true
+            PIPChatLog("First layout baseline established")
+        }
+
     }
 
 
-    // MARK: - 拆分長訊息生成多個 MessageLayerTuple（支援 avatar/gift 非阻塞下載）
+    var leftPadding: CGFloat = 8
+
+
+
+    func breakMessageIntoLines(_ text: String, font: UIFont, maxWidth: CGFloat) -> [String] {
+        let attr = NSAttributedString(string: text, attributes: [.font: font])
+        let framesetter = CTFramesetterCreateWithAttributedString(attr)
+
+        let path = CGPath(rect: CGRect(x: 0, y: 0, width: maxWidth, height: .greatestFiniteMagnitude), transform: nil)
+        let frame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: attr.length), path, nil)
+
+        let lines = CTFrameGetLines(frame) as! [CTLine]
+        var result: [String] = []
+
+        for line in lines {
+            let range = CTLineGetStringRange(line)
+            let nsRange = NSRange(location: range.location, length: range.length)
+            let substring = (text as NSString).substring(with: nsRange)
+            result.append(substring)
+        }
+
+        return result
+    }
+
     private func splitLongMessage(
+        type:MessageType,
         user: String,
         message: String,
         imgURL: String?,
         giftURL: String?,
         font: UIFont,
         avatarSizeLocal: CGFloat,
-        giftSizeLocal: CGFloat,
-        verticalSpacing: CGFloat = 8,
-        horizontalSpacing: CGFloat = 8
-    ) -> [MessageLayerTuple] {
-
-        var tuples: [MessageLayerTuple] = []
-
-        let containerMaxHeight = container.bounds.height - topMargin - bottomPadding // bottomPadding
+        giftSizeLocal: CGFloat
+    ) -> [MessageSegmentData] {
 
 
-        let maxNameWidth = container.bounds.width
-            - leftPadding * 2
-            - avatarSizeLocal
-            - horizontalSpacing
+        var result: [MessageSegmentData] = []
 
-        // ⚠️ 用「最保守」的 message 寬度（假設最後一段有 gift）
-        let maxMessageWidth = container.bounds.width
-            - leftPadding * 2
-            - avatarSizeLocal
-            - horizontalSpacing
-            - giftSizeLocal
-
-
-        var remainingText = message
-        var segmentIndex = 0
-
-        // 預計段數，用於最後一段禮物判斷
-        var estimatedSegments: [String] = []
-
-        // 先粗略拆段以計算最後一段
-        while !remainingText.isEmpty {
-            var fitLength = remainingText.count
-            var segmentText = remainingText
-
-            while fitLength > 0 {
-
-
-                let nameHeight: CGFloat = segmentIndex == 0
-                    ? (user as NSString).boundingRect(
-                        with: CGSize(width: maxNameWidth, height: .greatestFiniteMagnitude),
-                        options: [.usesLineFragmentOrigin, .usesFontLeading],
-                        attributes: [.font: font],
-                        context: nil
-                      ).height
-                    : 0
-
-
-                let messageHeight = (segmentText as NSString).boundingRect(
-                    with: CGSize(width: maxMessageWidth, height: .greatestFiniteMagnitude),
-                    options: [.usesLineFragmentOrigin, .usesFontLeading],
-                    attributes: [.font: font],
-                    context: nil
-                ).height
-
-
-
-                let textBlockHeight = nameHeight + verticalSpacing + messageHeight
-                let totalHeight = max(avatarSizeLocal, textBlockHeight) + verticalSpacing
-
-                if totalHeight <= containerMaxHeight { break }
-
-                fitLength -= 1
-                segmentText = String(remainingText.prefix(fitLength))
-            }
-
-            estimatedSegments.append(segmentText)
-            remainingText = String(remainingText.dropFirst(segmentText.count))
-        }
-
-        let totalSegments = estimatedSegments.count
-        remainingText = message
+        var seg = 0
 
         let parentID = UUID()
 
-        for segmentText in estimatedSegments {
 
-            let tuple = buildMessageTuple(
-                user: user,
-                message: segmentText,
-                img: segmentIndex == 0 ? nil : nil, // avatarLayer 先設 nil，用 URL 下載
-                giftImg: segmentIndex == totalSegments - 1 ? nil : nil, // giftLayer 先設 nil，用 URL 下載
-                showAvatar: segmentIndex == 0,
-                showName: segmentIndex == 0,
-                showMessage: true,
-                showGift: segmentIndex == totalSegments - 1,
-                font: font,
-                avatarSizeLocal: avatarSizeLocal,
-                giftSizeLocal: giftSizeLocal,
-                verticalSpacing: verticalSpacing,
-                horizontalSpacing: horizontalSpacing
-            )
+        // ⚠️ 計算可用寬度（跟 buildMessageTuple 一致）
+        let maxMessageWidth = container.bounds.width
+            - leftPadding * 2
+            - avatarSizeLocal
+            - 8 // horizontalSpacing
+            - giftSizeLocal
 
-            tuple.segmentIndex = segmentIndex
 
-            tuple.parentMessageID = parentID
-            tuples.append(tuple)
+        let nameLines = breakMessageIntoLines(
+            user,
+            font: font,
+            maxWidth: maxMessageWidth
+        )
 
-            // 非阻塞下載 avatar（只在第一段）
-            if let imgURL = imgURL, segmentIndex == 0 {
-                PIPChatLog("IMGURL:\(imgURL)")
 
-                Task {
-                    await PiPImageCache.shared
-                        .loadImage(urlString: imgURL) { image in
-                        tuple.avatar?.contents = image?.cgImage
-                    }
-                }
+        // ① 名稱段（可能多行）
+        for (index, line) in nameLines.enumerated() {
 
-            }
+            let isFirst = index == 0
 
-            // 非阻塞下載 gift（只在最後一段）
-            if let giftURL = giftURL, segmentIndex == totalSegments - 1 {
-                PIPChatLog("GiftURL:\(giftURL)")
+            let data = MessageSegmentData(
+                    parentID: parentID,
+                    segmentIndex: seg,
+                    type: type,
+                    user: line,
+                    message: "",
+                    showAvatar: isFirst,
+                    showName: true,
+                    showMessage: false,
+                    showGift: false,
+                    avatarURL: isFirst ? imgURL : nil,
+                    avatarSizeLocal: avatarSizeLocal,
+                    giftURL: nil,
+                    giftSizeLocal:giftSizeLocal,
+                    font:font
+                )
 
-                Task {
-                 await   PiPImageCache.shared
-                        .loadImage(urlString: giftURL) { image in
-                            tuple.gift?.contents = image?.cgImage
 
-                        }
-                }
-            }
+            seg += 1
+
 
             PIPChatLog(
-                "Split segment \(segmentIndex): height=\(tuple.height), text='\(segmentText)'"
+                "Split segment \(index): text='\(line)'"
             )
-            segmentIndex += 1
+
+
+            result.append(data)
         }
 
-        return tuples
+
+        let messageLines = breakMessageIntoLines(
+            message,
+            font: font, maxWidth: maxMessageWidth
+        )
+
+
+        for (index, line) in messageLines.enumerated() {
+
+            let isLast = index == messageLines.count - 1
+
+            let data = MessageSegmentData(
+                    parentID: parentID,
+                    segmentIndex: seg,
+                    type: type,
+                    user: "",
+                    message: line,
+                    showAvatar: false,
+                    showName: false,
+                    showMessage: true,
+                    showGift: isLast,
+                    avatarURL: nil,
+                    avatarSizeLocal: avatarSizeLocal,
+                    giftURL: isLast ? giftURL : nil,
+                    giftSizeLocal: giftSizeLocal,
+                    font: font
+                )
+
+
+
+            seg += 1
+
+
+            PIPChatLog(
+                "Split segment \(index): text='\(line)'"
+            )
+
+
+            result.append(data)
+        }
+
+        return result
     }
+
+
 
     // MARK: - Build Message Tuple（抽出來重用）
     func buildMessageTuple(
@@ -506,7 +739,6 @@ final class PIPServiceMessages {
 
 
     ) -> MessageLayerTuple {
-
 
 
         // Avatar
@@ -575,13 +807,16 @@ final class PIPServiceMessages {
 
         // Gift
         var giftLayer: CALayer?
+
         if showGift {
             let layer = CALayer()
             layer.contents = giftImg?.cgImage
             layer.contentsGravity = .resizeAspect
+
             container.addSublayer(layer)
             giftLayer = layer
         }
+
 
         let tuple = MessageLayerTuple(
             avatar: avatarLayer ,
@@ -601,17 +836,22 @@ final class PIPServiceMessages {
 
         tuple.type = type
 
+        tuple.textX = leftPadding
+            + (showAvatar ? avatarSizeLocal + horizontalSpacing : 0)
+
+
+        let avatarWidth = showAvatar ? avatarSizeLocal + horizontalSpacing : 0
+        let giftWidth   = showGift ? giftSizeLocal + horizontalSpacing : 0
+
         // 🔹 同步計算高度
         let maxNameWidth = container.bounds.width
             - leftPadding * 2
-            - avatarSizeLocal
-        - tuple.horizontalSpacing
+            - avatarWidth
 
         let maxMessageWidth = container.bounds.width
             - leftPadding * 2
-            - avatarSizeLocal
-        - tuple.horizontalSpacing
-            - (giftLayer != nil ? giftSizeLocal : 0)
+            - avatarWidth
+            - giftWidth
 
 
         let nameHeight = showName
@@ -624,45 +864,132 @@ final class PIPServiceMessages {
             : 0
 
 
-        let messageHeight = (message as NSString).boundingRect(
+        let messageHeight = showMessage ? (message as NSString).boundingRect(
             with: CGSize(width: maxMessageWidth, height: .greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             attributes: [.font: font],
             context: nil
-        ).height
+        ).height : 0
 
 
 
         tuple.cachedNameSize = CGSize(width: maxNameWidth, height: nameHeight)
         tuple.cachedMessageSize = CGSize(width: maxMessageWidth, height: messageHeight)
 
-        
+
+        if showGift, showMessage {
+
+            let attr = NSAttributedString(
+                string: message,
+                attributes: [.font: font]
+            )
+
+            let frameHeight = tuple.cachedMessageSize.height
+
+            let framesetter = CTFramesetterCreateWithAttributedString(attr)
+            let path = CGPath(
+                rect: CGRect(
+                    x: 0,
+                    y: 0,
+                    width: maxMessageWidth,
+                    height: frameHeight
+                ),
+                transform: nil
+            )
+
+            let frame = CTFramesetterCreateFrame(
+                framesetter,
+                CFRange(location: 0, length: attr.length),
+                path,
+                nil
+            )
+
+            let lines = CTFrameGetLines(frame) as! [CTLine]
+            guard let lastLine = lines.last else { return tuple }
+
+            // 最後一行文字寬度
+            let lastLineWidth = CGFloat(
+                CTLineGetTypographicBounds(lastLine, nil, nil, nil)
+            )
+
+            var ascent: CGFloat = 0
+            var descent: CGFloat = 0
+            var leading: CGFloat = 0
+
+            CTLineGetTypographicBounds(lastLine, &ascent, &descent, &leading)
+
+
+            // baseline
+            var origins = Array(repeating: CGPoint.zero, count: lines.count)
+            CTFrameGetLineOrigins(frame, CFRangeMake(0, 0), &origins)
+
+            let lastLineOrigin = origins.last!
+
+            // 快取 gift 相對 message 左上角的位置
+            tuple.cachedGiftOffsetX = lastLineWidth + 2
+
+            let rawY = lastLineOrigin.y
+
+
+            // 微調
+            let visualOffset: CGFloat = 2.0  // 或 1~3，視覺測試
+
+
+            if rawY.isFinite {
+                tuple.cachedGiftOffsetY =
+                tuple.cachedMessageSize.height
+                - rawY
+                - ascent / 2
+                - giftSizeLocal / 2
+                + visualOffset
+
+            } else {
+                // 🔥 fallback：直接貼在最後一行中線
+                    tuple.cachedGiftOffsetY =
+                        tuple.cachedMessageSize.height
+                        - ascent / 2
+                        - giftSizeLocal / 2
+                        + visualOffset
+
+            }
+
+
+        }
 
 
         // 計算最後一行文字寬度（用 constrained width 模擬）
-        let lines = message.split(separator: "\n")
-        let lastLine = String(lines.last ?? "")
-
-        let lastLineWidth = lastLine.isEmpty ? 0 : (lastLine as NSString).size(withAttributes: [.font: font]).width
-
-        let lastLineHeight = font.lineHeight
-
+        tuple.lastLineText = breakMessageIntoLines(
+            message,
+            font: font,
+            maxWidth: maxMessageWidth
+        ).last
 
 
-        tuple.cachedLastLineWidth = lastLineWidth
+        var textBlockHeight: CGFloat = 0
 
-        tuple.cachedLastLineHeight = lastLineHeight
+        if showName {
+            textBlockHeight += nameHeight
+        }
+
+
+        if showName && showMessage {
+            textBlockHeight += verticalSpacing
+        }
+
+        if showMessage {
+            textBlockHeight += messageHeight
+        }
 
 
 
+        tuple.height = textBlockHeight
 
-        let textBlockHeight = nameHeight + tuple.verticalSpacing + messageHeight
-        tuple.height = max(avatarSizeLocal, textBlockHeight) + tuple.verticalSpacing
         tuple.didResolveSize = true
 
 
         return tuple
     }
+
 
 
 
@@ -679,7 +1006,7 @@ final class PIPServiceMessages {
     ) {
 
 
-            let type: MessageType = isMain ? .primary : .secondary
+        let type: MessageType = isMain ? .primary : .secondary
 
         let fontSize: CGFloat = (
             type == .primary
@@ -716,10 +1043,11 @@ final class PIPServiceMessages {
                     )
 
 
+                needsRelayoutAfterRemoval = true
                 self.stackedMessages.append(tuple)
                 self.layoutTargetsAndStartAnimation()
-
-//                    self.replaceBottomMessage(tuple)
+                
+//              self.replaceBottomMessage(tuple)
 
 
 
@@ -745,101 +1073,197 @@ final class PIPServiceMessages {
 
 
 
-        DispatchQueue.global(qos: .userInitiated).async {
-
             let segments = self.splitLongMessage(
-                user: user,
+                type: type, user: user,
                 message: message,
                 imgURL:imgURL,
                 giftURL: giftURL,
                 font: font,
                 avatarSizeLocal: avatarSizeLocal,
                 giftSizeLocal: giftSizeLocal
+
             )
-            DispatchQueue.main.async {
-                for i in segments {
-                    PIPChatLog("SE:\(String(describing: i.message))")
-                }
-                self.stackedMessages.append(contentsOf: segments)
-                self.layoutTargetsAndStartAnimation()
+
+
+            // ① 先只存資料
+            pendingSegments.append(contentsOf: segments)
+
+            // ② 嘗試補畫面
+            populateVisibleMessagesIfNeeded()
+
+            self.layoutTargetsAndStartAnimation()
+
+
+
+
+
+
+
+    }
+
+
+    private var pendingSegments: [MessageSegmentData] = []
+
+    func currentBottomTargetY() -> CGFloat {
+        stackedMessages
+            .filter { !$0.isNew }   // 排除還在進場的
+            .map { $0.targetY + $0.height }
+            .max()
+        ?? topMargin
+    }
+
+    func canInsertMessage(_ newMsg: MessageLayerTuple) -> Bool {
+        // 模擬累加
+        var simulatedBottomY = currentBottomTargetY()
+
+        // 如果有多條新訊息要插，這裡可以改成迴圈累加
+        simulatedBottomY += newMsg.height
+
+
+        let canInsert = simulatedBottomY <= container.bounds.height + newMsg.height
+
+        PIPChatLog("CanInsert \(canInsert) SSTY:\(simulatedBottomY) Bounds:\(container.bounds.height + newMsg.height)")
+
+        return canInsert
+    }
+
+    func populateVisibleMessagesIfNeeded() {
+
+        while let data = pendingSegments.first {
+
+
+            guard let font = data.font,
+                  let avatarSize = data.avatarSizeLocal,
+                  let giftSize = data.giftSizeLocal
+            else { return }
+
+            let msg = buildMessageTuple(
+                type: data.type,
+                user: data.user,
+                message: data.message,
+                img: nil, //先設 nil，用 URL 下載
+                giftImg: nil, //先設 nil，用 URL 下載
+                showAvatar: data.showAvatar, // 只有第一行顯示 avatar,
+                showName: data.showName,
+                showMessage:data.showMessage,   // 只有第一行顯示名字
+                showGift: data.showGift, // 最後一行顯示禮物
+                font: font,
+                avatarSizeLocal: avatarSize,
+                giftSizeLocal: giftSize,
+                verticalSpacing: data.verticalSpacing,
+                horizontalSpacing: data.horizontalSpacing
+                     )
+
+
+            guard canInsertMessage(msg) else {
+                // 放不下就不要 build
+                break
             }
+
+
+            pendingSegments.removeFirst()
+
+
+            if let avatarURL = data.avatarURL {
+                Task {
+                    await PiPImageCache.shared
+                        .loadImage(urlString: avatarURL) { image in
+                            msg.avatar?.contents = image?.cgImage
+                            msg.avatarImage = image?.size
+                        }
+                }
+            }
+            if let giftURL = data.giftURL {
+                Task {
+                    await PiPImageCache.shared
+                        .loadImage(urlString: giftURL) { image in
+                            msg.gift?.contents = image?.cgImage
+                            msg.giftImage = image?.size
+                        }
+                }
+            }
+
+            stackedMessages.append(msg)
         }
-
-
-
-
-
     }
 
 
-    private func layoutBottomMessage() {
-        guard let msg = bottomMessage else { return }
+    // MARK: 之前固定於底部用的考慮棄用或提換成別的
+    //    private func layoutBottomMessage() {
+    //        guard let msg = bottomMessage else { return }
+    //
+    //        //let y = bottomPadding
+    //        let y = container.bounds.height - msg.height - bottomPadding
+    //        //let x = 80.0
+    //
+    //        PIPChatLog(
+    //            "Debug Bottom? \(String(describing: msg.message?.string)) \(String(describing: msg.message?.opacity))"
+    //        )
+    //        layout(msg: msg, y: y)
+    //    }
 
-        //let y = bottomPadding
-        let y = container.bounds.height - msg.height - bottomPadding
-        //let x = 80.0
+    // MARK: 更新底部訊息
 
-        PIPChatLog(
-            "Debug Bottom? \(String(describing: msg.message?.string)) \(String(describing: msg.message?.opacity))"
-        )
-        layout(msg: msg, y: y)
-    }
+    //    func updateBottomVisibility() {
+    //        guard let bottom = bottomMessage else { return }
+    //
+    //        let shouldHide = IshasOverFlow()
+    //
+    //        // 如果是 secondary，永遠顯示
+    //        let isSecondary = bottom.type == .secondary
+    //
+    //        let targetOpacity: Float = isSecondary ? 1.0 : (shouldHide ? 0.0 : 1.0)
+    //
+    //
+    //        if bottom.avatar?.opacity != targetOpacity {
+    //            bottom.avatar?.opacity = targetOpacity
+    //            bottom.name?.opacity = targetOpacity
+    //            bottom.message?.opacity = targetOpacity
+    //            bottom.gift?.opacity = targetOpacity
+    //        }
+    //    }
 
+    // MARK: 舊的替換底部文字
 
-    private func replaceBottomMessage(_ newMsg: MessageLayerTuple) {
-
-        // 移除舊的
-        if let old = bottomMessage {
-            old.avatar?.removeFromSuperlayer()
-            old.name?.removeFromSuperlayer()
-            old.message?.removeFromSuperlayer()
-            old.gift?.removeFromSuperlayer()
-        }
-
-        bottomMessage = newMsg
-
-        layoutBottomMessage()
-        updateBottomVisibility()
-        PIPService.shared.markDirty()
-
-    }
+    //    private func replaceBottomMessage(_ newMsg: MessageLayerTuple) {
+    //
+    //        // 移除舊的
+    //        if let old = bottomMessage {
+    //            old.avatar?.removeFromSuperlayer()
+    //            old.name?.removeFromSuperlayer()
+    //            old.message?.removeFromSuperlayer()
+    //            old.gift?.removeFromSuperlayer()
+    //        }
+    //
+    //        bottomMessage = newMsg
+    //
+    //        layoutBottomMessage()
+    //        updateBottomVisibility()
+    //        PIPService.shared.markDirty()
+    //
+    //    }
 
 
 
 
 
     func IshasOverFlow() -> Bool {
-        stackedMessages.contains { msg in
 
-            PIPChatLog(
-                "MSG:\(String(describing: msg.message?.string)) \(msg.startY)-\(msg.targetY) H:\(msg.height) TH:\(msg.targetY + msg.height) isNew:\(msg.isNew) "
-            )
-            let bottomY = msg.targetY + msg.height
 
-            return bottomY > container.bounds.height - bottomPadding
-        }
+        // 找出最底部訊息的 targetY + height
+        guard let maxBottom = stackedMessages
+            .filter({ $0.alpha > 0 }) // 忽略已消失訊息
+            .map({ $0.targetY + $0.height })
+            .max() else { return false }
+
+
+        let conSize = container.bounds.height - bottomPadding
+        PIPChatLog("MaxBottom:\(maxBottom) Container:\(conSize)")
+        return maxBottom  > conSize
 
 
     }
 
-    func updateBottomVisibility() {
-        guard let bottom = bottomMessage else { return }
-
-        let shouldHide = IshasOverFlow()
-
-        // 如果是 secondary，永遠顯示
-        let isSecondary = bottom.type == .secondary
-
-        let targetOpacity: Float = isSecondary ? 1.0 : (shouldHide ? 0.0 : 1.0)
-
-
-        if bottom.avatar?.opacity != targetOpacity {
-            bottom.avatar?.opacity = targetOpacity
-            bottom.name?.opacity = targetOpacity
-            bottom.message?.opacity = targetOpacity
-            bottom.gift?.opacity = targetOpacity
-        }
-    }
 
 
     let snapThreshold: CGFloat = 0.2
@@ -858,22 +1282,25 @@ final class PIPServiceMessages {
         let sortedStack = stackedMessages
             .filter { $0.alpha > 0 }
 
-        //var lastY = topMargin
+        var lastSY = container.bounds.height
 
         for msg in sortedStack {
             // 新訊息且還沒在 animatingMessages
-            if msg.isNew && !animatingMessages.contains(msg) {
+            guard msg.isNew else { continue }
 
-                // 如果 startY 還是 0，初始化到 container 外面
-                if msg.startY == 0 {
-                    msg.startY = container.bounds.height + msg.height
-                }
+            if !animatingMessages.contains(msg) {
 
+                msg.startY = lastSY + msg.height
+                lastSY = msg.startY
+                PIPChatLog("lastSY:\(lastSY) Target SY:\(msg.startY)")
                 animatingMessages.append(msg)
 
             }
         }
 
+
+        PIPService.shared.markDirty()
+        PIPService.shared.isAnimatingMessages = true
 
 
         // 啟動 displayLink
@@ -889,82 +1316,151 @@ final class PIPServiceMessages {
 
 
 
+
+    func isHasFade(_ parentID: UUID?) -> Bool {
+
+        if let parentID {
+            return stackedMessages.contains {
+                $0.parentMessageID == parentID
+            }
+        }
+        return false
+    }
+
+
+    func isGroupMoving(_ parentID:UUID?) -> Bool {
+        if let parentID {
+                return stackedMessages.contains {
+                $0.parentMessageID == parentID &&
+                abs($0.startY - $0.targetY) >= snapThreshold
+            }
+        }
+        return false
+    }
+
+
+
+
+
+
     // MARK: - 每幀動畫
     @objc private func stepAnimationDisplayLink() {
 
-
-
-
-
         PIPChatLog("Debug step is doing \(Date().formatted())")
         PIPChatLog(
-            "DL step | anim:\(animatingMessages.count) fade:\(fadingCount)"
+            "DL step | anim:\(animatingMessages.count)"
         )
 
-        // 2️⃣ 更新 animatingMessages 位置
-        for msg in animatingMessages {
-            let distance = msg.targetY - msg.startY
-            if abs(distance) >= snapThreshold {
-                msg.startY += distance * 0.2
-            } else {
-                msg.startY = msg.targetY
-                msg.isNew = false
+
+        var messagesToRemove: [MessageLayerTuple] = []
+        let groups = Dictionary(grouping: animatingMessages) { $0.parentMessageID }
+
+        for (_, group) in groups {
+            guard group
+                .min(by: { $0.segmentIndex < $1.segmentIndex }) != nil else {
+                continue
             }
-            layout(msg: msg, y: msg.startY)
+
+            for msg in group {
+
+                let distance = msg.targetY - msg.startY
+
+                if abs(distance) < snapThreshold {
+                    msg.startY = msg.targetY
+                    msg.isNew = false
+                    messagesToRemove.append(msg) // 先記錄
+
+                } else {
+                    msg.startY += distance * 0.2
+                }
+
+                layout(msg: msg, y: msg.startY)
+            }
+
+
+
+
+
         }
 
+
+        // ✅ move 完畢就清掉 animatingMessages
+        animatingMessages.removeAll { messagesToRemove.contains($0) }
+
+
         // 3️⃣ Fade 最上方舊訊息，保留最下面兩條
-
-
 
         let now = CACurrentMediaTime()
 
         // ✅ fade 延遲判斷（只處理單一 candidate）
         if let candidate = fadeCandidate,
-           !candidate.isMoving,
-           !candidate.isFadingOut,
-           CACurrentMediaTime() - lastFadeTriggerTime >= fadeInterval {
-
-            candidate.isFadingOut = true
-            isAnyMessageFadingOut = true
-            fadingCount += 1
-            fadeCandidate = nil
-        }
-
-        for msg in stackedMessages where msg.isFadingOut {
-            msg.alpha -= 0.04
-            msg.alpha = max(0, msg.alpha)
-            msg.avatar?.opacity = Float(msg.alpha)
-            msg.name?.opacity = Float(msg.alpha)
-            msg.message?.opacity = Float(msg.alpha)
-            msg.gift?.opacity = Float(msg.alpha)
-
-        }
+           !isGroupMoving(candidate.parentMessageID ?? nil),
+           CACurrentMediaTime() - lastFadeTriggerTime >= fadeInterval,
+           !candidate.isNew {
 
 
+            // 取得這組還有 alpha > 0 的最上方訊息
+            let bottomY  = stackedMessages
+                   .filter({ $0.alpha > 0 })
+                   .map { $0.targetY + $0.height }
+                   .max() ?? topMargin
 
-        var i = 0
-        while i < stackedMessages.count {
-            let msg = stackedMessages[i]
-            if msg.alpha <= 0.01 {
-                msg.avatar?.removeFromSuperlayer()
-                msg.name?.removeFromSuperlayer()
-                msg.message?.removeFromSuperlayer()
-                msg.gift?.removeFromSuperlayer()
 
-                animatingMessages.removeAll { $0 === msg }
-                stackedMessages.remove(at: i)
+            if bottomY > container.bounds.height - bottomPadding {
 
-                fadingCount = max(0, fadingCount - 1)   // ✅ 新增
-                isAnyMessageFadingOut = false
-                needsRelayoutAfterRemoval = true        // ✅ 改用 flag
+                //isAnyMessageFadingOut = true
+                candidate.isFadingOut = true
+                // 逐行淡出
+                candidate.alpha -= 0.04
+                candidate.avatar?.opacity = Float(candidate.alpha)
+                candidate.name?.opacity = Float(candidate.alpha)
+                candidate.message?.opacity = Float(candidate.alpha)
+                candidate.gift?.opacity = Float(candidate.alpha)
 
-                continue
+                // 消失就移除
+                if candidate.alpha <= 0.01 {
+                    candidate.avatar?.removeFromSuperlayer()
+                    candidate.name?.removeFromSuperlayer()
+                    candidate.message?.removeFromSuperlayer()
+                    candidate.gift?.removeFromSuperlayer()
+                    candidate.isFadingOut = false
+
+                    if let idx = stackedMessages.firstIndex(where: { $0 === candidate }) {
+                        stackedMessages.remove(at: idx)
+                    }
+                    animatingMessages.removeAll { $0 === candidate }
+                    animatingMessages.removeAll { $0.alpha <= 0 }
+
+                    fadeCandidate = nil
+
+                    needsRelayoutAfterRemoval = true
+
+
+                }
 
             } else {
-                i += 1
+                // 超過 container 的部分已經 fade 完，停止
+
+                if !isHasFade(candidate.parentMessageID ?? nil) {
+                    logTo("沒有此ＩＤ訊息")
+                    fadingParentID = nil
+                }
+
+                fadeCandidate = nil
+
             }
+
+
+
         }
+
+
+
+
+
+
+
+
 
 
 
@@ -972,23 +1468,24 @@ final class PIPServiceMessages {
             abs(msg.startY - msg.targetY) >= snapThreshold
         }
 
+
+
         // 5️⃣ 動畫完成判斷
-        let hasMovingOrFading = hasMoving || fadingCount > 0
+        let hasMovingOrFading = hasMoving || fadeCandidate != nil
 
 
         let shouldContinueBecauseOverflow =
-            IshasOverFlow() && (fadeCandidate != nil || isAnyMessageFadingOut)
+            IshasOverFlow() && (fadeCandidate != nil)
 
 
-        let isWaitingForFadeDelay = fadeCandidate != nil && !isAnyMessageFadingOut &&
+        let isWaitingForFadeDelay = fadeCandidate != nil  &&
             lastFadeTriggerTime != 0 &&
         now - lastFadeTriggerTime < fadeInterval  // fadeDelay
 
-        PIPChatLog("hasMoving?\(hasMovingOrFading) - isWaitFor:\(isWaitingForFadeDelay) NowWait:\(now-lastFadeTriggerTime) < \(fadeInterval)?")
+        PIPChatLog("hasMovingOrFading?\(hasMovingOrFading) - isWaitFor:\(isWaitingForFadeDelay) NowWait:\(now-lastFadeTriggerTime) < \(fadeInterval)? needRelay:\(needsRelayoutAfterRemoval)")
 
 
         if !hasMoving &&
-           !isAnyMessageFadingOut &&
            fadeCandidate == nil &&
            IshasOverFlow() {
 
@@ -1001,19 +1498,26 @@ final class PIPServiceMessages {
             !needsRelayoutAfterRemoval ||
             safeCanncel {
 
+
+
             for msg in animatingMessages {
                   msg.startY = msg.targetY
-                   layout(msg: msg, y: msg.targetY)
+                  msg.isNew = false
+                  layout(msg: msg, y: msg.targetY)
+            }
+
+            // ✅ 清掉已經穩定的 animatingMessages（非常重要）
+            animatingMessages.removeAll {
+                abs($0.startY - $0.targetY) < snapThreshold
             }
 
 
-
             // 🔥 如果還 overflow，立刻重新進入 fade 流程
-            if IshasOverFlow() {
+            if IshasOverFlow() && !safeCanncel {
                 updateFadeCandidateIfNeeded()
                 // 強制繼續跑 displayLink
                 if fadeCandidate == nil {
-                        return
+                    return
                 }
 
 
@@ -1037,34 +1541,37 @@ final class PIPServiceMessages {
             return // ✅ 不再重啟 displayLink
         }
 
-        layoutBottomMessage()
+        //layoutBottomMessage()
+
+
 
         // 6️⃣ needsRelayoutAfterRemoval 只做 layout，不重啟 displayLink
         if needsRelayoutAfterRemoval {
             needsRelayoutAfterRemoval = false
+
             relayoutTargetsOnly(updateTargetY: true)
 
+
             // 2️⃣ 把「位置改變的舊訊息」加入動畫
-                for msg in stackedMessages {
-                    guard msg.alpha > 0 else { continue }
+            for msg in stackedMessages {
+                guard msg.alpha > 0 else { continue }
 
-                    let distance = abs(msg.startY - msg.targetY)
-                    if distance >= snapThreshold && !animatingMessages.contains(msg) {
-                        animatingMessages.append(msg)
+                let distance = abs( msg.startY - msg.targetY)
 
-                    }
+                if distance > snapThreshold && !animatingMessages
+                    .contains(msg) {
+                    animatingMessages.append(msg)
+
                 }
+            }
 
 
         }
 
-
         // 7️⃣ 更新 dirty 狀態
-
-        if now - lastDirtyTime > 1.0 / 20 {
+        if now - lastDirtyTime > 1.0 / 10 {
             lastDirtyTime = now
-            PIPService.shared.markDirty()
-            PIPService.shared.isAnimatingMessages = true
+            PIPService.shared.decyDead()
         }
     }
 
@@ -1072,7 +1579,12 @@ final class PIPServiceMessages {
     private func layout(msg: MessageLayerTuple, y: CGFloat,x:CGFloat? = nil) {
 
 
-        let adjustedY = y
+        let adjustedY = max(y, topMargin)
+
+
+        msg.adjustedY = y
+
+
 
         let avatarSizeLocal = msg.avatarSize ?? self.avatarSize
         let giftSizeLocal = msg.giftSize ?? self.giftSize
@@ -1086,10 +1598,8 @@ final class PIPServiceMessages {
 
         // Avatar
         msg.avatar?.frame.origin.y = adjustedY
+
         msg.avatar?.frame.origin.x = textX - avatarSizeLocal
-        PIPChatLog("CNameWidth:\(msg.cachedNameSize.width)")
-
-
 
         // Name（不再計算）
         let nameSize = msg.cachedNameSize
@@ -1117,8 +1627,8 @@ final class PIPServiceMessages {
         if let nameLayer = msg.name {
             messageY = nameLayer.frame.maxY + msg.verticalSpacing
         } else {
-            // 👇 沒有 name，就從 targetY 本身開始
-            messageY = msg.targetY
+            // 👇 沒有 name，就從 本身開始
+            messageY = adjustedY
         }
 
 
@@ -1136,26 +1646,23 @@ final class PIPServiceMessages {
         if let gift = msg.gift,
            let messageLayer = msg.message {
 
-            let totalMessageHeight = msg.cachedMessageSize.height
-            let lastLineHeight = msg.cachedLastLineHeight
+            let minX = messageLayer.frame.minX
+            let minY = messageLayer.frame.minY
 
-            // 最後一行頂部 Y
-            let lastLineY = messageLayer.frame.origin.y + totalMessageHeight - lastLineHeight
-
-            // 禮物垂直居中對齊最後一行
-            let giftY = lastLineY + lastLineHeight / 2 - giftSizeLocal / 2
-
-            // 禮物水平放在最後一行文字後
-            let giftX = messageLayer.frame.origin.x + msg.cachedLastLineWidth + 2
+            let GiftCX = msg.cachedGiftOffsetX
+            let GiftCY = msg.cachedGiftOffsetY
 
 
 
+
+            PIPChatLog("Mes MinX:\(minX) MinY:\(minY) Gift X:\(GiftCX) Y:\(GiftCY)")
             gift.frame = CGRect(
-                    x: giftX,
-                    y: giftY,
-                    width: giftSizeLocal,
-                    height: giftSizeLocal
-                )
+                x: minX + GiftCX,
+                y: minY + GiftCY,
+                width: giftSizeLocal,
+                height: giftSizeLocal
+            )
+
 
         }
 
@@ -1182,8 +1689,12 @@ struct DebugImageViewWrapper: UIViewRepresentable {
         let container = UIView(frame: .zero)
 
         // 設定 debugImageView
-        PIPService.shared.setupDebugImageView(in: container,
-                                              frame: CGRect(x: 0, y: 0, width: 150, height: 100))
+        //PIPService.shared.setupDebugImageView(in: container,
+        //                                     frame: CGRect(x: 0, y: 0, width: 150, height: 100))
+
+
+        //PIPService.shared.setupDebugDisplayLayer(in: container)
+
         return container
     }
 

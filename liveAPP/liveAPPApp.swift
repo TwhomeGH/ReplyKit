@@ -48,20 +48,30 @@ final class LogBuffer {
     private let queue = DispatchQueue(label: "log.buffer.queue")
     private var buffer: [String] = []
 
+    var onNewLog: (([String]) -> Void)?
+
     func push(_ msg: String) {
         queue.async {
             self.buffer.append(msg)
+            let logs = self.drain(max: 100)
+            if !logs.isEmpty {
+                DispatchQueue.main.async {
+                    self.onNewLog?(logs)
+                }
+            }
+
         }
     }
 
     func drain(max: Int) -> [String] {
-        queue.sync {
-            guard !buffer.isEmpty else { return [] }
-            let count = min(max, buffer.count)
-            let result = Array(buffer.prefix(count))
-            buffer.removeFirst(count)
-            return result
-        }
+
+        let count = min(max, buffer.count)
+        let result = Array(buffer.prefix(count))
+
+        buffer.removeFirst(count)
+
+        return result
+
     }
 
     func clear() {
@@ -79,8 +89,6 @@ final class LogModel: ObservableObject {
 
     let newMessages = PassthroughSubject<[LogItem], Never>()
 
-    private var timer: DispatchSourceTimer?
-
     let queue = DispatchQueue(label: "liveApp.logModel")
 
 
@@ -92,48 +100,20 @@ final class LogModel: ObservableObject {
     private let maxMessages = 1000
 
     init() {
-        startLogPump()
-    }
 
-    private func startLogPump() {
-        let t = DispatchSource.makeTimerSource(queue: queue)
-        t.schedule(
-            deadline:
-                    .now(),
-            repeating: refreshInterval,
-            leeway:
-                    .milliseconds(50)
-        )
+        LogBuffer.shared.onNewLog = { [weak self] logs in
 
-        t.setEventHandler { [weak self] in
             guard let self else { return }
-            let logs = LogBuffer.shared.drain(max: self.batchLimit)
-            guard !logs.isEmpty else { return }
-
-
             let items = logs.map { LogItem(message: $0) }
-
-            DispatchQueue.main.async {
-
             self.messages.append(contentsOf: items)
-
-            // 限制最大條數
             if self.messages.count > self.maxMessages {
                 self.messages.removeFirst(self.messages.count - self.maxMessages)
             }
-
-            // ⭐️ 關鍵：只送「這次新增的」
-          
-
-                self.newMessages.send(items)
-
-            }
+            self.newMessages.send(items)
 
         }
-        t.resume()
-        timer = t
-    }
 
+    }
 
 
     func clearLogs() {
@@ -143,45 +123,28 @@ final class LogModel: ObservableObject {
     }
 
     deinit {
-        timer?.cancel()
-        timer = nil
+
     }
 }
 
 
 final class LogReceiver {
-    private let maxPush = 20
-    private let flushInterval: TimeInterval = 0.3
+    private let maxPush = 50
+
     private let groupID = "group.nuclear.liveAPP"
     private let logFileName = "log.txt"
 
     private let bufferQueue = DispatchQueue(label: "com.nuclear.LogReceiver.bufferQueue")
 
-
     private var lastReadOffset: UInt64 = 0
     private var buffer: [String] = []
 
-    private var flushTimer: DispatchSourceTimer?
+    private let flushDebounce: TimeInterval = 0.2
+    private var flushWorkItem: DispatchWorkItem?
 
-
-    private func startFlushTimer() {
-        flushTimer = DispatchSource.makeTimerSource(queue: bufferQueue)
-        flushTimer?.schedule(deadline: .now() + flushInterval, repeating: flushInterval)
-        flushTimer?.setEventHandler { [weak self] in
-            self?.flushBuffer()
-        }
-        flushTimer?.resume()
-    }
-
-    private func stopFlushTimer() {
-        flushTimer?.cancel()
-        flushTimer = nil
-    }
 
     init() {
         // 讀取上次儲存 offset
-
-
 
         lastReadOffset = UInt64(UserDefaults.standard.integer(forKey: "lastReadOffset"))
 
@@ -195,12 +158,11 @@ final class LogReceiver {
             .deliverImmediately
         )
 
-        // Timer 批次發送 buffer
-        startFlushTimer()
+
     }
 
     deinit {
-        stopFlushTimer()
+
 
         CFNotificationCenterRemoveObserver(
             CFNotificationCenterGetDarwinNotifyCenter(),
@@ -239,6 +201,7 @@ final class LogReceiver {
             }
             defer { try? fileHandle.close() }
 
+
             do {
                 let fileSize = try fileHandle.seekToEnd()
 
@@ -246,6 +209,7 @@ final class LogReceiver {
                     self.lastReadOffset = fileSize // 重新校正 offset
                     sendlog(message:"lastRead \(self.lastReadOffset) fileSize:\(fileSize)")
                 }
+
             } catch {
                 sendlog(message: "Error seekToEnd: \(error)")
             }
@@ -261,6 +225,7 @@ final class LogReceiver {
 
             // 讀取新增資料
             let data = fileHandle.readDataToEndOfFile()
+
             guard !data.isEmpty else {
                 sendlog(message:"LogReceiver: lastReadOffset = \(self.lastReadOffset), fileSize = \(fileHandle.seekToEndOfFile())")
                 sendlog(message:"⚠️ LogReceiver: 無新增資料可讀")
@@ -273,29 +238,45 @@ final class LogReceiver {
                 return
             }
 
-            let normalizedContent = content.replacingOccurrences(of: "\r\n", with: "\n")
+
+            let normalizedContent = content
+                    .replacingOccurrences(of: "\r\n", with: "\n")
+                    .split(separator: "\n")
+                    .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+
+            let lines = Array(normalizedContent)
 
 
-            let lines = Array(normalizedContent
-                                .split(separator: "\n")
-                                .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-                                .filter { !$0.isEmpty })
-
-            if !lines.isEmpty {
-                // 限制推送行數
-                let newLines = Array(lines.suffix(self.maxPush))
-
-                // 讀取新的 lines
-                bufferQueue.async {
-                    self.buffer.append(contentsOf: newLines)
-                    // 更新 offset
-                    self.lastReadOffset += UInt64(data.count)
-
-                }
-
-            }else {
+            guard !lines.isEmpty else {
                 sendlog(message:"⚠️ LogReceiver: 讀取到的資料沒有換行符號")
+                return
             }
+
+
+            // 限制推送行數
+            let newLines = Array(lines.suffix(self.maxPush))
+
+            // 讀取新的 lines
+            bufferQueue.async {
+
+                self.buffer.append(contentsOf: newLines)
+
+                // 更新 offset
+                self.lastReadOffset += UInt64(data.count)
+
+                // 短暫延遲 flush（debounce）
+                self.flushWorkItem?.cancel()
+                let workItem = DispatchWorkItem { [weak self] in
+                    self?.flushBuffer()
+                }
+                self.flushWorkItem = workItem
+                self.bufferQueue.asyncAfter(deadline: .now() + self.flushDebounce, execute: workItem)
+
+
+            }
+
+
 
 
 
@@ -481,8 +462,18 @@ func remotelog(title:String="liveApp",message:String) {
 }
 
 
+// 全局共用時間 liveApp格式器
+struct StaticFormatter {
+    static let formatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_TW")
+        f.dateFormat = "yyyy/MM/dd aHH:mm:ss.SSS"
+        return f
+    }()
+}
+
 func formatTime() -> String {
-    let formatter = DateFormatter()
+    let formatter = StaticFormatter.formatter
     formatter.dateStyle = .short
     formatter.timeStyle = .medium
     formatter.locale = Locale.current
@@ -709,7 +700,6 @@ struct liveAPPApp: App {
             SharedResources.shared.setupLogReceiver()
 
         }
-        SocketServer.shared.stop()
 
         SocketServer.shared.start()
 
@@ -770,12 +760,30 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
     }
 
 
-
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(logModel)
+                .onChange(of: scenePhase) { phase in
+                    switch phase {
+                    case .inactive:
+                        // 即將進背景
+                        break
+
+                    case .background:
+                        break
+
+                    case .active:
+                        SocketServer.shared.start()
+                        break
+
+                    @unknown default:
+                        break
+                    }
+                }
+
 
         }
     }

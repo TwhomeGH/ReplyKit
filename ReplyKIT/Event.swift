@@ -3,10 +3,20 @@ import os
 
 
 
+
+// 全局共用時間 liveApp格式器
+struct StaticFormatter {
+    static let formatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_TW")
+        f.dateFormat = "yyyy/MM/dd aHH:mm:ss.SSS"
+        return f
+    }()
+}
+
 // MARK: TimeFormat
 func formattedTime() -> String {
-    let formatter = DateFormatter()
-    formatter.dateFormat = "HH:mm:ss.SSS"
+    let formatter = StaticFormatter.formatter
     return formatter.string(from: Date())
 }
 
@@ -398,8 +408,7 @@ final class LogManager {
 
     // MARK: - 時間格式化
     private func formattedTime() -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+        let formatter = StaticFormatter.formatter
         return formatter.string(from: Date())
     }
 }
@@ -408,15 +417,7 @@ final class LogManager {
 
 
 
-//
-//    private func formattedTime() -> String {
-//        let formatter = DateFormatter()
-//        formatter.dateStyle = .short
-//        formatter.timeStyle = .medium
-//        formatter.locale = Locale.current
-//        return formatter.string(from: Date())
-//    }
-//}
+
 
 
 final class RPConfig {
