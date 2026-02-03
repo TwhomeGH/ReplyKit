@@ -9,8 +9,8 @@ final class VideoFrameProcessor {
     var rotator: RPVideoRotatorNV12BatchQueueOptimized?
 
     private let mediaMixer: MediaMixer
-    //private var rotator: VideoRotator?
-    private let rtmpStream: RTMPStream
+   
+
     private let sendlog: (String) -> Void
 
 
@@ -22,11 +22,9 @@ final class VideoFrameProcessor {
     var hasPublished = false
 
     init(mediaMixer: MediaMixer,
-
-         rtmpStream: RTMPStream,
          sendlog: @escaping (String) -> Void) {
         self.mediaMixer = mediaMixer
-        self.rtmpStream = rtmpStream
+
         self.sendlog = sendlog
         self.isActive = true
         self.hasPublished = false

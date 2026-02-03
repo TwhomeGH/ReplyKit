@@ -208,7 +208,7 @@ final class LogManager {
     var isActive = true
 
     private var lastNotifyTime: Date = .distantPast
-    var notifyThrottle: TimeInterval = 1.0
+    var notifyThrottle: TimeInterval = 2.0
 
     private var remoteLogger: RemoteLogger?
 
@@ -379,16 +379,19 @@ final class LogManager {
 
         let now = Date()
 
-        logger
-            .debug(
-                "last?:\(self.lastNotifyTime.timeIntervalSinceNow) 通知->\(self.notifyThrottle)"
-            )
+//        logger
+//            .debug(
+//                "last?:\(self.lastNotifyTime.timeIntervalSinceNow) 通知->\(self.notifyThrottle)"
+//            )
+        // 設定浮動範圍 1~3 秒
+        let throttleWithJitter = Double.random(in: 1...notifyThrottle)
+
 
         if !forceNotify && lastNotifyTime
-            .timeIntervalSinceNow > -notifyThrottle {
+            .timeIntervalSinceNow > -throttleWithJitter {
             logger
                 .debug(
-                    "last:\(self.lastNotifyTime.timeIntervalSinceNow) 跳過通知->\(self.notifyThrottle)"
+                    "last:\(self.lastNotifyTime.timeIntervalSinceNow) 跳過通知->\(throttleWithJitter)"
                 )
             return
         }
@@ -424,10 +427,28 @@ final class RPConfig {
     static let shared = RPConfig()
 
     // RTMP 配置
-    var RTMPURL : String?
-    var RTMPKey : String?
+    var RTMPURL : String? {
+        didSet {
+            guard oldValue != RTMPURL else {
+                logger.debug("RTMPURL 一樣->\(oldValue as NSObject?)")
+                return
+            }
+        }
+    }
+    var RTMPKey : String? {
+        didSet {
+            guard oldValue != RTMPKey else {
+                logger.debug("RTMPKey 一樣")
+                return
+            }
+        }
+    }
 
-    var h264level : String
+    var h264level : String {
+        didSet {
+            guard oldValue != h264level else { return }
+        }
+    }
 
     var BufferCount : Int
 

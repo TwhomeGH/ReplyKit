@@ -157,11 +157,32 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                 return
             }
 
-            await withCheckedContinuation { cont in
-                waiters.append(cont)
-            }
+           
+
+            await withTaskCancellationHandler(
+                    operation: {
+                        await withCheckedContinuation { cont in
+                            waiters.append(cont)
+                        }
+                    },
+                    onCancel: {
+                        Task {
+                            await removeCurrentContinuation()
+                        }
+                    }
+                )
+
+
+
+
         }
 
+        private func removeCurrentContinuation() {
+            for cont in waiters {
+                cont.resume()  // ⚠️ 一定要 resume
+            }
+            waiters.removeAll()
+        }
 
         func signal() {
             if !waiters.isEmpty {

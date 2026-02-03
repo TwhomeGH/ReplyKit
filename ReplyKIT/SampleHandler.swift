@@ -141,7 +141,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     private var appAddVolume: Float = 1.0
     private var micAddVolume: Float = 1.0
 
-    private var rtmpConnection = RTMPConnection()
+    private var rtmpConnection :RTMPConnection?
 
 
     private var rtmpStream : RTMPStream!
@@ -940,9 +940,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     // MARK: 初始化
     override init() {
 
+        rtmpConnection = RTMPConnection()
+        rtmpStream = RTMPStream(connection: rtmpConnection!)
 
-        rtmpStream = RTMPStream(connection: rtmpConnection)
-        
         ADWidth = RPConfig.shared.ADWidth
         ADHeight = RPConfig.shared.ADHeight
 
@@ -954,6 +954,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         registerObservers()
         logger.info("ReplyKit Debug")
+
+    }
+
+    deinit {
+        rtmpConnection = nil
+        rtmpStream = nil
 
     }
 
@@ -1347,7 +1353,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             videoProcessor = VideoFrameProcessor(
                 mediaMixer: mediaMixer,
-                rtmpStream: rtmpStream,
                 sendlog: { message in
                     sendlog(message: message)
                 }
@@ -1380,7 +1385,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             }
             // step 3: 連線 RTMP
 
-            _ = try await rtmpConnection.connect(url)
+            _ = try await rtmpConnection?.connect(url)
 
             _ = try await rtmpStream.publish(key)
 
@@ -1717,7 +1722,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
             _ = try? await rtmpStream.close()
-            _ = try? await rtmpConnection.close()
+            _ = try? await rtmpConnection?.close()
         }
 
 
