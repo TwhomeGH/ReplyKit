@@ -197,6 +197,7 @@ struct BroadcastButton: UIViewRepresentable {
                 "type":"log",
                 "message":"Socket連線測試"
             ]
+            
             SocketServer.shared.queueSend(payload: payload)
             
             button?.sendActions(for: .touchUpInside)
@@ -1165,14 +1166,6 @@ struct LogTextView: UIViewRepresentable {
 
         private func updateNearBottom() {
             guard let tv = textView else { return }
-
-
-            // 如果 App 在背景，先緩存訊息
-            guard UIApplication.shared.applicationState == .active else {
-                logger.debug("App is Background")
-                return
-            }
-
 
 
 

@@ -132,10 +132,21 @@ class SocketServer {
         case lastClientDisconnected
     }
 
+    var isRunning: Bool {
+        guard let listener else {
+            logTo("listener 已失效!")
+            return false
+        }
+
+        let res = listener.state == .ready
+        logTo("listener 有效!")
+        return res  // 或對應你 socket 類型的檢查
+    }
+    
     // MARK: - start
     func start(port: UInt16 = 9322) {
 
-        guard listener == nil else {
+        guard !isRunning else {
             logTo("SocketServer already running")
             return
         }

@@ -550,6 +550,17 @@ struct LogSettingView:View {
                     .foregroundColor(.secondary)
                     .padding(.bottom, 5)
 
+            Button("Socket服務器重啟"){
+                SocketServer.shared.stop()
+                SocketServer.shared.start()
+
+            }
+            Text("如果擴展初始連不上可以用他重啟服務端")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .padding(.bottom, 5)
+
+
 
 
         }
