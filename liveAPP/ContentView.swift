@@ -1141,7 +1141,7 @@ struct LogTextView: UIViewRepresentable {
     }
     final class Coordinator: NSObject, UITextViewDelegate {
 
-        weak var textView: UITextView?
+        var textView: UITextView?
 
         private var bufferedMessages: [LogItem] = []
 
@@ -1165,8 +1165,15 @@ struct LogTextView: UIViewRepresentable {
         private let scrollDelay: TimeInterval = 0.2
 
         private func updateNearBottom() {
-            guard let tv = textView else { return }
+            guard let tv = textView ,canUpdateUI() else {
+                //logger.debug("非日誌頁跳過")
+                return
+            }
+           // logger.debug("日誌頁中")
 
+
+
+          
 
 
             let visibleHeight = tv.bounds.height
@@ -1292,10 +1299,20 @@ struct LogTextView: UIViewRepresentable {
         }
 
 
+        private func canUpdateUI() -> Bool {
+            guard
+                let tv = textView,
+                tv.window != nil,
+                !userIsInteracting
+            else {
+                return false
+            }
+            return true
+        }
 
         // 判斷是否滾動
             func scrollIfNeeded() {
-                guard let tv = textView else { return }
+                guard let tv = textView ,canUpdateUI() else { return }
 
 
                 let visibleHeight = tv.bounds.height - tv.adjustedContentInset.top - tv.adjustedContentInset.bottom
@@ -1310,7 +1327,7 @@ struct LogTextView: UIViewRepresentable {
 
 
 
-                if !isNearBottom {
+                if isNearBottom {
                     scrollToBottomUsingRange()
                     updateNearBottom()
                 }
@@ -2660,6 +2677,7 @@ struct ContentView: View {
                 print("onlog:\(onlogPage) logTime:\(logTime)")
 
                 onlogPage=true
+                LPConfig.shared.onLogPage = true
 
 
                 CFNotificationCenterPostNotification(cfCenter, CFNotificationName("onlogPage" as CFString), nil, nil, true)
@@ -2671,6 +2689,8 @@ struct ContentView: View {
                 if !logTime {
 
                     onlogPage=false
+                    LPConfig.shared.onLogPage = false
+
 
                     CFNotificationCenterPostNotification(cfCenter, CFNotificationName("onlogPage" as CFString), nil, nil, true)
 

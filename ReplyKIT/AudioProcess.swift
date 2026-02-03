@@ -342,7 +342,7 @@ final class AudioProcessor : @unchecked Sendable {
         _ buffer: CMSampleBuffer,
         track: UInt8
     ) {
-        Task.detached(priority: .userInitiated) {
+        Task(priority: .userInitiated) {
             await self.mediaMixer.append(buffer, track: track)
         }
     }

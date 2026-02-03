@@ -1287,7 +1287,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         audioSettings.tracks[0] = .default
         audioSettings.tracks[1] = .default
 
-
         await mediaMixer.setAudioMixerSettings(audioSettings)
 
         reloadVolumes()
