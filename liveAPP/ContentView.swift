@@ -1314,8 +1314,11 @@ struct LogTextView: UIViewRepresentable {
             func scrollIfNeeded() {
                 guard let tv = textView ,canUpdateUI() else { return }
 
+                tv.layoutIfNeeded()
 
-                let visibleHeight = tv.bounds.height - tv.adjustedContentInset.top - tv.adjustedContentInset.bottom
+
+                let visibleHeight = tv.bounds.height - tv.adjustedContentInset.top
+
                 let contentHeight = tv.contentSize.height
                 let offsetY = tv.contentOffset.y
 
@@ -1325,6 +1328,13 @@ struct LogTextView: UIViewRepresentable {
 
                 let isNearBottom = offsetY + visibleHeight >= contentHeight - nearBottomThreshold
 
+
+//                print("""
+//                offsetY: \(offsetY)
+//                visibleHeight: \(visibleHeight)
+//                contentHeight: \(contentHeight)
+//                inset: \(tv.adjustedContentInset)
+//                """)
 
 
                 if isNearBottom {

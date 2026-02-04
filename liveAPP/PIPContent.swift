@@ -11,6 +11,7 @@ import UIKit
 import CoreVideo
 
 import AVFoundation
+
 import AVKit
 
 
@@ -233,6 +234,7 @@ final class MessageLayerTuple:Equatable {
 
 
     var type: MessageType
+    let insertionIndex: Int
 
     // layout
     var isNew: Bool = false      // 是否新訊息
@@ -242,8 +244,6 @@ final class MessageLayerTuple:Equatable {
 
     // 透明度控制，用於漸隱
     var alpha: CGFloat = 1.0
-
-    var resolvedBottomY:CGFloat = 0.0
 
     let name: CATextLayer?
     let message: CATextLayer?
@@ -276,7 +276,7 @@ final class MessageLayerTuple:Equatable {
     var didResolveSize: Bool = false
 
     var verticalSpacing: CGFloat = 4
-    var horizontalSpacing: CGFloat = 6
+    var horizontalSpacing: CGFloat = 4
 
 
 
@@ -306,13 +306,15 @@ final class MessageLayerTuple:Equatable {
         name: CATextLayer?,
         message: CATextLayer?,
         gift: CALayer?,
-        type:MessageType = .primary
+        type:MessageType = .primary,
+        insertionIndex:Int
     ) {
         self.avatar = avatar
         self.name = name
         self.message = message
         self.gift = gift
         self.type = type
+        self.insertionIndex = insertionIndex
     }
 }
 
@@ -339,8 +341,14 @@ struct MessageSegmentData {
 
     let font:UIFont?
 
-    var verticalSpacing: CGFloat = 8.0
-    var horizontalSpacing: CGFloat = 8.0
+    var verticalSpacing: CGFloat = 4.0
+    var horizontalSpacing: CGFloat = 4.0
+
+    let cachedLines: [String]
+    let cachedMessageSize: CGSize
+    let cachedGiftOffsetX: CGFloat
+    let cachedGiftOffsetY: CGFloat
+
 
 }
 
@@ -398,8 +406,14 @@ final class LayerPool {
 
 
 
+
 // MARK: - PIP 訊息組（PiP 專用動畫版）
 final class PIPServiceMessages {
+
+    private var insertionCounter: Int = 0
+
+    // DisplayLink 專用（只讀）
+    private var animatingGroups: [[MessageLayerTuple]] = []
 
     // 滾動與漸隱
     var containerHeight: CGFloat { container.bounds.height }
@@ -552,7 +566,8 @@ final class PIPServiceMessages {
                         lhs.startY = rhs.startY + lhs.height
                     }
 
-                    return stackedMessages.firstIndex(of: lhs)! < stackedMessages.firstIndex(of: rhs)!
+                    return lhs.insertionIndex < rhs.insertionIndex
+
                 }
             }
 
@@ -589,18 +604,31 @@ final class PIPServiceMessages {
     }
 
 
-    var leftPadding: CGFloat = 8
 
 
 
-    func breakMessageIntoLines(_ text: String, font: UIFont, maxWidth: CGFloat) -> [String] {
+    func breakMessageIntoLines(_ text: String, font: UIFont, maxWidth: CGFloat) -> ([String],[CTLine]) {
+
         let attr = NSAttributedString(string: text, attributes: [.font: font])
+
         let framesetter = CTFramesetterCreateWithAttributedString(attr)
 
-        let path = CGPath(rect: CGRect(x: 0, y: 0, width: maxWidth, height: .greatestFiniteMagnitude), transform: nil)
-        let frame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: attr.length), path, nil)
+        let path = CGPath(rect: CGRect(
+            x: 0,
+            y: 0,
+            width: maxWidth,
+            height: .greatestFiniteMagnitude
+        ), transform: nil)
+
+        let frame = CTFramesetterCreateFrame(
+            framesetter,
+            CFRange(location: 0, length: attr.length),
+            path,
+            nil
+        )
 
         let lines = CTFrameGetLines(frame) as! [CTLine]
+
         var result: [String] = []
 
         for line in lines {
@@ -610,8 +638,43 @@ final class PIPServiceMessages {
             result.append(substring)
         }
 
-        return result
+        return (result,lines)
     }
+
+    private func calculateGiftOffset(lines: [CTLine], messageSize: CGSize, giftSize: CGFloat) -> (CGFloat, CGFloat) {
+        guard let lastLine = lines.last else {
+            // fallback：直接貼在 message 中心
+            return (0, (messageSize.height - giftSize) / 2)
+        }
+
+        // 最後一行文字寬度
+        let lastLineWidth = CGFloat(CTLineGetTypographicBounds(lastLine, nil, nil, nil))
+
+        // baseline
+        var origins = Array(repeating: CGPoint.zero, count: lines.count)
+        CTFrameGetLineOrigins(CTFramesetterCreateFrame(
+            CTFramesetterCreateWithAttributedString(NSAttributedString(string: "")),
+            CFRange(location: 0, length: 0),
+            CGPath(rect: CGRect(origin: .zero, size: messageSize), transform: nil),
+            nil
+        ), CFRangeMake(0, 0), &origins)
+
+        let lastLineOriginY = origins.last?.y ?? 0
+
+        var ascent: CGFloat = 0
+        var descent: CGFloat = 0
+        var leading: CGFloat = 0
+        CTLineGetTypographicBounds(lastLine, &ascent, &descent, &leading)
+
+        // 微調 visual offset
+        let visualOffset: CGFloat = 2.0
+
+        let giftX = lastLineWidth + 2.0
+        let giftY = messageSize.height - lastLineOriginY - ascent / 2 - giftSize / 2 - visualOffset
+
+        return (giftX, giftY)
+    }
+
 
     private func splitLongMessage(
         type:MessageType,
@@ -622,8 +685,8 @@ final class PIPServiceMessages {
         font: UIFont,
         avatarSizeLocal: CGFloat,
         giftSizeLocal: CGFloat,
-        vSpacing:CGFloat = 8,
-        hSpacing:CGFloat = 8
+        vSpacing:CGFloat = 4.0,
+        hSpacing:CGFloat = 4.0
     ) -> [MessageSegmentData] {
 
 
@@ -636,13 +699,13 @@ final class PIPServiceMessages {
 
         // ⚠️ 計算可用寬度（跟 buildMessageTuple 一致）
         let maxMessageWidth = container.bounds.width
-            - leftPadding * 2
+            - vSpacing * 2
             - avatarSizeLocal
-            - 8 // horizontalSpacing
+            - hSpacing // horizontalSpacing
             - giftSizeLocal
 
 
-        let nameLines = breakMessageIntoLines(
+        let (nameLines,nameCTLine) = breakMessageIntoLines(
             user,
             font: font,
             maxWidth: maxMessageWidth
@@ -653,6 +716,28 @@ final class PIPServiceMessages {
         for (index, line) in nameLines.enumerated() {
 
             let isFirst = index == 0
+
+            let attr = NSAttributedString(string: line,
+                                          attributes: [.font: font]
+            )
+
+            let framesetter = CTFramesetterCreateWithAttributedString(attr)
+
+            let messageSize =
+                CTFramesetterSuggestFrameSizeWithConstraints(
+                    framesetter,
+                    CFRangeMake(0, attr.length),
+                    nil,
+                    CGSize(width: maxMessageWidth, height: .greatestFiniteMagnitude),
+                    nil
+                )
+
+            let (giftX, giftY) = calculateGiftOffset(
+                lines: nameCTLine,
+                messageSize: messageSize, giftSize: giftSizeLocal
+            )
+
+
 
             let data = MessageSegmentData(
                     parentID: parentID,
@@ -670,7 +755,11 @@ final class PIPServiceMessages {
                     giftSizeLocal:giftSizeLocal,
                     font:font,
                     verticalSpacing:vSpacing,
-                    horizontalSpacing: hSpacing
+                    horizontalSpacing: hSpacing,
+                    cachedLines: nameLines,
+                    cachedMessageSize: messageSize,
+                    cachedGiftOffsetX: giftX,
+                    cachedGiftOffsetY: giftY
 
                 )
 
@@ -687,7 +776,7 @@ final class PIPServiceMessages {
         }
 
 
-        let messageLines = breakMessageIntoLines(
+        let (messageLines,msgCTLine) = breakMessageIntoLines(
             message,
             font: font, maxWidth: maxMessageWidth
         )
@@ -696,6 +785,27 @@ final class PIPServiceMessages {
         for (index, line) in messageLines.enumerated() {
 
             let isLast = index == messageLines.count - 1
+
+            let attr = NSAttributedString(string: line,
+                                          attributes: [.font: font]
+            )
+
+            let framesetter = CTFramesetterCreateWithAttributedString(attr)
+
+            let messageSize =
+                CTFramesetterSuggestFrameSizeWithConstraints(
+                    framesetter,
+                    CFRangeMake(0, attr.length),
+                    nil,
+                    CGSize(width: maxMessageWidth, height: .greatestFiniteMagnitude),
+                    nil
+                )
+
+            let (giftX, giftY) = calculateGiftOffset(
+                lines: msgCTLine,
+                messageSize: messageSize, giftSize: giftSizeLocal
+            )
+
 
             let data = MessageSegmentData(
                     parentID: parentID,
@@ -711,7 +821,11 @@ final class PIPServiceMessages {
                     avatarSizeLocal: avatarSizeLocal,
                     giftURL: isLast ? giftURL : nil,
                     giftSizeLocal: giftSizeLocal,
-                    font: font
+                    font: font,
+                    cachedLines: messageLines,
+                    cachedMessageSize: messageSize,
+                    cachedGiftOffsetX: giftX,
+                    cachedGiftOffsetY: giftY
                 )
 
 
@@ -746,8 +860,9 @@ final class PIPServiceMessages {
         font: UIFont,
         avatarSizeLocal: CGFloat,
         giftSizeLocal: CGFloat,
-        verticalSpacing:CGFloat = 8,
-        horizontalSpacing:CGFloat = 8
+        verticalSpacing:CGFloat = 4,
+        horizontalSpacing:CGFloat = 4,
+        data: MessageSegmentData
 
 
     ) -> MessageLayerTuple {
@@ -761,7 +876,7 @@ final class PIPServiceMessages {
             layer.contents = img?.cgImage
             layer.contentsGravity = .resizeAspectFill
             layer.frame = CGRect(
-                x: leftPadding,
+                x: horizontalSpacing,
                 y: container.bounds.height,
                 width: avatarSizeLocal,
                 height: avatarSizeLocal
@@ -834,8 +949,10 @@ final class PIPServiceMessages {
             avatar: avatarLayer ,
             name: nameLayer ,
             message: messageLayer,
-            gift: giftLayer
+            gift: giftLayer, insertionIndex: insertionCounter
         )
+
+        insertionCounter += 1
 
         tuple.font = font
         tuple.avatarSize = avatarSizeLocal
@@ -848,149 +965,60 @@ final class PIPServiceMessages {
 
         tuple.type = type
 
-        tuple.textX = leftPadding
-            + (showAvatar ? avatarSizeLocal + horizontalSpacing : 0)
+        tuple.textX = horizontalSpacing
+            + avatarSizeLocal
 
 
         let avatarWidth = showAvatar ? avatarSizeLocal + horizontalSpacing : 0
         let giftWidth   = showGift ? giftSizeLocal + horizontalSpacing : 0
 
-        // 🔹 同步計算高度
-        let maxNameWidth = container.bounds.width
-            - leftPadding * 2
-            - avatarWidth
+//        // 🔹 同步計算高度
+//        let maxNameWidth = container.bounds.width
+//            - horizontalSpacing * 2
+//            - avatarWidth
 
         let maxMessageWidth = container.bounds.width
-            - leftPadding * 2
+            - horizontalSpacing
             - avatarWidth
             - giftWidth
 
 
-        let nameHeight = showName
-            ? (user as NSString).boundingRect(
-                with: CGSize(width: maxNameWidth, height: .greatestFiniteMagnitude),
-                options: [.usesLineFragmentOrigin, .usesFontLeading],
-                attributes: [.font: font],
-                context: nil
-            ).height
-            : 0
-
-
-        let messageHeight = showMessage ? (message as NSString).boundingRect(
-            with: CGSize(width: maxMessageWidth, height: .greatestFiniteMagnitude),
-            options: [.usesLineFragmentOrigin, .usesFontLeading],
-            attributes: [.font: font],
-            context: nil
-        ).height : font.lineHeight
 
 
 
-        tuple.cachedNameSize = CGSize(width: maxNameWidth, height: nameHeight)
 
-        tuple.cachedMessageSize = CGSize(width: maxMessageWidth, height: messageHeight)
+        tuple.cachedNameSize = data.cachedMessageSize
 
-
-        if showGift, showMessage {
-
-            let attr = NSAttributedString(
-                string: message,
-                attributes: [.font: font]
-            )
-
-            let frameHeight = tuple.cachedMessageSize.height
-
-            let framesetter = CTFramesetterCreateWithAttributedString(attr)
-            let path = CGPath(
-                rect: CGRect(
-                    x: 0,
-                    y: 0,
-                    width: maxMessageWidth,
-                    height: frameHeight
-                ),
-                transform: nil
-            )
-
-            let frame = CTFramesetterCreateFrame(
-                framesetter,
-                CFRange(location: 0, length: attr.length),
-                path,
-                nil
-            )
-
-            let lines = CTFrameGetLines(frame) as! [CTLine]
-            guard let lastLine = lines.last else { return tuple }
-
-            // 最後一行文字寬度
-            let lastLineWidth = CGFloat(
-                CTLineGetTypographicBounds(lastLine, nil, nil, nil)
-            )
-
-            var ascent: CGFloat = 0
-            var descent: CGFloat = 0
-            var leading: CGFloat = 0
-
-            CTLineGetTypographicBounds(lastLine, &ascent, &descent, &leading)
+        // ✅ 只用 cache，完全不算 CoreText
+        tuple.cachedMessageSize = data.cachedMessageSize
+        tuple.cachedGiftOffsetX = data.cachedGiftOffsetX
+        tuple.cachedGiftOffsetY = data.cachedGiftOffsetY
 
 
-            // baseline
-            var origins = Array(repeating: CGPoint.zero, count: lines.count)
-            CTFrameGetLineOrigins(frame, CFRangeMake(0, 0), &origins)
 
-            let lastLineOrigin = origins.last!
-
-            // 快取 gift 相對 message 左上角的位置
-            tuple.cachedGiftOffsetX = lastLineWidth + 2
-
-            let rawY = lastLineOrigin.y
-
-
-            // 微調
-            let visualOffset: CGFloat = 2.0  // 或 1~3，視覺測試
-
-
-            if rawY.isFinite {
-                tuple.cachedGiftOffsetY =
-                tuple.cachedMessageSize.height
-                - rawY
-                - ascent / 2
-                - giftSizeLocal / 2
-                + visualOffset
-
-            } else {
-                // 🔥 fallback：直接貼在最後一行中線
-                    tuple.cachedGiftOffsetY =
-                        tuple.cachedMessageSize.height
-                        - ascent / 2
-                        - giftSizeLocal / 2
-                        + visualOffset
-
-            }
-
-
-        }
-
-
-        // 計算最後一行文字寬度（用 constrained width 模擬）
-        tuple.lastLineText = breakMessageIntoLines(
+        let (msglast,_) = breakMessageIntoLines(
             message,
             font: font,
             maxWidth: maxMessageWidth
-        ).last
+        )
+
+        // 計算最後一行文字寬度（用 constrained width 模擬）
+        tuple.lastLineText = msglast.last
 
 
         var textBlockHeight: CGFloat = 0
 
         if showName {
-            textBlockHeight += nameHeight
+            textBlockHeight += data.cachedMessageSize.height
         }
 
 
         if showName && showMessage {
-            textBlockHeight += verticalSpacing
+            textBlockHeight += horizontalSpacing
         }
 
         if showMessage {
-            textBlockHeight += messageHeight
+            textBlockHeight += data.cachedMessageSize.height
         }
 
 
@@ -1040,28 +1068,9 @@ final class PIPServiceMessages {
 
         let font = UIFont.systemFont(ofSize: fontSize)
 
-        // secondary 不 chunk
-        if type == .secondary {
+        let vSpacing = 4.0
+        let hSpacing = 16.0
 
-//                let tuple = self.buildMessageTuple(
-//                    type:.secondary,
-//                    user: user,
-//                    message: message,
-//                    img: nil,
-//                    giftImg: nil,
-//                    showAvatar: true,
-//                    showName: true,
-//                    showGift: true,
-//                    font: font,
-//                    avatarSizeLocal: avatarSizeLocal,
-//                    giftSizeLocal: giftSizeLocal,
-//
-//                )
-
-//            verticalSpacing = 4.0
-//            horizontalSpacing = 6.0
-
-        }
 
 
             let segments = self.splitLongMessage(
@@ -1071,7 +1080,9 @@ final class PIPServiceMessages {
                 giftURL: giftURL,
                 font: font,
                 avatarSizeLocal: avatarSizeLocal,
-                giftSizeLocal: giftSizeLocal
+                giftSizeLocal: giftSizeLocal,
+                vSpacing: vSpacing,
+                hSpacing: hSpacing
 
             )
 
@@ -1082,7 +1093,8 @@ final class PIPServiceMessages {
             // ② 嘗試補畫面
             populateVisibleMessagesIfNeeded()
 
-            self.layoutTargetsAndStartAnimation()
+            layoutTargetsAndStartAnimation()
+            rebuildAnimatingGroups()
 
 
 
@@ -1142,11 +1154,13 @@ final class PIPServiceMessages {
                 avatarSizeLocal: avatarSize,
                 giftSizeLocal: giftSize,
                 verticalSpacing: data.verticalSpacing,
-                horizontalSpacing: data.horizontalSpacing
+                horizontalSpacing: data.horizontalSpacing, data: data
                      )
 
             msg.parentMessageID = data.parentID
             msg.segmentIndex = data.segmentIndex
+
+
 
 
             guard canInsertMessage(msg) else {
@@ -1154,8 +1168,8 @@ final class PIPServiceMessages {
                 break
             }
 
-
             pendingSegments.removeFirst()
+
 
 
             if let avatarURL = data.avatarURL {
@@ -1337,6 +1351,33 @@ final class PIPServiceMessages {
 
 
 
+
+    private func rebuildAnimatingGroups() {
+        // 所有還在移動的訊息
+        let movingMessages = stackedMessages
+            .filter { $0.alpha > 0 && abs($0.startY - $0.targetY) >= snapThreshold }
+
+        let ordered = movingMessages.sorted {
+            if $0.parentMessageID == $1.parentMessageID {
+                return $0.segmentIndex < $1.segmentIndex
+            }
+            return $0.insertionIndex < $1.insertionIndex
+        }
+
+        animatingGroups = Dictionary(grouping: ordered, by: { $0.parentMessageID! })
+            .values
+            .map { $0.sorted { $0.segmentIndex < $1.segmentIndex } }
+
+        // 🔹 確保 animatingMessages 也包含所有還在移動的訊息
+        for msg in movingMessages {
+            if !animatingMessages.contains(msg) {
+                animatingMessages.append(msg)
+            }
+        }
+    }
+
+
+
     // MARK: - 每幀動畫
     @objc private func stepAnimationDisplayLink() {
 
@@ -1349,25 +1390,9 @@ final class PIPServiceMessages {
         var messagesToRemove: [MessageLayerTuple] = []
 
 
-        var lastBottomYByParent: [UUID: CGFloat] = [:]
+        for segments in animatingGroups {
 
-        // ⚠️ 一定要用畫面順序（targetY / segmentIndex）
-        let orderedMessages = animatingMessages.sorted {
-            if $0.parentMessageID == $1.parentMessageID {
-                return $0.segmentIndex < $1.segmentIndex
-            }
-
-            let i0 = stackedMessages.firstIndex(of: $0) ?? 0
-            let i1 = stackedMessages.firstIndex(of: $1) ?? 0
-
-            return i0 < i1
-        }
-
-
-
-
-
-        for msg in orderedMessages {
+            for msg in segments {
 
                 let distance = msg.targetY - msg.startY
 
@@ -1380,16 +1405,21 @@ final class PIPServiceMessages {
                     msg.startY += distance * 0.2
                 }
 
-                guard let parentID = msg.parentMessageID else { return }
 
-                let previousBottomY = lastBottomYByParent[parentID]
+                if let mee = msg.message?.string as? String {
 
-                layout(msg: msg, y: msg.startY,previousBottomY: previousBottomY)
+                    logger.debug("MES->>\(mee) \(mee.count)")
 
-                // 🔑 layout 完後，更新這個 parent 的最新底部
-            lastBottomYByParent[parentID] = msg.resolvedBottomY
+                }
+
+
+
+                layout(msg: msg, y: msg.startY)
+
             }
 
+
+        }
 
 
 
@@ -1471,10 +1501,14 @@ final class PIPServiceMessages {
 
 
 
+        // 6️⃣ needsRelayoutAfterRemoval 只做 layout，不重啟 displayLink
+        if needsRelayoutAfterRemoval {
+            needsRelayoutAfterRemoval = false
 
+            relayoutTargetsOnly(updateTargetY: true)
+            rebuildAnimatingGroups()
 
-
-
+        }
 
 
         let hasMoving = stackedMessages.contains { msg in
@@ -1513,38 +1547,22 @@ final class PIPServiceMessages {
 
 
 
-            var lastBottomYByParent: [UUID: CGFloat] = [:]
+            for segments in animatingGroups {
 
-            let orderedMessages = animatingMessages.sorted {
-                if $0.parentMessageID == $1.parentMessageID {
-                    return $0.segmentIndex < $1.segmentIndex
+                for msg in segments {
+
+                    msg.startY = msg.targetY
+                    msg.isNew = false
+
+                    layout(
+                        msg: msg,
+                        y: msg.targetY)
+
+
+
                 }
 
-                let i0 = stackedMessages.firstIndex(of: $0) ?? 0
-                let i1 = stackedMessages.firstIndex(of: $1) ?? 0
-
-                return i0 < i1
             }
-
-
-            for msg in orderedMessages {
-                  msg.startY = msg.targetY
-                  msg.isNew = false
-
-                  guard let parentID = msg.parentMessageID else { return }
-
-                  let previousBottomY = lastBottomYByParent[parentID]
-
-                  layout(
-                        msg: msg,
-                        y: msg.targetY ,
-                        previousBottomY: previousBottomY
-                  )
-
-                  // 🔑 layout 完後，更新這個 parent 的最新底部
-                lastBottomYByParent[parentID] = msg.resolvedBottomY
-            }
-
             // ✅ 清掉已經穩定的 animatingMessages（非常重要）
             animatingMessages.removeAll {
                 abs($0.startY - $0.targetY) < snapThreshold
@@ -1580,32 +1598,9 @@ final class PIPServiceMessages {
             return // ✅ 不再重啟 displayLink
         }
 
-        //layoutBottomMessage()
 
 
 
-        // 6️⃣ needsRelayoutAfterRemoval 只做 layout，不重啟 displayLink
-        if needsRelayoutAfterRemoval {
-            needsRelayoutAfterRemoval = false
-
-            relayoutTargetsOnly(updateTargetY: true)
-
-
-            // 2️⃣ 把「位置改變的舊訊息」加入動畫
-            for msg in stackedMessages {
-                guard msg.alpha > 0 else { continue }
-
-                let distance = abs( msg.startY - msg.targetY)
-
-                if distance > snapThreshold && !animatingMessages
-                    .contains(msg) {
-                    animatingMessages.append(msg)
-
-                }
-            }
-
-
-        }
 
         // 7️⃣ 更新 dirty 狀態
         if now - lastDirtyTime > 1.0 / 10 {
@@ -1615,7 +1610,7 @@ final class PIPServiceMessages {
     }
 
 
-    private func layout(msg: MessageLayerTuple, y: CGFloat,x:CGFloat? = nil,previousBottomY: CGFloat? = nil) {
+    private func layout(msg: MessageLayerTuple, y: CGFloat,x:CGFloat? = nil) {
 
         let adjustedY = max(y, topMargin)
 
@@ -1624,28 +1619,33 @@ final class PIPServiceMessages {
         let avatarSizeLocal = msg.avatarSize ?? self.avatarSize
         let giftSizeLocal = msg.giftSize ?? self.giftSize
 
-
-        let textX = leftPadding + avatarSizeLocal + msg.horizontalSpacing
-
+        let textX = msg.textX
 
         // Avatar
-        msg.avatar?.frame.origin.y = adjustedY
-
-        msg.avatar?.frame.origin.x = textX - avatarSizeLocal
-
-        // Name（不再計算）
-        let nameSize = msg.cachedNameSize
-
-        msg.name?.frame = CGRect(
-            x: textX,
-            y: adjustedY,
-            width: nameSize.width,
-            height: nameSize.height
+        msg.avatar?.frame.origin = CGPoint(
+            x: textX - avatarSizeLocal,
+            y: y
         )
 
-        
 
-        if let nameLayer = msg.name  {
+
+        // Name
+        var cursorY = y
+
+        if let nameLayer = msg.name {
+            // Name（不再計算）
+            let size = msg.cachedNameSize
+
+            nameLayer.frame = CGRect(
+                x: avatarSizeLocal + msg.horizontalSpacing,
+                y: cursorY ,
+                width: size.width,
+                height: size.height
+            )
+
+
+
+            cursorY += size.height + msg.verticalSpacing
 
             // 第一行的 top
             let textCenterY = nameLayer.frame.origin.y + nameLayer.frame.height / 2
@@ -1654,46 +1654,24 @@ final class PIPServiceMessages {
         }
 
 
-        // Message（不再計算）
-        var messageY: CGFloat = 0
 
-        var bottomY = adjustedY
+        // Message
+        if let message = msg.message {
+            let size = msg.cachedMessageSize
 
-        if let nameLayer = msg.name {
-            messageY = nameLayer.frame.maxY + msg.verticalSpacing
-
-            bottomY = nameLayer.frame.maxY
-
-
-        } else if let previousBottomY {
-
-            // ② 同 parent 的後續 segment（🔥 你現在的情況）
-            messageY = previousBottomY + msg.verticalSpacing
+            message.frame = CGRect(
+                x: textX,
+                y: cursorY,
+                width: size.width,
+                height: size.height
+            )
 
         }
-
-        else {
-            messageY = adjustedY
-        }
-
-
-        let messageSize = msg.cachedMessageSize
-
-        msg.message?.frame = CGRect(
-            x: textX,
-            y: messageY,
-            width: messageSize.width,
-            height: messageSize.height
-        )
 
         // Gift（不再算 lastLine）
 
         if let gift = msg.gift,
            let messageLayer = msg.message {
-
-            bottomY = max(bottomY, messageLayer.frame.maxY)
-
-
 
             let minX = messageLayer.frame.minX
             let minY = messageLayer.frame.minY
@@ -1701,10 +1679,12 @@ final class PIPServiceMessages {
             let GiftCX = msg.cachedGiftOffsetX
             let GiftCY = msg.cachedGiftOffsetY
 
-            bottomY = max(bottomY, gift.frame.maxY)
 
 
-            PIPChatLog("Mes MinX:\(minX) MinY:\(minY) Gift X:\(GiftCX) Y:\(GiftCY)")
+            PIPChatLog(
+                "M:\(String(describing: messageLayer.string)) Mes MinX:\(minX) MinY:\(minY) Gift X:\(GiftCX) Y:\(GiftCY)"
+            )
+
             gift.frame = CGRect(
                 x: minX + GiftCX,
                 y: minY + GiftCY,
@@ -1714,10 +1694,6 @@ final class PIPServiceMessages {
 
 
         }
-
-
-
-        msg.resolvedBottomY = bottomY
 
 
     }
@@ -1738,20 +1714,28 @@ func PIPChatLog(_ message:String){
 }
 
 struct DebugImageViewWrapper: UIViewRepresentable {
+
+    // 這裡傳 PIPService 的 debug layer
+    let layer: AVSampleBufferDisplayLayer?
+
     func makeUIView(context: Context) -> UIView {
-        let container = UIView(frame: .zero)
+        let container = UIView()
 
-        // 設定 debugImageView
-        //PIPService.shared.setupDebugImageView(in: container,
-        //                                     frame: CGRect(x: 0, y: 0, width: 150, height: 100))
+        if let layer = layer {
+                    layer.frame = container.bounds
+                    layer.videoGravity = .resizeAspect
+                    layer.backgroundColor = #colorLiteral(red: 0.9254902005, green: 0.2352941185, blue: 0.1019607857, alpha: 1)
+                    container.layer.addSublayer(layer)
+        }
 
-
-        //PIPService.shared.setupDebugDisplayLayer(in: container)
 
         return container
     }
 
-    func updateUIView(_ uiView: UIView, context: Context) {}
+    func updateUIView(_ uiView: UIView, context: Context) {
+
+
+    }
 }
 
 struct PIPView: View {
@@ -1773,7 +1757,9 @@ struct PIPView: View {
                 VStack(spacing: 10) {
                     Button("[聊天組]啟動 PiP") {
                         let pipSize = CGSize(width: 300, height: 200)
+
                         PIPService.shared.startPiP(size: pipSize)
+
                         isChatPiPActive = true
                     }
                     .disabled(isTestPiPActive) // 測試組啟用時灰掉
@@ -1834,9 +1820,9 @@ struct PIPView: View {
 
             Button("測試長訊息") {
 
-                let user =  "1阿呵呵呵阿呵呵呵阿呵呵呵阿呵呵呵2阿呵呵呵阿呵呵呵阿呵呵3呵阿呵呵呵阿呵呵呵阿呵呵呵阿4呵呵呵阿呵呵呵阿呵呵呵阿呵呵呵阿呵呵呵測試5"
+                let user =  "1阿呵呵呵阿呵呵呵阿呵呵呵阿呵呵呵2阿呵呵呵阿3呵呵呵阿呵呵4呵阿呵呵呵阿呵呵呵阿呵呵呵阿5呵呵呵阿呵呵呵阿呵呵呵阿呵呵呵阿呵呵呵測試5"
 
-                let msg =  "1阿呵呵呵阿呵呵呵2阿呵呵呵阿呵呵呵阿呵呵呵阿呵呵呵阿呵3呵呵阿呵呵呵阿呵呵呵阿呵呵呵4阿呵呵呵阿呵呵呵阿呵呵呵測試5"
+                let msg =  "1阿呵呵呵阿呵呵呵2阿呵呵呵阿3呵呵呵阿呵呵呵阿呵呵呵阿呵4呵呵阿呵呵呵阿呵呵呵阿呵呵呵5阿呵呵呵阿呵呵呵阿呵呵呵測試6"
                 let img = "https://img.icons8.com/?size=100&id=L8HgZUgz2jWS&format=png&color=000000"
 
                 let gift = "https://img.icons8.com/?size=100&id=tgLepcPbp6mP&format=png&color=000000"
@@ -1866,8 +1852,8 @@ struct PIPView: View {
             }
 
             // 將 debugImageView 顯示在 SwiftUI
-            DebugImageViewWrapper()
-                .frame(width: 150, height: 100)
+            DebugImageViewWrapper(layer: PIPService.shared.debugDisplayLayer)
+                .frame(width: 300, height: 200)
                 .border(Color.red)
         }
         .padding()

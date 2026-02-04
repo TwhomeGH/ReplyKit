@@ -92,6 +92,16 @@ class DeviceOrientationManager {
     }
 
     func stopUpdates() {
+
+        Task {
+#if os(iOS)
+            await UIDevice.current.endGeneratingDeviceOrientationNotifications()
+
+            NotificationCenter.default.removeObserver(self, name: UIDevice.orientationDidChangeNotification, object: nil)
+
+#endif
+        }
+
         motionManager?.stopDeviceMotionUpdates()
         motionManager = nil
         orientationChanged = nil

@@ -1222,7 +1222,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         RPConfig.shared.applyLogMode()
 
         // 🔹 轉成 URL
-        sendlog(message: "🔹 推流 URL:\(fullURLString)",flush: true)
+        sendlog(message: "🔹 推流 URL:\(fullURLString)")
         sendlog(message: "App:\(appVolume)  Mic:\(micVolume) AppAdd:\(appAddVolume) MicAdd:\(micAddVolume)")
 
 
@@ -1341,11 +1341,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
    // MARK: Process
 
-    func initProcessors() async {
-
+    func initProcessors() {
 
         bitrate = RPConfig.shared.BitRate
-
 
         volumeNotifier = VolumeNotifier()
 
@@ -1373,6 +1371,31 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     }
 
+
+
+    func rebuildAudio() {
+        audioProcessor = AudioProcessor(
+            mediaMixer: mediaMixer,
+            volumeNotifier: volumeNotifier!,
+            appAddVolume: appAddVolume,
+            micAddVolume: micAddVolume,
+            appVolume: appVolume,
+            micVolume: micVolume,
+            onAudioPage: RPConfig.shared.onAudioPage
+        )
+        sendlog(message: "已嘗試重建Audio")
+
+    }
+    func rebuildVideo() {
+        videoProcessor = VideoFrameProcessor(
+            mediaMixer: mediaMixer,
+            sendlog: { message in
+                sendlog(message: message)
+            }
+        )
+        sendlog(message: "已嘗試重建Video")
+
+    }
 
     func startRTMP(url:String?,key:String?) async {
 
@@ -1431,7 +1454,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         //self.prepareCompressionSession()
 
-
          Task {
 
 
@@ -1470,7 +1492,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 logger.info("✅ MediaMixer 配置完成")
 
-                await self.initProcessors()
+                self.initProcessors()
 
                 sendlog(message:"✅ Processor 初始化完成")
 
@@ -1486,71 +1508,71 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
     // MARK: - 暫停畫面控制
-    private var pauseTimer: DispatchSourceTimer?
+    //    private var pauseTimer: DispatchSourceTimer?
 
     // MARK: 重用暫停
-    private var pausedNV12PixelBuffer: CVPixelBuffer?
-    private var pausedBGRAcontext: CGContext?
-    private var pausedBGRABuffer: CVPixelBuffer?
+//    private var pausedNV12PixelBuffer: CVPixelBuffer?
+//    private var pausedBGRAcontext: CGContext?
+//    private var pausedBGRABuffer: CVPixelBuffer?
 
-    var isPause = false
+  //  var isPause = false
 
 
-    private let stateQueue = DispatchQueue(label: "broadcast.state.queue")
-
-    private var pausedFrameTimestamp: CMTime = .zero
-    private let pausedFrameDuration = CMTimeMake(value: 1, timescale: 1) // 每秒一幀
-
-    private var pausedStartTime = CACurrentMediaTime()
-    private var pausedFrameIndex: Int = 0
+//    private let stateQueue = DispatchQueue(label: "broadcast.state.queue")
+//
+//    private var pausedFrameTimestamp: CMTime = .zero
+//    private let pausedFrameDuration = CMTimeMake(value: 1, timescale: 1) // 每秒一幀
+//
+//    private var pausedStartTime = CACurrentMediaTime()
+//    private var pausedFrameIndex: Int = 0
 
     // MARK: - 暫停畫面邏輯
-    private func startPausedFrameLoop() {
-        let width = DWidth
-        let height = DHeight
+//    private func startPausedFrameLoop() {
+//        let width = DWidth
+//        let height = DHeight
+//
+//        // 直接建立暫停畫面資源
+//        if pausedBGRABuffer == nil {
+//            pausedBGRABuffer = createPixelBuffer(width: width, height: height,
+//                                                 format: kCVPixelFormatType_32BGRA, reuse: nil)
+//            if let bgra = pausedBGRABuffer {
+//                pausedBGRAcontext = createContext(for: bgra)
+//                if let ctx = pausedBGRAcontext {
+//                    updatePausedContext(buffer: bgra, context: ctx, text: "直播暫停中")
+//                    sendlog(message: "✅ 暫停畫面 BGRA buffer 建立成功")
+//                }
+//            }
+//        }
+//
+//        if pausedNV12PixelBuffer == nil {
+//            pausedNV12PixelBuffer = createPixelBuffer(width: width, height: height,
+//                                                      format: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange, reuse: nil)
+//        }
+//
+//        // 啟動定時器推幀
+//        pauseTimer?.cancel()
+//        pauseTimer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
+//        pauseTimer?.schedule(deadline: .now(), repeating: 1.0 / 30.0)
+//        pauseTimer?.setEventHandler { [weak self] in
+//            guard let self = self,
+//                  let bgra = self.pausedBGRABuffer,
+//                  let nv12 = self.pausedNV12PixelBuffer else { return }
+//
+//            convertBGRAtoNV12(bgra: bgra, nv12: nv12)
+//
+//            var frameIndex = 0
+//            self.stateQueue.sync { frameIndex = self.pausedFrameIndex }
+//
+//            if let sampleBuffer = createSampleBuffer(from: nv12, frameIndex: &frameIndex) {
+//                self.stateQueue.sync { self.pausedFrameIndex = frameIndex }
+//                Task { await self.mediaMixer.append(sampleBuffer) }
+//            }
+//        }
+//        pauseTimer?.resume()
+//    }
 
-        // 直接建立暫停畫面資源
-        if pausedBGRABuffer == nil {
-            pausedBGRABuffer = createPixelBuffer(width: width, height: height,
-                                                 format: kCVPixelFormatType_32BGRA, reuse: nil)
-            if let bgra = pausedBGRABuffer {
-                pausedBGRAcontext = createContext(for: bgra)
-                if let ctx = pausedBGRAcontext {
-                    updatePausedContext(buffer: bgra, context: ctx, text: "直播暫停中")
-                    sendlog(message: "✅ 暫停畫面 BGRA buffer 建立成功")
-                }
-            }
-        }
-
-        if pausedNV12PixelBuffer == nil {
-            pausedNV12PixelBuffer = createPixelBuffer(width: width, height: height,
-                                                      format: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange, reuse: nil)
-        }
-
-        // 啟動定時器推幀
-        pauseTimer?.cancel()
-        pauseTimer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
-        pauseTimer?.schedule(deadline: .now(), repeating: 1.0 / 30.0)
-        pauseTimer?.setEventHandler { [weak self] in
-            guard let self = self,
-                  let bgra = self.pausedBGRABuffer,
-                  let nv12 = self.pausedNV12PixelBuffer else { return }
-
-            convertBGRAtoNV12(bgra: bgra, nv12: nv12)
-
-            var frameIndex = 0
-            self.stateQueue.sync { frameIndex = self.pausedFrameIndex }
-
-            if let sampleBuffer = createSampleBuffer(from: nv12, frameIndex: &frameIndex) {
-                self.stateQueue.sync { self.pausedFrameIndex = frameIndex }
-                Task { await self.mediaMixer.append(sampleBuffer) }
-            }
-        }
-        pauseTimer?.resume()
-    }
-
-    private var isRebuilding = false
-    private var isCleanup = false
+//    private var isRebuilding = false
+//    private var isCleanup = false
 
 
     // MARK: 直播暫停
@@ -1689,23 +1711,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         isSessionReady = false
 
 
-        Task {
-#if os(iOS)
-            await UIDevice.current.endGeneratingDeviceOrientationNotifications()
-
-            NotificationCenter.default.removeObserver(self, name: UIDevice.orientationDidChangeNotification, object: nil)
-
-#endif
-        }
-
-        
         DeviceOrientationManager.shared.stopUpdates()
 
         volumeNotifier?.cleanup()
 
-
         videoProcessor?.cleanup()
-
 
         audioProcessor?.cleanup()
 
@@ -1734,11 +1744,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     override func broadcastFinished() {
 
-
         broadcastEnd()
 
     }
-
 
 
 
@@ -1795,7 +1803,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     }
 
     func configureVideo(_ sampleBuffer: CMSampleBuffer) async {
-
         // 如果已經初始化過，就不再重做
         if didConfigureVideo { return }
         didConfigureVideo = true  // 打上標記
@@ -1858,7 +1865,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         var videoSettings = await rtmpStream.videoSettings
         videoSettings.videoSize = newSize
-        videoSettings.expectedFrameRate = 60.0
 
 
         let profilelvl: String
@@ -1915,8 +1921,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         sendlog(message: "H264Profilelevel: \(profilelvl)")
 
         videoSettings.profileLevel = profilelvl
-        videoSettings.maxKeyFrameIntervalDuration = 2
-        videoSettings.scalingMode = .letterbox
 
         if lastConfiguredSize != newSize {
             try? await rtmpStream.setVideoSettings(videoSettings)
@@ -1938,20 +1942,32 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     var lastlogTimeAudio : Double = 0.0
     var logInterval : CFTimeInterval = 1.0
 
+    // MARK:第一幀緩存
+    var pendingVideoBuffer: CMSampleBuffer?
+    var pendingAudioBuffer: CMSampleBuffer?
+    var pendingAudioBufferType: AudioTrackType?
+
+
     override func processSampleBuffer(_ sampleBuffer: CMSampleBuffer, with sampleBufferType: RPSampleBufferType) {
 
-//        guard isSessionReady else { return }
 
         switch sampleBufferType {
-        case RPSampleBufferType.video:
+        case .video:
+
+            guard isSessionReady else {
+                logger.debug("等待連接 Video")
+
+                pendingVideoBuffer = sampleBuffer
+
+                return
+            }
 
             if needVideoConfiguration && !didConfigureVideo {
                 needVideoConfiguration = false
 
-                Task { [weak self] in
-                        guard let self else { return }
-                        await self.configureVideo(sampleBuffer)
-                    }
+                Task {
+                    await self.configureVideo(sampleBuffer)
+                }
 
 
                 // ✅ 初始化時才抓一次方向
@@ -1973,11 +1989,27 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
             if videoProcessor != nil {
+
+                if pendingVideoBuffer != nil {
+                    if let buffer = pendingVideoBuffer {
+                        videoProcessor?.process(buffer,
+                            timestamp: CMSampleBufferGetPresentationTimeStamp(buffer))
+                        pendingVideoBuffer = nil
+                    }
+
+                    sendlog(message: "緩存已送進VideoProcessor處理 1 Buffer")
+                }
+
                 videoProcessor?.process(sampleBuffer, timestamp: timestamp)
+
             } else {
                 if lastVideoTimestamp.seconds > lastlogTime + logInterval  {
                     sendlog(message: "Video進程不存在！")
                     lastlogTime = lastVideoTimestamp.seconds
+
+                    if !isStopping {
+                        rebuildVideo()
+                    }
                 }
             }
 
@@ -1987,47 +2019,65 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
 
-        case RPSampleBufferType.audioApp, RPSampleBufferType.audioMic:
+        case .audioApp, .audioMic:
             if sampleBuffer.dataReadiness == .ready {
+
                 let trackType: AudioTrackType = (sampleBufferType == .audioApp) ? .app : .mic
+
+                guard isSessionReady else {
+                    logger.debug("等待連接 Audio")
+
+                    pendingAudioBuffer = sampleBuffer
+                    pendingAudioBufferType = trackType
+
+                    return
+                }
+
+
 
                 if needAudioConfiguration  && !didConfigureAudio {
                     didConfigureAudio = true
                     needAudioConfiguration = false
 
-                    let BitAudio=pcmBitrate(from: sampleBuffer)
-                    let HHZ=BitAudio["HZ"] as? Int ?? 0
-                    let CHH=BitAudio["Channel"] as? Int ?? 0
-                    let BitR=BitAudio["BitRate"] as? Int ?? 0
-
-                    // 格式化字串
-                    let logMessage = String(format: "SampleRate: %.0f Hz | Channels: %.0f | BitRate: %.1f kbps | BitO: %f",
-                                            HHZ,
-                                            CHH,
-                                            BitR / 1000,
-                                            BitR)
-
-                    if let streamStatus = streamStataus {
-                        Task {
-                            await streamStatus.updateAudioBitRate(to: BitR)
-                        }
-                    }
-                        sendlog(message: logMessage)
+                    sendlog(message: "音訊有效!")
 
                 }
-
 
                 let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
 
                 lastVideoTimestamp = timestamp
 
                 if audioProcessor != nil {
+
+
+                    if pendingAudioBuffer != nil {
+                        if let buffer = pendingAudioBuffer ,let trackType = pendingAudioBufferType{
+
+                            audioProcessor?
+                                .enqueue(
+                                    buffer,
+                                    trackType: trackType
+                                )
+
+                            pendingAudioBuffer = nil
+                            pendingAudioBufferType = nil
+                        }
+
+                        sendlog(message: "緩存已送進AudioProcessor處理 1 Buffer Type:\(trackType)")
+                    }
+
+
                     audioProcessor?
                         .enqueue(sampleBuffer, trackType: trackType)
+
                 } else {
                     if lastVideoTimestamp.seconds > lastlogTimeAudio + logInterval  {
                         sendlog(message: "Audio進程不存在！")
                         lastlogTimeAudio = lastVideoTimestamp.seconds
+
+                        if !isStopping {
+                            rebuildAudio()
+                        }
                     }
                 }
 

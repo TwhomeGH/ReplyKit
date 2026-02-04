@@ -113,7 +113,7 @@ private func rmsSIMD(from sampleBuffer: CMSampleBuffer) -> Float? {
 }
 
 
-// MARK: PCM音頻格式
+// MARK: PCM音頻格式 
 func pcmBitrate(from sampleBuffer: CMSampleBuffer) -> [String:Any] {
     guard let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer),
           let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc)?.pointee else {

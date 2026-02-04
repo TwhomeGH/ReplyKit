@@ -73,7 +73,10 @@ class SocketClient : @unchecked Sendable {
     private var HeartbeatTimer: DispatchSourceTimer?
 
     func startHearbeat(interval: TimeInterval = 50.0) {
-        stopHeartbeat()
+        guard HeartbeatTimer == nil else {
+            sendLog(message: "已啟用心跳!")
+            return
+        }
 
         logTo("啟用Socket心跳")
 

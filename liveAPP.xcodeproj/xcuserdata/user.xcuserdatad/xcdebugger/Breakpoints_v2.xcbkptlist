@@ -14,8 +14,8 @@
             filePath = "liveAPP/PIPContent.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "1116"
-            endingLineNumber = "1116"
+            startingLineNumber = "1128"
+            endingLineNumber = "1128"
             landmarkName = "canInsertMessage(_:)"
             landmarkType = "7">
          </BreakpointContent>
@@ -30,8 +30,8 @@
             filePath = "liveAPP/PIPContent.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "1080"
-            endingLineNumber = "1080"
+            startingLineNumber = "1091"
+            endingLineNumber = "1091"
             landmarkName = "addMessage(user:message:imgURL:giftURL:isMain:)"
             landmarkType = "7">
          </BreakpointContent>
@@ -39,16 +39,16 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "7A177B1D-F58B-4C02-8E6E-D325E4DD1862"
+            uuid = "19239A77-3AE9-435C-ACC9-902D5A53BE10"
             shouldBeEnabled = "No"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
-            filePath = "liveAPP/PIPContent.swift"
+            filePath = "liveAPP/PIPService.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "1387"
-            endingLineNumber = "1387"
-            landmarkName = "stepAnimationDisplayLink()"
+            startingLineNumber = "1038"
+            endingLineNumber = "1038"
+            landmarkName = "renderIncremental()"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
