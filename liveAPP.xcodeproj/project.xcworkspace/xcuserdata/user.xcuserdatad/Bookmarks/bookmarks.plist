@@ -3,53 +3,6 @@
 <plist version="1.0">
 <dict>
 	<key>top-level-items</key>
-	<array>
-		<dict>
-			<key>destination</key>
-			<dict>
-				<key>location-parameters</key>
-				<dict>
-					<key>EndingColumnNumber</key>
-					<string>62</string>
-					<key>EndingLineNumber</key>
-					<string>53</string>
-					<key>StartingColumnNumber</key>
-					<string>62</string>
-					<key>StartingLineNumber</key>
-					<string>53</string>
-					<key>Timestamp</key>
-					<string>785957938.564549</string>
-				</dict>
-				<key>rebasable-url</key>
-				<dict>
-					<key>base</key>
-					<string>home-directory</string>
-					<key>payload</key>
-					<dict>
-						<key>relative-path</key>
-						<string>Library/Developer/Xcode/DerivedData/liveAPP-fjlggrimgahaswcjhdvdlcsyzzct/SourcePackages/checkouts/HaishinKit.swift/HaishinKit/Sources/Codec/VTSessionOptionKey.swift</string>
-					</dict>
-				</dict>
-			</dict>
-			<key>text-context</key>
-			<dict>
-				<key>focused</key>
-				<string></string>
-				<key>leading</key>
-				<string>
-    @available(iOS 26.0, tvOS 26.0, macOS 26.0, *)
-    static let variableBitRate = VTSessionOptionKey(rawValue: </string>
-				<key>trailing</key>
-				<string>kVTCompressionPropertyKey_VariableBitRate as String)
-
-    let rawValue: String
-</string>
-			</dict>
-			<key>title</key>
-			<string>Error: Cannot find 'kVTCompressionPropertyKey_VariableBitRate' in scope</string>
-			<key>type</key>
-			<string>bookmark</string>
-		</dict>
-	</array>
+	<array/>
 </dict>
 </plist>
