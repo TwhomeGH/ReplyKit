@@ -443,17 +443,17 @@ class SocketServer {
             "取得聊天室訊息:\(user):\(msg) Img:\(String(describing: img)) GIFT:\(String(describing: giftImg)) isMain:\(isMain)"
         )
 
-        Task {
-            PIPService.shared
-                .addMessage(
-                    user:user,
-                    msg:msg,
-                    imgURL:img,
-                    giftURL: giftImg,
-                    isMain: isMain
-                )
-            
-        }
+
+        PIPService.shared
+            .addMessage(
+                user:user,
+                msg:msg,
+                imgURL:img,
+                giftURL: giftImg,
+                isMain: isMain
+            )
+
+
 
 
 
