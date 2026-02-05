@@ -250,7 +250,7 @@ final class PIPService: NSObject, @unchecked Sendable {
     var isMark = false
 
     private var decayDeadline: DispatchTime?
-    private let decayDelay: TimeInterval = 1.0
+    private let decayDelay: TimeInterval = 3.0
 
     private var decayTimer: DispatchSourceTimer?
 
@@ -266,7 +266,7 @@ final class PIPService: NSObject, @unchecked Sendable {
             decayTimer = DispatchSource.makeTimerSource(queue: renderQueue)
             decayTimer?.schedule(
                 deadline: .now() + 0.2,
-                repeating: 0.2,
+                repeating: 1.0,
                 leeway: .milliseconds(100)
             )
             decayTimer?.setEventHandler { [weak self] in
@@ -284,8 +284,10 @@ final class PIPService: NSObject, @unchecked Sendable {
                                 deadline: .now(),
                                 repeating: 1 / self.currentFPS
                             )
-
+                        
                         PIPLogTo("📉 decay fps -> \(self.currentFPS)")
+                        lastFPS = currentFPS
+                        
                     }
 
                 }
@@ -308,13 +310,28 @@ final class PIPService: NSObject, @unchecked Sendable {
         isMark = true
         currentFPS = 60      // 事件觸發時暫時提升 FPS
 
-
         // 後續動態改 FPS，例如改成 60 FPS
         renderTimer?.schedule(deadline: .now(), repeating: 1/60)
 
         decayDeadline = .now() + decayDelay
 
     }
+
+    func waitFade() {
+
+        PIPLogTo("PIP 等待Fade中")
+        isMark = true
+        currentFPS = 2      // 事件觸發時暫時提升 FPS
+
+        // 後續動態改 FPS，例如改成 60 FPS
+        renderTimer?.schedule(deadline: .now(), repeating: 1/2)
+
+        decayDeadline = .now() + decayDelay
+
+    }
+
+
+
 
     func decyDead() {
         decayDeadline = .now() + decayDelay
@@ -397,7 +414,11 @@ final class PIPService: NSObject, @unchecked Sendable {
     func setupAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .default, options: [.mixWithOthers, .allowBluetoothHFP])
+            try session.setCategory(.playAndRecord, mode: .default,
+                                    options: [
+                                        .mixWithOthers
+                                    ]
+            )
             try session.setActive(true, options: .notifyOthersOnDeactivation)
         } catch {
             PIPLogTo("AVAudioSession setup error: \(error)")
@@ -919,6 +940,7 @@ final class PIPService: NSObject, @unchecked Sendable {
                 guard let self = self else { return }
 
 
+
                 Task { @MainActor in
                     _ = await self.renderIncremental()
                 }
@@ -991,6 +1013,8 @@ final class PIPService: NSObject, @unchecked Sendable {
 
 
 
+    var lastFPS = 1.0
+
     // MARK: - Incremental Render
     @MainActor
     private func renderIncremental() async -> Bool {
@@ -1003,9 +1027,12 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         lastRenderTime = now
 
-        // 將 PixelBuffer 尺寸用原大小
-        // let renderSize = OframeSize
+        if lastFPS != currentFPS {
+            PIPLogTo("NowPIP FPS:\(currentFPS)")
+            lastFPS = currentFPS
+        }
 
+        // 將 PixelBuffer 尺寸用原大小
         let format = UIGraphicsImageRendererFormat.default()
 
         format.scale = 1
@@ -1033,19 +1060,19 @@ final class PIPService: NSObject, @unchecked Sendable {
             self.frameCount += 1
 
 
-            if let debugLayer = debugDisplayLayer,
-               debugLayer.isReadyForMoreMediaData {
-                debugLayer.enqueue(sampleBuffer)
-            }
-
-            // 更新 debugImageView
-            if UIApplication.shared.applicationState == .active ,
-               CACurrentMediaTime() - self.lastDebugUpdate > 0.1 {
-
-                self.lastDebugUpdate = CACurrentMediaTime()
-
-
-            }
+//            if let debugLayer = debugDisplayLayer,
+//               debugLayer.isReadyForMoreMediaData {
+//                debugLayer.enqueue(sampleBuffer)
+//            }
+//
+//            // 更新 debugImageView
+//            if UIApplication.shared.applicationState == .active ,
+//               CACurrentMediaTime() - self.lastDebugUpdate > 0.1 {
+//
+//                self.lastDebugUpdate = CACurrentMediaTime()
+//
+//
+//            }
 
             // 啟動 PiP
             if !self.didStartPiP && self.frameCount >= self.pipStartThreshold {

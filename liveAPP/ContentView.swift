@@ -819,7 +819,10 @@ struct LogSettingsView: View {
 
     @StateObject private var gpuSettings = GPUSettingsViewModel()
 
+    @AppStorage("fadeAlpha", store: userDefaults) private var fadeAlpha = 0.08
+
     @AppStorage("fadeTime", store: userDefaults) private var fadeTime = 0.5
+
     @AppStorage("scrollTime", store: userDefaults) private var scrollTime = 0.2
 
     @AppStorage("PIPFontMain", store: userDefaults) private var PIPFontMain = 14.0
@@ -945,11 +948,50 @@ struct LogSettingsView: View {
 
 
 
+                    // MARK: FadeSpeed
+                    TextField(
+                        "淡出速度 數值越高淡出越快 0.08",
+                        value: $fadeAlpha,
+                        format: .number
+                    )
+                         .frame(maxWidth: .infinity)
+                         .textFieldStyle(RoundedBorderTextFieldStyle())
+                         .keyboardType(.numberPad)
+
+                         .onChange(of: fadeAlpha) { _ in
+
+                             logTo("FadeSpeedAlpha -> \(fadeAlpha) ")
+                             LPConfig.shared.FadeAlpha = fadeAlpha
+
+                        }
+
+                    Stepper(
+                        "訊息淡出速度：\(String(format: "%.2f", fadeAlpha))",
+                        value: $fadeAlpha,
+                        in: 0...100,
+                        step: 0.1
+
+                    )
+                    .onChange(of: fadeAlpha) { _ in
+
+                        logTo("FadeSpeedAlpha -> \(fadeAlpha) ")
+                        LPConfig.shared.FadeAlpha = fadeAlpha
+
+
+                        }
+
+                    Text("建議值: 0.08 / 幀"
+                    )
+                            .font(.footnote)
+                            .foregroundColor(.secondary)
+                            .padding(.bottom, 5)
+
+
 
                     // MARK: FadeTime
 
                     TextField(
-                        "淡出時長 直接輸入時長 1.0",
+                        "淡出時間間隔 直接輸入時長 1.0",
                         value: $fadeTime,
                         format: .number
                     )
@@ -966,7 +1008,7 @@ struct LogSettingsView: View {
                         }
 
                     Stepper(
-                        "訊息淡出時間：\(String(format: "%.2f", fadeTime))",
+                        "訊息淡出時間間隔：\(String(format: "%.2f", fadeTime))",
                         value: $fadeTime,
                         in: 0...100,
                         step: 0.1

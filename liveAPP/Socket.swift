@@ -435,67 +435,28 @@ class SocketServer {
         msg: String,
         img: String?,
         giftImg: String?,
-        isMain:Bool?
+        isMain:Bool = true
     ) {
 
 
+        logTo(
+            "取得聊天室訊息:\(user):\(msg) Img:\(String(describing: img)) GIFT:\(String(describing: giftImg)) isMain:\(isMain)"
+        )
+
+        Task {
+            PIPService.shared
+                .addMessage(
+                    user:user,
+                    msg:msg,
+                    imgURL:img,
+                    giftURL: giftImg,
+                    isMain: isMain
+                )
+            
+        }
 
 
-        if let img = img, let giftImg = giftImg, let isMain = isMain {
-             logTo("取得聊天室訊息:\(user):\(msg) Img:\(img) GIFT:\(giftImg) isMain:\(isMain)")
 
-
-                 PIPService.shared
-                     .addMessage(
-                        user:user,
-                        msg:msg,
-                        imgURL:img,
-                        giftURL: giftImg,
-                        isMain: isMain
-                     )
-
-
-        } else if let img = img ,let isMain = isMain {
-             logTo("IMG取得聊天室訊息:\(user):\(msg) Img:\(img) GIFT:_ isMain:\(isMain)")
-
-                 PIPService.shared
-                     .addMessage(
-                        user:user,
-                        msg:msg,
-                        imgURL:img,
-                        giftURL: giftImg,
-                        isMain: isMain
-                     )
-
-
-        } else if let giftImg = giftImg ,let isMain = isMain {
-             logTo("GIFT取得聊天室訊息:\(user):\(msg) Img:_ GIFT:\(giftImg) isMain:\(isMain)")
-
-                 PIPService.shared
-                     .addMessage(
-                        user:user,
-                        msg:msg,
-                        imgURL:img,
-                        giftURL: giftImg,
-                        isMain: isMain
-                     )
-
-
-         } else {
-
-             logTo("U取得聊天室訊息:\(user):\(msg) Img:_ GIFT:_ isMain: True ")
-
-                 PIPService.shared
-                     .addMessage(
-                        user:user,
-                        msg:msg,
-                        imgURL:img,
-                        giftURL: giftImg,
-                        isMain: true
-                     )
-
-
-         }
 
 
     }
@@ -682,7 +643,7 @@ class SocketServer {
 
                 let img : String? = dict.img
                 let giftImg: String? = dict.giftImg
-                let isMain: Bool? = dict.isMain
+                let isMain: Bool = dict.isMain ?? true
 
 
                 renderChatMessage(
