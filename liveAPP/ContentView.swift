@@ -830,7 +830,6 @@ struct LogSettingsView: View {
 
 
 
-
     var body: some View {
         NavigationView {
             Form {
@@ -1016,7 +1015,7 @@ struct LogSettingsView: View {
                     )
                     .onChange(of: fadeTime) { _ in
 
-                            logTo("FadeTime -> \(fadeTime) ")
+                        logTo("FadeTime -> \(fadeTime) ")
                         LPConfig.shared.MessageFadeTime = fadeTime
                         PIPService.shared.fadeTime(fadeTime)
 

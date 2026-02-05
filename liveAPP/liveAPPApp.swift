@@ -53,7 +53,7 @@ final class LogBuffer {
     func push(_ msg: String) {
         queue.async {
             self.buffer.append(msg)
-            let logs = self.drain(max: 100)
+            let logs = self.drain(max: 50)
             if !logs.isEmpty {
                 DispatchQueue.main.async {
                     self.onNewLog?(logs)
@@ -490,7 +490,6 @@ func formatTime() -> String {
 func sendlog(title:String = "liveApp",message: String) {
 
     guard LPConfig.shared.enableLog else { return }
-
 
     let timeString = formatTime()
     let full = "\(timeString): \(title):\(message)"

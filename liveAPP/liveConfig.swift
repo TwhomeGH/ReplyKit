@@ -85,7 +85,7 @@ final class LPConfig {
         logURL = userDefaults?.string(forKey: "logURL") ?? "http://192.168.0.242:3000/post"
         SocketLog = userDefaults?.bool(forKey: "EnableSocketlog") ?? false
 
-        FadeAlpha =  userDefaults?.double(forKey: "fadeAlpha") ?? 0.08
+        FadeAlpha = userDefaults?.double(forKey: "fadeAlpha") ?? 0.08
 
         ScrollTime = userDefaults?.double(forKey: "scrollTime") ?? 0.2
         MessageFadeTime =  userDefaults?.double(forKey: "fadeTime") ?? 0.5
