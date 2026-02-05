@@ -247,15 +247,13 @@ final class MessageLayerTuple:Equatable {
 
     // 透明度控制，用於漸隱
     var alpha: CGFloat = 1.0
-
-    let name: CATextLayer?
-    let message: CATextLayer?
     // ⚡ 新增支援訊息大小的屬性
     var font: UIFont?             // 訊息字體
 
-
-    let avatar: CALayer?
-    let gift: CALayer?
+    var name: CATextLayer?
+    var message: CATextLayer?
+    var avatar: CALayer?
+    var gift: CALayer?
 
     var avatarSize: CGFloat?      // avatar 尺寸
     var giftSize: CGFloat?        // gift 尺寸
@@ -1286,7 +1284,8 @@ final class PIPServiceMessages {
 
 
 
-        let conSize = container.bounds.height - bottomPadding
+
+        let conSize = containerHeight * 0.95 - bottomPadding
         PIPChatLog("MaxBottom:\(bottomY) Container:\(conSize)")
         return bottomY  > conSize
 
@@ -1464,7 +1463,11 @@ final class PIPServiceMessages {
             if IshasOverFlow() {
                 prepareFade()
             } else {
-                phase = .pending
+                if pendingSegments.count > 0 {
+                    phase = .pending
+                } else {
+                    phase = .idle
+                }
             }
         }
 
@@ -1549,11 +1552,21 @@ final class PIPServiceMessages {
     }
 
     func removeMessage(_ msg:MessageLayerTuple){
+
+
+        msg.avatar?.removeAllAnimations()
+        msg.name?.removeAllAnimations()
+        msg.message?.removeAllAnimations()
+        msg.gift?.removeAllAnimations()
+
+
         msg.avatar?.removeFromSuperlayer()
         msg.name?.removeFromSuperlayer()
         msg.message?.removeFromSuperlayer()
         msg.gift?.removeFromSuperlayer()
+
         msg.isFadingOut = false
+
 
 
         if let idx = stackedMessages.firstIndex(where: { $0 ===  msg }) {
@@ -1618,7 +1631,7 @@ final class PIPServiceMessages {
 
     func reloadPending() {
         guard pendingSegments.count > 0 else {
-            phase = .idle
+            phase = .moving
             PIPChatLog("待處理清單已清理完! :\(pendingSegments.count)")
             return
 
