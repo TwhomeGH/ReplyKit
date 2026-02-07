@@ -130,7 +130,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     // MARK: - ASync GPU semaphore
     actor AsyncSemaphore {
-        private let capacity: Int
+        private var capacity: Int
         private var available: Int
         private var waiters: [CheckedContinuation<Void, Never>] = []
 
@@ -150,14 +150,20 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         }
 
 
+        func update(_ max:Int) {
+            guard capacity != max && capacity > 2 else { return }
+            capacity = max
+
+            snapshot.set(Info(now: available, max: max))
+            logger.debug("更新GPU等待上限:\(self.capacity)")
+
+        }
         func wait() async {
             if available > 0 {
                 available -= 1
                 snapshot.set(Info(now: available,  max: capacity))
                 return
             }
-
-           
 
             await withTaskCancellationHandler(
                     operation: {
@@ -172,15 +178,17 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                     }
                 )
 
+            // ✅ 被喚醒後，正式佔用一個 permit
+            available -= 1
+            snapshot.set(Info(now: available, max: capacity))
+
 
 
 
         }
 
         private func removeCurrentContinuation() {
-            for cont in waiters {
-                cont.resume()  // ⚠️ 一定要 resume
-            }
+            // 取消等待：只移除，不放行
             waiters.removeAll()
         }
 
@@ -218,6 +226,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
         }
     }
+
 
     private let gpuSemaphore = AsyncSemaphore(value: 5)
 
@@ -267,8 +276,11 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         self.debug = debug
         self.maxPoolSize = maxPoolSize
 
+        Task {
+            await gpuSemaphore.update(maxPoolSize)
+        }
         sendlog(
-            message:"GPU Rotator init:\(dstWW)x\(dstHH) Debug:\(debug) 使用:\(qualityMode)",
+            message:"GPU Rotator init:\(dstWW)x\(dstHH) Debug:\(debug) 使用:\(qualityMode) PoolSize:\(maxPoolSize)",
             flush: true
         )
 

@@ -835,6 +835,7 @@ struct LogSettingsView: View {
             Form {
                 
                 LogSettingView()
+
                 NavigationLink("GPU旋轉處理設置") {
                    GPURotateView(viewModel: gpuSettings)
                 }
@@ -1210,37 +1211,6 @@ struct LogTextView: UIViewRepresentable {
         var scrollWorkItem: DispatchWorkItem?
         private let scrollDelay: TimeInterval = 0.2
 
-        private func updateNearBottom() {
-            guard let tv = textView ,canUpdateUI() else {
-                //logger.debug("非日誌頁跳過")
-                return
-            }
-           // logger.debug("日誌頁中")
-
-
-
-          
-
-
-            let visibleHeight = tv.bounds.height
-                - tv.adjustedContentInset.top
-                - tv.adjustedContentInset.bottom
-
-            let contentHeight = tv.contentSize.height
-            let offsetY = tv.contentOffset.y
-
-            let lineHeight = tv.font?.lineHeight ?? 18
-            let threshold = lineHeight * 2
-
-            let isNearBottom = offsetY + visibleHeight >= contentHeight - threshold
-
-            if lastNearBottom != isNearBottom {
-                lastNearBottom = isNearBottom
-                onNearBottomChanged?(isNearBottom)
-            }
-
-
-        }
 
         private func trimTextStorageIfNeeded(_ tv: UITextView) {
             guard currentLineCount > maxLines else { return }
@@ -1279,14 +1249,12 @@ struct LogTextView: UIViewRepresentable {
         func appendMessages(_ newMessages: [LogItem]) {
             guard !newMessages.isEmpty else { return }
 
-
             // 過濾掉已經 append 過的
             let uniqueMessages = newMessages.filter { !appendedUUIDs.contains($0.id) }
             guard !uniqueMessages.isEmpty else { return }
 
             // 緩存到 queue
             appendQueue.append(contentsOf: uniqueMessages)
-
 
 
             if appendedUUIDs.count > maxLines * 2 {
@@ -1326,8 +1294,25 @@ struct LogTextView: UIViewRepresentable {
 
                     }
 
+                    CATransaction.begin()
+                    CATransaction.setDisableActions(true)
+                    CATransaction.setCompletionBlock { [weak self] in
+                        guard let self = self else { return }
+
+                        // 再下一 runloop 滾到底
+                        DispatchQueue.main.async {
+
+                            if self.shouldAutoScroll {
+                                self.scrollToBottomUsingRange(animated: false)
+                            }
+                        }
+                    }
+
                     // 更新 UITextView
                     tv.text = newText
+                    tv.layoutIfNeeded()
+
+                    CATransaction.commit()
 
                     self.currentLineCount = self.messageLines.count
 
@@ -1335,12 +1320,12 @@ struct LogTextView: UIViewRepresentable {
                     self.appendQueue.removeAll()
                     self.appendWorkItem = nil
 
-                    // 自動滾動
-                    self.scrollIfNeeded()
+                    
                 }
 
                 appendWorkItem = workItem
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: workItem)
+
             }
         }
 
@@ -1356,103 +1341,79 @@ struct LogTextView: UIViewRepresentable {
             return true
         }
 
+        var shouldAutoScroll = true
+
+        func scrollViewDidScroll(_ scrollView: UIScrollView) {
+            let visibleHeight =
+                scrollView.bounds.height
+                - scrollView.adjustedContentInset.top
+                - scrollView.adjustedContentInset.bottom
+
+            let offsetY = scrollView.contentOffset.y
+            let contentHeight = scrollView.contentSize.height
+
+            logger.debug("offSET:\(offsetY) + \(visibleHeight) CH:\(contentHeight*0.75)")
+            shouldAutoScroll =
+            offsetY + visibleHeight >= contentHeight * 0.75
+
+
+            if lastNearBottom != shouldAutoScroll {
+                lastNearBottom = shouldAutoScroll
+                onNearBottomChanged?(shouldAutoScroll)
+            }
+        }
+
         // 判斷是否滾動
             func scrollIfNeeded() {
                 guard let tv = textView ,canUpdateUI() else { return }
 
                 tv.layoutIfNeeded()
 
-
-                let visibleHeight = tv.bounds.height - tv.adjustedContentInset.top
-
-                let contentHeight = tv.contentSize.height
-                let offsetY = tv.contentOffset.y
-
-                let lineHeight = tv.font?.lineHeight ?? 18
-
-                let nearBottomThreshold = lineHeight * 2
-
-                let isNearBottom = offsetY + visibleHeight >= contentHeight - nearBottomThreshold
-
-
-//                print("""
-//                offsetY: \(offsetY)
-//                visibleHeight: \(visibleHeight)
-//                contentHeight: \(contentHeight)
-//                inset: \(tv.adjustedContentInset)
-//                """)
-
-
-                if isNearBottom {
+                if shouldAutoScroll {
                     scrollToBottomUsingRange()
-                    updateNearBottom()
                 }
 
             }
 
 
-        func scrollToBottom(animated: Bool = false) {
-            guard let tv = textView else { return }
+        func scrollToBottomAfterCATransaction(animated: Bool = false) {
+            guard textView != nil else { return }
 
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
 
-            if scrollWorkItem == nil {
-
-                let workItem = DispatchWorkItem { [weak self, weak tv] in
-                    guard let tv = tv else { return }
-
-                    let y = max(0, tv.contentSize.height - tv.bounds.height + tv.adjustedContentInset.bottom)
-                    tv.setContentOffset(CGPoint(x: 0, y: y), animated: true)
-
-                    self?.scrollWorkItem = nil // 執行完畢，清空
-
-                }
-
-                scrollWorkItem = workItem
-                DispatchQueue.main
-                    .asyncAfter(
-                        deadline: .now() + scrollDelay,
-                        execute: workItem
-                    )
-
+            CATransaction.setCompletionBlock { [weak self] in
+                guard let self = self else { return }
+                self.scrollToBottomUsingRange(animated: animated)
             }
 
+
+            CATransaction.commit()
         }
 
-        func scrollToBottomAnimatedSafe() {
+        func scrollToBottomUsingRange(animated: Bool = true) {
             guard let tv = textView else { return }
 
-            DispatchQueue.main.async { [weak tv] in
-                guard let tv = tv else { return }
+            // 確保 layout / contentSize 是最新的
+            tv.layoutIfNeeded()
 
-                tv.layoutIfNeeded()
-
-                let y = max(
-                    0,
-                    tv.contentSize.height
-                    - tv.bounds.height
-                    + tv.adjustedContentInset.bottom
-                )
-
-                // 先動畫
-                tv.setContentOffset(CGPoint(x: 0, y: y), animated: true)
-
-                // 🔑 再強制定位一次（避免 animation 被打斷）
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-
-                    tv.layoutIfNeeded()
-                    tv.setContentOffset(CGPoint(x: 0, y: y), animated: false)
-                }
-            }
-        }
-
-        func scrollToBottomUsingRange() {
-            guard let tv = textView else { return }
             let length = tv.textStorage.length
             guard length > 0 else { return }
 
+            // 捲到最後一個字元
             let range = NSRange(location: length - 1, length: 1)
             tv.scrollRangeToVisible(range)
+
+            if animated {
+                // scrollRangeToVisible 本身不支援 animated
+                // 這裡補一個平滑動畫（可選）
+                UIView.animate(withDuration: 0.15) {
+                    tv.layoutIfNeeded()
+                }
+            }
         }
+
+
 
 
 
@@ -1470,9 +1431,7 @@ struct LogTextView: UIViewRepresentable {
 
 
 
-        func scrollViewDidScroll(_ scrollView: UIScrollView) {
-            updateNearBottom()
-        }
+
 
 
 
@@ -1487,7 +1446,7 @@ struct LogTextView: UIViewRepresentable {
 
             if !decelerate {
                 userIsInteracting = false
-                updateNearBottom()
+                //updateNearBottom()
             }
         }
 
@@ -1664,6 +1623,11 @@ struct LogView: View {
                     DispatchQueue.main.async {
                         coordinator.appendMessages(newItems)
                     }
+
+                }
+                .onAppear {
+                    guard let coordinator = coordinator else { return }
+                    coordinator.shouldAutoScroll = true
 
                 }
 

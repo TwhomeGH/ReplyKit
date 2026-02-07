@@ -69,6 +69,7 @@ final class VideoFrameProcessor {
                 dstW: dstRW,
                 dstH: dstRH,
                 debug: RPConfig.shared.enableRotateLog,
+                maxPoolSize: RPConfig.shared.BufferCount,
                 useBic: mode
             )
 
