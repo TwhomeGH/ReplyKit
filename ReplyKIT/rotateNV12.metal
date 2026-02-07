@@ -79,7 +79,6 @@ kernel void rotateNV12_bilinear(
     if (gid.x >= params.dstWidth || gid.y >= params.dstHeight) return;
 
 
-
     float scaleX = float(params.srcWidth)  / float(params.dstWidth);
     float scaleY = float(params.srcHeight) / float(params.dstHeight);
 

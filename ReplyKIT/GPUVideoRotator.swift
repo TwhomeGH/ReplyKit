@@ -403,7 +403,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         if !RPConfig.shared.RotateOriginal && dstWW > 0 && dstHH > 0 {
             dstW = dstWW; dstH = dstHH
 
-            logTo("GPU進行寬高調整:\(dstWW)x\(dstWW)")
+            logTo("GPU進行寬高調整:\(dstWW)x\(dstHH)")
         } else {
             logTo("GPU使用原始寬高:\(srcW)x\(srcH)")
         }

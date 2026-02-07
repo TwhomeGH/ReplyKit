@@ -38,6 +38,13 @@ final class GPUSettingsViewModel: ObservableObject {
     let defaultConfigs: [GPUOutputConfig] = [
         GPUOutputConfig(name: "原始大小", width: 0, height: 0),
         GPUOutputConfig(
+            name: "1080p 16:9 [1728x1201]",
+            width: 1728,
+            height: 1201,
+            owidth: 1920,
+            oheight: 1080
+        ),
+        GPUOutputConfig(
             name: "1080p 16:9",
             width: 1552,
             height: 1080,
