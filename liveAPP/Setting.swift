@@ -430,8 +430,10 @@ struct LogSettingView:View {
 
     @AppStorage("EnableSocketlog",store:userDefaults) private var EnableSocketlog = false
 
-
     @AppStorage("ChangeBit",store:userDefaults) private var ChangeBit = true
+
+
+    @ObservedObject var socket = SocketServer.shared
 
     var body: some View {
         Section(header: Text("除錯日誌")) {
@@ -543,9 +545,8 @@ struct LogSettingView:View {
             Button("測試擴展通信傳遞"){
                 AppMessagePort.shared.send(toExtension: ["ping": "From_App"])
 
-                SocketServer.shared
-                    .broadcast(type:"log",key: "test3", value: "OK Socket")
-                SocketServer.shared.broadcast(type: "testRTMP", key: "test3", value: "OK")
+                socket.broadcast(type:"log",key: "test3", value: "OK Socket")
+                socket.broadcast(type: "testRTMP", key: "test3", value: "OK")
 
             }
             Button("Socket重連"){
@@ -558,8 +559,8 @@ struct LogSettingView:View {
                     .padding(.bottom, 5)
 
             Button("Socket服務器重啟"){
-                SocketServer.shared.stop()
-                SocketServer.shared.start()
+                socket.stop()
+                socket.start()
 
             }
             Text("如果擴展初始連不上可以用他重啟服務端")
@@ -567,6 +568,11 @@ struct LogSettingView:View {
                     .foregroundColor(.secondary)
                     .padding(.bottom, 5)
 
+            Text("Socket運行情況:\(socket.isStopping ? "停止" : "運行中" ) ")
+
+            Button("Socket服務器停止"){
+                socket.stop()
+            }
 
 
 

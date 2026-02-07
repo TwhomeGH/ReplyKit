@@ -1352,7 +1352,7 @@ struct LogTextView: UIViewRepresentable {
             let offsetY = scrollView.contentOffset.y
             let contentHeight = scrollView.contentSize.height
 
-            logger.debug("offSET:\(offsetY) + \(visibleHeight) CH:\(contentHeight*0.75)")
+            //logger.debug("offSET:\(offsetY) + \(visibleHeight) CH:\(contentHeight*0.75)")
             shouldAutoScroll =
             offsetY + visibleHeight >= contentHeight * 0.75
 

@@ -116,6 +116,9 @@ final class LogModel: ObservableObject {
     }
 
 
+   
+
+
     func clearLogs() {
         messages.removeAll()
 
@@ -159,6 +162,8 @@ final class LogReceiver {
         )
 
 
+
+
     }
 
     deinit {
@@ -170,6 +175,7 @@ final class LogReceiver {
             CFNotificationName("liveAPP.log" as CFString),
             nil
         )
+
     }
 
     // MARK: - C callback

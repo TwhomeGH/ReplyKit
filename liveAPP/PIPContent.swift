@@ -52,8 +52,8 @@ actor PiPImageCache {
     private var waitingQueue: [String] = []
 
     private init() {
-        cache.countLimit = 20
-        cache.totalCostLimit = 20 * 1024 * 1024
+        cache.countLimit = 10
+        cache.totalCostLimit = 10 * 1024 * 1024
     }
 
     // MARK: - Public API（async 版）
@@ -82,15 +82,15 @@ actor PiPImageCache {
             do {
                 let (data, _) = try await URLSession.shared.data(from: url)
 
-                // ✅ 背景解碼，不 await
-                Task.detached(priority: .userInitiated) {
+
+                Task {
                     if let img = UIImage(data: data) {
                         cache.setObject(img, forKey: urlString as NSString)
                         await MainActor.run {
                             completion(img)
                         }
                     }
-                    await self.finishDownload(urlString: urlString)
+                    self.finishDownload(urlString: urlString)
                 }
 
                 return nil
@@ -1420,12 +1420,7 @@ final class PIPServiceMessages {
         animatingMessages.removeAll {
             abs($0.startY - $0.targetY) < snapThreshold
         }
-        stackedMessages.forEach { msg in
-            if abs(msg.startY - msg.targetY) < snapThreshold {
-                msg.isNew = false
-                logger.debug("已經到定位! \(msg.isNew)")
-            }
-        }
+
 
 
 
@@ -1460,6 +1455,14 @@ final class PIPServiceMessages {
 
         // 🔑 Move 完畢 → 判斷要不要進 fade
         if !hasMoving {
+
+            stackedMessages.forEach { msg in
+                if abs(msg.startY - msg.targetY) < snapThreshold {
+                    msg.isNew = false
+                    //logger.debug("已經到定位! \(msg.isNew)")
+                }
+            }
+
             if IshasOverFlow() {
                 prepareFade()
             } else {
@@ -1582,7 +1585,6 @@ final class PIPServiceMessages {
     private func stopDisplayLink() {
 
 
-
         for segments in animatingGroups {
 
             for msg in segments {
@@ -1662,9 +1664,6 @@ final class PIPServiceMessages {
             case .pending:
                 reloadPending()
             }
-
-        // 7️⃣ 更新 dirty 狀態
-        PIPService.shared.decyDead()
 
 
     }
@@ -1918,9 +1917,11 @@ struct PIPView: View {
             }
 
             // 將 debugImageView 顯示在 SwiftUI
-            DebugImageViewWrapper(layer: PIPService.shared.debugDisplayLayer)
-                .frame(width: 300, height: 200)
-                .border(Color.red)
+//            DebugImageViewWrapper(layer: PIPService.shared.debugDisplayLayer)
+//                .frame(width: 300, height: 200)
+//                .border(Color.red)
+            
+
         }
         .padding()
     }

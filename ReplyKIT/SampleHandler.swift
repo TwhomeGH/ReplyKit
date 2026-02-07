@@ -242,7 +242,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             Task {
                 if RPConfig.shared.enableSocketLog {
-                    if let raw = await SocketClient.shared.requestSet(for: "micAddVolume", type: "Double") {
+                    if let raw = try await SocketClient.shared.requestSet(for: "micAddVolume", type: "Double") {
 
                         if let av = raw as? Double {
                             let oldV = newVolume
@@ -275,7 +275,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             Task {
 
                 if RPConfig.shared.enableSocketLog {
-                    if let raw = await SocketClient.shared.requestSet(for: "appAddVolume", type: "Double") {
+                    if let raw = try await SocketClient.shared.requestSet(for: "appAddVolume", type: "Double") {
 
                         if let av = raw as? Double {
                             let oldV = newVolume
@@ -311,7 +311,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             Task {
 
                 if RPConfig.shared.enableSocketLog {
-                    if let raw = await SocketClient.shared.requestSet(for: "micVolume", type: "Double") {
+                    if let raw = try await SocketClient.shared.requestSet(for: "micVolume", type: "Double") {
 
                         if let av = raw as? Double {
                             let oldV = newVolume
@@ -349,7 +349,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             Task {
 
                 if RPConfig.shared.enableSocketLog {
-                    if let raw = await SocketClient.shared.requestSet(for: "appVolume", type: "Double") {
+                    if let raw = try await SocketClient.shared.requestSet(for: "appVolume", type: "Double") {
 
                         if let av = raw as? Double {
                             let oldV = newVolume
@@ -412,7 +412,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             Task {
                 if RPConfig.shared.enableSocketLog {
-                    if let raw = await SocketClient.shared.requestSet(for: "EnableRotatelog", type: "Bool") {
+                    if let raw = try await SocketClient.shared.requestSet(for: "EnableRotatelog", type: "Bool") {
 
                         if let av = raw as? Bool {
                             let oldV = Rlog
@@ -441,7 +441,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             Task {
 
                 if RPConfig.shared.enableSocketLog {
-                    if let raw = await SocketClient.shared.requestSet(for: "RotateOriginal", type: "Bool") {
+                    if let raw = try await SocketClient.shared.requestSet(for: "RotateOriginal", type: "Bool") {
 
                         if let av = raw as? Bool {
                             let oldV = Rlog
@@ -471,7 +471,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             Task {
 
                 if RPConfig.shared.enableSocketLog {
-                    if let raw = await SocketClient.shared.requestSet(for: "Rotate", type: "Int") {
+                    if let raw = try await SocketClient.shared.requestSet(for: "Rotate", type: "Int") {
 
                         if let av = raw as? Int {
                             let oldV = Rlog
@@ -534,7 +534,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             Task {
               
-                    if let raw = await SocketClient.shared.requestSet(for: "EnableSocketlog", type: "Bool") {
+                    if let raw = try await SocketClient.shared.requestSet(for: "EnableSocketlog", type: "Bool") {
 
                         if let av = raw as? Bool {
                             let oldV = Rlog
@@ -561,7 +561,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             Task {
 
                 if RPConfig.shared.enableSocketLog {
-                    if let raw = await SocketClient.shared.requestSet(for: "ChangeBit", type: "Bool") {
+                    if let raw = try await SocketClient.shared.requestSet(for: "ChangeBit", type: "Bool") {
 
                         if let av = raw as? Bool {
                             let oldV = Rlog
@@ -591,7 +591,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             Task {
                 if RPConfig.shared.enableSocketLog {
-                    if let raw = await SocketClient.shared.requestSet(for: "bitRate", type: "Int") {
+                    if let raw = try await SocketClient.shared.requestSet(for: "bitRate", type: "Int") {
 
                         if let av = raw as? Int {
                             let oldV = Rlog
@@ -621,7 +621,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             Task {
                 if RPConfig.shared.enableSocketLog {
-                    if let raw = await SocketClient.shared.requestSet(for: "logURL", type: "String") {
+                    if let raw = try await SocketClient.shared.requestSet(for: "logURL", type: "String") {
 
                         if let av = raw as? String {
                             let oldV = logM
@@ -648,7 +648,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             Task {
                 if RPConfig.shared.enableSocketLog {
-                    if let raw = await SocketClient.shared.requestSet(for: "logMode", type: "Int") {
+                    if let raw = try await SocketClient.shared.requestSet(for: "logMode", type: "Int") {
 
                         if let av = raw as? Int {
                             let oldV = logM
@@ -677,7 +677,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             Task {
                 if RPConfig.shared.enableSocketLog {
-                    if let raw = await SocketClient.shared.requestSet(for: "onlogPage", type: "Bool") {
+                    if let raw = try await SocketClient.shared.requestSet(for: "onlogPage", type: "Bool") {
 
                         if let av = raw as? Bool {
                             let oldV = logPage
@@ -737,7 +737,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             Task {
                 if RPConfig.shared.enableSocketLog {
-                    if let raw = await SocketClient.shared.requestSet(for: "dstW", type: "Int") {
+                    if let raw = try await SocketClient.shared.requestSet(
+                        for: "dstW",
+                        type: "Int"
+                    ) {
 
                         if let av = raw as? Int {
                             let oldV = dstRW
@@ -769,7 +772,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             Task {
                 if RPConfig.shared.enableSocketLog {
-                    if let raw = await SocketClient.shared.requestSet(for: "dstH", type: "Int") {
+                    if let raw = try await SocketClient.shared.requestSet(for: "dstH", type: "Int") {
 
                         if let av = raw as? Int {
                             let oldV = dstRH
@@ -805,7 +808,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             Task {
                 if RPConfig.shared.enableSocketLog {
-                    if let raw = await SocketClient.shared.requestSet(for: "Enablelog", type: "Bool") {
+                    if let raw = try await SocketClient.shared.requestSet(for: "Enablelog", type: "Bool") {
 
                         if let av = raw as? Bool {
                             let oldV = Enablelog
@@ -833,7 +836,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             Task {
                 if RPConfig.shared.enableSocketLog {
-                    if let raw = await SocketClient.shared.requestSet(for: "onAudioPage", type: "Bool") {
+                    if let raw = try await SocketClient.shared.requestSet(for: "onAudioPage", type: "Bool") {
 
                         if let av = raw as? Bool {
                             let oldV = APage
@@ -869,7 +872,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                     Task {
                         if RPConfig.shared.enableSocketLog {
-                            if let raw = await SocketClient.shared.requestSet(for: "PauseStream", type: "Bool") {
+                            if let raw = try await SocketClient.shared.requestSet(for: "PauseStream", type: "Bool") {
 
                                 if let av = raw as? Bool {
                                     let oldV = onPause
@@ -1459,8 +1462,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             ExtensionMessagePort.shared.connectToApp()
 
-             // 同時發出兩個請求
-             let result = await SocketClient.shared.requestRTMPKEYAndLog()
+            // 同時發出兩個請求
+            let result = await SocketClient.shared.requestRTMPKEYAndLog()
 
             logger.debug("Final result -> RTMP & LogConfig: \(result)")
 

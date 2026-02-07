@@ -85,20 +85,15 @@ final class PIPService: NSObject, @unchecked Sendable {
     func renderIfNeeded() -> CVPixelBuffer?  {
 
 
-        // 生成 renderItems，並倒序
-//        for i in stacked {
-//            logTo(
-//                "MELayer Name:\(String(describing: i.name?.string)) MES:\(String(describing: i.message?.string))) SY:\(i.startY) TY:\(i.targetY)"
-//            )
-//        }
-
         // 4️⃣ CI → CVPixelBuffer（GPU）
-        let outputCI: CIImage? = timeOverlayImage(size: frameSize)
+//        let outputCI: CIImage? = timeOverlayImage(size: frameSize)
+//
+//        let pixelBuffer = gpuRenderer?.render(
+//            time:outputCI,
+//            containerSize: frameSize
+//        )
 
-        let pixelBuffer = gpuRenderer?.render(
-            time:outputCI,
-            containerSize: frameSize
-        )
+        let pixelBuffer: CVPixelBuffer? = timeOverlayImage(size:frameSize)
 
 
 
@@ -121,9 +116,11 @@ final class PIPService: NSObject, @unchecked Sendable {
             kCVPixelBufferIOSurfacePropertiesKey: [:]
         ] as CFDictionary
 
+        //logger.debug("CGImage:\(cgImage.width)x\(cgImage.height)")
+
         guard CVPixelBufferCreate(kCFAllocatorDefault,
-                                  Int(size.width),
-                                  Int(size.height),
+                                  Int(cgImage.width),
+                                  Int(cgImage.height),
                                   kCVPixelFormatType_32BGRA,
                                   attrs,
                                   &pixelBuffer) == kCVReturnSuccess,
@@ -139,14 +136,16 @@ final class PIPService: NSObject, @unchecked Sendable {
         memset(baseAddress, 0, bytesPerRow * height)
 
         let colorSpace = CGColorSpaceCreateDeviceRGB()
+
         if let context = CGContext(data: baseAddress,
-                                   width: Int(size.width),
-                                   height: Int(size.height),
+                                   width: Int(cgImage.width),
+                                   height: Int(cgImage.height),
                                    bitsPerComponent: 8,
                                    bytesPerRow: bytesPerRow,
                                    space: colorSpace,
                                    bitmapInfo: CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.premultipliedFirst.rawValue) {
-            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: Int(size.width), height: Int(size.height)))
+
+            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: Int(cgImage.width), height: Int(cgImage.height)))
         }
 
         return pb
@@ -219,9 +218,6 @@ final class PIPService: NSObject, @unchecked Sendable {
     }
 
 
-    private var lastHashTime: CFTimeInterval = 0
-    private let hashInterval: CFTimeInterval = 1.0
-    // 每 1 秒計算一次 hash
 
     private lazy var debugCIContext: CIContext = {
         if let device = MTLCreateSystemDefaultDevice() {
@@ -352,39 +348,39 @@ final class PIPService: NSObject, @unchecked Sendable {
     }
 
 
-    func setupDebugImageView(in parentView: UIView, frame: CGRect) {
-        let imageView = UIImageView(frame: frame)
-        imageView.contentMode = .scaleAspectFit
-        imageView.backgroundColor = .clear
-        parentView.addSubview(imageView)
-
-        self.debugImageView = imageView
-    }
-
-    func setupDebugDisplayLayer() {
-        let layer = AVSampleBufferDisplayLayer()
-
-        layer.videoGravity = .resizeAspect
-        layer.backgroundColor = #colorLiteral(red: 0.9372549057, green: 0.3490196168, blue: 0.1921568662, alpha: 1)
-
-        // ✅ 設置控制時間基準
-        var timebase: CMTimebase?
-        CMTimebaseCreateWithSourceClock(
-            allocator: kCFAllocatorDefault,
-            sourceClock: CMClockGetHostTimeClock(),
-            timebaseOut: &timebase
-        )
-        if let tb = timebase {
-            layer.controlTimebase = tb
-            CMTimebaseSetTime(tb, time: .zero)
-            CMTimebaseSetRate(tb, rate: 1.0)
-        }
-
-
-        self.debugDisplayLayer = layer
-
-        
-    }
+//    func setupDebugImageView(in parentView: UIView, frame: CGRect) {
+//        let imageView = UIImageView(frame: frame)
+//        imageView.contentMode = .scaleAspectFit
+//        imageView.backgroundColor = .clear
+//        parentView.addSubview(imageView)
+//
+//        self.debugImageView = imageView
+//    }
+//
+//    func setupDebugDisplayLayer() {
+//        let layer = AVSampleBufferDisplayLayer()
+//
+//        layer.videoGravity = .resizeAspect
+//        layer.backgroundColor = #colorLiteral(red: 0.9372549057, green: 0.3490196168, blue: 0.1921568662, alpha: 1)
+//
+//        // ✅ 設置控制時間基準
+//        var timebase: CMTimebase?
+//        CMTimebaseCreateWithSourceClock(
+//            allocator: kCFAllocatorDefault,
+//            sourceClock: CMClockGetHostTimeClock(),
+//            timebaseOut: &timebase
+//        )
+//        if let tb = timebase {
+//            layer.controlTimebase = tb
+//            CMTimebaseSetTime(tb, time: .zero)
+//            CMTimebaseSetRate(tb, rate: 1.0)
+//        }
+//
+//
+//        self.debugDisplayLayer = layer
+//
+//        
+//    }
 
 
     private var renderTimer: DispatchSourceTimer?
@@ -676,22 +672,32 @@ final class PIPService: NSObject, @unchecked Sendable {
     }
 
 
-    private var cachedTimeImage: CIImage?
+    private var cachedTimeImage: CGImage?
     private var lastTimeText: String = ""
 
 
-    private func timeOverlayImage(size: CGSize) -> CIImage? {
+    private func timeOverlayImage(size: CGSize) -> CVPixelBuffer? {
 
         let nowText = currentTimeString() // 你現在 formatter 那段
 
         if nowText == lastTimeText, let cached = cachedTimeImage, !isMark {
             logTo("使用Cache")
-            return cached
+
+            let pixelBuffer = gpuRenderer?.render(
+                time:CIImage(cgImage: cached),
+                containerSize: frameSize
+            )
+
+            return pixelBuffer
         }
 
         lastTimeText = nowText
 
+
+        // 將 PixelBuffer 尺寸用原大小
+
         let renderer = UIGraphicsImageRenderer(size: size)
+
         let img = renderer.image { ctx in
             let cg = ctx.cgContext
 
@@ -703,9 +709,21 @@ final class PIPService: NSObject, @unchecked Sendable {
             drawTimeOverlay(in: cg, size: frameSize)
         }
 
-        let ci = CIImage(cgImage: img.cgImage!)
+        guard let cgImage = img.cgImage else { return nil }
 
-        return ci
+        let pixelBuffer = gpuRenderer?.render(
+            time:CIImage(cgImage: cgImage),
+            containerSize: frameSize
+        )
+
+//        let buffer = createPixelBuffer(from: cgImage, size: size)
+
+        cachedTimeImage = cgImage
+
+        return pixelBuffer
+       // let ci = CIImage(cgImage: img.cgImage!)
+
+        //return ci
 
     }
 
@@ -775,7 +793,7 @@ final class PIPService: NSObject, @unchecked Sendable {
         stopPiP()
         setupAudioSession()
 
-        setupDebugDisplayLayer()
+        //setupDebugDisplayLayer()
 
         self.frameSize = size
 
@@ -790,6 +808,7 @@ final class PIPService: NSObject, @unchecked Sendable {
         ciContext = CIContext(mtlDevice: metalDevice)
 
         //setupPixelBufferPool(size: pixelSize)
+
         if let ciContext = ciContext {
             gpuRenderer = MessageGPURenderer(size: OframeSize, ciText: ciContext)
         }
@@ -931,6 +950,7 @@ final class PIPService: NSObject, @unchecked Sendable {
     private func scheduleNextRender() {
         if renderTimer == nil {
             renderTimer = DispatchSource.makeTimerSource(queue: renderQueue)
+
             renderTimer?.schedule(
                 deadline: .now(), repeating: 1.0 / self.currentFPS ,
                 leeway: .milliseconds(10)
@@ -939,15 +959,11 @@ final class PIPService: NSObject, @unchecked Sendable {
             renderTimer?.setEventHandler { [weak self] in
                 guard let self = self else { return }
 
-
-
                 Task { @MainActor in
                     _ = await self.renderIncremental()
                 }
 
-
             }
-
             renderTimer?.resume()
         }
     }
@@ -1032,10 +1048,6 @@ final class PIPService: NSObject, @unchecked Sendable {
             lastFPS = currentFPS
         }
 
-        // 將 PixelBuffer 尺寸用原大小
-        let format = UIGraphicsImageRendererFormat.default()
-
-        format.scale = 1
 
 
         // 生成 PixelBuffer

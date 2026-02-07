@@ -34,13 +34,24 @@ enum TimeoutError: Error {
     case timedOut
 }
 
-func withTimeout<T>(_ seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
+func withTimeout<T>(
+    _ seconds: TimeInterval,
+    operation: @escaping () async throws -> T
+) async throws -> T {
+
     try await withThrowingTaskGroup(of: T.self) { group in
-        group.addTask { try await operation() }
+
+        // 真正的 operation
+        group.addTask {
+            try await operation()
+        }
+
+        // timeout watchdog
         group.addTask {
             try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
             throw TimeoutError.timedOut
         }
+
         let result = try await group.next()!
         group.cancelAll()
         return result
@@ -54,14 +65,14 @@ class SocketClient : @unchecked Sendable {
 
     private var isProcessingBatch = false
 
-    var requestContinuations: [String: CheckedContinuation<Any?, Never>] = [:]
+    var requestContinuations: [String: CheckedContinuation<Any?, Error>] = [:]
 
 
-    private var rtmpBatchContinuation: CheckedContinuation<Bool, Never>?
+    private var rtmpBatchContinuation: CheckedContinuation<Bool, Error>?
 
-    private var rtmpContinuation: CheckedContinuation<Bool, Never>?
+    private var rtmpContinuation: CheckedContinuation<Bool, Error>?
 
-    private var logContinuation: CheckedContinuation<Bool, Never>?
+    private var logContinuation: CheckedContinuation<Bool, Error>?
 
 
     private var isConnection: Bool = false
@@ -229,8 +240,8 @@ class SocketClient : @unchecked Sendable {
         sendPayload(payload)
     }
 
-    func requestSet(for key: String, type: String) async -> Any? {
-        return await withCheckedContinuation { (continuation: CheckedContinuation<Any?, Never>) in
+    func requestSet(for key: String, type: String) async throws -> Any? {
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Any?, Error>) in
 
                 if self.requestContinuations[key] != nil {
                     continuation.resume(returning: nil)
@@ -245,6 +256,15 @@ class SocketClient : @unchecked Sendable {
                     "ValueType": type
                 ]
                 self.sendPayload(payload)
+
+                // 🔥 cancellation hook
+                Task {
+                    await Task.yield()
+                    if Task.isCancelled {
+                        continuation.resume(throwing: CancellationError())
+                    }
+                }
+
 
 
         }
@@ -267,14 +287,13 @@ class SocketClient : @unchecked Sendable {
 
 
 
-    func requestRTMPKEYAndLog(timeout: TimeInterval = 25.0) async -> Bool {
+    func requestRTMPKEYAndLog(timeout: TimeInterval = 5.0) async -> Bool {
         do {
             return try await withTimeout(timeout) {
-                await self._requestRTMPKEYAndLog()
+                try await self._requestRTMPKEYAndLog()
             }
         } catch TimeoutError.timedOut {
             logger.debug("RTMPKEY timeout")
-
             return false
         } catch {
             logger.debug("RTMPKEY error: \(error)")
@@ -283,12 +302,11 @@ class SocketClient : @unchecked Sendable {
         }
     }
 
-    private func _requestRTMPKEYAndLog() async -> Bool {
+    private func _requestRTMPKEYAndLog() async throws -> Bool {
 
-        await SocketClient.shared.waitUntilConnected()
+        try await SocketClient.shared.waitUntilConnected()
 
-
-        return await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Bool, Error>) in
 
                     guard self.rtmpBatchContinuation == nil else {
                         cont.resume(returning: false) // 已有 pending request，直接返回
@@ -304,6 +322,14 @@ class SocketClient : @unchecked Sendable {
                     ]
                     self.sendPayload(payload)
 
+                    // 🔥 cancellation hook
+                    Task {
+                        await Task.yield()
+                        if Task.isCancelled {
+                            cont.resume(throwing: CancellationError())
+                        }
+                    }
+
 
             }
 
@@ -316,7 +342,7 @@ class SocketClient : @unchecked Sendable {
     func requestRTMPKEY(timeout: TimeInterval = 5.5) async -> Bool {
         do {
             return try await withTimeout(timeout) {
-                await self._requestRTMPKEY()
+                try await self._requestRTMPKEY()
             }
         } catch TimeoutError.timedOut {
             logger.debug("RTMPKEY timeout")
@@ -329,12 +355,12 @@ class SocketClient : @unchecked Sendable {
         }
     }
 
-    private func _requestRTMPKEY() async -> Bool {
+    private func _requestRTMPKEY() async throws -> Bool {
 
-        await SocketClient.shared.waitUntilConnected()
+        try await SocketClient.shared.waitUntilConnected()
 
 
-        return await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Bool, Error>) in
 
                     guard self.rtmpContinuation == nil else {
                         cont.resume(returning: false) // 已有 pending request，直接返回
@@ -347,6 +373,13 @@ class SocketClient : @unchecked Sendable {
                     let payload: [String: Any] = ["type": "requestRTMP"]
                     self.sendPayload(payload)
 
+                    Task {
+                        await Task.yield()
+                        if Task.isCancelled {
+                            cont.resume(throwing: CancellationError())
+                        }
+                    }
+
 
             }
 
@@ -356,7 +389,7 @@ class SocketClient : @unchecked Sendable {
     func requestLogConfig(timeout: TimeInterval = 5.5) async -> Bool {
         do {
             return try await withTimeout(timeout) {
-                await self._requestLogConfig()
+                try await self._requestLogConfig()
             }
         } catch TimeoutError.timedOut {
             logger.debug("LogConfig timeout")
@@ -368,13 +401,13 @@ class SocketClient : @unchecked Sendable {
         }
     }
 
-    func _requestLogConfig() async -> Bool {
+    func _requestLogConfig() async throws -> Bool {
 
-        await SocketClient.shared.waitUntilConnected()
+        try await SocketClient.shared.waitUntilConnected()
 
         self.isProcessingBatch = true
 
-        return await withCheckedContinuation { cont in
+        return try await withCheckedThrowingContinuation { cont in
 
                 // 如果已經有 pending request，直接回 false
                 guard self.logContinuation == nil else {
@@ -387,6 +420,16 @@ class SocketClient : @unchecked Sendable {
 
                 let payload: [String: Any] = ["type": "logConfig"]
                 self.sendPayload(payload)
+
+                // 🔥 cancellation hook
+                Task {
+                    await Task.yield()
+                    if Task.isCancelled {
+                        cont.resume(throwing: CancellationError())
+                    }
+                }
+
+
 
 
 
@@ -449,13 +492,23 @@ class SocketClient : @unchecked Sendable {
     }
 
 
-    private var connectContinuations: [CheckedContinuation<Void, Never>] = []
+    private var connectContinuations: [CheckedContinuation<Void, Error>] = []
 
-    func waitUntilConnected() async {
+    func waitUntilConnected() async throws {
         if isConnection { return }
 
-        await withCheckedContinuation { cont in
+        return try await withCheckedThrowingContinuation { cont in
+
             connectContinuations.append(cont)
+
+            // 🔥 cancellation hook
+            Task {
+                await Task.yield()
+                if Task.isCancelled {
+                    cont.resume(throwing: CancellationError())
+                }
+            }
+
         }
     }
 
@@ -936,6 +989,15 @@ class SocketClient : @unchecked Sendable {
 
             if let error = error {
                 self.logTo("Socket receive error: \(error)")
+
+                CFNotificationCenterPostNotification(
+                    CFNotificationCenterGetDarwinNotifyCenter(),
+                    CFNotificationName("liveAPP.SocketRestart" as CFString),
+                    nil,
+                    nil,
+                    true
+                )
+
                 self.retry()
                 return
             }

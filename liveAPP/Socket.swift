@@ -23,12 +23,11 @@ extension SocketServer.JSONValue {
     }
 }
 
-class SocketServer {
+class SocketServer:ObservableObject {
 
     // MARK: - Properties
 
     static let shared = SocketServer()
-
 
     private var receiveBuffers: [ObjectIdentifier: Data] = [:]
 
@@ -44,6 +43,8 @@ class SocketServer {
 
         idleTimers[id]?.cancel()
 
+        logTo("Idle Reset! [\(id)]")
+
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now() + 60) // 60 秒沒動靜就踢
         timer.setEventHandler { [weak self] in
@@ -58,7 +59,7 @@ class SocketServer {
 
     private var restartWorkItem: DispatchWorkItem?
 
-    private var isStopping = false
+    @Published private(set) var isStopping = false
 
     private var lastRestartTime: Date?
 
@@ -116,11 +117,45 @@ class SocketServer {
         queue.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
+    // MARK: - C callback
+    private static let sockerRestartCallback: CFNotificationCallback = {
+ _,
+ observer,
+ _,
+        _,
+        _ in
+        guard let observer else { return }
+
+        let mySelf = Unmanaged<SocketServer>.fromOpaque(observer).takeUnretainedValue()
+
+
+        mySelf.start()
+        mySelf.logTo("Socket服務器可能已失效重建中!")
+
+    }
+
+
     init() {
+
+        CFNotificationCenterAddObserver(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            UnsafeRawPointer(Unmanaged.passUnretained(self).toOpaque()),
+            SocketServer.sockerRestartCallback,
+            "liveAPP.SocketRestart" as CFString,
+            nil,
+            .deliverImmediately
+        )
 
     }
 
     deinit {
+        CFNotificationCenterRemoveObserver(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            UnsafeRawPointer(Unmanaged.passUnretained(self).toOpaque()),
+            CFNotificationName("liveAPP.SocketRestart" as CFString),
+            nil
+        )
+        
         logTo("Socket Server deinit is Call CleanUP")
         stop()
 
@@ -135,11 +170,15 @@ class SocketServer {
     var isRunning: Bool {
         guard let listener else {
             logTo("listener 已失效!")
+            isStopping = true
             return false
         }
 
         let res = listener.state == .ready
         logTo("listener 有效!")
+
+        isStopping = false
+
         return res  // 或對應你 socket 類型的檢查
     }
     
@@ -261,8 +300,6 @@ class SocketServer {
 
         guard connections[id] != nil else { return } // 連線已被移除，直接 return
 
-        resetIdleTimer(for: connection)
-
         logTo("Connections alive: \(connections.count)")
 
         connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
@@ -271,6 +308,8 @@ class SocketServer {
             if let data = data, !data.isEmpty {
                 var buffer = self.receiveBuffers[id] ?? Data()
 
+
+                resetIdleTimer(for: connection)
                 logTo("🔹 liveAPP Received \(data.count) bytes: \(String(decoding: data, as: UTF8.self))")
 
                 buffer.append(data)
