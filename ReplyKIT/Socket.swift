@@ -183,6 +183,7 @@ class SocketClient : @unchecked Sendable {
                 logTo("SocketClient failed: \(String(describing: error))")
                 isConnection = false
 
+
                 self.retry()
             case .cancelled:
 
@@ -202,6 +203,8 @@ class SocketClient : @unchecked Sendable {
 
     func retry() {
         queue.async {
+
+            self.stopHeartbeat()
 
             guard !self.isReconnecting else { return }   // ✅ 防止重入
             self.isReconnecting = true
