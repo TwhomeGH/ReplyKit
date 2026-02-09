@@ -49,7 +49,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     var rtmpURL:String?
     var rtmpKey:String?
 
-    let h264level = RPConfig.shared.h264level
 
     var audioProcessor: AudioProcessor?
     var videoProcessor: VideoFrameProcessor?
@@ -126,10 +125,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
     private var lastVideoTimestamp: CMTime = .zero
-
-
-
-
 
 
     private var needVideoConfiguration = true
@@ -1048,19 +1043,23 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         }
 
         // 如果上次已經設過這個 avOrientation，就不用再設
-        guard avOrientation != lastVideoOrientation || videoSettings.videoSize != newSize else { return }
-        lastVideoOrientation = avOrientation
 
+        if avOrientation != lastVideoOrientation {
+            lastVideoOrientation = avOrientation
+            await mediaMixer.setVideoOrientation(avOrientation)
+            sendlog(message: "更新方向: \(orientation) -> \(avOrientation)")
 
+        }
 
+        if videoSettings.videoSize != newSize {
 
-        videoSettings.videoSize = newSize
-        try? await rtmpStream.setVideoSettings(videoSettings)
+            sendlog(message: "NewSize:\(newSize) - Old:\(videoSettings)")
 
+            videoSettings.videoSize = newSize
+            try? await rtmpStream.setVideoSettings(videoSettings)
 
-        await mediaMixer.setVideoOrientation(avOrientation)
-        sendlog(message: "更新方向: \(orientation) -> \(avOrientation)")
-        sendlog(message: "Size:\(newSize) - \(videoSettings)")
+        }
+
     }
 
 #endif
@@ -1086,8 +1085,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 sendlog(message: "方向Free中")
                 #if os(iOS)
                 guard let self else { return }
-                Task(priority: .utility) {
-
+                Task {
                     await self.updateVideoOrientation(from: deviceOrientation)
                 }
                 #endif
@@ -1244,18 +1242,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             DH = ADWidth
         }
 
-        await mediaMixer.setSessionPreset(.high)
-        do {
-            try await mediaMixer.setFrameRate(60.0)
-        }   catch {
-            sendlog(message:"FrameRateError \(error)")
-        }
-        
+        await mediaMixer.setSessionPreset(.inputPriority)
+
         var videoSettings = await rtmpStream.videoSettings
         videoSettings.scalingMode = .letterbox
         videoSettings.profileLevel = kVTProfileLevel_H264_High_AutoLevel as String
         videoSettings.videoSize = .init(width: DW, height: DH)
-        videoSettings.maxKeyFrameIntervalDuration = 2
         videoSettings.expectedFrameRate = 60.0
 
 
@@ -1283,7 +1275,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         
         await mediaMixer.setVideoMixerSettings(videoMixerSettings)
 
-        let BCount = RPConfig.shared.BufferCount
+        let BCount = max(RPConfig.shared.BufferCount,3)
         // ReplayKit is sensitive to memory, so we limit the queue to a maximum of five items.
         await rtmpStream.setVideoInputBufferCounts(BCount)
 
@@ -1873,13 +1865,20 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             sendlog(message: "\(bb).\(b2)")
         }
 
-        var videoSettings = await rtmpStream.videoSettings
-        videoSettings.videoSize = newSize
 
+
+        var videoSettings = await rtmpStream.videoSettings
+
+        if videoSettings.videoSize != newSize {
+            sendlog(
+                message: "VideoSize:\(newSize) old:\(videoSettings.videoSize)"
+            )
+            videoSettings.videoSize = newSize
+        }
 
         let profilelvl: String
 
-        switch h264level {
+        switch RPConfig.shared.h264level {
         case "Baseline":
             let res = h264ProfileLevel(
                 forWidth: width,
@@ -1925,7 +1924,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             profilelvl = kVTProfileLevel_H264_Extended_AutoLevel as String
 
         default:
-            profilelvl = kVTProfileLevel_H264_Main_AutoLevel as String
+            profilelvl = kVTProfileLevel_H264_High_AutoLevel as String
         }
 
         sendlog(message: "H264Profilelevel: \(profilelvl)")
@@ -1933,13 +1932,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         videoSettings.profileLevel = profilelvl
 
         if lastConfiguredSize != newSize {
+            lastConfiguredSize = newSize
             try? await rtmpStream.setVideoSettings(videoSettings)
         }
 
 
-
-
-        lastConfiguredSize = newSize
         DWidth = Int(newSize.width)
         DHeight = Int(newSize.height)
 

@@ -2099,6 +2099,7 @@ struct homeView:View{
     @State var lockIN:Bool = getUserDefault(forKey:"LockIN") ?? true
     @State var lockDetect=false
     @State var videoRotate=true
+    
     @State private var showForm = false
     @AppStorage("PauseStream",store: userDefaults) var PauseStream: Bool = false
 
@@ -2160,7 +2161,7 @@ struct homeView:View{
 
                     VStack(spacing:10){
 
-                        Text("旋轉控制").font(.headline)
+                        Text("旋轉控制[棄用]").font(.headline)
                             .padding()
                         VStack(alignment: .leading){
 
@@ -2173,7 +2174,6 @@ struct homeView:View{
                                         print("LockIN \(newValue)")
 
                                         setUserDefault(newValue,forKey:"LockIN")
-                                        //syncUserDefault()
 
 
                                         CFNotificationCenterPostNotification(
