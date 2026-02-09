@@ -781,7 +781,7 @@ class GPUOutputConfig: Identifiable, ObservableObject, Codable {
     // MARK: - 保存當前選擇的配置
     static func saveSelected(_ config: GPUOutputConfig?) {
         guard let config else {
-            UserDefaults.standard.removeObject(forKey: userDefaultsSelectKey)
+            logger.debug("無配置！GPUOutConfig")
             return
         }
         let encoder = JSONEncoder()

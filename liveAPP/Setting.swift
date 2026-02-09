@@ -12,6 +12,9 @@ import Foundation
 import Network
 
 final class GPUSettingsViewModel: ObservableObject {
+
+    @AppStorage("profileName", store: userDefaults) var displayName = ""
+
     @AppStorage("dstW", store: userDefaults) var dstW = 0
     @AppStorage("dstH", store: userDefaults) var dstH = 0
 
@@ -35,12 +38,20 @@ final class GPUSettingsViewModel: ObservableObject {
     @Published var selectedConfigID: UUID?
 
 
+
     let defaultConfigs: [GPUOutputConfig] = [
         GPUOutputConfig(name: "原始大小", width: 0, height: 0),
         GPUOutputConfig(
             name: "1080p 16:9 [1728x1201]",
             width: 1728,
             height: 1201,
+            owidth: 1920,
+            oheight: 1080
+        ),
+        GPUOutputConfig(
+            name: "1080p 16:9 [1555x1080]",
+            width: 1555,
+            height: 1080,
             owidth: 1920,
             oheight: 1080
         ),
@@ -87,13 +98,32 @@ final class GPUSettingsViewModel: ObservableObject {
 
         selectedConfig = cfg
 
-        dstW = cfg.width
-        dstH = cfg.height
-        odstW = cfg.owidth
-        odstH = cfg.oheight
+        if displayName != cfg.name {
+            displayName = cfg.name
+        }
+        if dstW != cfg.width {
+            dstW = cfg.width
+        }
+        if dstH != cfg.height {
+            dstH = cfg.height
+        }
 
-        RotateOriginal = cfg.originonly
-        RotateRawValue = cfg.Rotate.rawValue
+        if odstW != cfg.owidth {
+            odstW = cfg.owidth
+        }
+
+        if odstH != cfg.owidth {
+            odstH = cfg.oheight
+
+        }
+
+        if RotateOriginal != cfg.originonly {
+            RotateOriginal = cfg.originonly
+        }
+        if RotateRawValue != cfg.Rotate.rawValue {
+            RotateRawValue = cfg.Rotate.rawValue
+
+        }
 
         CFNotificationCenterPostNotification(cfCenter, CFNotificationName("OutW" as CFString), nil, nil, true)
         CFNotificationCenterPostNotification(cfCenter, CFNotificationName("OutH" as CFString), nil, nil, true)
@@ -131,9 +161,14 @@ final class GPUSettingsViewModel: ObservableObject {
 
         selectedConfig = GPUOutputConfig.loadSelected() ?? configs.first
 
-
-        
         selectedConfigID = selectedConfig?.id
+
+
+        let selName = selectedConfig?.name ?? "None"
+
+        if displayName != selName {
+            displayName = selName
+        }
 
         let selW = selectedConfig?.width ?? 0
 
@@ -147,6 +182,21 @@ final class GPUSettingsViewModel: ObservableObject {
         if dstH != selH {
             dstH = selH
         }
+
+        let oselW = selectedConfig?.owidth ?? 0
+
+        if odstW != oselW {
+            odstW = oselW
+
+        }
+
+        let oselH = selectedConfig?.oheight ?? 0
+
+        if odstH != oselH {
+            odstH = oselH
+        }
+
+        
 
 
         let selOrigin = selectedConfig?.originonly ?? false
@@ -181,6 +231,7 @@ struct GPURotateView: View {
     var body: some View {
         Form {
             Section(header: Text("GPU旋轉處理 輸出設置")) {
+
 
                 Picker(
                     "選擇配置",
@@ -237,6 +288,28 @@ struct GPURotateView: View {
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .padding(.bottom, 5)
+
+
+
+                Text("配置名稱")
+
+                TextField(
+                    "配置名稱 可以重新設定",
+                    text: $viewModel.displayName
+                )
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .onChange(of: viewModel.displayName) { newVal in
+
+                        if let index = viewModel.configs.firstIndex(
+                            where: { $0.id == viewModel.selectedConfig?.id
+                            }) {
+                        viewModel.configs[index].name = newVal
+                    }
+
+                    viewModel.selectedConfig?.name = newVal
+                    GPUOutputConfig.save(viewModel.configs)
+
+                }
 
 
                 HStack(spacing: 20) {
@@ -297,13 +370,19 @@ struct GPURotateView: View {
 
                 TextField("畫布寬度", value: $viewModel.odstW, format: .number)
                   .textFieldStyle(RoundedBorderTextFieldStyle())
-
                   .onChange(of: viewModel.odstW) { newVal in
+
+                      if let index = viewModel.configs.firstIndex(
+                          where: { $0.id == viewModel.selectedConfig?.id
+                          }) {
+                          viewModel.configs[index].owidth = newVal
+                     }
 
                       viewModel.selectedConfig?.owidth = newVal
 
+                      CFNotificationCenterPostNotification(cfCenter, CFNotificationName("OutW" as CFString), nil, nil, true)
 
-//                      CFNotificationCenterPostNotification(cfCenter, CFNotificationName("OutW" as CFString), nil, nil, true)
+                      GPUOutputConfig.save(viewModel.configs)
 
                   }
 
@@ -314,9 +393,18 @@ struct GPURotateView: View {
 
                   .onChange(of: viewModel.odstH) { newVal in
 
+                      if let index = viewModel.configs.firstIndex(
+                          where: { $0.id == viewModel.selectedConfig?.id
+                          }) {
+                          viewModel.configs[index].oheight = newVal
+                      }
+
                       viewModel.selectedConfig?.oheight = newVal
 
-//                      CFNotificationCenterPostNotification(cfCenter, CFNotificationName("OutH" as CFString), nil, nil, true)
+                      CFNotificationCenterPostNotification(cfCenter, CFNotificationName("OutH" as CFString), nil, nil, true)
+
+
+                      GPUOutputConfig.save(viewModel.configs)
 
                   }
 
@@ -328,6 +416,12 @@ struct GPURotateView: View {
                   .textFieldStyle(RoundedBorderTextFieldStyle())
 
                   .onChange(of: viewModel.dstW) { newVal in
+
+                      if let index = viewModel.configs.firstIndex(
+                          where: { $0.id == viewModel.selectedConfig?.id
+                          }) {
+                          viewModel.configs[index].width = newVal
+                      }
 
                       viewModel.selectedConfig?.width = newVal
 
@@ -342,6 +436,12 @@ struct GPURotateView: View {
                   .textFieldStyle(RoundedBorderTextFieldStyle())
 
                   .onChange(of: viewModel.dstH) { newVal in
+
+                      if let index = viewModel.configs.firstIndex(
+                          where: { $0.id == viewModel.selectedConfig?.id
+                          }) {
+                          viewModel.configs[index].height = newVal
+                  }
 
                       viewModel.selectedConfig?.height = newVal
 

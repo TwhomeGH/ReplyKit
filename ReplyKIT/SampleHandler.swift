@@ -1244,6 +1244,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             DH = ADWidth
         }
 
+        await mediaMixer.setSessionPreset(.high)
+        do {
+            try await mediaMixer.setFrameRate(60.0)
+        }   catch {
+            sendlog(message:"FrameRateError \(error)")
+        }
+        
         var videoSettings = await rtmpStream.videoSettings
         videoSettings.scalingMode = .letterbox
         videoSettings.profileLevel = kVTProfileLevel_H264_High_AutoLevel as String
