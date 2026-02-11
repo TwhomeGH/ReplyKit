@@ -55,6 +55,11 @@ final class PIPService: NSObject, @unchecked Sendable {
     private var pixelBufferPool: CVPixelBufferPool?
     private let pixelBufferPoolSize = 3  // 可根據 FPS 調整
 
+    private let renderQueue = DispatchQueue(
+        label: "com.pip.render",
+        qos: .background
+    )
+
     private func setupPixelBufferPool(size: CGSize) {
         let attrs: [String: Any] = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
@@ -395,10 +400,7 @@ final class PIPService: NSObject, @unchecked Sendable {
     private var basePTS: CFTimeInterval?
 
     private let dummyDelegate = DummyPlaybackDelegate()
-    private let renderQueue = DispatchQueue(
-        label: "com.pip.render",
-        qos: .background
-    )
+
 
 
     var frameSize: CGSize = .zero
@@ -837,7 +839,10 @@ final class PIPService: NSObject, @unchecked Sendable {
 //        }
 
         // 建立訊息 Layer
-        messagesLayer = PIPServiceMessages(size: size)
+        messagesLayer = PIPServiceMessages(
+            size: size,
+            scrollSpeed: LPConfig.shared
+                .ScrollTime)
 
 //        if let messagesLayer = messagesLayer {
 //            containerView.layer.addSublayer(messagesLayer.container)

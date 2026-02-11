@@ -434,7 +434,7 @@ final class PIPServiceMessages {
 
     // 滾動與漸隱
     var containerHeight: CGFloat { container.bounds.height }
-    var scrollSpeed: CGFloat = 0.2           // 每幀上移的像素
+    var scrollSpeed: CGFloat // 每幀上移的像素
 
     var fadeOutThreshold: CGFloat {
         // 當 stackedMessages 總高度超過 container，最上面那條就應該 fade
@@ -443,6 +443,8 @@ final class PIPServiceMessages {
     // 舊訊息漸隱開始的高度
 
     private var lastFadeTriggerTime: CFTimeInterval = 0
+    private var lastMoveTriggerTime: CFTimeInterval = 0
+
 
     var fadeInterval: CFTimeInterval = LPConfig.shared.MessageFadeTime
 
@@ -525,9 +527,12 @@ final class PIPServiceMessages {
 
 
 
-    init(size: CGSize) {
+    init(size: CGSize,scrollSpeed:CGFloat = 0.2) {
         container.frame = CGRect(origin: .zero, size: size)
         container.masksToBounds = true
+
+        self.scrollSpeed = scrollSpeed
+        
     }
 
 
@@ -1178,6 +1183,8 @@ final class PIPServiceMessages {
             guard canInsertMessage(msg) else {
 
                 phase = .moving
+                lastMoveTriggerTime = CACurrentMediaTime()
+
                 PIPChatLog("放不下切換回Move狀態 重新Fade")
                 // 放不下就不要 build
                 break
@@ -1305,6 +1312,8 @@ final class PIPServiceMessages {
         rebuildAnimatingGroups()
 
         phase = .moving
+        lastMoveTriggerTime = CACurrentMediaTime()
+
 
 
 //        for msg in sortedStack {
@@ -1391,90 +1400,132 @@ final class PIPServiceMessages {
 
 
 
+    var lastMoveTime = Date()
+    func animateMoveIfNeeded() {
+        let moving = animatingMessages.filter {
+            abs($0.startY - $0.targetY) >= snapThreshold
+        }
 
-    private func stepMove() {
-        var hasMoving = false
+        guard !moving.isEmpty else {
+            onMoveFinished()
+            return
+        }
 
-        for msg in animatingMessages {
-            let d = msg.targetY - msg.startY
+//        let maxDelta = moving
+//            .map { abs($0.targetY - $0.startY) }
+//            .max() ?? 0
 
-            if abs(d) < snapThreshold {
 
-                msg.startY = msg.targetY
-                msg.isNew = false
 
-            } else {
+        let moveDuration: CGFloat = 1.0
+        let elapsed = CACurrentMediaTime() - lastMoveTriggerTime
+        let moveStep = min(elapsed / moveDuration, 1)
 
-                msg.startY += d * 0.2
-                hasMoving = true
+
+        let duration = max(0.005,scrollSpeed)
+        if abs(lastMoveTime.timeIntervalSinceNow ) > 1.0 {
+            PIPChatLog("MoveTime:\(duration) ScrollSpeed:\(scrollSpeed)")
+            lastMoveTime = Date()
+        }
+
+
+        for msg in moving {
+            let deltaY = msg.targetY - msg.startY * moveStep
+
+            let anim = CABasicAnimation(keyPath: "position.y")
+
+            if let avatar = msg.avatar {
+                anim.fromValue = avatar.position.y
+                anim.toValue = avatar.position.y + deltaY
+                anim.duration = duration
+                anim.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+
+                anim.fillMode = .forwards          // 動畫結束後保持在 100
+                anim.isRemovedOnCompletion = false
+
+                avatar.add(anim, forKey: "pipMove")
+
             }
+            if let name = msg.name {
+                anim.fromValue = name.position.y
+                anim.toValue = name.position.y + deltaY
+                anim.duration = duration
+                anim.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
 
-            // ✅ 只有真的動了才 layout
-            if abs(d) >= 0.01 {
-                layout(msg: msg, y: msg.startY)
+                anim.fillMode = .forwards          // 動畫結束後保持在 100
+                anim.isRemovedOnCompletion = false
+
+                name.add(anim, forKey: "pipMove")
+
+            }
+            if let MSG = msg.message {
+                anim.fromValue = MSG.position.y
+                anim.toValue = MSG.position.y + deltaY
+                anim.duration = duration
+                anim.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+
+                anim.fillMode = .forwards          // 動畫結束後保持在 100
+                anim.isRemovedOnCompletion = false
+
+                MSG.add(anim, forKey: "pipMove")
+
+            }
+            if let gift = msg.gift {
+                anim.fromValue = gift.position.y
+                anim.toValue = gift.position.y + deltaY
+                anim.duration = duration
+                anim.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+
+                anim.fillMode = .forwards          // 動畫結束後保持在 100
+                anim.isRemovedOnCompletion = false
+
+                gift.add(anim, forKey: "pipMove")
+
             }
 
         }
 
+        let animator = UIViewPropertyAnimator(
+            duration: duration,
+            dampingRatio: 0.80
+        ) {
 
-        animatingMessages.removeAll {
-            abs($0.startY - $0.targetY) < snapThreshold
         }
 
+        animator.addCompletion { _ in
 
+            moving.forEach {
 
+                $0.avatar?.removeAnimation(forKey: "pipMove")
+                $0.name?.removeAnimation(forKey: "pipMove")
+                $0.message?.removeAnimation(forKey: "pipMove")
+                $0.gift?.removeAnimation(forKey: "pipMove")
 
-//
-//        for segments in animatingGroups {
-//
-//            for msg in segments {
-//
-//                let distance = msg.targetY - msg.startY
-//
-//                if abs(distance) < snapThreshold {
-//                    msg.startY = msg.targetY
-//                    msg.isNew = false
-//
-//                } else {
-//                    msg.startY += distance * 0.2
-//                    hasMoving = true
-//                }
-//
-//
-//
-//
-//                layout(msg: msg, y: msg.startY)
-//            }
-//
-//        }
-
-        // ✅ move 完畢就清掉 animatingMessages
-//        animatingMessages.removeAll {
-//                abs($0.startY - $0.targetY) < snapThreshold
-//        }
-
-        // 🔑 Move 完畢 → 判斷要不要進 fade
-        if !hasMoving {
-
-            stackedMessages.forEach { msg in
-                if abs(msg.startY - msg.targetY) < snapThreshold {
-                    msg.isNew = false
-                    //logger.debug("已經到定位! \(msg.isNew)")
-                }
+                $0.isNew = false
+                $0.startY = $0.targetY
+                self.layout(msg: $0, y: $0.targetY)
             }
 
-            if IshasOverFlow() {
-                prepareFade()
-            } else {
-                if pendingSegments.count > 0 {
-                    phase = .pending
-                } else {
-                    phase = .idle
-                }
+            self.animatingMessages.removeAll {
+                abs($0.startY - $0.targetY) < self.snapThreshold
             }
+
+            self.onMoveFinished()
         }
 
+        animator.startAnimation()
     }
+
+    private func onMoveFinished() {
+
+        PIPChatLog("MovingOK")
+        if IshasOverFlow() {
+            prepareFade()
+        } else {
+            phase = pendingSegments.isEmpty ? .idle : .pending
+        }
+    }
+
 
 
     private func findFadeCandidate() -> MessageLayerTuple? {
@@ -1505,7 +1556,6 @@ final class PIPServiceMessages {
                 return
             }
 
-
         let now = CACurrentMediaTime()
 
         if now - lastFadeTriggerTime < fadeInterval {
@@ -1523,7 +1573,11 @@ final class PIPServiceMessages {
             fadeCandidate = findFadeCandidate()
             lastFadeTriggerTime = now
 
+
+
+
         }
+
     }
 
     private func stepFade() {
@@ -1532,36 +1586,45 @@ final class PIPServiceMessages {
             return
         }
 
-        let FadeAlpha = max(0.04,LPConfig.shared.FadeAlpha)
 
-        msg.alpha -= FadeAlpha
-        msg.avatar?.opacity = Float(msg.alpha)
-        msg.name?.opacity = Float(msg.alpha)
-        msg.message?.opacity = Float(msg.alpha)
-        msg.gift?.opacity = Float(msg.alpha)
-
-        if msg.alpha <= 0 {
-            removeMessage(msg)
-            fadeCandidate = nil
-
-            // 🔑 fade 完一條 → 重新 layout → 回 move
-            _ = relayoutTargetsOnly(updateTargetY: true)
-
-            rebuildAnimatingGroups()
-
-            collectMovingMessages()
-            phase = .moving
+        if let msg = fadeCandidate {
+            startFadeAnimation(for: msg)
         }
+
+
+        if msg.alpha > 0 {
+            return
+        }
+
+        // 動畫結束，真正移除
+        removeMessage(msg)
+        fadeCandidate = nil
+
+        // 只在 fade 完成後才 relayout 一次
+        _ = relayoutTargetsOnly(updateTargetY: true)
+
+        // 只把「被推動的訊息」加入 animatingMessages
+        animatingMessages.removeAll()
+        animatingMessages.append(contentsOf:
+            stackedMessages.filter {
+                abs($0.startY - $0.targetY) >= snapThreshold
+            }
+        )
+
+
+        phase = .moving
+        lastMoveTriggerTime = CACurrentMediaTime()
+
+
+
     }
 
     func removeMessage(_ msg:MessageLayerTuple){
-
 
         msg.avatar?.removeAllAnimations()
         msg.name?.removeAllAnimations()
         msg.message?.removeAllAnimations()
         msg.gift?.removeAllAnimations()
-
 
         msg.avatar?.removeFromSuperlayer()
         msg.name?.removeFromSuperlayer()
@@ -1634,6 +1697,8 @@ final class PIPServiceMessages {
     func reloadPending() {
         guard pendingSegments.count > 0 else {
             phase = .moving
+            lastMoveTriggerTime = CACurrentMediaTime()
+            
             PIPChatLog("待處理清單已清理完! :\(pendingSegments.count)")
             return
 
@@ -1643,18 +1708,101 @@ final class PIPServiceMessages {
         populateVisibleMessagesIfNeeded()
     }
 
+
+    private func startFadeAnimation(for msg: MessageLayerTuple) {
+
+        let fadeDuration: CGFloat = 1.0
+
+        let elapsed = CACurrentMediaTime() - lastFadeTriggerTime
+        let fadeStep = min(elapsed / fadeDuration, 1)
+
+
+//        PIPChatLog(
+//            "Fade Step in \(String(describing: msg.name?.string)) : \(String(describing: msg.message?.string)) Time:\(duration) Alpah:\(msg.alpha)"
+//        )
+
+        if msg.alpha > 0 {
+            msg.alpha -= fadeStep
+
+            if let avatar = msg.avatar {
+                avatar.opacity -= Float(fadeStep)
+            }
+            if let name = msg.name {
+                name.opacity -= Float(fadeStep)
+            }
+            if let MSG = msg.avatar {
+                MSG.opacity -= Float(fadeStep)
+            }
+            if let gift = msg.gift {
+                gift.opacity -= Float(fadeStep)
+            }
+            if msg.alpha < 0 { msg.alpha = 0 }
+
+        }
+
+//
+//        let animator = UIViewPropertyAnimator(
+//            duration: duration,
+//            dampingRatio: 1.0
+//        ) {
+//
+//
+//        }
+
+//
+//        animator.addCompletion { _ in
+//
+//            PIPChatLog("Anime Ok Fade")
+//
+//                if msg.alpha > 0 {
+//                    msg.alpha -= fadeStep
+//
+//                    if let avatar = msg.avatar {
+//                        avatar.opacity -= Float(fadeStep)
+//                    }
+//                    if let name = msg.name {
+//                        name.opacity -= Float(fadeStep)
+//                    }
+//                    if let MSG = msg.avatar {
+//                        MSG.opacity -= Float(fadeStep)
+//                    }
+//                    if let gift = msg.gift {
+//                        gift.opacity -= Float(fadeStep)
+//                    }
+//                    if msg.alpha < 0 { msg.alpha = 0 }
+//
+//                }
+//
+//        }
+//
+//
+//        animator.startAnimation()
+
+        msg.isFadingOut = true
+
+    }
+
+    var lastlogTime = Date()
+
     // MARK: - 每幀動畫
     @objc private func stepAnimationDisplayLink() {
 
         PIPChatLog(
-            "Debug step is doing \(Date().formatted())\nDL step | anim:\(animatingMessages.count) 待處理:\(pendingSegments.count) 容器數量:\(stackedMessages.count) - \(phase)"
+            "Debug step is doing\nDL step | anim:\(animatingMessages.count) 待處理:\(pendingSegments.count) 容器數量:\(stackedMessages.count) - \(phase)"
         )
 
         switch phase {
             case .moving:
-                stepMove()
+                animateMoveIfNeeded()
+
+
             case .fading:
-                stepFade()
+            stepFade()
+            if abs(lastlogTime.timeIntervalSinceNow) >= 1.0 {
+                logger.debug("Fadelog:\(self.lastlogTime) Now:\(Date())")
+                lastlogTime = Date()
+            }
+
             case .idle:
                 stopDisplayLink()
             case .waitFading:
