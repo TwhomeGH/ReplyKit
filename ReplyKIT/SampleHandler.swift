@@ -427,6 +427,32 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             videoProcessor?.rotator?.debug = Rlog
             sendlog(message:"[旋轉日誌變化] VideoRotate \(Rlog)")
 
+        case "DebugTime":
+            var Rlog=SharedDefaults.group?.bool(forKey: "EnableTimeDebug") ?? false
+
+            Task {
+                if RPConfig.shared.enableSocketLog {
+                    if let raw = try await SocketClient.shared.requestSet(for: "EnableTimeDebug", type: "Bool") {
+
+                        if let av = raw as? Bool {
+                            let oldV = Rlog
+                            Rlog = av
+
+                            logger.debug("EnableTimeDebug \(av)")
+                            sendlog(message: "Socket原始EnableTimeDebug數據包:\(av) -> \(oldV)")
+                        } else {
+                            logger.error("EnableTimeDebug 型別錯誤: \(type(of: raw))")
+                        }
+
+                    }
+                }
+            }
+
+
+            videoProcessor?.rotator?.tsDebug(Rlog)
+            
+            sendlog(message:"[旋轉日誌時間軸檢查] VideoTime \(Rlog)")
+
 
         case "RotateOriginal":
             var Rlog=SharedDefaults.group?.bool(

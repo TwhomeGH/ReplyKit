@@ -627,7 +627,10 @@ class SocketServer:ObservableObject {
             ?? false,
 
             "enableSocketLog":userDefaults?.bool(forKey: "EnableSocketlog")
-            ?? false
+            ?? false,
+            "enableTimeDebug":userDefaults?.bool(forKey: "EnableTimeDebug")
+            ?? false,
+
 
 
         ]

@@ -90,8 +90,6 @@ final class VideoFrameProcessor {
             angle: angle
         )
 
-        guard isActive, !Task.isCancelled else { return }
-
         if let rotated {
             await mediaMixer.append(rotated)
         } else {
@@ -105,7 +103,7 @@ final class VideoFrameProcessor {
 
         Task(priority: .userInitiated) {
                 await processFrame(sampleBuffer, timestamp: timestamp)
-            }
+        }
 
     }
 

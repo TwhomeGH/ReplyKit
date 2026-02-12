@@ -21,7 +21,7 @@ class Eventlisten {
         "bitRateChange","fpsChange",
         "micAdd","appAdd","onAudioPage","logMode",
         "onlogPage","Enablelog","logURL",
-        "DebugRotate","OutW","OutH","VideoSet",
+        "DebugRotate","DebugTime","OutW","OutH","VideoSet",
         "PauseStream","ResumeStream",
         "ChangeBit","SocketRetry",
         "SocketLog","Rotate","RotateOriginal"

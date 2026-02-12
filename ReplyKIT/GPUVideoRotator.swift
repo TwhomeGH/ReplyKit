@@ -15,6 +15,64 @@ import HaishinKit
 
 
 
+// MARK: - Timestamp Debugger
+
+final class TimestampDebugger {
+
+    struct FrameInfo {
+        let pts: CMTime
+        let delta: Double   // ms
+    }
+
+    private var lastOriginal: FrameInfo?
+    private var lastWrapped: FrameInfo?
+
+    var enabled: Bool = RPConfig.shared.enableTimeDebug
+
+    var logEveryNFrames: Int = 1   // 可改成 5 或 10 降低輸出量
+
+    private var frameCount: Int = 0
+
+    func log(original: CMSampleBuffer, wrapped: CMSampleBuffer?) {
+
+        guard enabled else { return }
+        guard let wrapped else { return }
+
+        frameCount += 1
+        if frameCount % logEveryNFrames != 0 { return }
+
+        let origPTS = CMSampleBufferGetPresentationTimeStamp(original)
+        let wrapPTS = CMSampleBufferGetPresentationTimeStamp(wrapped)
+
+        let origDelta = delta(from: lastOriginal?.pts, to: origPTS)
+        let wrapDelta = delta(from: lastWrapped?.pts, to: wrapPTS)
+
+        lastOriginal = FrameInfo(pts: origPTS, delta: origDelta)
+        lastWrapped  = FrameInfo(pts: wrapPTS, delta: wrapDelta)
+
+        sendlog(message:"""
+        🕒 Frame \(frameCount)
+        ─ Original PTS: \(format(origPTS))  Δ: \(formatMS(origDelta))
+        ─ Wrapped  PTS: \(format(wrapPTS))  Δ: \(formatMS(wrapDelta))
+        ─ Drift (ms): \(formatMS((wrapPTS - origPTS).seconds * 1000))
+        """)
+
+    }
+
+    private func delta(from: CMTime?, to: CMTime) -> Double {
+        guard let from else { return 0 }
+        return (to - from).seconds * 1000
+    }
+
+    private func format(_ time: CMTime) -> String {
+        return String(format: "%.3f", time.seconds)
+    }
+
+    private func formatMS(_ ms: Double) -> String {
+        return String(format: "%.2f ms", ms)
+    }
+}
+
 
 // MARK: - GPU Video Rotator
 
@@ -60,6 +118,11 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     var qualityMode: QualityMode = .live
 
+    private let tsDebugger = TimestampDebugger()
+
+    func tsDebug(_ on:Bool=false) {
+        tsDebugger.enabled = on
+    }
 
     private var device: MTLDevice?
     private var queue: MTLCommandQueue?
@@ -381,8 +444,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     func rotateAsync(sampleBuffer: CMSampleBuffer, angle: RotationAngle) async -> CMSampleBuffer? {
         await gpuSemaphore.wait()
 
-
-
         // 延遲初始化 Metal/TextureCache
         guard ensureMetalResources() else {
             return nil
@@ -411,7 +472,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
         let infoGPU=gpuSemaphore.info()
         self.logTo("GPU Info:\(infoGPU.now):\(infoGPU.max)")
-
         self.logTo("\(srcW)x\(srcH) -> \(dstW)x\(dstH) angle:\(angle)")
 
         guard let outSet = getReusableOutput(width: dstW, height: dstH) else { return nil }
@@ -436,9 +496,18 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             )
 
             cmd.addCompletedHandler { _ in
+
                 let wrapped = self.wrapPixelBuffer(
-                    frameC.outPB
+                    frameC.outPB, originalSampleBuffer: frameC.sampleBuffer
                 )
+
+                if let wrapped {
+                    self.tsDebugger.log(
+                        original: frameC.sampleBuffer,
+                        wrapped: wrapped
+                    )
+                }
+
 
                 cont.resume(returning: wrapped)
 
@@ -534,24 +603,31 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         return (cv: cv, tex: tex)
     }
 
-    private func wrapPixelBuffer(_ pixelBuffer: CVPixelBuffer) -> CMSampleBuffer? {
+    private func wrapPixelBuffer(
+        _ pixelBuffer: CVPixelBuffer,
+        originalSampleBuffer: CMSampleBuffer
+    ) -> CMSampleBuffer? {
 
-        let pts = CMClockGetTime(CMClockGetHostTimeClock())
-
-        var timing = CMSampleTimingInfo(
-            duration: CMTime.invalid,
-            presentationTimeStamp: pts,
-            decodeTimeStamp: CMTime.invalid
+        // 1️⃣ 取原始 timing
+        var timing = CMSampleTimingInfo()
+        CMSampleBufferGetSampleTimingInfo(
+            originalSampleBuffer,
+            at: 0,
+            timingInfoOut: &timing
         )
 
+        // 2️⃣ 重新建立 formatDescription（用新的 pixelBuffer）
         var formatDesc: CMFormatDescription?
         guard CMVideoFormatDescriptionCreateForImageBuffer(
             allocator: kCFAllocatorDefault,
             imageBuffer: pixelBuffer,
             formatDescriptionOut: &formatDesc
         ) == noErr,
-        let fmt = formatDesc else { return nil }
+        let fmt = formatDesc else {
+            return nil
+        }
 
+        // 3️⃣ 建立新的 sampleBuffer
         var sampleBuffer: CMSampleBuffer?
         let status = CMSampleBufferCreateForImageBuffer(
             allocator: kCFAllocatorDefault,

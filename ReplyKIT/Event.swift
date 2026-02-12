@@ -477,6 +477,8 @@ final class RPConfig {
 
 
     // 日誌相關
+    var enableTimeDebug:Bool
+
     var enableSocketLog: Bool = false
 
     var enableRotateLog: Bool = false
@@ -501,7 +503,11 @@ final class RPConfig {
         logURL = SharedDefaults.group?.string(forKey: "logURL") ?? "http://192.168.0.242:3000/post"
 
 
+        enableTimeDebug = SharedDefaults.group?
+            .bool(forKey: "EnableTimeDebug") ?? false
+
         enableRotateLog = SharedDefaults.group?.bool(forKey: "EnableRotatelog") ?? false
+
         enableSocketLog = SharedDefaults.group?.bool(forKey: "EnableSocketlog") ?? false
 
 

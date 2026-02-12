@@ -530,6 +530,9 @@ struct LogSettingView:View {
 
     @AppStorage("EnableSocketlog",store:userDefaults) private var EnableSocketlog = false
 
+    @AppStorage("EnableTimeDebug",store:userDefaults) private var EnableTimeDebug = false
+
+
     @AppStorage("ChangeBit",store:userDefaults) private var ChangeBit = true
 
 
@@ -587,6 +590,20 @@ struct LogSettingView:View {
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .padding(.bottom, 5)
+
+
+            Toggle(isOn: $EnableTimeDebug){
+                Text("啟用畫面旋轉時間軸信息 ！")
+            }
+            .onChange(of:EnableTimeDebug) { newValue in
+                CFNotificationCenterPostNotification(cfCenter, CFNotificationName("DebugTime" as CFString), nil, nil, true)
+            }
+            Text("啟用後顯示, 關於畫面GPU旋轉處理時間軸延遲")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .padding(.bottom, 5)
+
+
 
             Toggle(isOn: $EnableSocketlog){
                 Text("啟用Socket轉送日誌 ！")

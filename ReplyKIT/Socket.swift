@@ -636,6 +636,7 @@ class SocketClient : @unchecked Sendable {
         let onAudioPage: Bool
         let enableLog: Bool
         let enableSocketLog:Bool
+        let enableTimeDebug:Bool
     }
 
     struct LogMessage: Codable {
@@ -852,11 +853,12 @@ class SocketClient : @unchecked Sendable {
                         RPConfig.shared.onAudioPage = env.onAudioPage
                         RPConfig.shared.enableLog = env.enableLog
                         RPConfig.shared.enableSocketLog = env.enableSocketLog
+                        RPConfig.shared.enableTimeDebug = env.enableTimeDebug
 
                         RPConfig.shared.applyLogMode()
 
                         self.logTo(
-                            "[Get]logMode:\(env.logMode) logURL:\(env.logURL) SocketLog:\(env.enableSocketLog)"
+                            "[Get]logMode:\(env.logMode) logURL:\(env.logURL) SocketLog:\(env.enableSocketLog) TimeDebug:\(env.enableTimeDebug)"
                         )
                         self.logTo(
                             "[Get]onLog:\(env.onlogPage) onAudio:\(env.onAudioPage) EnableLog:\(env.enableLog)"
