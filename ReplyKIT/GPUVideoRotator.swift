@@ -33,7 +33,7 @@ final class TimestampDebugger {
 
     private var frameCount: Int = 0
 
-    func log(original: CMSampleBuffer, wrapped: CMSampleBuffer?) {
+    func log(originalTime: CMSampleTimingInfo, wrapped: CMSampleBuffer?) {
 
         guard enabled else { return }
         guard let wrapped else { return }
@@ -41,7 +41,7 @@ final class TimestampDebugger {
         frameCount += 1
         if frameCount % logEveryNFrames != 0 { return }
 
-        let origPTS = CMSampleBufferGetPresentationTimeStamp(original)
+        let origPTS = originalTime.presentationTimeStamp
         let wrapPTS = CMSampleBufferGetPresentationTimeStamp(wrapped)
 
         let origDelta = delta(from: lastOriginal?.pts, to: origPTS)
@@ -291,7 +291,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     }
 
 
-    private let gpuSemaphore = AsyncSemaphore(value: 5)
+    private let gpuSemaphore = AsyncSemaphore(value: 3)
 
 
     func cleanup() async {
@@ -331,17 +331,15 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     // MARK: Init
     init?(dstW: Int = 0, dstH: Int = 0, debug: Bool = false,
-          maxPoolSize: Int = 3 , useBic:QualityMode = .live) {
+          maxPoolSize: Int = 2 , useBic:QualityMode = .live) {
 
         self.qualityMode = useBic
         self.dstWW = dstW
         self.dstHH = dstH
         self.debug = debug
-        self.maxPoolSize = max(maxPoolSize,3)
+        self.maxPoolSize = maxPoolSize
 
-        Task {
-            await gpuSemaphore.update(maxPoolSize)
-        }
+
         sendlog(
             message:"GPU Rotator init:\(dstWW)x\(dstHH) Debug:\(debug) 使用:\(qualityMode) PoolSize:\(maxPoolSize)",
             flush: true
@@ -411,22 +409,22 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     private final class FrameContext:@unchecked Sendable {
 
-        let sampleBuffer: CMSampleBuffer
+        var timing: CMSampleTimingInfo
         let outPB: CVPixelBuffer
         let outSet: RPVideoRotatorNV12BatchQueueOptimized.ReusableOutputSet
 
         // ✅ 新增：撐住 input backing
-         let inY: CVMetalTexture
-         let inUV: CVMetalTexture
+        var inY: CVMetalTexture?
+        var inUV: CVMetalTexture?
 
 
-        init(sampleBuffer: CMSampleBuffer,
+        init(timing:CMSampleTimingInfo,
              outSet: RPVideoRotatorNV12BatchQueueOptimized.ReusableOutputSet,
              inY:CVMetalTexture,
              inUV:CVMetalTexture
         ) {
 
-            self.sampleBuffer = sampleBuffer
+            self.timing = timing
             self.outSet = outSet
             self.outPB = outSet.pixelBuffer
 
@@ -491,19 +489,25 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
         return await withCheckedContinuation { (cont: CheckedContinuation<CMSampleBuffer?, Never>) in
 
-            let frameC = FrameContext(sampleBuffer: sampleBuffer, outSet: outSet,
+            var timing = CMSampleTimingInfo()
+            CMSampleBufferGetSampleTimingInfo(sampleBuffer, at: 0, timingInfoOut: &timing)
+            let frameC = FrameContext(timing: timing, outSet: outSet,
                                       inY: ycvTexIn.cv,inUV: uvcvTexIn.cv
             )
 
+
             cmd.addCompletedHandler { _ in
 
+                frameC.inY = nil
+                frameC.inUV = nil
+
                 let wrapped = self.wrapPixelBuffer(
-                    frameC.outPB, originalSampleBuffer: frameC.sampleBuffer
+                    frameC.outPB, timing: frameC.timing
                 )
 
                 if let wrapped {
                     self.tsDebugger.log(
-                        original: frameC.sampleBuffer,
+                        originalTime: frameC.timing,
                         wrapped: wrapped
                     )
                 }
@@ -605,17 +609,12 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     private func wrapPixelBuffer(
         _ pixelBuffer: CVPixelBuffer,
-        originalSampleBuffer: CMSampleBuffer
+        timing: CMSampleTimingInfo
     ) -> CMSampleBuffer? {
 
-        // 1️⃣ 取原始 timing
-        var timing = CMSampleTimingInfo()
-        CMSampleBufferGetSampleTimingInfo(
-            originalSampleBuffer,
-            at: 0,
-            timingInfoOut: &timing
-        )
 
+
+        var timing = timing
         // 2️⃣ 重新建立 formatDescription（用新的 pixelBuffer）
         var formatDesc: CMFormatDescription?
         guard CMVideoFormatDescriptionCreateForImageBuffer(
