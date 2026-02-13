@@ -337,7 +337,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         self.dstWW = dstW
         self.dstHH = dstH
         self.debug = debug
-        self.maxPoolSize = maxPoolSize
+        self.maxPoolSize = max(maxPoolSize,3)
 
         Task {
             await gpuSemaphore.update(maxPoolSize)

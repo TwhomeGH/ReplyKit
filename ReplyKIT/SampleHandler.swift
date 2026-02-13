@@ -1476,6 +1476,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         logger.info("運行通知")
 
+        isBroadcasting = true
         isStopping = false
 
         SocketClient.shared.setupConnection()
@@ -1715,10 +1716,14 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         //sendlog(message: "✅ 已重新啟用音視頻處理")
     }
 
-    
+    private var isBroadcasting = false
+
     // MARK: 直播結束處理
     func broadcastEnd(message:String = "正常結束")  {
         // User has requested to finish the broadcast.
+
+        isStopping = true
+        isBroadcasting = false
 
         SocketClient.shared.sendStreamEnd()
 
@@ -1732,24 +1737,14 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         needVideoConfiguration = true
         needAudioConfiguration = true
 
-
         removeObservers()
-
-        isStopping = true
         isSessionReady = false
-
 
         DeviceOrientationManager.shared.stopUpdates()
 
         volumeNotifier?.cleanup()
-
-        videoProcessor?.cleanup()
-
-        audioProcessor?.cleanup()
-
         volumeNotifier=nil
-        videoProcessor=nil
-        audioProcessor=nil
+
 
 
         Task {
@@ -1760,6 +1755,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             _ = try? await rtmpStream.close()
             _ = try? await rtmpConnection?.close()
+
+            videoProcessor?.cleanup()
+            audioProcessor?.cleanup()
+            videoProcessor=nil
+            audioProcessor=nil
+
         }
 
 
@@ -1983,6 +1984,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     override func processSampleBuffer(_ sampleBuffer: CMSampleBuffer, with sampleBufferType: RPSampleBufferType) {
 
+        guard isBroadcasting, !isStopping else { return }
 
         switch sampleBufferType {
         case .video:
