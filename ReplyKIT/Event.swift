@@ -188,7 +188,7 @@ final class LogManager {
 
     private let logQueue = DispatchQueue(
         label: "com.liveapp.logQueue",
-        qos: .utility,
+        qos: .background,
         attributes: .concurrent
     )
 

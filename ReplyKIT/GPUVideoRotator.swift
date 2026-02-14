@@ -133,6 +133,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     private(set) var textureCache: CVMetalTextureCache?
 
     private var isActive = true
+
     var dstWW: Int = 0
     var dstHH: Int = 0
     var debug: Bool = false
@@ -304,6 +305,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     // MARK: - Cleanup
     func cleanupD() {
         isActive = false
+        isMetalResources = false
 
 
 
@@ -339,6 +341,8 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         self.debug = debug
         self.maxPoolSize = maxPoolSize
 
+        isMetalResources = false
+
 
         sendlog(
             message:"GPU Rotator init:\(dstWW)x\(dstHH) Debug:\(debug) 使用:\(qualityMode) PoolSize:\(maxPoolSize)",
@@ -347,7 +351,16 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     }
 
+    var isMetalResources = false
+
     private func ensureMetalResources() -> Bool {
+
+        guard isMetalResources == false else {
+            return true
+        }
+
+        isMetalResources = true
+
         // 1️⃣ 初始化 MTLDevice + CommandQueue
         if queue == nil {
             guard let dev = MTLCreateSystemDefaultDevice(),
@@ -435,6 +448,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
 
     }
+
 
 
 

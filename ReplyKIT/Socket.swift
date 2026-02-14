@@ -125,8 +125,11 @@ class SocketClient : @unchecked Sendable {
     // 避免循環更新 UserDefaults
     private var isProcessingRemoteUpdate = false
 
-    init(host: String = "localhost", port: UInt16 = 9322) {
+    init() {
         
+    }
+    deinit {
+        closeConnection()
     }
 
   
