@@ -168,17 +168,25 @@ class SocketServer:ObservableObject {
     }
 
     var isRunning: Bool {
-        guard let listener else {
+        guard listener != nil else {
             logTo("listener 已失效!")
             isStopping = true
             return false
         }
 
-        let res = listener.state == .ready
-        logTo("listener 有效!")
+        let res = listener?.state == .ready
 
-        isStopping = false
+        if res {
+            logTo("listener 有效!")
+            isStopping = false
+        } else {
+            listener?.stateUpdateHandler = nil
+            listener?.cancel()
 
+            listener = nil
+            isStopping = true
+
+        }
         return res  // 或對應你 socket 類型的檢查
     }
     
