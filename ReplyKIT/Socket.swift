@@ -833,15 +833,21 @@ class SocketClient : @unchecked Sendable {
                     from: data
                 ),
                    let key = resultValue["key"]?.rawValue as? String,
-                   let value = resultValue["value"]?.rawValue {
+                   let rawValue = resultValue["value"]?.rawValue {
+
+                    // 將 Optional 或 NSNull 處理成 nil
+                     let safeValue: Any? = {
+                         if rawValue is NSNull { return nil }
+                         return rawValue
+                     }()
 
                     logTo(
-                        "UPGet -> \(String(describing: key)) \(String(describing: value))"
+                        "UPGet -> \(String(describing: safeValue)) \(String(describing: safeValue))"
                     )
 
 
                     if let cont = self.requestContinuations.removeValue(forKey: key) {
-                        cont.resume(returning: value)
+                        cont.resume(returning: safeValue)
                     }
 
                 }
