@@ -24,7 +24,7 @@ extension SocketClient.JSONValue {
         case .array(let v):
             return v.map { $0.rawValue }
         case .null:
-            return "None"
+            return nil
         }
     }
 }
@@ -733,6 +733,7 @@ class SocketClient : @unchecked Sendable {
             if let v = try? container.decode(String.self) { self = .string(v); return }
             if let v = try? container.decode([String: JSONValue].self) { self = .object(v); return }
             if let v = try? container.decode([JSONValue].self) { self = .array(v); return }
+
             self = .null
         }
 
@@ -746,10 +747,13 @@ class SocketClient : @unchecked Sendable {
             case .object(let v): try container.encode(v)
             case .array(let v): try container.encode(v)
             case .null: try container.encodeNil()
+
+
             }
         }
     }
 
+    
 
     private func handleJSONPacket(_ data: Data) {
         // 先轉成 String
@@ -840,6 +844,12 @@ class SocketClient : @unchecked Sendable {
                          if rawValue is NSNull { return nil }
                          return rawValue
                      }()
+
+
+                    logger
+                        .debug(
+                            "UPSet key=\(key) type=\(type(of: rawValue)) value=\(String(describing:rawValue))"
+                        )
 
                     logTo(
                         "UPGet -> \(String(describing: safeValue)) \(String(describing: safeValue))"
