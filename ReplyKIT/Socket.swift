@@ -24,7 +24,7 @@ extension SocketClient.JSONValue {
         case .array(let v):
             return v.map { $0.rawValue }
         case .null:
-            return nil
+            return "None"
         }
     }
 }
@@ -247,6 +247,11 @@ class SocketClient : @unchecked Sendable {
     }
 
     func requestSet(for key: String, type: String) async throws -> Any? {
+
+        guard let con = connection,con.state == .ready else {
+            return nil
+        }
+
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Any?, Error>) in
 
                 if self.requestContinuations[key] != nil {
