@@ -1452,11 +1452,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         isBroadcasting = true
         isStopping = false
 
-        SocketClient.shared.setupConnection()
+        Task {
 
-        //self.prepareCompressionSession()
 
-         Task {
+            SocketClient.shared.setupConnection()
+
+            //self.prepareCompressionSession()
 
 
             ExtensionMessagePort.shared.connectToApp()
