@@ -65,7 +65,22 @@ class SocketClient : @unchecked Sendable {
 
     private var isProcessingBatch = false
 
-    var requestContinuations: [String: CheckedContinuation<Any?, Error>] = [:]
+
+    actor ContinuationStore {
+        private var store: [String: CheckedContinuation<Any?, Error>] = [:]
+
+        func insert(_ cont: CheckedContinuation<Any?, Error>, for key: String) -> Bool {
+            if store[key] != nil { return false }
+            store[key] = cont
+            return true
+        }
+
+        func take(for key: String) -> CheckedContinuation<Any?, Error>? {
+            return store.removeValue(forKey: key)
+        }
+    }
+
+    private let continuationStore = ContinuationStore()
 
 
     private var rtmpBatchContinuation: CheckedContinuation<Bool, Error>?
@@ -224,12 +239,6 @@ class SocketClient : @unchecked Sendable {
 
                 self.receiveBuffer.removeAll()
 
-
-
-                self.requestContinuations.values.forEach { $0.resume(returning: nil) }
-                self.requestContinuations.removeAll()
-
-
                 self.setupConnection()
             }
 
@@ -254,12 +263,14 @@ class SocketClient : @unchecked Sendable {
 
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Any?, Error>) in
 
-                if self.requestContinuations[key] != nil {
+            Task {
+                let inserted = await continuationStore.insert(continuation, for: key)
+
+                if !inserted {
                     continuation.resume(returning: nil)
                     return
                 }
 
-                self.requestContinuations[key] = continuation
 
                 let payload: [String: Any] = [
                     "type": "UPSet",
@@ -267,18 +278,12 @@ class SocketClient : @unchecked Sendable {
                     "ValueType": type
                 ]
                 self.sendPayload(payload)
-
-                // 🔥 cancellation hook
-                Task {
-                    await Task.yield()
-                    if Task.isCancelled {
-                        continuation.resume(throwing: CancellationError())
-                    }
-                }
+            }
 
 
 
         }
+
     }
 
 //    func requestSet(for key:String, type:String,completion: @escaping (Any?) -> Void) {
@@ -523,14 +528,7 @@ class SocketClient : @unchecked Sendable {
         }
     }
 
-    func cancelAllPendingUPSet() {
-        queue.async {
-            for (_, cont) in self.requestContinuations {
-                cont.resume(returning: nil)
-            }
-            self.requestContinuations.removeAll()
-        }
-    }
+
 
 
     func cancelPendingRTMP() {
@@ -553,13 +551,7 @@ class SocketClient : @unchecked Sendable {
 
 
 
-    func cancelPendingRequest(key: String) {
-        queue.async {
-            if let cont = self.requestContinuations.removeValue(forKey: key) {
-                cont.resume(returning: nil)
-            }
-        }
-    }
+
 
 
     // MARK: CallBack Payload
@@ -855,10 +847,13 @@ class SocketClient : @unchecked Sendable {
                         "UPGet -> \(String(describing: safeValue)) \(String(describing: safeValue))"
                     )
 
-
-                    if let cont = self.requestContinuations.removeValue(forKey: key) {
-                        cont.resume(returning: safeValue)
+                    Task {
+                        if let cont = await continuationStore.take(for: key) {
+                            cont.resume(returning: safeValue)
+                        }
                     }
+
+
 
                 }
 
@@ -959,13 +954,6 @@ class SocketClient : @unchecked Sendable {
 
         } catch {
             logTo("[Socket]Decode failed ❌ \(error)")
-
-            // 安全處理所有可能的 continuation
-            for (_, cont) in self.requestContinuations {
-                cont.resume(returning: nil)
-            }
-            self.requestContinuations.removeAll()
-
 
         }
     }

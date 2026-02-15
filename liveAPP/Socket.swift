@@ -862,8 +862,7 @@ class SocketServer:ObservableObject {
 
 
             case "requestSettings":
-                logTo("Sync UserDefaults to client")
-                sendInitialUserDefaults(to: connection)
+                logTo("棄用Sync UserDefaults to client 該項目不使用")
 
 
             case "settings":
@@ -882,11 +881,6 @@ class SocketServer:ObservableObject {
                     
                     userDefaults?.set(valueAny, forKey: key) // 用原值存 UserDefaults
                     
-                    broadcast(
-                        key: key,
-                        value: safeValue,
-                        to: connection
-                    ) // 型別明確，不再報錯
                 }
                 
             case "log":
@@ -1018,21 +1012,6 @@ class SocketServer:ObservableObject {
 
         }
 
-    func sendInitialUserDefaults(to connection: NWConnection) {
-
-        let defaults = UserDefaults.standard.dictionaryRepresentation()
-        for (key, value) in defaults {
-            let payload: [String: Any] = [
-                "type": "settings",
-                "key": key,
-                "value": safeJSONValue(value)
-            ]
-
-            sendTo(connection, payload: payload) // ← 只回應發送請求的 client
-
-
-        }
-    }
 
     // MARK: 一對一
     private func sendTo(_ connection: NWConnection, payload: [String: Any]) {
