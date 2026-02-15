@@ -96,12 +96,12 @@
 
 
 - **啟用Socke轉送日誌**
-  
-  [!WARNING]
-  此選項是給側載用戶 由於側載AppGroup就不可用 需要用Socket作為轉送橋梁
 
-  啟用後他會把日誌以Socket送回來
-  以及依賴AppGroup更新音量等的部分會用Socket取得新配置
+  >  [!WARNING]
+  >  此選項是給側載用戶 由於側載AppGroup就不可用 需要用Socket作為轉送橋梁
+  >
+  >  啟用後他會把日誌以Socket送回來
+  >  以及依賴AppGroup更新音量等的部分會用Socket取得新配置
 
 
 - **啟用PIP子母窗口**
