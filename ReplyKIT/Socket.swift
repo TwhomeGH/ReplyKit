@@ -839,6 +839,7 @@ class SocketClient : @unchecked Sendable {
                         "UPGet -> \(String(describing: key)) \(String(describing: value))"
                     )
 
+
                     if let cont = self.requestContinuations.removeValue(forKey: key) {
                         cont.resume(returning: value)
                     }

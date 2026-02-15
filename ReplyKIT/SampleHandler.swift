@@ -888,34 +888,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 
                 else {
 
-                    var onPause=SharedDefaults.group?.bool(
-                        forKey: "PauseStream"
-                    ) ?? false
-
-                    Task {
-                        if RPConfig.shared.enableSocketLog {
-                            if let raw = try await SocketClient.shared.requestSet(for: "PauseStream", type: "Bool") {
-
-                                if let av = raw as? Bool {
-                                    let oldV = onPause
-                                    onPause = av
-
-                                    logger.debug("PauseStream \(av)")
-                                    sendlog(message: "Socket原始PauseStream數據包:\(av) -> \(oldV)")
-                                } else {
-                                    logger.error("PauseStream 型別錯誤: \(type(of: raw))")
-                                }
-
-                            }
-                        }
-
-                    }
-
-
-                    if onPause {
-                        sendlog(message: "正在暫停 取消重建Audio")
-                        return
-                    }
 
                     sendlog(message:"[Audio] audioProcessor is nil Rebuild AudioProcessor!")
 
