@@ -180,6 +180,13 @@ class SocketServer:ObservableObject {
             logTo("listener 有效!")
             isStopping = false
         } else {
+
+
+            for (_, conn) in connections {
+                conn.stateUpdateHandler = nil
+                conn.cancel()
+            }
+            
             listener?.stateUpdateHandler = nil
             listener?.cancel()
 
@@ -1075,15 +1082,23 @@ class SocketServer:ObservableObject {
 
     func stopInternal() {
 
-        listener?.stateUpdateHandler = nil
-        listener?.cancel()
-
-        listener = nil
 
         for (_, conn) in connections {
             conn.stateUpdateHandler = nil
             conn.cancel()
         }
+
+        listener?.stateUpdateHandler = nil
+        listener?.cancel()
+
+        listener = nil
+
+
+
+        idleTimers.values.forEach { $0.cancel() }
+        idleTimers.removeAll()
+
+
 
 
         connections.removeAll()
