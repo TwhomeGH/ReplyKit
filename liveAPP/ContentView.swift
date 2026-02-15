@@ -8,8 +8,7 @@
 import ReplayKit
 import SwiftUI
 
-
-
+import Combine
 import os
 import Foundation
 
@@ -207,76 +206,7 @@ struct BroadcastButton: UIViewRepresentable {
 }
 #endif
 
-struct CircleGridView: View {
 
-    @State var isOn=false
-    @State var mode="A"
-
-
-    let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 4)
-    let items = Array(1...16) // 模擬表單格子數量
-
-    var body: some View {
-
-        //        LazyVGrid(columns: columns, spacing: 10) {
-        //            ForEach(items, id: \.self) { item in
-        //                ZStack {
-        //                    Text("\(item)")
-        //                        .foregroundColor(.white)
-        //                        .bold()
-        //                }
-        //            }
-        //        }
-        //        .padding()
-        //
-
-        VStack {
-            NavigationView {
-                List {
-                    NavigationLink(destination: Text("編輯頁面 1")) {
-                        HStack {
-                            Text("姓名")
-                            Spacer()
-                            Text("John")
-                                .foregroundColor(.gray)
-                        }
-                    }
-                    NavigationLink(destination: Text("編輯頁面 2")) {
-                        HStack {
-                            Text("電話")
-                            Spacer()
-                            Text("123-4567")
-                                .foregroundColor(.gray)
-                        }
-                    }
-                }
-                .navigationTitle("表單")
-            }
-
-            Form {
-                Section(header: Text("帳號設定")) {
-                    Text("用戶名稱：小明")   // 純顯示
-                    Toggle("通知", isOn: $isOn)  // 有選項
-                    Picker("模式", selection: $mode) {
-                        Text("A").tag("A")
-                        Text("B").tag("B")
-                    }
-                }
-            }
-            List {
-                Text("純文字顯示")
-                HStack {
-                    Image(systemName: "star")
-                    Text("帶圖片的選項")
-                }
-            }.scrollDisabled(true)
-
-
-        }
-    }
-}
-
-import Combine
 
 class LiveVolumeModel: ObservableObject {
 
@@ -2669,8 +2599,8 @@ struct ContentView: View {
 
 
 
-            CircleGridView()
-                .tabItem { Label("測試頁", systemImage: "testtube.2") }
+            DeviceView()
+                .tabItem { Label("設備信息", systemImage: "cpu") }
                 .tag(AppPage.testpage)
 
             LogView()

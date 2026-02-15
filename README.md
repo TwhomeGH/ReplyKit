@@ -2,7 +2,11 @@
 
   適用於iOS的直播推流應用
 
-![松鼠推流](Docs/main.png)
+
+<p float="left">
+  <img src="Docs/main.png" width="45%" />
+  <img src="Docs/main2.png" width="45%" />
+</p>
 
 > [!WARNING] 
 > 說明文件不即時 由於後續更新迭代多次 
@@ -27,12 +31,18 @@
 
 ## 調試用設定
 
-![調試日誌](Docs/log.png)
-![調試日誌設定](Docs/logset.png)
+
+<p float="left">
+  <img src="Docs/log.png" width="45%" />
+  <img src="Docs/logset.png" width="45%" />
+</p>
 
 ## GPU旋轉處理設定
 
-![GPU](Docs/gpuset.png)
+<p float="left">
+  <img src="Docs/gpuset.png" width="45%" />
+  <img src="Docs/gpuset1.png" width="45%" />
+</p>
 
 ### 為什麼需要旋轉處理？
 
@@ -40,10 +50,16 @@
 
 ### 可設定參數
 
-- **輸出寬高**：可自定義輸出畫面的寬度與高度。
+- **畫布輸出寬高**：可自定義輸出畫面的寬度與高度
+- **GPU輸出寬高**：可自定義GPU處理後輸出畫面的寬度與高度
+- **配置名稱**：方便辨識用
+- **選擇方向**：橫向直向
+- **只改輸出寬高[畫布本身]**：開啟後GPU處理最終產物寬高與原始一致
+- **輸入緩衝區數量**：太大會碰到擴展運存限制50MB 保持在3或5
 - **插值方式**：使用 **Bicubic 插值**  
   - 運算較慢，但保留細節更好  
   - 對大動態畫面可減少模糊
+  - 預設不使用 用線性即可
 
 ### 參考分辨率對應表
 
@@ -81,9 +97,8 @@
 
 - **啟用Socke轉送日誌**
   
-  此選項是給側載用戶
-  由於側載AppGroup就不可用
-  需要用Socket作為轉送橋梁
+  [!WARNING]
+  此選項是給側載用戶 由於側載AppGroup就不可用 需要用Socket作為轉送橋梁
 
   啟用後他會把日誌以Socket送回來
   以及依賴AppGroup更新音量等的部分會用Socket取得新配置
@@ -122,17 +137,51 @@
   日誌Api服務端參閱: [LogServer.js](https://github.com/TwhomeGH/ReplyKit/blob/main/LogServer.js)
 
 
-## **PIP子母窗口聊天室**
+# **設備信息**
 
-![PIPChat子母聊天室](Docs/PIPChat.png)
+![CPUINFO](Docs/DeviceInfo1.png)
 
-如何傳遞訊息給子母窗口
+該頁面可以快速查看設備的重要信息，包括：
 
-SocketApi服務端參閱以下: 
+## 螢幕資訊
+- 裝置原始屏幕寬高（points / pixels）
+- ReplayKit 開播後得到的系統輸出解析度（如 1920×1334）
 
-- [mysocket.py](https://github.com/TwhomeGH/ReplyKit/blob/main/mysocket.py)
+## CPU / GPU 資訊
+- CPU 使用率（App 當前使用率）
+- CPU 核心數
+- 處理器 / GPU 名稱（如 A14 / Apple M1 GPU）
 
-- [TikTok or Twitch訊息服務端](https://github.com/TwhomeGH/TTWChatMessageServer)
+## 裝置型號
+- 裝置代號（如 `iPad13,18`）
+- 對應 處理器型號（如 A14 / M1）
+
+
+## **設備信息 RAM**
+
+![CPUINFO](Docs/DeviceInfo2.png)
+
+## 運行內存 Ram
+
+可以大致看一下 記憶體使用情況
+
+- 總RAM量
+- App使用RAM量
+  
+
+
+
+# **PIP子母窗口聊天室**
+
+  ![PIPChat子母聊天室](Docs/PIPChat.png)
+
+  如何傳遞訊息給子母窗口
+
+  SocketApi服務端參閱以下: 
+
+  - [mysocket.py](https://github.com/TwhomeGH/ReplyKit/blob/main/mysocket.py)
+
+  - [TikTok or Twitch訊息服務端](https://github.com/TwhomeGH/TTWChatMessageServer)
   
 
 ## Socket 傳輸說明:

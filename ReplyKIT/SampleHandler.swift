@@ -1842,8 +1842,47 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         guard dims.width > 0 && dims.height > 0 else { return }
 
+
+
         var width = Int(dims.width)
         var height = Int(dims.height)
+
+        let SharedW:Int = SharedDefaults.group?
+            .integer(forKey: "ReplyKitWidth") ?? 0
+        let SharedH:Int = SharedDefaults.group?
+            .integer(forKey: "ReplyKitHeight") ?? 0
+
+        logger.debug("Width+H ReplyKit:\(height)x\(width)")
+        logger.debug("Shared \(SharedW)x\(SharedH)")
+
+        // 寬高是反的 height = width -- width = height
+        if SharedW != height {
+
+            if RPConfig.shared.enableSocketLog {
+                SocketClient.shared
+                    .sendSettings(
+                        key: "ReplyKitWidth",
+                        value: height
+                    )
+            } else {
+                SharedDefaults.group?.set(height, forKey: "ReplyKitWidth")
+            }
+        }
+
+        if SharedH != width  {
+
+            if RPConfig.shared.enableSocketLog {
+                SocketClient.shared
+                    .sendSettings(
+                        key: "ReplyKitHeight",
+                        value: height
+                    )
+            } else {
+
+                SharedDefaults.group?.set(width, forKey: "ReplyKitHeight")
+
+            }
+        }
 
 
         if ODWidth > 0 && ODHeight > 0 {

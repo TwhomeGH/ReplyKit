@@ -62,7 +62,6 @@ final class LPConfig {
     var streamStartTime: Date?
 
 
-
     var PIPChatFontMainSize: Double = 14.0
     var PIPChatFontSecondSize: Double = 10.0
 
@@ -74,6 +73,8 @@ final class LPConfig {
 
 
     private init() {
+
+
 
         PIPLog = userDefaults?.bool(forKey: "PIPLog") ?? false
         PIPChatLog = userDefaults?.bool(forKey: "PIPChatLog") ?? false
