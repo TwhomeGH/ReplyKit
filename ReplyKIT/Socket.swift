@@ -502,7 +502,7 @@ class SocketClient : @unchecked Sendable {
 
     func logTo(_ message:String,flush:Bool = false){
 
-        logger.debug("SocketDebug:\(message)")
+        logger.debug("SocketDebug:\(message, privacy: .public)")
 
         sendlog(title:"ReplyKit_Socket",message: message,flush: flush)
     }
@@ -762,7 +762,7 @@ class SocketClient : @unchecked Sendable {
 
             do {
                 let json = try JSONSerialization.jsonObject(with: lineData)
-                logger.debug("Revice Raw:\n\(json as! NSObject)")
+                logger.debug("Revice Raw:\n\(json as! NSObject, privacy: .public)")
 
                 if let array = json as? [[String: Any]] {
                     // 批量 JSON
@@ -822,7 +822,8 @@ class SocketClient : @unchecked Sendable {
 
 
             case "UPSet":
-                logTo("UPSet結果得到了！")
+                logger.debug("DATA:\(data, privacy: .public)")
+                logTo("UPSet結果得到了！\n\(data)")
                 // 假設你解析 JSON 得到 resultValue
                 if let resultValue = try? decoder.decode(
                     [String: JSONValue].self,
@@ -840,7 +841,7 @@ class SocketClient : @unchecked Sendable {
 
                     logger
                         .debug(
-                            "UPSet key=\(key) type=\(type(of: rawValue)) value=\(String(describing:rawValue))"
+                            "UPSet key=\(key, privacy: .public) type=\(type(of: rawValue), privacy: .public) value=\(String(describing:rawValue), privacy: .public) SafeVal:\(String(describing:rawValue),privacy: .public)"
                         )
 
                     logTo(
