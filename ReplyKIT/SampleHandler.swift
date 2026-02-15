@@ -1831,7 +1831,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         logger.debug("Shared \(SharedW)x\(SharedH)")
 
         // 寬高是反的 height = width -- width = height
-        if SharedW != height {
 
             if RPConfig.shared.enableSocketLog {
                 SocketClient.shared
@@ -1840,11 +1839,14 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                         value: height
                     )
             } else {
-                SharedDefaults.group?.set(height, forKey: "ReplyKitWidth")
-            }
-        }
 
-        if SharedH != width  {
+                if SharedW != height {
+
+                    SharedDefaults.group?.set(height, forKey: "ReplyKitWidth")
+                }
+            }
+
+
 
             if RPConfig.shared.enableSocketLog {
                 SocketClient.shared
@@ -1854,10 +1856,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     )
             } else {
 
-                SharedDefaults.group?.set(width, forKey: "ReplyKitHeight")
-
+                if SharedH != width  {
+                    SharedDefaults.group?.set(width, forKey: "ReplyKitHeight")
+                }
             }
-        }
+
 
 
         if ODWidth > 0 && ODHeight > 0 {
