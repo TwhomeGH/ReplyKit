@@ -10,10 +10,7 @@ final class VideoFrameProcessor {
 
     private let mediaMixer: MediaMixer
    
-
     private let sendlog: (String) -> Void
-
-
 
     var Rotate = RPConfig.shared.Rotate
 
@@ -38,22 +35,22 @@ final class VideoFrameProcessor {
     func cleanup() {
         isActive = false
 
-
         // Task 目前無法強制取消，確保 isActive 檢查能立即返回
-
         Task {
-            await rotator?.cleanup()
-            rotator = nil
+            if (rotator != nil) {
+                await rotator?.cleanup()
+                rotator = nil
+            }
 
         }
     }
     deinit {
+        cleanup()
         sendlog("🧹 VideoFrameProcessor deinit — resources released")
     }
 
     private func processFrame(
-        _ sampleBuffer: CMSampleBuffer,
-        timestamp: CMTime
+        _ sampleBuffer: CMSampleBuffer
     ) async {
         guard isActive else { return }
         guard !Task.isCancelled else { return }
@@ -99,10 +96,10 @@ final class VideoFrameProcessor {
     }
 
 
-    func process(_ sampleBuffer: CMSampleBuffer, timestamp: CMTime) {
+    func process(_ sampleBuffer: CMSampleBuffer) {
 
         Task(priority: .userInitiated) {
-                await processFrame(sampleBuffer, timestamp: timestamp)
+                await processFrame(sampleBuffer)
         }
 
     }

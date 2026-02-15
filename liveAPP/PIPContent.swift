@@ -1314,7 +1314,7 @@ final class PIPServiceMessages {
         // 取得這組還有 alpha > 0 的最下方訊息
         let bottomY  = stackedMessages
                .filter({ $0.alpha > 0 })
-               .map { $0.targetY + $0.height }
+               .map { $0.targetY + $0.height + $0.verticalSpacing }
                .max() ?? topMargin
 
 
@@ -1672,7 +1672,7 @@ final class PIPServiceMessages {
 
     private func startFadeAnimation(for msg: MessageLayerTuple) {
 
-        let fadeDuration: CGFloat = 1.0
+        let fadeDuration: CGFloat = LPConfig.shared.MessageFadeTime
 
         let now = CACurrentMediaTime()
         let elapsed = now - lastFadeTriggerTime

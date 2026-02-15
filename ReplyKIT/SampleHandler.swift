@@ -124,7 +124,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
 
-    private var lastVideoTimestamp: CMTime = .zero
+    private var lastTimestamp: CMTime = .zero
+
 
 
     private var needVideoConfiguration = true
@@ -1986,6 +1987,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         guard isBroadcasting, !isStopping else { return }
 
+
+        let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+        lastTimestamp = timestamp
+
         switch sampleBufferType {
         case .video:
 
@@ -2017,31 +2022,25 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             }
 
-            let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-
-            lastVideoTimestamp = timestamp
-
 
 
             if videoProcessor != nil {
 
                 if pendingVideoBuffer != nil {
                     if let buffer = pendingVideoBuffer {
-                        videoProcessor?.process(buffer,
-                            timestamp: CMSampleBufferGetPresentationTimeStamp(buffer))
+                        videoProcessor?.process(buffer)
                         pendingVideoBuffer = nil
                     }
 
                     sendlog(message: "緩存已送進VideoProcessor處理 1 Buffer")
                 }
 
-                videoProcessor?.process(sampleBuffer, timestamp: timestamp)
+                videoProcessor?.process(sampleBuffer)
 
             } else {
-                if lastVideoTimestamp.seconds > lastlogTime + logInterval  {
+                if lastTimestamp.seconds > lastlogTime + logInterval  {
                     sendlog(message: "Video進程不存在！")
-                    lastlogTime = lastVideoTimestamp.seconds
-
+                    lastlogTime = lastTimestamp.seconds
                     if !isStopping {
                         rebuildVideo()
                     }
@@ -2078,9 +2077,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 }
 
-                let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-
-                lastVideoTimestamp = timestamp
 
                 if audioProcessor != nil {
 
@@ -2106,9 +2102,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                         .enqueue(sampleBuffer, trackType: trackType)
 
                 } else {
-                    if lastVideoTimestamp.seconds > lastlogTimeAudio + logInterval  {
+                    if lastTimestamp.seconds > lastlogTimeAudio + logInterval  {
                         sendlog(message: "Audio進程不存在！")
-                        lastlogTimeAudio = lastVideoTimestamp.seconds
+                        lastlogTimeAudio = lastTimestamp.seconds
 
                         if !isStopping {
                             rebuildAudio()

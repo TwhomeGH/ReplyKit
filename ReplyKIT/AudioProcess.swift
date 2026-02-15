@@ -146,16 +146,14 @@ final class VolumeNotifier {
     var isActive = true
 
     func cleanup() {
-        isActive = false
-        // 清空 queue 上未執行的任務
-        queue.sync {} // 確保之前的所有 block 都完成
-        // Task 目前無法強制取消，確保 isActive 檢查能立即返回
+        queue.async {
+            self.isActive = false
+        }
+
     }
 
     deinit {
-        isActive = false
-        // 清空 queue 上未執行的任務
-        queue.sync {} // 確保之前的所有 block 都完成
+        cleanup()
         sendlog(message:"Audio實時更新清理")
     }
     func updateVolume(volume: Float, track: Int) {
@@ -256,10 +254,12 @@ final class AudioProcessor : @unchecked Sendable {
     }
 
     func cleanup() {
-        isActive = false
-
+        queue.async {
+            self.isActive = false
+        }
     }
     deinit {
+        cleanup()
         sendlog(message:"🧹 AudioProcessor deinit — resources released")
     }
 
