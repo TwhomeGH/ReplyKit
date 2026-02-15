@@ -21,6 +21,7 @@ let cfCenter = CFNotificationCenterGetDarwinNotifyCenter()
 let userDefaults: UserDefaults? = UserDefaults(
     suiteName: "group.nuclear.liveAPP"
 ) ?? .standard
+
 #else
 let userDefaults: UserDefaults = .standard
 #endif

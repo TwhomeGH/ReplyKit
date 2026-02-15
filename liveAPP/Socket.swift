@@ -752,6 +752,16 @@ class SocketServer:ObservableObject {
                 
                 guard let result = res else {
                     logTo("Value for key \(key) is nil")
+
+                    let payload: [String: Any] = [
+
+                        "type": "UPSet",
+                        "key": key,
+                        "value": "\(key) is Nil"
+                    ]
+
+                    sendTo(connection, payload: payload) // ← 只回應發送請求的 client
+
                     return
                 }
                 
