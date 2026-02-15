@@ -689,7 +689,7 @@ struct liveAPPApp: App {
 
 
 
-    init(){
+    init() {
 
         // App 啟動時就啟動 Socket Server
         // 啟動一次

@@ -422,11 +422,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                     }
                 }
+                
+                videoProcessor?.rotator?.debug = Rlog
+                sendlog(message:"[旋轉日誌變化] VideoRotate \(Rlog)")
+
             }
 
 
-            videoProcessor?.rotator?.debug = Rlog
-            sendlog(message:"[旋轉日誌變化] VideoRotate \(Rlog)")
 
         case "DebugTime":
             var Rlog=SharedDefaults.group?.bool(forKey: "EnableTimeDebug") ?? false
@@ -447,12 +449,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                     }
                 }
+
+                videoProcessor?.rotator?.tsDebug(Rlog)
+                sendlog(message:"[旋轉日誌時間軸檢查] VideoTime \(Rlog)")
+
             }
 
 
-            videoProcessor?.rotator?.tsDebug(Rlog)
-            
-            sendlog(message:"[旋轉日誌時間軸檢查] VideoTime \(Rlog)")
 
 
         case "RotateOriginal":
@@ -478,10 +481,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     }
                 }
 
+                RPConfig.shared.RotateOriginal = Rlog
+                sendlog(message:"[RotateOriginal 變換]  \(Rlog)")
+
+
             }
 
-            RPConfig.shared.RotateOriginal = Rlog
-            sendlog(message:"[RotateOriginal 變換]  \(Rlog)")
 
 
 
@@ -542,12 +547,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 try await rtmpStream.setVideoSettings(vset)
 
 
+                RPConfig.shared.Rotate = Rlog
+                sendlog(message:"[Rotate變換]  \(Rlog)")
+
+
             }
 
-
-
-            RPConfig.shared.Rotate = Rlog
-            sendlog(message:"[Rotate變換]  \(Rlog)")
 
 
 
@@ -570,11 +575,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                     }
 
+                RPConfig.shared.enableSocketLog = Rlog
+                sendlog(message:"[Socket日誌開關]  \(Rlog)")
 
             }
 
-            RPConfig.shared.enableSocketLog = Rlog
-            sendlog(message:"[Socket日誌開關]  \(Rlog)")
 
 
 
@@ -599,9 +604,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 }
 
                 await streamStataus?.isChangBit(Rlog)
-            }
+                sendlog(message:"[網路]碼率控制: \(Rlog)")
 
-            sendlog(message:"[網路]碼率控制: \(Rlog)")
+
+
+            }
 
 
 
@@ -628,12 +635,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     }
                 }
 
+                bitrate = Rlog
+                sendlog(message: "NewBit: \(String(describing: bitrate))")
+
+
             }
 
-
-            bitrate = Rlog
-
-            sendlog(message: "NewBit: \(String(describing: bitrate))")
 
 
         case "logURL":
@@ -658,11 +665,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     }
                 }
 
+                RPConfig.shared.logURL = logM
+                sendlog(message: "LOG URL: \(logM)")
+
             }
 
-            RPConfig.shared.logURL = logM
-
-            sendlog(message: "LOG URL: \(logM)")
 
 
         case "logMode":
@@ -685,13 +692,14 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     }
                 }
 
+                sendlog(message: "LOG Mode \(logM)")
+
+                RPConfig.shared.logMode=logM
+                RPConfig.shared.applyLogMode()
+
             }
 
 
-            sendlog(message: "LOG Mode \(logM)")
-           
-            RPConfig.shared.logMode=logM
-            RPConfig.shared.applyLogMode()
 
 
         case "onlogPage":
@@ -714,23 +722,27 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     }
                 }
 
+                RPConfig.shared.onLogPage=logPage
+
+
+                if logPage {
+
+                    LogManager.shared.forceFlush()
+                    LogManager.shared.setupFlushTimer()
+
+
+
+                    sendlog(message: "正在LOG")
+
+                } else {
+                    LogManager.shared.forceFlush()
+
+                    sendlog(message: "非LOG")
+                }
+
             }
 
-            RPConfig.shared.onLogPage=logPage
-            if logPage {
 
-                LogManager.shared.forceFlush()
-                LogManager.shared.setupFlushTimer()
-
-
-
-                sendlog(message: "正在LOG")
-
-            } else {
-                LogManager.shared.forceFlush()
-
-                sendlog(message: "非LOG")
-            }
 
         case "VideoSet":
             Task {
@@ -782,11 +794,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 try await rtmpStream.setVideoSettings(VSET)
 
+                ADWidth = dstRW
+                videoProcessor?.rotator?.dstWW = dstRW
+                sendlog(message: "OutW:\(dstRW)")
+
             }
 
-            ADWidth = dstRW
-            videoProcessor?.rotator?.dstWW = dstRW
-            sendlog(message: "OutW:\(dstRW)")
+
 
 
         case "OutH":
@@ -814,13 +828,14 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 try await rtmpStream.setVideoSettings(VSET)
 
+                ADHeight = dstRH
+                videoProcessor?.rotator?.dstHH = dstRH
+
+                sendlog(message: "OutW:\(dstRH)")
+
 
             }
 
-            ADHeight = dstRH
-            videoProcessor?.rotator?.dstHH = dstRH
-
-            sendlog(message: "OutW:\(dstRH)")
 
 
 
@@ -845,10 +860,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     }
                 }
 
+                sendlog(message: "開關日誌log \(Enablelog)")
+                RPConfig.shared.enableLog=Enablelog
+
+
             }
 
-            sendlog(message: "開關日誌log \(Enablelog)")
-            RPConfig.shared.enableLog=Enablelog
 
             
 
@@ -873,8 +890,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     }
                 }
 
-            }
-
 
                 if audioProcessor != nil {
 
@@ -885,35 +900,22 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     )
 
                 }
-                
+
                 else {
 
-
-                    sendlog(message:"[Audio] audioProcessor is nil Rebuild AudioProcessor!")
-
-
-                    guard let volumeNotifier = volumeNotifier else {
-                        sendlog(message: "volumeNotifier沒有建立！")
-                        return
-                    }
-
-                    audioProcessor = AudioProcessor(
-                        mediaMixer: mediaMixer,
-                        volumeNotifier: volumeNotifier,
-                        appAddVolume: appAddVolume,
-                        micAddVolume: micAddVolume,
-                        appVolume: appVolume,
-                        micVolume: micVolume,
-                        onAudioPage: RPConfig.shared.onAudioPage
-                    )
-                
+                    sendlog(message:"[Audio] audioProcessor is nil AudioProcessor!")
 
 
                 }
 
 
+                sendlog(message: "AudioPage:\(String(describing: RPConfig.shared.onAudioPage))")
 
-            sendlog(message: "AudioPage:\(String(describing: RPConfig.shared.onAudioPage))")
+            }
+
+
+
+
 
 
         case "PauseStream":
