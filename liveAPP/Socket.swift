@@ -41,14 +41,16 @@ class SocketServer:ObservableObject {
     private func resetIdleTimer(for conn: NWConnection) {
         let id = ObjectIdentifier(conn)
 
-        idleTimers[id]?.cancel()
+        if let timer = idleTimers.removeValue(forKey: id) {
+            timer.cancel()
+        }
 
         logTo("Idle Reset! [\(id)]")
 
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now() + 60) // 60 秒沒動靜就踢
         timer.setEventHandler { [weak self] in
-            self?.logTo("Idle timeout, closing connection")
+            self?.logTo("[\(id)] Idle timeout, closing connection")
             self?.removeConnection(conn)
         }
         timer.resume()
