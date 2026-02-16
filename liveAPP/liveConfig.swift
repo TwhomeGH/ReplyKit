@@ -84,6 +84,7 @@ final class LPConfig {
         onLogPage=userDefaults?.bool(forKey: "onlogPage") ?? false
         enableLog=userDefaults?.bool(forKey: "Enablelog") ?? false
         logURL = userDefaults?.string(forKey: "logURL") ?? "http://192.168.0.242:3000/post"
+        
         SocketLog = userDefaults?.bool(forKey: "EnableSocketlog") ?? false
 
         FadeAlpha = userDefaults?.double(forKey: "fadeAlpha") ?? 0.08

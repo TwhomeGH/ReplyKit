@@ -720,6 +720,18 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                         }
 
                     }
+
+                    SocketClient.shared
+                        .sendSettings(
+                            key: "ReplyKitWidth",
+                            value: ReplyKitW
+                        )
+                    SocketClient.shared
+                        .sendSettings(
+                            key: "ReplyKitHeight",
+                            value: ReplyKitH
+                        )
+                    
                 }
 
                 RPConfig.shared.onLogPage=logPage
@@ -1760,6 +1772,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     private var didConfigureVideo = true
     private var didConfigureAudio = true
 
+
+    var ReplyKitW = 0
+    var ReplyKitH = 0
+
     /// 根據解析度與幀率選擇對應 H.264 High Profile Level
 
     enum H264Profile: String {
@@ -1832,7 +1848,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         // 寬高是反的 height = width -- width = height
 
-            if RPConfig.shared.enableSocketLog {
+        ReplyKitW = height
+        ReplyKitH = width
+
+        if RPConfig.shared.enableSocketLog {
+
+
                 SocketClient.shared
                     .sendSettings(
                         key: "ReplyKitWidth",
@@ -1852,7 +1873,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 SocketClient.shared
                     .sendSettings(
                         key: "ReplyKitHeight",
-                        value: height
+                        value: width
                     )
             } else {
 
