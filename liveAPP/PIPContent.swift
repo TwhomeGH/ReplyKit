@@ -1320,7 +1320,7 @@ final class PIPServiceMessages {
 
 
 
-        let conSize = containerHeight * 0.95 - bottomPadding
+        let conSize = containerHeight * 0.92 - bottomPadding
         PIPChatLog("MaxBottom:\(bottomY) Container:\(conSize)")
         return bottomY  > conSize
 
