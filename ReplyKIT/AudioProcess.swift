@@ -215,6 +215,48 @@ func volumeToPercentage(_ volume: Double) -> Double {
     return pow(clamped, 1.0 / exponent)
 }
 
+
+// MARK: 專用管線
+actor AudioPipeline {
+
+    private let mediaMixer: MediaMixer
+
+    private var queue: [(CMSampleBuffer, AudioTrackType)] = []
+    private var isRunning = false
+
+    init(mediaMixer: MediaMixer) {
+        self.mediaMixer = mediaMixer
+    }
+
+    func enqueue(_ buffer: CMSampleBuffer, track: AudioTrackType) {
+        queue.append((buffer, track))
+
+        if !isRunning {
+            isRunning = true
+            Task {
+                await processLoop()
+            }
+        }
+    }
+
+    private func processLoop() async {
+        while !queue.isEmpty {
+            let (buffer, track) = queue.removeFirst()
+            await processFrame(buffer, track: track)
+        }
+        isRunning = false
+    }
+
+    private func processFrame(
+        _ buffer: CMSampleBuffer,
+        track: AudioTrackType
+    ) async {
+
+        // 直接 append（音訊不能丟）
+        await mediaMixer.append(buffer, track: track.rawValue)
+    }
+}
+
 // MARK: 音頻線程
 
 final class AudioProcessor : @unchecked Sendable {
@@ -223,7 +265,12 @@ final class AudioProcessor : @unchecked Sendable {
    
     private let mediaMixer: MediaMixer
     private var volumeNotifier: VolumeNotifier
-    private let queue = DispatchQueue(label: "audio.processor.queue", qos: .userInitiated)
+    private let queue = DispatchQueue(
+        label: "audio.processor.queue",
+        qos: .utility
+    )
+
+    private lazy var pipeline = AudioPipeline(mediaMixer: mediaMixer)
 
     var isActive = true
 
@@ -280,71 +327,67 @@ final class AudioProcessor : @unchecked Sendable {
         self.onAudioPage = status
     }
 
+    // MARK: 增益
+    private func applyGain(
+        _ buffer: CMSampleBuffer,
+        trackType: AudioTrackType
+    ) -> CMSampleBuffer {
+
+        let gain = (trackType == .app) ? self.appAddVolume : self.micAddVolume
+        let safeGain = gain.isFinite ? gain : 1.0
+
+        if safeGain > 1.0 {
+            return amplifySIMD(buffer, gain: safeGain)
+        }
+
+        return buffer
+    }
+
+
+    // MARK: 音量統計
+    private func processRMS(_ buffer: CMSampleBuffer, trackType: AudioTrackType) {
+
+        let now = CACurrentMediaTime()
+
+        if self.onAudioPage, now - self.lastRMSUpdateTime > self.rmsInterval {
+            self.lastRMSUpdateTime = now
+
+            if let rms = rmsSIMD(from: buffer) {
+
+                let userVolume = (trackType == .app) ? self.appVolume : self.micVolume
+                let safeUserVolume = userVolume.isFinite ? userVolume : 1.0
+
+                var adjustedRMS = rms * safeUserVolume
+                if !adjustedRMS.isFinite { adjustedRMS = 0 }
+
+                self.volumeNotifier.updateVolume(
+                    volume: adjustedRMS,
+                    track: Int(trackType.rawValue)
+                )
+            }
+        }
+    }
+
+
+
+
 
     func enqueue(_ sampleBuffer: CMSampleBuffer, trackType: AudioTrackType) {
+        guard isActive else { return }
 
-        queue.async { [weak self] in
-            guard let self = self, self.isActive else { return }
+        // 1️⃣ 做增益
+        let amplified = applyGain(sampleBuffer, trackType: trackType)
 
+        // 音量計算還是可以同步做（很快）
+        processRMS(amplified, trackType: trackType)
 
-
-            self.processAudioFrame(sampleBuffer, trackType: trackType)
-
-
-        }
-
-    }
-
-    private func processAudioFrame(_ buffer: CMSampleBuffer ,trackType: AudioTrackType) {
-
-
-            let gain = (trackType == .app) ? self.appAddVolume : self.micAddVolume
-            let safeGain = gain.isFinite ? gain : 1.0  // 防止 infinity / NaN
-
-
-
-            var amplified = buffer
-
-            if safeGain > 1.0 {
-                amplified = amplifySIMD(buffer, gain: safeGain)
-            }
-
-            let now = CACurrentMediaTime()
-
-            if self.onAudioPage, now - self.lastRMSUpdateTime > self.rmsInterval {
-                self.lastRMSUpdateTime = now
-                if let rms = rmsSIMD(from: amplified) {
-
-                    let userVolume = (trackType == .app) ? self.appVolume : self.micVolume
-
-                    let safeUserVolume = userVolume.isFinite ? userVolume : 1.0
-
-                    // 4️⃣ 計算最終 RMS
-                    var adjustedRMS = rms * safeUserVolume
-                    if !adjustedRMS.isFinite { adjustedRMS = 0 }
-
-
-                    
-                    self.volumeNotifier.updateVolume(volume: adjustedRMS, track: Int(trackType.rawValue))
-
-
-                }
-            }
-
-            // 音訊 append
-
-
-        appendAsync(amplified, track: trackType.rawValue)
-
-    }
-
-    private func appendAsync(
-        _ buffer: CMSampleBuffer,
-        track: UInt8
-    ) {
-        Task(priority: .userInitiated) {
-            await self.mediaMixer.append(buffer, track: track)
+        // 3️⃣ 丟進 AudioPipeline（FIFO，不丟幀）
+        Task(priority: .utility) {
+            await pipeline.enqueue(amplified, track: trackType)
         }
     }
+
+
+
 
 }
