@@ -38,7 +38,48 @@ final class DummyPlaybackDelegate: NSObject, AVPictureInPictureSampleBufferPlayb
 
 
 
+actor PIPRenderPipeline {
 
+    private weak var service: PIPService?
+    private var isRunning = false
+    private var needsRender = false
+
+    init(service: PIPService) {
+        self.service = service
+    }
+
+    func requestRender() {
+        needsRender = true
+
+        if !isRunning {
+            isRunning = true
+            Task {
+                await loop()
+            }
+        }
+    }
+
+
+    private func loop() async {
+        while needsRender {
+            needsRender = false
+            await renderOnce()
+        }
+        isRunning = false
+    }
+
+    @MainActor
+    private func callRender(_ service: PIPService) async {
+        _ = await service.renderIncremental()
+    }
+
+    private func renderOnce() async {
+        guard let service else { return }
+
+        await callRender(service)
+    }
+    
+}
 
 // =========================
 // PIPService - Ultimate Version
@@ -46,9 +87,13 @@ final class DummyPlaybackDelegate: NSObject, AVPictureInPictureSampleBufferPlayb
 
 final class PIPService: NSObject, @unchecked Sendable {
     static let shared = PIPService()
+
     private override init() {
 
     }
+
+    var lastFPS = 1.0
+    private var renderPipeline: PIPRenderPipeline?
 
     var isAnimatingMessages = false
 
@@ -90,17 +135,7 @@ final class PIPService: NSObject, @unchecked Sendable {
     func renderIfNeeded() -> CVPixelBuffer?  {
 
 
-        // 4️⃣ CI → CVPixelBuffer（GPU）
-//        let outputCI: CIImage? = timeOverlayImage(size: frameSize)
-//
-//        let pixelBuffer = gpuRenderer?.render(
-//            time:outputCI,
-//            containerSize: frameSize
-//        )
-
         let pixelBuffer: CVPixelBuffer? = timeOverlayImage(size:frameSize)
-
-
 
 
         return pixelBuffer
@@ -230,6 +265,7 @@ final class PIPService: NSObject, @unchecked Sendable {
         }
         return CIContext()
     }()
+
 
     private var debugImageView: UIImageView?
 
@@ -400,7 +436,6 @@ final class PIPService: NSObject, @unchecked Sendable {
     private var basePTS: CFTimeInterval?
 
     private let dummyDelegate = DummyPlaybackDelegate()
-
 
 
     var frameSize: CGSize = .zero
@@ -806,6 +841,7 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         self.OframeSize = pixelSize
 
+        self.renderPipeline = PIPRenderPipeline(service: self)
 
         ciContext = CIContext(mtlDevice: metalDevice)
 
@@ -960,14 +996,14 @@ final class PIPService: NSObject, @unchecked Sendable {
                 deadline: .now(), repeating: 1.0 / self.currentFPS ,
                 leeway: .milliseconds(10)
             )
+
             // 固定 60FPS timer
             renderTimer?.setEventHandler { [weak self] in
                 guard let self = self else { return }
 
-                Task { @MainActor in
-                    _ = await self.renderIncremental()
+                Task {
+                    await self.renderPipeline?.requestRender()
                 }
-
             }
             renderTimer?.resume()
         }
@@ -996,6 +1032,7 @@ final class PIPService: NSObject, @unchecked Sendable {
         renderTimer?.cancel()
         renderTimer = nil
 
+        renderPipeline = nil
 
         self.pipController?.stopPictureInPicture()
         self.pipController = nil
@@ -1031,14 +1068,9 @@ final class PIPService: NSObject, @unchecked Sendable {
     }
 
 
-
-
-
-    var lastFPS = 1.0
-
     // MARK: - Incremental Render
     @MainActor
-    private func renderIncremental() async -> Bool {
+    func renderIncremental() async -> Bool {
 
         guard let displayLayer = displayLayer else { return false }
 
