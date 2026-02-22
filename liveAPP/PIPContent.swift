@@ -1672,7 +1672,8 @@ final class PIPServiceMessages {
 
     private func startFadeAnimation(for msg: MessageLayerTuple) {
 
-        let fadeDuration: CGFloat = LPConfig.shared.MessageFadeTime
+        // 用FadeAlpha的時間
+        let fadeDuration: CGFloat = LPConfig.shared.FadeAlpha
 
         let now = CACurrentMediaTime()
         let elapsed = now - lastFadeTriggerTime

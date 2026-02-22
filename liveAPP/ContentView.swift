@@ -916,7 +916,7 @@ struct LogSettingsView: View {
 
                         }
 
-                    Text("建議值: 0.08 / 幀"
+                    Text("建議值: 0.1"
                     )
                             .font(.footnote)
                             .foregroundColor(.secondary)
