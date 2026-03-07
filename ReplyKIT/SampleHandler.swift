@@ -962,7 +962,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         super.init()
 
-
+        //進行Socket初始化
+        SocketClient.shared.setupConnection()
         registerObservers()
         logger.info("ReplyKit Debug")
 
@@ -1468,8 +1469,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         Task {
 
-
-            SocketClient.shared.setupConnection()
 
             //self.prepareCompressionSession()
 
