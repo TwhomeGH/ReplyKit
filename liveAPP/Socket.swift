@@ -34,7 +34,10 @@ class SocketServer:ObservableObject {
     private var listener: NWListener?
     private var connections: [ObjectIdentifier: NWConnection] = [:]
 
-    private let queue = DispatchQueue(label: "SocketServerQueue")
+    private let queue = DispatchQueue(
+                                      label: "SocketServerQueue",
+                                      qos:.userInitiated
+                          )
 
     private var idleTimers: [ObjectIdentifier: DispatchSourceTimer] = [:]
 
