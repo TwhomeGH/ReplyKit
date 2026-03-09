@@ -1155,8 +1155,8 @@ final class PIPServiceMessages {
         // 2️⃣ 新訊息「理論上」會接在這個位置
         let newBottom = currentBottom + newMsg.height + newMsg.verticalSpacing
 
-        // 3️⃣ 容許超出 15%
-        let maxConH =  containerHeight * 0.15
+        // 3️⃣ 容許超出 30%
+        let maxConH =  containerHeight * 0.30
         let limit = containerHeight + maxConH
 
         let canInsert = newBottom <= limit
@@ -1167,7 +1167,7 @@ final class PIPServiceMessages {
             CurrentBottom:\(currentBottom)
             NewBottom:\(newBottom)
             Limit:\(limit)
-            容許超出15%:+\(maxConH)
+            容許超出30%:+\(maxConH)
             """
         )
 
@@ -1320,7 +1320,7 @@ final class PIPServiceMessages {
 
 
 
-        let conSize = containerHeight * 0.92 - bottomPadding
+        let conSize = containerHeight * 0.90 - bottomPadding
         PIPChatLog("MaxBottom:\(bottomY) Container:\(conSize)")
         return bottomY  > conSize
 
