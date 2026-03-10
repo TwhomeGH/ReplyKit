@@ -734,11 +734,14 @@ final class PIPServiceMessages {
             - hSpacing // horizontalSpacing
             - giftSizeLocal
 
+        var maxNameWidth = container.bounds.width
+            - hSpacing * 2
+            - avatarSizeLocal
 
         let (nameLines,nameCTLine) = breakMessageIntoLines(
             user,
             font: font,
-            maxWidth: maxMessageWidth
+            maxWidth: maxNameWidth
         )
 
 
@@ -758,7 +761,7 @@ final class PIPServiceMessages {
                     framesetter,
                     CFRangeMake(0, attr.length),
                     nil,
-                    CGSize(width: maxMessageWidth, height: .greatestFiniteMagnitude),
+                    CGSize(width: maxNameWidth, height: .greatestFiniteMagnitude),
                     nil
                 )
 
@@ -1038,16 +1041,13 @@ final class PIPServiceMessages {
 
         var textBlockHeight: CGFloat = 0
 
-        if showName {
-            textBlockHeight += data.cachedMessageSize.height
-        }
-
-
         if showName && showMessage {
             textBlockHeight += horizontalSpacing
         }
-
-        if showMessage {
+        else if showName {
+            textBlockHeight += data.cachedMessageSize.height
+        }
+        else if showMessage {
             textBlockHeight += data.cachedMessageSize.height
         }
 
