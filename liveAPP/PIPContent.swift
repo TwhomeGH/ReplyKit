@@ -35,7 +35,7 @@ struct ChatMessage: Identifiable, Equatable {
 
 
 // MARK: - Cache
-private lazy var cache: NSCache<NSString, UIImage> = {
+private var cache: NSCache<NSString, UIImage> = {
     let cache = NSCache<NSString, UIImage>()
     cache.countLimit = 20
     cache.totalCostLimit = 20 * 1024 * 1024
@@ -737,7 +737,7 @@ final class PIPServiceMessages {
             - hSpacing // horizontalSpacing
             - giftSizeLocal
 
-        var maxNameWidth = container.bounds.width
+        let maxNameWidth = container.bounds.width
             - hSpacing * 2
             - avatarSizeLocal
 
