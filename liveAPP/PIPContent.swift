@@ -1093,10 +1093,15 @@ final class PIPServiceMessages {
 
         let type: MessageType = isMain ? .primary : .secondary
 
-        let fontSize: CGFloat = (
+        var fontSize: CGFloat = (
             type == .primary
         ) ? LPConfig.shared.PIPChatFontMainSize : LPConfig.shared.PIPChatFontSecondSize
 
+        if fontSize < 1.0 {
+            PIPChatLog("子母窗口fontSize異常需要更新 需要重新設定")
+            fontSize = 1.0
+        }
+        
         let avatarSizeLocal: CGFloat = (
             type == .primary
         ) ? LPConfig.shared.PIPChatFontMainSize : LPConfig.shared.PIPChatFontSecondSize
