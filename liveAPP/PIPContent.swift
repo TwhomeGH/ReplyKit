@@ -35,7 +35,12 @@ struct ChatMessage: Identifiable, Equatable {
 
 
 // MARK: - Cache
-private let cache = NSCache<NSString, UIImage>()
+private lazy var cache: NSCache<NSString, UIImage> = {
+    let cache = NSCache<NSString, UIImage>()
+    cache.countLimit = 20
+    cache.totalCostLimit = 20 * 1024 * 1024
+    return cache
+}()
 
 
 actor PiPImageCache {
@@ -52,8 +57,6 @@ actor PiPImageCache {
     private var waitingQueue: [String] = []
 
     private init() {
-        cache.countLimit = 10
-        cache.totalCostLimit = 10 * 1024 * 1024
     }
 
     // MARK: - Public API（async 版）
@@ -723,8 +726,6 @@ final class PIPServiceMessages {
         var result: [MessageSegmentData] = []
 
         var seg = 0
-
-        insertionCounter = 0
         
         let parentID = UUID()
 
@@ -884,8 +885,8 @@ final class PIPServiceMessages {
     // MARK: - Build Message Tuple（抽出來重用）
     func buildMessageTuple(
         type:MessageType = .primary,
-        user: String,
-        message: String,
+        user: String ="",
+        message: String="",
         img: UIImage?,
         giftImg: UIImage?,
         showAvatar: Bool,
@@ -933,14 +934,18 @@ final class PIPServiceMessages {
         if showName {
             let layer = CATextLayer()
 
-            layer.string = user
-            layer.font = font
-            layer.fontSize = font.pointSize
-            layer.foregroundColor = UIColor.white.cgColor
+            layer.string = NSAttributedString(
+                string:user,
+                attributes: [
+                   .font: font,
+                   .foregroundColor: UIColor.white
+                ]
+            )
+            
+            
             layer.contentsScale = UIScreen.main.scale
             layer.isWrapped = true
             layer.truncationMode = .none
-
             layer.alignmentMode = .left
 
             container.addSublayer(layer)
@@ -954,10 +959,14 @@ final class PIPServiceMessages {
         if showMessage {
 
             let layer = CATextLayer()
-            layer.string = message
-            layer.font = font
-            layer.fontSize = font.pointSize
-            layer.foregroundColor = UIColor.white.cgColor
+            layer.string = NSAttributedString(
+                string:message,
+                attributes: [
+                   .font: font,
+                   .foregroundColor: UIColor.white
+                ]
+            )
+            
             layer.contentsScale = UIScreen.main.scale
             layer.isWrapped = true
             layer.truncationMode = .none
