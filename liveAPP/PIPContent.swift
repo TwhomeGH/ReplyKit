@@ -885,8 +885,8 @@ final class PIPServiceMessages {
     // MARK: - Build Message Tuple（抽出來重用）
     func buildMessageTuple(
         type:MessageType = .primary,
-        user: String ="",
-        message: String="",
+        user: String = "",
+        message: String = "",
         img: UIImage?,
         giftImg: UIImage?,
         showAvatar: Bool,
