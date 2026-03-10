@@ -310,7 +310,7 @@ final class MessageLayerTuple:Equatable {
         message: CATextLayer?,
         gift: CALayer?,
         type:MessageType = .primary,
-        insertionIndex:Int
+        insertionIndex:Int = 0
     ) {
         self.avatar = avatar
         self.name = name
@@ -724,6 +724,8 @@ final class PIPServiceMessages {
 
         var seg = 0
 
+        insertionCounter = 0
+        
         let parentID = UUID()
 
 
