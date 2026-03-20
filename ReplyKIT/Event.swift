@@ -173,6 +173,8 @@ final class RemoteLogger {
             self?.flush()
         }
         flushTimer?.resume()
+
+        
     }
 
 
@@ -280,7 +282,7 @@ final class LogManager {
 
     // MARK: 提前結束
     func forceFlush() {
-        logQueue.sync {
+        
 
             flushLocalLogs(forceNotify: true)
 
@@ -289,7 +291,7 @@ final class LogManager {
             remoteLogger?.flush()
             remoteLogger = nil
             isActive = false
-        }
+        
     }
 
     func log(title: String = "ReplyKit", message: String, flushImmediately: Bool = false) {
