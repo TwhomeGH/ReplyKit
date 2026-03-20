@@ -349,6 +349,11 @@ final class LogManager {
             localLogBuffer.removeAll()
             localLogSize = 0
 
+            //統一這裡處理發送Socket轉送
+            if RPConfig.shared.enableSocketLog {
+                SocketClient.shared.sendLog(message: bufferCopy)
+            }
+        
             let containerURL: URL
 
             if let groupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupID) {
@@ -596,13 +601,10 @@ func sendlog(title: String = "ReplyKit", message: String, flush:Bool = false) {
     if RPConfig.shared.enableLog {
         if RPConfig.shared.onLogPage {
 
-            if RPConfig.shared.enableSocketLog {
-                SocketClient.shared.sendLog(message: message)
-            } else {
-                LogManager.shared
+            LogManager.shared
                     .log(title:title,message: message,flushImmediately: flush)
 
-            }
+            
 
         }
 
