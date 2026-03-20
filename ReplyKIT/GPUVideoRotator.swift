@@ -103,6 +103,9 @@ enum RotationAngle: UInt32, Codable, CaseIterable, Identifiable, CustomStringCon
 final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
 
+    private var cachedFormatDescription: CMVideoFormatDescription?
+    private var cachedFormatSize: CGSize = .zero
+    
     enum QualityMode: CustomStringConvertible {
         case live      // bilinear
         case quality   // bicubic
@@ -629,16 +632,31 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
 
         var timing = timing
-        // 2️⃣ 重新建立 formatDescription（用新的 pixelBuffer）
-        var formatDesc: CMFormatDescription?
-        guard CMVideoFormatDescriptionCreateForImageBuffer(
-            allocator: kCFAllocatorDefault,
-            imageBuffer: pixelBuffer,
-            formatDescriptionOut: &formatDesc
-        ) == noErr,
-        let fmt = formatDesc else {
-            return nil
-        }
+
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+        let size = CGSize(width: width, height: height)
+
+
+        // 只有在第一次或解析度改變時才重新建立
+        if cachedFormatDescription == nil || cachedFormatSize != size {
+            var formatDesc: CMFormatDescription?
+            guard CMVideoFormatDescriptionCreateForImageBuffer(
+                allocator: kCFAllocatorDefault,
+                imageBuffer: pixelBuffer,
+                formatDescriptionOut: &formatDesc
+            ) == noErr,
+          
+            let fmt = formatDesc else {
+                 return nil
+            }
+
+            cachedFormatDescription = fmt
+            cachedFormatSize = size
+         }
+
+        guard let fmt = cachedFormatDescription else { return nil }
+             
 
         // 3️⃣ 建立新的 sampleBuffer
         var sampleBuffer: CMSampleBuffer?
