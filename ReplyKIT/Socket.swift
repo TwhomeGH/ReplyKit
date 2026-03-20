@@ -191,10 +191,12 @@ class SocketClient : @unchecked Sendable {
                 isConnection = true
 
                 startHearbeat()
+                sendLog(message:"Socket連接成功 擴展端通信")
                 // ✅ 喚醒所有等待連線的人
                 connectContinuations.forEach { $0.resume() }
                 connectContinuations.removeAll()
 
+                
 
                 self.receive()
             case .failed(let error):
