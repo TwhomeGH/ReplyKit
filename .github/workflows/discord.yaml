@@ -1,3 +1,5 @@
+name: Discord 新版本通知
+
 on:
   release:
     types: [published]
