@@ -99,7 +99,7 @@ final class LogModel: ObservableObject {
     /// Buffer安全大下
     private let maxMessages = 1000
 
-    init() {
+    init {
 
         LogBuffer.shared.onNewLog = { [weak self] logs in
 
@@ -126,7 +126,9 @@ final class LogModel: ObservableObject {
     }
 
     deinit {
-
+        clearLogs()
+        os_log("LogModel釋放緩衝區")
+        
     }
 }
 
