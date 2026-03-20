@@ -601,8 +601,7 @@ func sendlog(title: String = "ReplyKit", message: String, flush:Bool = false) {
     if RPConfig.shared.enableLog {
         if RPConfig.shared.onLogPage {
 
-            LogManager.shared
-                    .log(title:title,message: message,flushImmediately: flush)
+            LogManager.shared.log(title:title,message: message,flushImmediately: flush)
 
             
 
