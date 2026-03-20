@@ -1,6 +1,9 @@
+name: Discord通知新版本
+
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 jobs:
   github-releases-to-discord:
