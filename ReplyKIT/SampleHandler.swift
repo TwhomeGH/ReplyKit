@@ -1228,13 +1228,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         let fullURLString = "\(urlString)/\(safelogKey)"
 
 
-        // MARK: 是否在日誌Log mode
-        RPConfig.shared.logMode = SharedDefaults.group?
-            .integer(forKey: "logMode") ?? 0
-        RPConfig.shared.onLogPage = SharedDefaults.group?.bool(forKey: "onlogPage") ?? false
-
-
-        RPConfig.shared.applyLogMode()
+        // MARK: 是否在日誌Log mode由Socket內部處理
 
         // 🔹 轉成 URL
         sendlog(message: "🔹 推流 URL:\(fullURLString)")
