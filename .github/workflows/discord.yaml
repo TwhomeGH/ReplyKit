@@ -1,5 +1,3 @@
-name: Discord通知新版本
-
 on:
   release:
     types: [published]
@@ -12,7 +10,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
       - name: GitHub Releases to Discord
-        uses: SethCohen/github-releases-to-discord@v1
+        uses: SethCohen/github-releases-to-discord@v1.19.0
         with:
           webhook_url: ${{ secrets.WEBHOOK_URL }}
           color: "255136130"
