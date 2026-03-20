@@ -351,11 +351,22 @@ final class LogManager {
 
             //統一這裡處理發送Socket轉送
             if RPConfig.shared.enableSocketLog {
-                SocketClient.shared.sendLog(message: bufferCopy)
-            }
-        
+                 
+            let maxChunkSize = 4096
+            var currentIndex = bufferCopy.startIndex
+            
+            while currentIndex < bufferCopy.endIndex {
+                    let endIndex = bufferCopy.index(currentIndex, offsetBy: maxChunkSize, limitedBy: bufferCopy.endIndex) ?? bufferCopy.endIndex
+                    let chunk = String(bufferCopy[currentIndex..<endIndex])
+                    SocketClient.shared.sendLog(message: chunk)
+                    currentIndex = endIndex
+                }    
+
+            } else {
+            
             let containerURL: URL
 
+        
             if let groupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupID) {
                 containerURL = groupURL
             } else {
@@ -375,6 +386,8 @@ final class LogManager {
                 }
             }
 
+            }
+        
             notifyMainAppIfNeeded(forceNotify: forceNotify)
 
     }
