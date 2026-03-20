@@ -3,6 +3,10 @@ name: Discord 新版本通知
 on:
   release:
     types: [published]
+  push:
+    tags:
+       - "*"
+
   workflow_dispatch:
 
 jobs:
