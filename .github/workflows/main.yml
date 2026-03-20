@@ -17,7 +17,7 @@ jobs:
     steps:
       # 1️⃣ Checkout repository
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -171,7 +171,7 @@ jobs:
         
       # 5️⃣ Upload IPA & Archive to Release
       - name: Upload Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.get_tag.outputs.tag }}
           files: |
