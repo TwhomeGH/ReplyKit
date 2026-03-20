@@ -2,12 +2,11 @@ name: Discord 新版本通知
 
 on:
   release:
-    types: [published]
+    types: [published, created ,released ,edited ]
   push:
     tags:
        - "*"
 
-  workflow_dispatch:
 
 jobs:
   github-releases-to-discord:
