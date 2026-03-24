@@ -1479,11 +1479,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             )
 
 
-            ADWidth = RPConfig.shared.ADWidth
-            ADHeight = RPConfig.shared.ADHeight
-
-            ODWidth = RPConfig.shared.ODWidth
-            ODHeight = RPConfig.shared.ODHeight
 
                 // 🔹 從 UserDefaults 拿 RTMP 設定
                 rtmpURL = RPConfig.shared.RTMPURL
@@ -1911,6 +1906,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         switch RPConfig.shared.Rotate {
             case 0,180:
                 avfrom = .portrait
+            case 90,270:
+                avfrom = .landscapeRight
             default:
                 break
         }
@@ -1920,13 +1917,16 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             newSize = CGSize(width: CGFloat(width), height: CGFloat(height))
             sendlog(message: "初始更新直向")
             await mediaMixer.setVideoOrientation(.portrait)
+        case .landscapeLeft,.landscapeRight:
+            newSize = CGSize(width: CGFloat(height), height: CGFloat(width))
+            sendlog(message: "初始更新橫向")
+            await mediaMixer.setVideoOrientation(.landscapeRight)
+            
         default:
             newSize = CGSize(width: CGFloat(height), height: CGFloat(width))
             sendlog(message: "初始更新橫向")
             await mediaMixer.setVideoOrientation(.landscapeRight)
-            let bb = await mediaMixer.videoOrientation
-            let b2 = await mediaMixer.videoInputFormats
-            sendlog(message: "\(bb).\(b2)")
+            
         }
 
 
