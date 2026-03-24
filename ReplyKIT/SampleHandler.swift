@@ -953,7 +953,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         rtmpConnection = RTMPConnection()
         rtmpStream = RTMPStream(connection: rtmpConnection!)
-
+        //進行Socket初始化
+        SocketClient.shared.setupConnection()
+        
         ADWidth = RPConfig.shared.ADWidth
         ADHeight = RPConfig.shared.ADHeight
 
@@ -962,8 +964,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         super.init()
 
-        //進行Socket初始化
-        SocketClient.shared.setupConnection()
         registerObservers()
         logger.info("ReplyKit Debug")
 
@@ -1479,6 +1479,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             )
 
 
+            ADWidth = RPConfig.shared.ADWidth
+            ADHeight = RPConfig.shared.ADHeight
+
+            ODWidth = RPConfig.shared.ODWidth
+            ODHeight = RPConfig.shared.ODHeight
 
                 // 🔹 從 UserDefaults 拿 RTMP 設定
                 rtmpURL = RPConfig.shared.RTMPURL
