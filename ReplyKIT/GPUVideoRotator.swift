@@ -295,7 +295,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     }
 
 
-    private let gpuSemaphore = AsyncSemaphore(value: 3)
+    private let gpuSemaphore = AsyncSemaphore(value: 5)
 
 
     func cleanup() async {
@@ -336,7 +336,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     // MARK: Init
     init?(dstW: Int = 0, dstH: Int = 0, debug: Bool = false,
-          maxPoolSize: Int = 2 , useBic:QualityMode = .live) {
+          maxPoolSize: Int = 3 , useBic:QualityMode = .live) {
 
         self.qualityMode = useBic
         self.dstWW = dstW
@@ -535,10 +535,12 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                 // ✅ semaphore 一定要在 GPU 真完成後 signal（現在位置正確）
                 Task {
                     await self.gpuSemaphore.signal()
+                    self.recycleOutput(frameC.outSet)
+                    try await Task.sleep(nanoseconds: 100)
 
                 }
                 self.logTo("GPU Frame down")
-                self.recycleOutput(frameC.outSet)
+                
 
             }
             cmd.commit()
