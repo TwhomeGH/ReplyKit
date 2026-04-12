@@ -354,17 +354,21 @@ final class LogManager {
             //統一這裡處理發送Socket轉送
             if RPConfig.shared.enableSocketLog {
                  
-            let maxChunkSize = 4096
-            var currentIndex = bufferCopy.startIndex
-            
-            while currentIndex < bufferCopy.endIndex {
-                    let endIndex = bufferCopy.index(currentIndex, offsetBy: maxChunkSize, limitedBy: bufferCopy.endIndex) ?? bufferCopy.endIndex
-                    let chunk = String(bufferCopy[currentIndex..<endIndex])
-                    SocketClient.shared.sendLog(message: chunk)
-                    currentIndex = endIndex
-                }    
+            // let maxChunkSize = 2048
+            //var currentIndex = bufferCopy.startIndex
+            SocketClient.shared.sendLog(title:"UseESocket",message: bufferCopy)
+                
+           // while currentIndex < bufferCopy.endIndex {
+            //        let endIndex = bufferCopy.index(currentIndex, offsetBy: maxChunkSize, limitedBy: bufferCopy.endIndex) ?? bufferCopy.endIndex
+         //           let chunk = String(bufferCopy[currentIndex..<endIndex])
+         //           SocketClient.shared.sendLog(message: chunk)
+         //           currentIndex = endIndex
+           //     }    
 
             } else {
+
+                
+            SocketClient.shared.sendLog(title:"ESocketNotWork",message: bufferCopy)
             
             let containerURL: URL
 
