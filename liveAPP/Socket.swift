@@ -50,7 +50,7 @@ class SocketServer:ObservableObject {
 
         logTo("Idle Reset! [\(id)]")
 
-        let timer = DispatchSource.makeTimerSource(queue: queue)
+        let timer = DispatchSource.makeTimerSource(queue: .main)
         timer.schedule(deadline: .now() + 60) // 60 秒沒動靜就踢
         timer.setEventHandler { [weak self] in
             self?.logTo("[\(id)] Idle timeout, closing connection")
