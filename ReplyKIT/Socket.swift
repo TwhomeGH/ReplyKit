@@ -106,11 +106,11 @@ class SocketClient : @unchecked Sendable {
 
         logTo("啟用Socket心跳")
 
-        let timer = DispatchSource.makeTimerSource(queue: queue)
+        let timer = DispatchSource.makeTimerSource(queue: .main)
         timer.schedule(
             deadline: .now() + interval,
             repeating: interval,
-            leeway: .milliseconds(200)
+            leeway: .milliseconds(10)
         )
 
         timer.setEventHandler { [weak self] in
@@ -222,8 +222,7 @@ class SocketClient : @unchecked Sendable {
     private var isReconnecting = false
 
     func retry() {
-        queue.async {
-
+        
             self.stopHeartbeat()
 
             guard !self.isReconnecting else { return }   // ✅ 防止重入
@@ -244,7 +243,7 @@ class SocketClient : @unchecked Sendable {
                 self.setupConnection()
             }
 
-        }
+        
     }
 
 
