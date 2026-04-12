@@ -262,7 +262,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         func signal() {
             if !waiters.isEmpty {
                 let cont = waiters.removeFirst()
-                cont.resume()
+                
             } else {
                 available = min(available + 1, capacity)
 
