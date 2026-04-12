@@ -1586,7 +1586,10 @@ final class PIPServiceMessages {
 
 
         if let msg = fadeCandidate {
-            startFadeAnimation(for: msg)
+            Task {
+                  try await Task.sleep(nanoseconds: 100)
+                  startFadeAnimation(for: msg)
+            }
         }
 
 
