@@ -14,6 +14,16 @@
 > 文檔可能沒有更新 所以實際包含功能會有所區別
 
 
+## AltStore 測試
+
+以下示例版本是 **3.5.3**
+<!-- you can set the alighnment here to left/center/right -->
+<h1 align="left">
+<a href="https://stikstore.app/altdirect/?url=https://raw.githubusercontent.com/TwhomeGH/ReplyKit/refs/heads/main/AltStoreTest3.5.3.json"><img src="https://github.com/StikStore/altdirect/blob/main/assets/png/AltSource_Blue.png?raw=true" target="_blank" width="200">
+</a>
+<a href="https://github.com/TwhomeGH/ReplyKit/releases/download/3.5.3/liveApp_3.5.3.ipa"><img src="https://github.com/StikStore/altdirect/blob/main/assets/png/Download_Blue.png?raw=true" target="_blank" width="200">
+</a>
+</h1>
 
 ## 側載用戶說明
 
