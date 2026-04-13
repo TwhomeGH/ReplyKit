@@ -1,7 +1,7 @@
 {
-  "name": "My Example Source",
-  "subtitle": "A source for all of my apps",
-  "description": "Welcome to my source! Here you'll find all of my apps.",
+  "name": "松鼠推流",
+  "subtitle": "iOS的直播工具",
+  "description": "iPad/iPhone的RTMP直播推流",
   "iconURL": "https://i.imgur.com/pqIZoZo.jpeg",
   "website": "https://altstudio.app",
   "patreonURL": "https://patreon.com/altstudio",
