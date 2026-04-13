@@ -1,0 +1,44 @@
+{
+  "name": "My Example Source",
+  "subtitle": "A source for all of my apps",
+  "description": "Welcome to my source! Here you'll find all of my apps.",
+  "iconURL": "https://i.imgur.com/pqIZoZo.jpeg",
+  "website": "https://altstudio.app",
+  "patreonURL": "https://patreon.com/altstudio",
+  "tintColor": "#6156e2",
+  "featuredApps": [],
+  "apps": [
+    {
+      "name": "松鼠推流",
+      "bundleIdentifier": "nuclear.liveAPP",
+      "marketplaceID": "",
+      "developerName": "Nuclear0709",
+      "subtitle": "iOS的直播工具",
+      "localizedDescription": "此應用用於iPad/iPhone設備進行RTMP直播",
+      "iconURL": "https://raw.githubusercontent.com/TwhomeGH/ReplyKit/refs/heads/main/Docs/IMG_2318.jpeg",
+      "tintColor": "#f80626",
+      "category": "other",
+      "screenshots": [],
+      "versions": [
+        {
+          "downloadURL": "https://github.com/TwhomeGH/ReplyKit/releases/download/3.5.3/liveApp_3.5.3.ipa",
+          "size": 2950000,
+          "version": "3.5.3",
+          "buildVersion": "",
+          "date": "2026-04-13T21:26:00+08:00",
+          "localizedDescription": null,
+          "minOSVersion": null
+        }
+      ],
+      "appPermissions": {
+        "entitlements": [],
+        "privacy": {
+          "NSLocalNetworkUsageDescription": "使用本地網路通信",
+          "NSMicrophoneUsageDescription": "使用麥克風直播"
+        }
+      },
+      "patreon": {}
+    }
+  ],
+  "news": []
+}
