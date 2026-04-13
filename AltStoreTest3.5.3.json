@@ -3,8 +3,7 @@
   "subtitle": "iOS的直播工具",
   "description": "iPad/iPhone的RTMP直播推流",
   "iconURL": "https://i.imgur.com/pqIZoZo.jpeg",
-  "website": "https://altstudio.app",
-  "patreonURL": "https://patreon.com/altstudio",
+  "website": "https://twhomegh.github.io/Home_Page/",
   "tintColor": "#6156e2",
   "featuredApps": [],
   "apps": [
@@ -36,8 +35,7 @@
           "NSLocalNetworkUsageDescription": "使用本地網路通信",
           "NSMicrophoneUsageDescription": "使用麥克風直播"
         }
-      },
-      "patreon": {}
+      }
     }
   ],
   "news": []
