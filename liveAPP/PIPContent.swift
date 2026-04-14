@@ -1455,10 +1455,7 @@ final class PIPServiceMessages {
 
         var anyStillMoving = false // 用來判斷整組訊息是否都完成移動
 
-        Task {
-
-        try await Task.sleep(nanoseconds: 100)
-            
+        
         for group in moving {
             // 計算組的移動距離
             guard let firstMsg = group.first else { continue }
@@ -1499,7 +1496,7 @@ final class PIPServiceMessages {
             abs($0.startY - $0.targetY) < self.snapThreshold
 
         }
-        }
+        
 
         // ✅ 如果整個動畫都完成
         if !anyStillMoving {
@@ -1591,10 +1588,9 @@ final class PIPServiceMessages {
 
 
         if let msg = fadeCandidate {
-            Task {
-                  try await Task.sleep(nanoseconds: 100)
+            
                   startFadeAnimation(for: msg)
-            }
+            
         }
 
 
