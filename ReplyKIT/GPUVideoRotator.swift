@@ -457,10 +457,19 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         
         await gpuSemaphore.wait()
 
+        defer {
+            //釋放釋放資源
+            Task { await gpuSemaphore.signal() }
+        }
+
        
 
 
-        guard let inBuffer = sampleBuffer.imageBuffer else { return nil }
+        guard let inBuffer = sampleBuffer.imageBuffer else { 
+            await gpuSemaphore.signal()
+                                                          
+            return nil 
+        }
         let srcW = CVPixelBufferGetWidth(inBuffer)
         let srcH = CVPixelBufferGetHeight(inBuffer)
         var dstW = (
@@ -491,6 +500,10 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
               let cmd = queue?.makeCommandBuffer() else {
 
             recycleOutput(outSet)
+
+            Task {
+            await gpuSemaphore.signal()
+            }
 
             return nil
         }
@@ -567,7 +580,11 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             kCVPixelBufferHeightKey as String: height
         ]
         CVPixelBufferCreate(nil, width, height, kCVPixelFormatType_420YpCbCr8BiPlanarFullRange, attrs as CFDictionary, &pb)
-        guard let pixelBuffer = pb else { return nil }
+        guard let pixelBuffer = pb else {
+            Task {
+            await gpuSemaphore.signal()
+            }
+                                         return nil }
 
         CVPixelBufferLockBaseAddress(pixelBuffer, [])
 
