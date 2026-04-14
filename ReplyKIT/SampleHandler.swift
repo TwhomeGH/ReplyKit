@@ -2013,11 +2013,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     var lastlogTimeAudio : Double = 0.0
     var logInterval : CFTimeInterval = 1.0
 
-    // MARK:第一幀緩存
-    var pendingVideoBuffer: CMSampleBuffer?
-    var pendingAudioBuffer: CMSampleBuffer?
-    var pendingAudioBufferType: AudioTrackType?
-
 
     override func processSampleBuffer(_ sampleBuffer: CMSampleBuffer, with sampleBufferType: RPSampleBufferType) {
 
@@ -2030,13 +2025,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         switch sampleBufferType {
         case .video:
 
-            guard isSessionReady else {
-                logger.debug("等待連接 Video")
-
-                pendingVideoBuffer = sampleBuffer
-
-                return
-            }
+           
 
             if needVideoConfiguration && !didConfigureVideo {
                 needVideoConfiguration = false
@@ -2062,15 +2051,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             if videoProcessor != nil {
 
-                if pendingVideoBuffer != nil {
-                    if let buffer = pendingVideoBuffer {
-                        videoProcessor?.process(buffer)
-                        pendingVideoBuffer = nil
-                    }
-
-                    sendlog(message: "緩存已送進VideoProcessor處理 1 Buffer")
-                }
-
                 videoProcessor?.process(sampleBuffer)
 
             } else {
@@ -2094,17 +2074,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 let trackType: AudioTrackType = (sampleBufferType == .audioApp) ? .app : .mic
 
-                guard isSessionReady else {
-                    logger.debug("等待連接 Audio")
-
-                    pendingAudioBuffer = sampleBuffer
-                    pendingAudioBufferType = trackType
-
-                    return
-                }
-
-
-
+                
                 if needAudioConfiguration  && !didConfigureAudio {
                     didConfigureAudio = true
                     needAudioConfiguration = false
@@ -2115,24 +2085,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
                 if audioProcessor != nil {
-
-
-                    if pendingAudioBuffer != nil {
-                        if let buffer = pendingAudioBuffer ,let trackType = pendingAudioBufferType{
-
-                            audioProcessor?
-                                .enqueue(
-                                    buffer,
-                                    trackType: trackType
-                                )
-
-                            pendingAudioBuffer = nil
-                            pendingAudioBufferType = nil
-                        }
-
-                        sendlog(message: "緩存已送進AudioProcessor處理 1 Buffer Type:\(trackType)")
-                    }
-
 
                     audioProcessor?
                         .enqueue(sampleBuffer, trackType: trackType)
