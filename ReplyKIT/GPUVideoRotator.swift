@@ -12,9 +12,6 @@ import HaishinKit
 
 
 
-
-
-
 // MARK: - Timestamp Debugger
 
 final class TimestampDebugger {
@@ -29,7 +26,7 @@ final class TimestampDebugger {
 
     var enabled: Bool = RPConfig.shared.enableTimeDebug
 
-    var logEveryNFrames: Int = 10   // 可改成 5 或 10 降低輸出量
+    var logEveryNFrames: Int = 5   // 可改成 5 或 10 降低輸出量
 
     private var frameCount: Int = 0
 
@@ -277,12 +274,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
 
         func reset() {
-
-            // 1️⃣ 全部 resume
-            for cont in waiters {
-                cont.resume()
-            }
-
 
             waiters.removeAll()
 
