@@ -29,7 +29,7 @@ final class TimestampDebugger {
 
     var enabled: Bool = RPConfig.shared.enableTimeDebug
 
-    var logEveryNFrames: Int = 1   // 可改成 5 或 10 降低輸出量
+    var logEveryNFrames: Int = 10   // 可改成 5 或 10 降低輸出量
 
     private var frameCount: Int = 0
 
@@ -536,7 +536,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                 Task {
                     await self.gpuSemaphore.signal()
                     self.recycleOutput(frameC.outSet)
-                    try await Task.sleep(nanoseconds: 100)
 
                 }
                 self.logTo("GPU Frame down")
