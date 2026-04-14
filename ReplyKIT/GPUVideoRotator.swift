@@ -454,6 +454,17 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         guard ensureMetalResources() else {
             return nil
         }
+
+        {
+
+        // ✅ 🔥 先看 GPU 是否已滿
+        let info = gpuSemaphore.info()
+        if info.now == 0 {
+            // 👉 GPU 已滿，直接丟掉這幀（避免排隊造成大卡）
+            logTo("GPU 滿載 可用Frame正在處理 丟幀")
+            return nil
+        }
+
         
         await gpuSemaphore.wait()
 
