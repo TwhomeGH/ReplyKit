@@ -524,6 +524,10 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
             cmd.addCompletedHandler { _ in
 
+                
+                CVPixelBufferLockBaseAddress(frameC.outPB, [])
+                CVPixelBufferUnlockBaseAddress(frameC.outPB, [])
+                                     
                 frameC.inY = nil
                 frameC.inUV = nil
 
