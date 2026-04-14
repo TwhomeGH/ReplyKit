@@ -106,7 +106,7 @@ class SocketClient : @unchecked Sendable {
 
         logTo("啟用Socket心跳")
 
-        let timer = DispatchSource.makeTimerSource(queue: queue)
+        let timer = DispatchSource.makeTimerSource(queue: .main)
         timer.schedule(
             deadline: .now() + interval,
             repeating: interval,
@@ -222,7 +222,9 @@ class SocketClient : @unchecked Sendable {
     private var isReconnecting = false
 
     func retry() {
-        
+
+
+        queue.async {
             self.stopHeartbeat()
 
             guard !self.isReconnecting else { return }   // ✅ 防止重入
@@ -242,7 +244,7 @@ class SocketClient : @unchecked Sendable {
 
                 self.setupConnection()
             }
-
+        }
         
     }
 
@@ -264,7 +266,7 @@ class SocketClient : @unchecked Sendable {
 
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Any?, Error>) in
 
-            Task {
+            queue.async {
                 let inserted = await continuationStore.insert(continuation, for: key)
 
                 if !inserted {
@@ -339,14 +341,6 @@ class SocketClient : @unchecked Sendable {
                     ]
                     self.sendPayload(payload)
 
-                    // 🔥 cancellation hook
-                    Task {
-                        await Task.yield()
-                        if Task.isCancelled {
-                            cont.resume(throwing: CancellationError())
-                        }
-                    }
-
 
             }
 
@@ -390,12 +384,7 @@ class SocketClient : @unchecked Sendable {
                     let payload: [String: Any] = ["type": "requestRTMP"]
                     self.sendPayload(payload)
 
-                    Task {
-                        await Task.yield()
-                        if Task.isCancelled {
-                            cont.resume(throwing: CancellationError())
-                        }
-                    }
+                    
 
 
             }
@@ -438,13 +427,6 @@ class SocketClient : @unchecked Sendable {
                 let payload: [String: Any] = ["type": "logConfig"]
                 self.sendPayload(payload)
 
-                // 🔥 cancellation hook
-                Task {
-                    await Task.yield()
-                    if Task.isCancelled {
-                        cont.resume(throwing: CancellationError())
-                    }
-                }
 
 
 
@@ -517,15 +499,6 @@ class SocketClient : @unchecked Sendable {
         return try await withCheckedThrowingContinuation { cont in
 
             connectContinuations.append(cont)
-
-            // 🔥 cancellation hook
-            Task {
-                await Task.yield()
-                if Task.isCancelled {
-                    cont.resume(throwing: CancellationError())
-                }
-            }
-
         }
     }
 
