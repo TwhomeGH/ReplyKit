@@ -801,6 +801,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     }
 }
 
+}
 
 
 
