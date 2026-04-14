@@ -775,7 +775,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         }
 
         guard let compute = pipeline,
-              let encoder = cmd.makeComputeCommandEncoder() else { return nil }
+              let encoder = cmd.makeComputeCommandEncoder() else { return }
 
 
 
