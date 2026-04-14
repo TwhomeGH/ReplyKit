@@ -1257,6 +1257,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         videoSettings.profileLevel = kVTProfileLevel_H264_High_AutoLevel as String
         videoSettings.videoSize = .init(width: DW, height: DH)
         videoSettings.expectedFrameRate = 60.0
+        videoSettings.maxKeyFrameIntervalDuration = 2.0
 
 
         try? await rtmpStream.setVideoSettings(videoSettings)
