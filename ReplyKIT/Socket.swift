@@ -266,7 +266,7 @@ class SocketClient : @unchecked Sendable {
 
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Any?, Error>) in
 
-            queue.async {
+            Task {
                 let inserted = await continuationStore.insert(continuation, for: key)
 
                 if !inserted {
