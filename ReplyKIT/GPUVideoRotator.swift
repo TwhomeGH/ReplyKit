@@ -455,7 +455,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             return nil
         }
 
-        {
+        
 
         // ✅ 🔥 先看 GPU 是否已滿
         let info = gpuSemaphore.info()
