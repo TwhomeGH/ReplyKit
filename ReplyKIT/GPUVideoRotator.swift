@@ -327,7 +327,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     // MARK: Init
     init?(dstW: Int = 0, dstH: Int = 0, debug: Bool = false,
-          maxPoolSize: Int = 3 , useBic:QualityMode = .live) {
+          maxPoolSize: Int = 10 , useBic:QualityMode = .live) {
 
         self.qualityMode = useBic
         self.dstWW = dstW
@@ -639,7 +639,63 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         return (cv: cv, tex: tex)
     }
 
+
     private func wrapPixelBuffer(
+    _ pixelBuffer: CVPixelBuffer,
+    timing: CMSampleTimingInfo
+) -> CMSampleBuffer? {
+
+    var timing = timing
+
+    // ✅ 用系統時間當 PTS（避免 GPU 延遲影響）
+    let now = CMClockGetTime(CMClockGetHostTimeClock())
+    timing.presentationTimeStamp = now
+
+    // 👉 duration 建議補一下（避免 encoder 猜錯）
+    if timing.duration == .invalid {
+        timing.duration = CMTime(value: 1, timescale: 60) // 60fps
+    }
+
+    let width = CVPixelBufferGetWidth(pixelBuffer)
+    let height = CVPixelBufferGetHeight(pixelBuffer)
+    let size = CGSize(width: width, height: height)
+
+    // ✅ format cache（你這段是對的）
+    if cachedFormatDescription == nil || cachedFormatSize != size {
+        var formatDesc: CMFormatDescription?
+        guard CMVideoFormatDescriptionCreateForImageBuffer(
+            allocator: kCFAllocatorDefault,
+            imageBuffer: pixelBuffer,
+            formatDescriptionOut: &formatDesc
+        ) == noErr,
+        let fmt = formatDesc else {
+            return nil
+        }
+
+        cachedFormatDescription = fmt
+        cachedFormatSize = size
+    }
+
+    guard let fmt = cachedFormatDescription else { return nil }
+
+    // ✅ 這行是關鍵（替換掉原本的）
+    var sampleBuffer: CMSampleBuffer?
+
+    let status = CMSampleBufferCreateReadyWithImageBuffer(
+        allocator: kCFAllocatorDefault,
+        imageBuffer: pixelBuffer,
+        formatDescription: fmt,
+        sampleTiming: &timing,
+        sampleBufferOut: &sampleBuffer
+    )
+
+    guard status == noErr else { return nil }
+
+    return sampleBuffer
+}
+    
+
+    private func oldwrapPixelBuffer(
         _ pixelBuffer: CVPixelBuffer,
         timing: CMSampleTimingInfo
     ) -> CMSampleBuffer? {
