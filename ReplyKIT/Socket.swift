@@ -106,7 +106,7 @@ class SocketClient : @unchecked Sendable {
 
         logTo("啟用Socket心跳")
 
-        let timer = DispatchSource.makeTimerSource(queue: .main)
+        let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(
             deadline: .now() + interval,
             repeating: interval,
