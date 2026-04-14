@@ -448,12 +448,16 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     // MARK: - Enqueue Frame
     func rotateAsync(sampleBuffer: CMSampleBuffer, angle: RotationAngle) async -> CMSampleBuffer? {
-        await gpuSemaphore.wait()
 
-        // 延遲初始化 Metal/TextureCache
+
+         // 延遲初始化 Metal/TextureCache
         guard ensureMetalResources() else {
             return nil
         }
+        
+        await gpuSemaphore.wait()
+
+       
 
 
         guard let inBuffer = sampleBuffer.imageBuffer else { return nil }
@@ -477,6 +481,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
 
         let infoGPU=gpuSemaphore.info()
+        
         self.logTo("GPU Info:\(infoGPU.now):\(infoGPU.max)")
         self.logTo("\(srcW)x\(srcH) -> \(dstW)x\(dstH) angle:\(angle)")
 
@@ -526,13 +531,14 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                 // ✅ semaphore 一定要在 GPU 真完成後 signal（現在位置正確）
                 Task {
                     await self.gpuSemaphore.signal()
-                    self.recycleOutput(frameC.outSet)
-
+                    
                 }
+                self.recycleOutput(frameC.outSet)
                 self.logTo("GPU Frame down")
                 
 
             }
+                                              
             cmd.commit()
         }
 
