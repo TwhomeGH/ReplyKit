@@ -580,11 +580,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             kCVPixelBufferHeightKey as String: height
         ]
         CVPixelBufferCreate(nil, width, height, kCVPixelFormatType_420YpCbCr8BiPlanarFullRange, attrs as CFDictionary, &pb)
-        guard let pixelBuffer = pb else {
-            Task {
-            await gpuSemaphore.signal()
-            }
-                                         return nil }
+        guard let pixelBuffer = pb else { return nil }
 
         CVPixelBufferLockBaseAddress(pixelBuffer, [])
 
