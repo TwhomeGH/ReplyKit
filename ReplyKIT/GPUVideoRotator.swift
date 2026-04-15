@@ -288,7 +288,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     private let gpuSemaphore = AsyncSemaphore(value: 5)
 
-    private let audioProcess: AudioProcessor
+    private let audioProcess: AudioProcessor?
 
 
     func cleanup() async {
@@ -329,7 +329,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     // MARK: Init
     init?(dstW: Int = 0, dstH: Int = 0, debug: Bool = false,
-          maxPoolSize: Int = 10 , useBic:QualityMode = .live,audioProcess:AudioProcessor) {
+          maxPoolSize: Int = 10 , useBic:QualityMode = .live,audioProcess:AudioProcessor?) {
 
         self.qualityMode = useBic
         self.dstWW = dstW
@@ -536,7 +536,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             let now = CMClockGetTime(CMClockGetHostTimeClock())
             timing.presentationTimeStamp = now
 
-            audioProcessor.updateVideoPTS(now)
+            audioProcessor?.updateVideoPTS(now)
                                               
             CMSampleBufferGetSampleTimingInfo(sampleBuffer, at: 0, timingInfoOut: &timing)
             let frameC = FrameContext(timing: timing, outSet: outSet,
