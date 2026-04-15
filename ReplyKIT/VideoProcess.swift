@@ -53,7 +53,7 @@ actor FramePipeline {
                 debug: RPConfig.shared.enableRotateLog,
                 maxPoolSize: RPConfig.shared.BufferCount,
                 useBic: mode,
-                audioProcess:audioProcess
+                audioProcess:audioProcess ?? nil
             )
 
             if rotator == nil {
@@ -86,7 +86,7 @@ final class VideoFrameProcessor {
     var rotator: RPVideoRotatorNV12BatchQueueOptimized?
 
     private let mediaMixer: MediaMixer
-    private let audioProcess: AudioProcessor
+    private let audioProcess: AudioProcessor?
 
     
     
