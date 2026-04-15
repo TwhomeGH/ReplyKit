@@ -104,7 +104,7 @@ final class VideoFrameProcessor {
          sendlog: @escaping (String) -> Void) {
         self.mediaMixer = mediaMixer
 
-        self.audioProces = audioProcess
+        self.audioProcess = audioProcess
         self.sendlog = sendlog
         self.isActive = true
         self.hasPublished = false
