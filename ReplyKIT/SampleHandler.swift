@@ -2054,7 +2054,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
 
-            if videoProcessor != nil & audioProcessor != nil {
+            if videoProcessor != nil and audioProcessor != nil {
 
                 videoProcessor?.process(sampleBuffer)
 
