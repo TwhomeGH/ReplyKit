@@ -274,6 +274,11 @@ final class AudioProcessor : @unchecked Sendable {
 
     var isActive = true
 
+    //音訊PTS校正用
+    private var audioStartPTS: CMTime?
+    private var currentPTS: CMTime = .zero
+    private let hostClock = CMClockGetHostTimeClock()
+    
     private var appAddVolume: Float
     private var micAddVolume: Float
     private var appVolume: Float
@@ -311,6 +316,51 @@ final class AudioProcessor : @unchecked Sendable {
     }
 
 
+
+    private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer) -> CMSampleBuffer {
+    guard let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer),
+          let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc)?.pointee else {
+        return sampleBuffer
+    }
+
+    let sampleRate = asbd.mSampleRate
+    let numSamples = CMSampleBufferGetNumSamples(sampleBuffer)
+
+    let duration = CMTime(
+        value: CMTimeValue(numSamples),
+        timescale: CMTimeScale(sampleRate)
+    )
+
+    var timing = CMSampleTimingInfo(
+        duration: duration,
+        presentationTimeStamp: .zero,
+        decodeTimeStamp: .invalid
+    )
+
+    // 🟢 第一次：對齊系統時間
+    if audioStartPTS == nil {
+        let now = CMClockGetTime(hostClock)
+        audioStartPTS = now
+        currentPTS = now
+    }
+
+    timing.presentationTimeStamp = currentPTS
+
+    // 👉 累加（關鍵）
+    currentPTS = CMTimeAdd(currentPTS, duration)
+
+    var newBuffer: CMSampleBuffer?
+    CMSampleBufferCreateCopyWithNewTiming(
+        allocator: kCFAllocatorDefault,
+        sampleBuffer: sampleBuffer,
+        sampleTimingEntryCount: 1,
+        sampleTimingArray: &timing,
+        sampleBufferOut: &newBuffer
+    )
+
+    return newBuffer ?? sampleBuffer
+}
+    
     func updateVolumes(
         appAdd: Float? = nil,
         micAdd: Float? = nil,
@@ -378,12 +428,16 @@ final class AudioProcessor : @unchecked Sendable {
         // 1️⃣ 做增益
         let amplified = applyGain(sampleBuffer, trackType: trackType)
 
+
+        //時間戳校正
+        let retimed = retimeAudioBuffer(amplified)
+        
         // 音量計算還是可以同步做（很快）
-        processRMS(amplified, trackType: trackType)
+        processRMS(retimed, trackType: trackType)
 
         // 3️⃣ 丟進 AudioPipeline（FIFO，不丟幀）
-        Task(priority: .utility) {
-            await pipeline.enqueue(amplified, track: trackType)
+        Task {
+            await pipeline.enqueue(retimed, track: trackType)
         }
     }
 
