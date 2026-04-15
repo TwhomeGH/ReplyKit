@@ -81,16 +81,19 @@ func getUserDefault<T>(forKey key: String) -> T? {
 
 // ObservableObject 管理碼率
 class BitrateManager: ObservableObject {
-    @Published var multiplier: Int = 39 
+    @Published var multiplier: Int = 60
 
     let base: Int = 100_000       // 每單位 100 kbps
-    @Published var bitrate: Int = 3_900_000    // 實際 bps
+    @Published var bitrate: Int = 6_000_000    // 實際 bps
 
     init() {
         // 嘗試讀取 UserDefaults 的保存值
 
         if let saved: Int = getUserDefault(forKey: "bitRate"), saved != 0 {
             bitrate = saved
+            multiplier = saved / base
+
+            
         } else {
             bitrate = base * multiplier
             saveBitrate()
@@ -100,6 +103,8 @@ class BitrateManager: ObservableObject {
 
     func saveBitrate() {
         setUserDefault(bitrate, forKey: "bitRate")
+        setUserDefault(multiplier, forKey: "bitRateMultiplier")
+        
     }
 
     func updateStreamBitrate() {
@@ -107,6 +112,7 @@ class BitrateManager: ObservableObject {
 
         // multiplier 變動時更新實際 bitrate
         bitrate = base * multiplier
+        
         saveBitrate()
         notifyStream()
 
@@ -2425,8 +2431,10 @@ struct homeView:View{
                 }.frame(maxWidth:.infinity,alignment: .leading)
 
                 VStack(spacing: 10) {
-                    Text("Bitrate: \(manager.bitrate / 1000 ) kbps")
+                    Text("Bitrate: \(manager.bitrate / 100_000 ) kbps 原始：\(manager.bitrate)")
                         .font(.headline)
+                    
+                    Text("Bitrate閘值：\(manager.multiplier) x \(manager.base)")
 
                     if #available(iOS 17.0, *) {
                         Slider(
@@ -2459,7 +2467,7 @@ struct homeView:View{
                     HStack {
                         Text("1000 kbps")
                         Spacer()
-                        Text("10000 kbps")
+                        Text("100000 kbps")
                     }
                 }
                 .padding()
