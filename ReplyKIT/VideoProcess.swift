@@ -53,7 +53,7 @@ actor FramePipeline {
                 debug: RPConfig.shared.enableRotateLog,
                 maxPoolSize: RPConfig.shared.BufferCount,
                 useBic: mode,
-                audioProcess:audioProcess ?? nil
+                audioProcess:audioProcess
             )
 
             if rotator == nil {
