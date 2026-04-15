@@ -9,11 +9,14 @@ actor FramePipeline {
 
     private var rotator: RPVideoRotatorNV12BatchQueueOptimized?
     private let mediaMixer: MediaMixer
+    private let audioProcess: AudioProcessor
+    
     private var latestBuffer: CMSampleBuffer?
     private var isRunning = false
 
-    init(mediaMixer: MediaMixer) {
+    init(mediaMixer: MediaMixer,audioProcess:AudioProcessor) {
         self.mediaMixer = mediaMixer
+        self.audioProcess = audioProcess
     }
 
     // 外部丟幀進來
@@ -49,7 +52,8 @@ actor FramePipeline {
                 dstH: dstRH,
                 debug: RPConfig.shared.enableRotateLog,
                 maxPoolSize: RPConfig.shared.BufferCount,
-                useBic: mode
+                useBic: mode,
+                audioProcess:audioProcess
             )
 
             if rotator == nil {
@@ -82,7 +86,10 @@ final class VideoFrameProcessor {
     var rotator: RPVideoRotatorNV12BatchQueueOptimized?
 
     private let mediaMixer: MediaMixer
-   
+    private let audioProcess: AudioProcessor
+
+    
+    
     private let sendlog: (String) -> Void
 
     var Rotate = RPConfig.shared.Rotate
@@ -93,10 +100,11 @@ final class VideoFrameProcessor {
 
     private lazy var pipeline = FramePipeline(mediaMixer: mediaMixer)
 
-    init(mediaMixer: MediaMixer,
+    init(mediaMixer: MediaMixer,audioProcess:AudioProcessor
          sendlog: @escaping (String) -> Void) {
         self.mediaMixer = mediaMixer
 
+        self.audioProces = audioProcess
         self.sendlog = sendlog
         self.isActive = true
         self.hasPublished = false
@@ -125,7 +133,7 @@ final class VideoFrameProcessor {
     }
 
     func process(_ sampleBuffer: CMSampleBuffer) {
-        Task(priority: .utility) {
+        Task {
             await pipeline.enqueue(sampleBuffer)
         }
     }
