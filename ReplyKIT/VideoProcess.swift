@@ -9,12 +9,12 @@ actor FramePipeline {
 
     private var rotator: RPVideoRotatorNV12BatchQueueOptimized?
     private let mediaMixer: MediaMixer
-    private let audioProcess: AudioProcessor
+    private let audioProcess: AudioProcessor?
     
     private var latestBuffer: CMSampleBuffer?
     private var isRunning = false
 
-    init(mediaMixer: MediaMixer,audioProcess:AudioProcessor) {
+    init(mediaMixer: MediaMixer,audioProcess:AudioProcessor?) {
         self.mediaMixer = mediaMixer
         self.audioProcess = audioProcess
     }
@@ -98,9 +98,9 @@ final class VideoFrameProcessor {
 
     var hasPublished = false
 
-    private lazy var pipeline = FramePipeline(mediaMixer: mediaMixer,audioProcess:audioProcess)
+    private lazy var pipeline = FramePipeline(mediaMixer: mediaMixer,audioProcess:audioProcess ?? nil)
 
-    init(mediaMixer: MediaMixer,audioProcess:AudioProcessor,
+    init(mediaMixer: MediaMixer,audioProcess:AudioProcessor?,
          sendlog: @escaping (String) -> Void) {
         self.mediaMixer = mediaMixer
 
