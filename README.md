@@ -27,12 +27,12 @@
 
 ## AltStore 測試
 
-以下示例版本是 **3.9.3**
+以下示例版本是 **3.9.4**
 <!-- you can set the alighnment here to left/center/right -->
 <h1 align="left">
 <a href="https://stikstore.app/altdirect/?url=https://raw.githubusercontent.com/TwhomeGH/ReplyKit/refs/heads/main/AltStoreTest.json"><img src="https://github.com/StikStore/altdirect/blob/main/assets/png/AltSource_Blue.png?raw=true" target="_blank" width="200">
 </a>
-<a href="https://github.com/TwhomeGH/ReplyKit/releases/download/3.9.3/liveApp_3.9.3.ipa"><img src="https://github.com/StikStore/altdirect/blob/main/assets/png/Download_Blue.png?raw=true" target="_blank" width="200">
+<a href="https://github.com/TwhomeGH/ReplyKit/releases/download/3.9.4/liveApp_3.9.4.ipa"><img src="https://github.com/StikStore/altdirect/blob/main/assets/png/Download_Blue.png?raw=true" target="_blank" width="200">
 </a>
 </h1>
 
