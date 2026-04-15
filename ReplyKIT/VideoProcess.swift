@@ -98,7 +98,7 @@ final class VideoFrameProcessor {
 
     var hasPublished = false
 
-    private lazy var pipeline = FramePipeline(mediaMixer: mediaMixer)
+    private lazy var pipeline = FramePipeline(mediaMixer: mediaMixer,audioProcess:audioProcess)
 
     init(mediaMixer: MediaMixer,audioProcess:AudioProcessor,
          sendlog: @escaping (String) -> Void) {
