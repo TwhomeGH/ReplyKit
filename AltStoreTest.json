@@ -20,12 +20,12 @@
       "screenshots": [],
       "versions": [
         {
-          "downloadURL": "https://github.com/TwhomeGH/ReplyKit/releases/download/3.7.8/liveApp_3.7.8.ipa",
+          "downloadURL": "https://github.com/TwhomeGH/ReplyKit/releases/download/3.9.3/liveApp_3.9.3.ipa",
           "size": 2950000,
-          "version": "3.7.8",
+          "version": "3.9.3",
           "buildVersion": "2.3",
           "date": "2026-04-13T21:26:00+08:00",
-          "localizedDescription": "FixBugs",
+          "localizedDescription": "FixBugs修繕音軌的PTS對齊",
           "minOSVersion": "16.0"
         }
       ],
