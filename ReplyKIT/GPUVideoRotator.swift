@@ -663,15 +663,16 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     timing.presentationTimeStamp = now
 
     // 👉 duration 建議補一下（避免 encoder 猜錯）
-    if timing.duration == .invalid {
-        timing.duration = CMTime(value: 1, timescale: 60) // 60fps
-    }
+    //if timing.duration == .invalid {
+    //    timing.duration = CMTime(value: 1, timescale: 60) // 60fps
+    //}
+    //移交給原來的處理
 
     let width = CVPixelBufferGetWidth(pixelBuffer)
     let height = CVPixelBufferGetHeight(pixelBuffer)
     let size = CGSize(width: width, height: height)
 
-    // ✅ format cache（你這段是對的）
+    // ✅ format cache 
     if cachedFormatDescription == nil || cachedFormatSize != size {
         var formatDesc: CMFormatDescription?
         guard CMVideoFormatDescriptionCreateForImageBuffer(
