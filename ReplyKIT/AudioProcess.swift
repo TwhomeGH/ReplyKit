@@ -11,6 +11,7 @@ import Foundation
 import AVFoundation
 import Accelerate
 import HaishinKit
+import os
 
 enum AudioTrackType: UInt8 {
     case app = 0
@@ -278,6 +279,8 @@ final class AudioProcessor : @unchecked Sendable {
     private var audioStartPTS: CMTime?
     private var currentPTS: CMTime = .zero
     private let hostClock = CMClockGetHostTimeClock()
+
+    private var lastVideoPTS: CMTime?
     
     private var appAddVolume: Float
     private var micAddVolume: Float
@@ -317,6 +320,10 @@ final class AudioProcessor : @unchecked Sendable {
 
 
 
+    func updateVideoPTS(_ pts: CMTime) {
+        lastVideoPTS = pts
+    }
+    
     private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer) -> CMSampleBuffer {
     guard let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer),
           let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc)?.pointee else {
@@ -343,6 +350,24 @@ final class AudioProcessor : @unchecked Sendable {
         audioStartPTS = now
         currentPTS = now
     }
+
+    if let videoPTS = lastVideoPTS {
+    let drift = CMTimeSubtract(currentPTS, videoPTS)
+    let driftSeconds = CMTimeGetSeconds(drift)
+
+    if abs(driftSeconds) > 0.05 {
+        let correction = driftSeconds * 0.1
+
+        let adjust = CMTime(
+            seconds: correction,
+            preferredTimescale: 1000
+        )
+
+        sendlog(message:"音訊發生偏移重新修正")
+        currentPTS = CMTimeSubtract(currentPTS, adjust)
+     }
+    }
+        
 
     timing.presentationTimeStamp = currentPTS
 
