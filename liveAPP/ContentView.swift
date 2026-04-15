@@ -2431,7 +2431,7 @@ struct homeView:View{
                 }.frame(maxWidth:.infinity,alignment: .leading)
 
                 VStack(spacing: 10) {
-                    Text("Bitrate: \(manager.bitrate / 100_000 ) kbps 原始：\(manager.bitrate)")
+                    Text("Bitrate: \(manager.bitrate / 1000 ) kbps 原始：\(manager.bitrate)")
                         .font(.headline)
                     
                     Text("Bitrate閘值：\(manager.multiplier) x \(manager.base)")
@@ -2442,7 +2442,7 @@ struct homeView:View{
                                 get: { Double(manager.multiplier) },
                                 set: { manager.multiplier = Int($0) }
                             ),
-                            in: 10...100,    // 10*100_000 = 1_000_000, 100*100_000 = 100_000_000
+                            in: 10...200,    // 10*100_000 = 1_000_000, 100*100_000 = 100_000_000
                             step: 1,
                             onEditingChanged : { editing in
 
@@ -2467,7 +2467,7 @@ struct homeView:View{
                     HStack {
                         Text("1000 kbps")
                         Spacer()
-                        Text("100000 kbps")
+                        Text("200000 kbps")
                     }
                 }
                 .padding()
