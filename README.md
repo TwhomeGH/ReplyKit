@@ -14,14 +14,23 @@
 > 文檔可能沒有更新 所以實際包含功能會有所區別
 
 
+## 最新修正內容說明
+
+主要是針對音畫時間軸校正
+在最新版本目前加上音軌的PTS校正
+雖然說音軌偏移照理說應該不會發生
+但考量前幾個版本只對畫面做PTS校正 有概率在某些情況下可能出現異常
+所以兩者皆補上了PTS修正
+
+
 ## AltStore 測試
 
-以下示例版本是 **3.7.7**
+以下示例版本是 **3.9.3**
 <!-- you can set the alighnment here to left/center/right -->
 <h1 align="left">
 <a href="https://stikstore.app/altdirect/?url=https://raw.githubusercontent.com/TwhomeGH/ReplyKit/refs/heads/main/AltStoreTest.json"><img src="https://github.com/StikStore/altdirect/blob/main/assets/png/AltSource_Blue.png?raw=true" target="_blank" width="200">
 </a>
-<a href="https://github.com/TwhomeGH/ReplyKit/releases/download/3.7.7/liveApp_3.7.7.ipa"><img src="https://github.com/StikStore/altdirect/blob/main/assets/png/Download_Blue.png?raw=true" target="_blank" width="200">
+<a href="https://github.com/TwhomeGH/ReplyKit/releases/download/3.9.3/liveApp_3.9.3.ipa"><img src="https://github.com/StikStore/altdirect/blob/main/assets/png/Download_Blue.png?raw=true" target="_blank" width="200">
 </a>
 </h1>
 
