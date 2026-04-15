@@ -536,7 +536,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             let now = CMClockGetTime(CMClockGetHostTimeClock())
             timing.presentationTimeStamp = now
 
-            audioProcessor?.updateVideoPTS(now)
+            audioProcess?.updateVideoPTS(now)
                                               
             CMSampleBufferGetSampleTimingInfo(sampleBuffer, at: 0, timingInfoOut: &timing)
             let frameC = FrameContext(timing: timing, outSet: outSet,
