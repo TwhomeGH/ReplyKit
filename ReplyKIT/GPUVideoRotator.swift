@@ -527,6 +527,11 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         return await withCheckedContinuation { (cont: CheckedContinuation<CMSampleBuffer?, Never>) in
 
             var timing = CMSampleTimingInfo()
+
+            // ✅ 用系統時間當 PTS（避免 GPU 延遲影響）
+            let now = CMClockGetTime(CMClockGetHostTimeClock())
+            timing.presentationTimeStamp = now
+                                              
             CMSampleBufferGetSampleTimingInfo(sampleBuffer, at: 0, timingInfoOut: &timing)
             let frameC = FrameContext(timing: timing, outSet: outSet,
                                       inY: ycvTexIn.cv,inUV: uvcvTexIn.cv
