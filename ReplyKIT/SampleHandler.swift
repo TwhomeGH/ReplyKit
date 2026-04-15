@@ -1359,15 +1359,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         volumeNotifier = VolumeNotifier()
 
 
-            videoProcessor = VideoFrameProcessor(
-                mediaMixer: mediaMixer,
-                sendlog: { message in
-                    sendlog(message: message)
-                }
-            )
-
-
-            audioProcessor = AudioProcessor(
+        audioProcessor = AudioProcessor(
                 mediaMixer: mediaMixer,
                 volumeNotifier: volumeNotifier!,
                 appAddVolume: appAddVolume,
@@ -1376,6 +1368,17 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 micVolume: micVolume,
                 onAudioPage: RPConfig.shared.onAudioPage
             )
+        
+            videoProcessor = VideoFrameProcessor(
+                mediaMixer: mediaMixer,
+                audioProcess:audioProcessor,
+                sendlog: { message in
+                    sendlog(message: message)
+                }
+            )
+
+
+            
 
 
 
@@ -1400,6 +1403,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     func rebuildVideo() {
         videoProcessor = VideoFrameProcessor(
             mediaMixer: mediaMixer,
+            audioProcess:audioProcessor,
             sendlog: { message in
                 sendlog(message: message)
             }
