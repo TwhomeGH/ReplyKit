@@ -321,6 +321,31 @@ final class AudioProcessor : @unchecked Sendable {
 
 
     func updateVideoPTS(_ pts: CMTime) {
+         // 🛑 1. 避免時間倒退
+
+    if let last = lastVideoPTS {
+
+        if CMTimeCompare(pts, last) <= 0 {
+
+            return
+
+        }
+        // 🛑 2. 過小變化忽略（避免抖動）
+
+    if let last = lastVideoPTS {
+
+        let diff = CMTimeGetSeconds(CMTimeSubtract(pts, last))
+
+        if diff < 0.005 { // 小於 5ms 不更新
+
+            return
+
+        }
+
+        }
+
+    }
+        
         lastVideoPTS = pts
     }
     
