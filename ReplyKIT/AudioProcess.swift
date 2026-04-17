@@ -328,6 +328,7 @@ private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer, originalTime: CMS
 
     var timingInfo = [originalTime]
     var newBuffer: CMSampleBuffer?
+    
     CMSampleBufferCreateCopyWithNewTiming(
         allocator: kCFAllocatorDefault,
         sampleBuffer: sampleBuffer,

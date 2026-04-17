@@ -484,7 +484,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
         timing = originalTime
 
-        
+
         
         guard let inBuffer = sampleBuffer.imageBuffer else { 
             await gpuSemaphore.signal()
@@ -621,7 +621,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
               let uvTex = makeTexture(from: pixelBuffer, planeIndex: 1) else { return nil }
 
         return ReusableOutputSet(pixelBuffer: pixelBuffer, yTex: yTex.tex, uvTex: uvTex.tex,
-                                 cvY: yTex.cv, cvUV: uvTex.cv, lastUsed: Date())
+                                cvY: yTex.cv, cvUV: uvTex.cv, lastUsed: Date())
     }
 
     private func recycleOutput(_ outSet: ReusableOutputSet) {
@@ -667,17 +667,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     timing: CMSampleTimingInfo
 ) -> CMSampleBuffer? {
 
-    var timing = timing
-
-    // ✅ 用系統時間當 PTS（避免 GPU 延遲影響）
-    let now = CMClockGetTime(CMClockGetHostTimeClock())
-    timing.presentationTimeStamp = now
-
-    // 👉 duration 建議補一下（避免 encoder 猜錯）
-    //if timing.duration == .invalid {
-    //    timing.duration = CMTime(value: 1, timescale: 60) // 60fps
-    //}
-    //移交給原來的處理
 
     let width = CVPixelBufferGetWidth(pixelBuffer)
     let height = CVPixelBufferGetHeight(pixelBuffer)
@@ -704,11 +693,13 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     // ✅ 這行是關鍵（替換掉原本的）
     var sampleBuffer: CMSampleBuffer?
 
+    var timingInfo = [ timing ] // CMSampleBufferCreateReadyWithImageBuffer 需要陣列形式的 timing info
+
     let status = CMSampleBufferCreateReadyWithImageBuffer(
         allocator: kCFAllocatorDefault,
         imageBuffer: pixelBuffer,
         formatDescription: fmt,
-        sampleTiming: &timing,
+        sampleTiming: &timingInfo,
         sampleBufferOut: &sampleBuffer
     )
 

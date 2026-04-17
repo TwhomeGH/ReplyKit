@@ -385,7 +385,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             }
 
         case "orientationChanged":
-        
+
             #if os(iOS)
                         let orientationValue = SharedDefaults.group?.integer(
                             forKey: "Orientation"
@@ -395,7 +395,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
             #else
-                        print("No Make tihs!")
+                    print("No Make tihs!")
 
             #endif
 
@@ -406,9 +406,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
        
 
         case "DebugRotate":
-            var Rlog=SharedDefaults.group?.bool(forKey: "EnableRotatelog") ?? false
+
 
             Task {
+                var Rlog=SharedDefaults.group?.bool(forKey: "EnableRotatelog") ?? false
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "EnableRotatelog", type: "Bool") {
 
@@ -433,9 +434,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "DebugTime":
-            var Rlog=SharedDefaults.group?.bool(forKey: "EnableTimeDebug") ?? false
+            
 
             Task {
+
+                var Rlog=SharedDefaults.group?.bool(forKey: "EnableTimeDebug") ?? false
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "EnableTimeDebug", type: "Bool") {
 
@@ -461,11 +464,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "RotateOriginal":
-            var Rlog=SharedDefaults.group?.bool(
-                forKey: "RotateOriginal"
-            ) ?? false
+            
 
             Task {
+                
+                var Rlog=SharedDefaults.group?.bool(
+                forKey: "RotateOriginal"
+            ) ?? false
 
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "RotateOriginal", type: "Bool") {
@@ -495,9 +500,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "Rotate":
-            var Rlog=SharedDefaults.group?.integer(forKey: "Rotate") ?? 90
 
             Task {
+                var Rlog=SharedDefaults.group?.integer(forKey: "Rotate") ?? 90
 
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "Rotate", type: "Int") {
@@ -559,10 +564,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "SocketLog":
-            var Rlog=SharedDefaults.group?.bool(forKey: "EnableSocketlog") ?? false
+            
 
             Task {
-              
+                var Rlog=SharedDefaults.group?.bool(forKey: "EnableSocketlog") ?? false
+
+                
                     if let raw = try await SocketClient.shared.requestSet(for: "EnableSocketlog", type: "Bool") {
 
                         if let av = raw as? Bool {
