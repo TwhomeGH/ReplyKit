@@ -706,7 +706,7 @@ private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
     ///   - pixelBuffer: The pixel buffer to wrap.
     ///   - timing: The timing information for the sample buffer.
     /// - Returns: A CMSampleBuffer containing the pixel buffer and timing, or nil on failure.
-    private func wrapPixelBuffer(
+   private func wrapPixelBuffer(
     _ pixelBuffer: CVPixelBuffer,
     timing: CMSampleTimingInfo
 ) -> CMSampleBuffer? {
@@ -728,13 +728,14 @@ private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
             cachedFormatSize = size
         } else {
             sendlog(message: "CMVideoFormatDescriptionCreateForImageBuffer failed: \(status)")
-            return nil   // ❌ 不要傳 nil 給 formatDescription，直接結束
+            // ❌ 不要傳 nil，直接 fallback
+            return fallbackSampleBuffer(pixelBuffer: pixelBuffer, timing: timing)
         }
     }
 
     guard let fmt = cachedFormatDescription else {
         sendlog(message: "No valid formatDescription available")
-        return nil
+        return fallbackSampleBuffer(pixelBuffer: pixelBuffer, timing: timing)
     }
 
     var sampleBuffer: CMSampleBuffer?
@@ -743,16 +744,49 @@ private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
     let status = CMSampleBufferCreateReadyWithImageBuffer(
         allocator: kCFAllocatorDefault,
         imageBuffer: pixelBuffer,
-        formatDescription: fmt,   // ✅ 一定要有有效的 fmt
+        formatDescription: fmt,
         sampleTiming: &timingInfo,
         sampleBufferOut: &sampleBuffer
     )
 
     if status != noErr {
         sendlog(message: "CMSampleBufferCreateReadyWithImageBuffer failed: \(status)")
+        return fallbackSampleBuffer(pixelBuffer: pixelBuffer, timing: timing)
+    }
+
+    return sampleBuffer
+}
+
+// MARK: - Fallback SampleBuffer
+// 在 wrapPixelBuffer 失敗時使用，至少包裝 pixelBuffer，讓 pipeline 不會中斷
+
+private func fallbackSampleBuffer(
+    pixelBuffer: CVPixelBuffer,
+    timing: CMSampleTimingInfo
+) -> CMSampleBuffer? {
+    var formatDesc: CMFormatDescription?
+    let status = CMVideoFormatDescriptionCreateForImageBuffer(
+        allocator: kCFAllocatorDefault,
+        imageBuffer: pixelBuffer,
+        formatDescriptionOut: &formatDesc
+    )
+    guard status == noErr, let fmt = formatDesc else {
+        sendlog(message: "Fallback also failed: \(status)")
         return nil
     }
 
+    var sampleBuffer: CMSampleBuffer?
+    var timingInfo = timing
+    let createStatus = CMSampleBufferCreateReadyWithImageBuffer(
+        allocator: kCFAllocatorDefault,
+        imageBuffer: pixelBuffer,
+        formatDescription: fmt,
+        sampleTiming: &timingInfo,
+        sampleBufferOut: &sampleBuffer
+    )
+    if createStatus != noErr {
+        sendlog(message: "Fallback CMSampleBufferCreateReadyWithImageBuffer failed: \(createStatus)")
+    }
     return sampleBuffer
 }
 
