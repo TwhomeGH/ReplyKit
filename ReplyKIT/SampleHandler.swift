@@ -990,12 +990,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 // 0 是 app 音頻 track
                 if volume >= 1.0 {
                     
-                    tracks = .default
+                    track = .default
 
                 } else {
                     
                 
-                    tracks.volume = volume  
+                    track.volume = volume  
                 
                 }   // volume 值 0.0 ~ 1.0
                 
