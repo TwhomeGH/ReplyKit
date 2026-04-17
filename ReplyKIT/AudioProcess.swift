@@ -206,14 +206,14 @@ func percentageToVolume(_ percentage: Double) -> Double {
     let clamped = max(0, min(1, percentage))
 
     // 指數曲線 exponent < 1 → 前段變化慢，後段變化快
-    let exponent: Double = 2.5
+    let exponent: Double = 0.5
     return pow(clamped, exponent)
 }
 
 // MARK: 真實音量 (0~1) → UI 百分比 (0~1)
 func volumeToPercentage(_ volume: Double) -> Double {
     let clamped = max(0, min(1, volume))
-    let exponent: Double = 2.5
+    let exponent: Double = 0.5
     return pow(clamped, 1.0 / exponent)
 }
 

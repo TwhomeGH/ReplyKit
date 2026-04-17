@@ -272,7 +272,7 @@ func percentageToVolume(_ percentage: Double) -> Double {
     let clamped = max(0, min(1, percentage))
 
     // 指數曲線 exponent < 1 → 前段變化慢，後段變化快
-    let exponent: Double = 2.5
+    let exponent: Double = 0.5
     return pow(clamped, exponent)
 }
 
@@ -428,14 +428,15 @@ struct LiveVolumeView: View {
                     get: { volumeToPercentage(appVolume) },            // 從 appVolume 轉百分比
                     set: { newValue in
 
-                            // 加上邊界保護
-                            if newValue >= 0.98 {
+                             // 邊界保護，避免浮點誤差
+                            if abs(newValue - 1.0) < 0.001 {
                                 appVolume = 1.0
-                            } else if newValue <= 0.001 {
+                            } else if abs(newValue - 0.0) < 0.001 {
                                 appVolume = 0.0
                             } else {
-                            appVolume = percentageToVolume(newValue)      // 將百分比轉回 appVolume
+                                appVolume = percentageToVolume(newValue)
                             }
+
                         }
                     )
                         , in: 0...1, step: 0.01,
@@ -466,7 +467,7 @@ struct LiveVolumeView: View {
 
                         sendlog(message: String(
                             format: "應用音量更新: %.2f%% (真實值: %.5f)",
-                            volumeToPercentage(appVolume),
+                            appVolume * 100,
                             appVolume
                         ))
 
@@ -515,15 +516,16 @@ struct LiveVolumeView: View {
                     get: { volumeToPercentage(micVolume) },            // 從 micVolume 轉百分比
                     set: { newValue in
 
-                            // 加上邊界保護
-                            if newValue >= 0.98 {
+                           // 邊界保護，避免浮點誤差
+                            if abs(newValue - 1.0) < 0.001 {
                                 micVolume = 1.0
-                            } else if newValue <= 0.001 {
+                            } else if abs(newValue - 0.0) < 0.001 {
                                 micVolume = 0.0
                             } else {
-                                // 將百分比轉回 micVolume
                                 micVolume = percentageToVolume(newValue)
-                            }      
+                            }
+
+
                         }
                     )
 
@@ -534,7 +536,7 @@ struct LiveVolumeView: View {
                         //let realVolume = percentageToVolume(Mic_percentage)
                         sendlog(message: String(
                             format: "麥克風音量更新: %.2f%% (真實值: %.5f)",
-                            volumeToPercentage(micVolume),
+                            micVolume * 100,
                             micVolume
                         ))
 
