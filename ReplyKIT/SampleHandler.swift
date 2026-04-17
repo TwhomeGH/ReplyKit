@@ -2021,17 +2021,23 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         guard isBroadcasting, !isStopping else { return }
 
+        // 這裡的 sampleBuffer 是 ReplayKit 給的原始幀數據，還沒有經過我們的處理器修改
+        //let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+        
 
-        let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-        lastTimestamp = timestamp
 
-        var timing = CMSampleTimingInfo()
-        // ✅ 用系統時間當 PTS 統一來源
         let now = CMClockGetTime(CMClockGetHostTimeClock())
-        timing.presentationTimeStamp = now
 
-        CMSampleBufferGetSampleTimingInfo(sampleBuffer, at: 0, timingInfoOut: &timing)
+        let duration = CMSampleBufferGetDuration(sampleBuffer)
 
+        var timing = CMSampleTimingInfo(
+            duration: duration,
+            presentationTimeStamp: now,
+            decodeTimeStamp: CMTime.invalid
+        )
+
+
+        lastTimestamp = timing.presentationTimeStamp
 
         switch sampleBufferType {
         case .video:
