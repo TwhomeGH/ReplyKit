@@ -422,6 +422,8 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     private func logTo(_ message: String) { if debug { sendlog(message: "[GPU Rotator] \(message)") } }
 
 
+    var timing: CMSampleTimingInfo?
+    
     private final class FrameContext:@unchecked Sendable {
 
         var timing: CMSampleTimingInfo
@@ -455,7 +457,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
 
     // MARK: - Enqueue Frame
-    func rotateAsync(sampleBuffer: CMSampleBuffer,originalTime: CMSampleTimingInfo, angle: RotationAngle) async -> CMSampleBuffer? {
+    func rotateAsync(sampleBuffer: CMSampleBuffer,originalTime: CMSampleTimingInfo?, angle: RotationAngle) async -> CMSampleBuffer? {
 
 
          // 延遲初始化 Metal/TextureCache
@@ -482,8 +484,25 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         }
 
        
+        if let originalTime {
+            timing = originalTime
 
-        originalTimeBAK = originalTime
+        } else {
+            
+            let videoPTS = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+            let duration = CMSampleBufferGetDuration(sampleBuffer)
+            let decodeTime = CMSampleBufferGetDecodeTimeStamp(sampleBuffer)
+                
+        
+            
+            timing = CMSampleTimingInfo(
+                duration: duration,
+                presentationTimeStamp: videoPTS,
+                decodeTimeStamp: decodeTime
+            )
+
+        }
+        
         guard let inBuffer = sampleBuffer.imageBuffer else { 
             await gpuSemaphore.signal()
                                                           
@@ -509,7 +528,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
 
      
-        self.logTo("GPU Info:\(info.now):\(info.max)")
+        self.logTo("GPU Info:\(info.now):\(info.max) \(self.timing)")
         self.logTo("\(srcW)x\(srcH) -> \(dstW)x\(dstH) angle:\(angle)")
 
         guard let outSet = getReusableOutput(width: dstW, height: dstH) else { return nil }
@@ -533,16 +552,9 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
         return await withCheckedContinuation { (cont: CheckedContinuation<CMSampleBuffer?, Never>) in
 
-                                                                                            
-            CMSampleBufferGetSampleTimingInfo(sampleBuffer, at: 0, timingInfoOut: &timing)
-
-
-            let VideoPTS = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-            let duration = CMSampleBufferGetDuration(sampleBuffer)
-            let decodeTime = CMSampleBufferGetDecodeTimeStamp(sampleBuffer)
-            timing.duration = duration
-            timing.decodeTimeStamp = decodeTime
                                               
+            CMSampleBufferGetSampleTimingInfo(sampleBuffer, at: 0, timingInfoOut: &timing)
+                               
             let frameC = FrameContext(timing: timing, outSet: outSet,
                                       inY: ycvTexIn.cv,inUV: uvcvTexIn.cv
             )
