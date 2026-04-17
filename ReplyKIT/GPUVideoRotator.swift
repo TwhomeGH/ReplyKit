@@ -542,7 +542,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             
             if let lastPTSS = lastPTS {                                  
                 if now < lastPTSS {
-                    timing.presentationTimeStamp = lastPTS + CMTime(value: 1, timescale: 60)
+                    timing.presentationTimeStamp = lastPTSS + CMTime(value: 1, timescale: 60)
                 }
 
             }
