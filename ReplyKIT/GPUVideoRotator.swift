@@ -195,7 +195,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             capacity = value
             available = value
 
-            snapshot.set(Info(now: value, max: value))
+            snapshot = Info(now: value, max: value)
         }
 
 
@@ -256,7 +256,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
         
         func info() -> Info {
-            return snapshot.get()
+            return snapshot
         }
 
 
@@ -279,14 +279,14 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     func cleanup() async {
         guard isActive else { return }
         isActive = false   // 先阻止新 GPU 任務進來
-        cleanupD()
+        cleanupResources()
     }
 
 
     // MARK: - Cleanup
-    func cleanupD() {
+    func cleanupResources() {
         isActive = false
-        isMetalResources = false
+        hasMetalResources = false
 
 
 
@@ -311,7 +311,9 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         pipelineBilinear = nil
         pipelineBicubic = nil
 
-        logTo("cleanup called")
+        let poolCount = outputPool.count
+        let bufferCount = outputPool.values.reduce(0) { $0 + $1.count }
+        logTo("cleanup called - releasing \(poolCount) output pool(s), \(bufferCount) pooled buffer(s)")
     }
 
     // MARK: Init
@@ -336,15 +338,15 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     }
 
-    var isMetalResources = false
+    var hasMetalResources = false
 
     private func ensureMetalResources() -> Bool {
 
-        guard isMetalResources == false else {
+        guard hasMetalResources == false else {
             return true
         }
 
-        isMetalResources = true
+        hasMetalResources = true
 
         // 1️⃣ 初始化 MTLDevice + CommandQueue
         if queue == nil {
@@ -620,7 +622,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     }
 
     func recycleOutput(_ outSet: ReusableOutputSet) {
-    }
+    
         let height = CVPixelBufferGetHeight(outSet.pixelBuffer)
         let key = (width, height)
 
@@ -636,7 +638,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         outputPool[key] = pool
 
         outputPoolLock.unlock()
-    }
+         
     }
 
     private func makeTexture(from pixelBuffer: CVPixelBuffer, planeIndex: Int) -> (cv: CVMetalTexture, tex: MTLTexture)? {
