@@ -351,7 +351,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
         
 
-        isMetalResources = false
+        hasMetalResources = false
 
 
         sendlog(
@@ -477,11 +477,15 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         
 
         // ✅ 🔥 先看 GPU 是否已滿
-        let info = gpuSemaphore.info()
+        Task {
+
+        let info = await gpuSemaphore.info()
         if info.now == 0 {
             // 👉 GPU 已滿，直接丟掉這幀（避免排隊造成大卡）
             logTo("GPU 滿載 可用Frame正在處理 丟幀")
             return nil
+        }
+
         }
 
         
@@ -549,7 +553,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             var didResume = false
             let timeout: UInt64 = 2_000_000_000 // 2 seconds in nanoseconds
 
-            var frameC = FrameContext(timing: originalTime, outSet: outSet,
+            let frameC = FrameContext(timing: originalTime, outSet: outSet,
                                         inY: ycvTexIn.cv, inUV: uvcvTexIn.cv
             )
 
@@ -644,7 +648,7 @@ private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
 
     guard let yTex = makeTexture(from: pixelBuffer, planeIndex: 0),
           let uvTex = makeTexture(from: pixelBuffer, planeIndex: 1) else {
-        CVPixelBufferRelease(pixelBuffer)
+        
         return nil
     }
 

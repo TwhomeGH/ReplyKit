@@ -386,18 +386,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         case "orientationChanged":
 
-            #if os(iOS)
-                        let orientationValue = SharedDefaults.group?.integer(
-                            forKey: "Orientation"
-                        ) ?? 0
-
-
-
-
-            #else
-                    print("No Make tihs!")
-
-            #endif
+            print("棄用組件方法")
+            
 
         case "SocketRetry":
             SocketClient.shared.retry()
