@@ -5,6 +5,15 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "type": "swift",
+            "request": "launch",
+            "name": "Launch Swift Executable",
+            "program": "${workspaceRoot}/.build/debug/<program>",
+            "args": [],
+            "env": {},
+            "cwd": "${workspaceRoot}"
+        },
+        {
             "type": "lldb-dap",
             "request": "launch",
             "name": "Debug",
