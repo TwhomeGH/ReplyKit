@@ -379,7 +379,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     appVolume=Float(newVolume)
                     audioProcessor.updateVolumes(app: appVolume)
 
-                    await updateAppAudioVolume(newVolume)
+                    await updateAppAudioVolume(appVolume)
 
 
             }
@@ -393,7 +393,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             SocketClient.shared.retry()
             sendlog(message: "重連Socket!")
 
-        
+
 
         case "DebugRotate":
 
