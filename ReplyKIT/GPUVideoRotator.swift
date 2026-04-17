@@ -291,9 +291,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
 
     private let gpuSemaphore = AsyncSemaphore(value: 5)
-
-    private let audioProcess: AudioProcessor?
-
+    
 
     func cleanup() async {
         guard isActive else { return }
@@ -333,7 +331,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     // MARK: Init
     init?(dstW: Int = 0, dstH: Int = 0, debug: Bool = false,
-          maxPoolSize: Int = 10 , useBic:QualityMode = .live,audioProcess:AudioProcessor?) {
+          maxPoolSize: Int = 10 , useBic:QualityMode = .live ) {
 
         self.qualityMode = useBic
         self.dstWW = dstW
@@ -341,7 +339,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         self.debug = debug
         self.maxPoolSize = maxPoolSize
 
-        self.audioProcess = audioProcess
+        
 
         isMetalResources = false
 

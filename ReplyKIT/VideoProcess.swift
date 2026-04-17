@@ -65,8 +65,7 @@ actor FramePipeline {
                 dstH: dstRH,
                 debug: RPConfig.shared.enableRotateLog,
                 maxPoolSize: RPConfig.shared.BufferCount,
-                useBic: mode,
-                audioProcess:audioProcess
+                useBic: mode
             )
 
             if rotator == nil {
@@ -83,7 +82,7 @@ actor FramePipeline {
 
         guard let rotated = await rotator.rotateAsync(
             sampleBuffer: sampleBuffer,
-            originalTime: oringintime,
+            originalTime: oringinaltime,
             angle: angle
         ) else {
             print("GPU Fail!")
