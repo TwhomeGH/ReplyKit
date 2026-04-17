@@ -381,24 +381,36 @@ final class AudioProcessor : @unchecked Sendable {
          } 
     }
 
+
+
 if let videoPTS = lastVideoPTS {
+
     let drift = CMTimeSubtract(currentPTS, videoPTS)
     let driftSeconds = CMTimeGetSeconds(drift)
 
-    if abs(driftSeconds) > 0.1 { //100ms
-        let adjustSeconds = -driftSeconds * 0.1
+    // 🚨 1. 大誤差：直接對齊（避免永遠追）
+    if abs(driftSeconds) > 1.0 {
+        currentPTS = videoPTS
+
+        sendlog(message: String(format: "🚨 音訊時間軸重置 drift: %.3fs", driftSeconds))
+    }
+    
+    // 🟡 2. 中小誤差：輕微修正（不要太大力）
+    else if abs(driftSeconds) > 0.1 {
+        let adjustSeconds = -driftSeconds * 0.05   // ← 原本 0.1 改小
         let adjust = CMTime(seconds: adjustSeconds, preferredTimescale: 1000)
 
         currentPTS = CMTimeAdd(currentPTS, adjust)
 
-        if let last = lastAudioPTS, CMTimeCompare(currentPTS, last) <= 0 {
-            // 使用實際 duration 來確保時間軸連續
-            currentPTS = CMTimeAdd(last, duration)
-        }
-        sendlog(message: String(format: "校正音訊時間軸，drift: %.3fs, adjust: %.3fs, newPTS: %.3fs", driftSeconds, adjustSeconds, CMTimeGetSeconds(currentPTS)))
-        
+        sendlog(message: String(format: "校正音訊 drift: %.3fs, adjust: %.3fs", driftSeconds, adjustSeconds))
+    }
+
+    // 🟢 3. 保底：確保時間單調遞增（這段你原本是對的）
+    if let last = lastAudioPTS, CMTimeCompare(currentPTS, last) <= 0 {
+        currentPTS = CMTimeAdd(last, duration)
     }
 }
+
         
 
     timing.presentationTimeStamp = currentPTS
