@@ -337,7 +337,7 @@ final class AudioProcessor : @unchecked Sendable {
 
         let diff = CMTimeGetSeconds(CMTimeSubtract(pts, last))
 
-        if diff < 0.005 { // 小於 5ms 不更新
+        if diff < 0.1 { // 小於 100ms 不更新
 
             return
 
@@ -377,9 +377,7 @@ final class AudioProcessor : @unchecked Sendable {
             currentPTS = videoPTS
             lastAudioPTS = videoPTS
 
-         } else {
-             return
-         }
+         } 
     }
 
     if let videoPTS = lastVideoPTS {
