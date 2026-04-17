@@ -603,7 +603,11 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         ]
         let status = CVPixelBufferCreate(nil, width, height, kCVPixelFormatType_420YpCbCr8BiPlanarFullRange, attrs as CFDictionary, &pb)
         guard status == kCVReturnSuccess, let pixelBuffer = pb else {
+
             logTo("CVPixelBufferCreate failed with status: \(status)")
+            return nil
+        }
+
         CVPixelBufferLockBaseAddress(pixelBuffer, [])
 
         // 初始化 Y/UV 平面為黑畫面（Y=0, UV=128）
@@ -612,7 +616,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         memset(CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 1), 128,
                CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 1) * CVPixelBufferGetHeightOfPlane(pixelBuffer, 1))
         guard let yTex = makeTexture(from: pixelBuffer, planeIndex: 0),
-              let uvTex = makeTexture(from: pixelBuffer, planeIndex: 1) else {
+                let uvTex = makeTexture(from: pixelBuffer, planeIndex: 1) else {
             // 釋放已建立但未用到的 pixelBuffer，避免記憶體洩漏
             CVPixelBufferRelease(pixelBuffer)
             return nil
@@ -638,10 +642,10 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         outputPool[key] = pool
 
         outputPoolLock.unlock()
-         
+
     }
 
-    private func makeTexture(from pixelBuffer: CVPixelBuffer, planeIndex: Int) -> (cv: CVMetalTexture, tex: MTLTexture)? {
+    func makeTexture(from pixelBuffer: CVPixelBuffer, planeIndex: Int) -> (cv: CVMetalTexture, tex: MTLTexture)? {
         guard let cache = textureCache else { return nil }
         let width = CVPixelBufferGetWidthOfPlane(pixelBuffer, planeIndex)
         let height = CVPixelBufferGetHeightOfPlane(pixelBuffer, planeIndex)
@@ -651,6 +655,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         let status = CVMetalTextureCacheCreateTextureFromImage(nil, cache, pixelBuffer, nil,
                                                                 pixelFormat, width, height, planeIndex, &cvTex)
         guard status == kCVReturnSuccess, let cv = cvTex, let tex = CVMetalTextureGetTexture(cv) else { return nil }
+
         return (cv: cv, tex: tex)
     }
 
