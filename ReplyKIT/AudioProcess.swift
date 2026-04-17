@@ -372,10 +372,9 @@ final class AudioProcessor : @unchecked Sendable {
 
     // 🟢 第一次：對齊系統時間
     if audioStartPTS == nil {
-        let now = CMClockGetTime(hostClock)
-        audioStartPTS = now
-        currentPTS = now
-        lastAudioPTS = now
+        audioStartPTS = videoPTS
+        currentPTS = videoPTS
+        lastAudioPTS = videoPTS
     }
 
     if let videoPTS = lastVideoPTS {
