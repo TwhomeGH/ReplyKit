@@ -281,6 +281,7 @@ final class AudioProcessor : @unchecked Sendable {
     private let hostClock = CMClockGetHostTimeClock()
 
     private var lastVideoPTS: CMTime?
+    private var lastAudioPTS: CMTime?
     
     private var appAddVolume: Float
     private var micAddVolume: Float
@@ -374,20 +375,27 @@ final class AudioProcessor : @unchecked Sendable {
         let now = CMClockGetTime(hostClock)
         audioStartPTS = now
         currentPTS = now
+        lastAudioPTS = now
     }
 
     if let videoPTS = lastVideoPTS {
     let drift = CMTimeSubtract(currentPTS, videoPTS)
     let driftSeconds = CMTimeGetSeconds(drift)
 
-    if abs(driftSeconds) > 0.05 {
+    if abs(driftSeconds) > 0.1 { //100ms
    
-        let adjust = CMTime(
-            seconds: -driftSeconds,
-            preferredTimescale: 1000
-        )
-
+        let adjustSeconds = -driftSeconds * 0.1
+        let adjust = CMTime(seconds: adjustSeconds, preferredTimescale: 1000)
+       
         currentPTS = CMTimeAdd(currentPTS, adjust)
+
+        if let last = lastAudioPTS {
+            if CMTimeCompare(currentPTS, last) <= 0 {
+                currentPTS = CMTimeAdd(last, CMTime(value: 1, timescale: 1000)) // +1ms
+            }
+        }
+
+        
     
         sendlog(message: "音訊偏移 \(driftSeconds)s，已修正")
        
@@ -396,9 +404,10 @@ final class AudioProcessor : @unchecked Sendable {
         
 
     timing.presentationTimeStamp = currentPTS
-
+        
     // 👉 累加（關鍵）
     currentPTS = CMTimeAdd(currentPTS, duration)
+    lastAudioPTS = currentPTS
 
     var newBuffer: CMSampleBuffer?
     CMSampleBufferCreateCopyWithNewTiming(
