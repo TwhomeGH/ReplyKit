@@ -372,9 +372,14 @@ final class AudioProcessor : @unchecked Sendable {
 
     // 🟢 第一次：對齊系統時間
     if audioStartPTS == nil {
-        audioStartPTS = videoPTS
-        currentPTS = videoPTS
-        lastAudioPTS = videoPTS
+         if let videoPTS = lastVideoPTS {
+            audioStartPTS = videoPTS
+            currentPTS = videoPTS
+            lastAudioPTS = videoPTS
+
+         } else {
+             return
+         }
     }
 
     if let videoPTS = lastVideoPTS {
