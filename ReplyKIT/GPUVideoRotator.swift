@@ -767,7 +767,3 @@ extension CVMetalTextureCache {
     }
 }
 
-
-
-
-
