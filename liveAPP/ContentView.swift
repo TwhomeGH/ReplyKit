@@ -417,7 +417,7 @@ struct LiveVolumeView: View {
 
             VStack {
 
-                Text("App音量: \(String(format: "%.0f%%", appVolume * 100))")
+                Text("App音量: \(String(format: "%.0f%%", volumeToPercentage(appVolume))) 原始:\(String(format: "%.2f%", appVolume * 100))")
                     .font(.headline)
 
 
@@ -504,7 +504,7 @@ struct LiveVolumeView: View {
 
             VStack {
                 // 顯示用：直接顯示真實音量百分比
-                Text("Mic音量: \(String(format: "%.0f%%", micVolume * 100))")
+                Text("Mic音量: \(String(format: "%.0f%%", volumeToPercentage(micVolume))) 原始:\(String(format: "%.2f%", micVolume * 100))")
                     .font(.headline)
 
 
