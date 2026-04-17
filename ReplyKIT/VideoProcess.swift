@@ -24,7 +24,9 @@ actor FramePipeline {
     // 外部丟幀進來
     func enqueue(_ sampleBuffer: CMSampleBuffer,oringintime: CMSampleTimingInfo) {
         latestBuffer = sampleBuffer // 只保留最新幀（低延遲策略）
-        lastestPTS = oringintime 
+        
+        latestPTS = oringintime 
+        
         if !isRunning {
             isRunning = true
             Task {
