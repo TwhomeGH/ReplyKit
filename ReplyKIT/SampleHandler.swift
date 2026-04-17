@@ -1004,15 +1004,16 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     func updateMicAudioVolume(_ volume: Float) async {
         var settings = await mediaMixer.audioMixerSettings
 
+        
              // 1 是 麥克風 track
             if volume >= 1.0 {
                 
-                settings.tracks[1] = .default
+                settings.tracks[1].volume = .default
 
             } else {
                 
             
-                settings.tracks[1] = volume  
+                settings.tracks[1].volume = volume  
             
             }   // volume 值 0.0 ~ 1.0
     
