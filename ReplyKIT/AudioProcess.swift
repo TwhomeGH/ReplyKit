@@ -395,10 +395,8 @@ if let videoPTS = lastVideoPTS {
             // 使用實際 duration 來確保時間軸連續
             currentPTS = CMTimeAdd(last, duration)
         }
+        sendlog(message: String(format: "校正音訊時間軸，drift: %.3fs, adjust: %.3fs, newPTS: %.3fs", driftSeconds, adjustSeconds, CMTimeGetSeconds(currentPTS)))
         
-            if CMTimeCompare(currentPTS, last) <= 0 {
-                currentPTS = CMTimeAdd(last, CMTime(value: 100, timescale: 1000)) // +100ms
-            }
     }
 }
         
