@@ -104,6 +104,8 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     
     private var cachedFormatDescription: CMVideoFormatDescription?
     private var cachedFormatSize: CGSize = .zero
+
+    var originalTimeBAK: CMSampleTimingInfo?
     
     enum QualityMode: CustomStringConvertible {
         case live      // bilinear
@@ -453,7 +455,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
 
     // MARK: - Enqueue Frame
-    func rotateAsync(sampleBuffer: CMSampleBuffer, angle: RotationAngle) async -> CMSampleBuffer? {
+    func rotateAsync(sampleBuffer: CMSampleBuffer,originalTime: CMSampleTimingInfo, angle: RotationAngle) async -> CMSampleBuffer? {
 
 
          // 延遲初始化 Metal/TextureCache
@@ -481,7 +483,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
        
 
-
+        originalTimeBAK = originalTime
         guard let inBuffer = sampleBuffer.imageBuffer else { 
             await gpuSemaphore.signal()
                                                           
@@ -531,26 +533,16 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
         return await withCheckedContinuation { (cont: CheckedContinuation<CMSampleBuffer?, Never>) in
 
-            var timing = CMSampleTimingInfo()
-                                              
-            // ✅ 用系統時間當 PTS（避免 GPU 延遲影響）
-            let now = CMClockGetTime(CMClockGetHostTimeClock())
-            timing.presentationTimeStamp = now
-
-            audioProcess?.updateVideoPTS(now)
-
-            
-            if let lastPTSS = lastPTS {                                  
-                if now < lastPTSS {
-                    timing.presentationTimeStamp = lastPTSS + CMTime(value: 1, timescale: 60)
-                }
-
-            }
-                                              
-            lastPTS = timing.presentationTimeStamp
-                                              
-                                              
+                                                                                            
             CMSampleBufferGetSampleTimingInfo(sampleBuffer, at: 0, timingInfoOut: &timing)
+
+
+            let VideoPTS = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+            let duration = CMSampleBufferGetDuration(sampleBuffer)
+            let decodeTime = CMSampleBufferGetDecodeTimeStamp(sampleBuffer)
+            timing.duration = duration
+            timing.decodeTimeStamp = decodeTime
+                                              
             let frameC = FrameContext(timing: timing, outSet: outSet,
                                       inY: ycvTexIn.cv,inUV: uvcvTexIn.cv
             )
@@ -564,6 +556,29 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                                      
                 frameC.inY = nil
                 frameC.inUV = nil
+
+               
+                
+    
+                                                  
+                // ✅ 用系統時間當 PTS（避免 GPU 延遲影響）
+                let now = CMClockGetTime(CMClockGetHostTimeClock())
+                frameC.timing.presentationTimeStamp = now
+               
+                                            
+    
+                audioProcess?.updateVideoPTS(now)
+    
+                
+                if let lastPTSS = lastPTS {                                  
+                    if now < lastPTSS {
+                        timing.presentationTimeStamp = lastPTSS + CMTime(value: 1, timescale: 60)
+                    }
+    
+                }
+                                                  
+                lastPTS = timing.presentationTimeStamp
+                                     
 
                 let wrapped = self.wrapPixelBuffer(
                     frameC.outPB, timing: frameC.timing
@@ -585,7 +600,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                     
                 }
                 self.recycleOutput(frameC.outSet)
-                self.logTo("GPU Frame down")
+                self.logTo("GPU Frame down :\(frameC.timing.presentationTimeStamp)s")
                 
 
             }
