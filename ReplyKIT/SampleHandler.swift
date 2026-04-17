@@ -2056,7 +2056,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             if videoProcessor != nil && audioProcessor != nil {
 
-                videoProcessor?.process(sampleBuffer)
+                videoProcessor?.process(sampleBuffer,oringintime:timestamp)
 
             } else {
                 if lastTimestamp.seconds > lastlogTime + logInterval  {
