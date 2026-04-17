@@ -331,7 +331,7 @@ struct LiveVolumeView: View {
 
 
                 Slider(value: $appAddVolume, in: 1...30, step: 0.1,
-                       onEditingChanged: {
+                    onEditingChanged: {
                     editing in
 
                     if !editing {
@@ -376,7 +376,7 @@ struct LiveVolumeView: View {
 
 
                 Slider(value: $micAddVolume, in: 1...30, step: 0.1,
-                       onEditingChanged: { editing in
+                        onEditingChanged: { editing in
 
                     if !editing {
 
@@ -416,7 +416,8 @@ struct LiveVolumeView: View {
 
 
             VStack {
-                Text("App音量: \(String(format: "%.0f%%", volumeToPercentage(appVolume) * 100) )")
+
+                Text("App音量: \(String(format: "%.0f%%", appVolume * 100))")
                     .font(.headline)
 
 
@@ -430,7 +431,7 @@ struct LiveVolumeView: View {
                         }
                     )
                         , in: 0...1, step: 0.01,
-                       onEditingChanged: { editing in
+                        onEditingChanged: { editing in
 
                     if !editing {
                         
@@ -482,17 +483,11 @@ struct LiveVolumeView: View {
                     Text("100%").font(.caption)
                 }
 
-                //Old自繪進度條
-                //                #if os(iOS)
-                //                ProgressView(value: percentageToVolume(APP_percentage))
-                //                    .progressViewStyle(LinearProgressViewStyle(tint: .blue))
-                //                #endif
+
 
                 // 自繪進度條 (取代 ProgressView)
                 SafeProgressBar(value: appVolume, color: .blue)
                     .padding(.vertical, 4)
-
-
 
 
             }
@@ -500,8 +495,11 @@ struct LiveVolumeView: View {
 
 
             VStack {
-                Text("Mic音量: \(String(format: "%.0f%%", volumeToPercentage(micVolume) * 100 ))")
+                // 顯示用：直接顯示真實音量百分比
+                Text("Mic音量: \(String(format: "%.0f%%", micVolume * 100))")
                     .font(.headline)
+
+
 
 
                 Slider(value:
@@ -513,8 +511,8 @@ struct LiveVolumeView: View {
                         }
                     )
 
-                       , in: 0...1, step: 0.01,
-                       onEditingChanged: { editing in
+                        , in: 0...1, step: 0.01,
+                        onEditingChanged: { editing in
 
                     if !editing {
                         //let realVolume = percentageToVolume(Mic_percentage)
