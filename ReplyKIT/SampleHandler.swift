@@ -257,12 +257,15 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 micAddVolume=Float(newVolume)
                 audioProcessor.updateVolumes(micAdd: micAddVolume)
-            }
 
-            sendlog(message: String(
+                sendlog(message: String(
                 format: "麥克風音量放大: %.5f%%",
                 newVolume
             ))
+
+            }
+
+            
 
         case "appAdd":
 
@@ -292,12 +295,15 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 appAddVolume=Float(newVolume)
                 audioProcessor.updateVolumes(appAdd: appAddVolume)
 
-            }
-
-            sendlog(message: String(
+                sendlog(message: String(
                 format: "App音量放大: %.5f%%",
                 newVolume
             ))
+
+
+            }
+
+            
 
 
         case "micVolumeChanged":
@@ -379,26 +385,19 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             }
 
         case "orientationChanged":
-#if os(iOS)
-            let orientationValue = SharedDefaults.group?.integer(
-                forKey: "Orientation"
-            ) ?? 0
-
-
-            if let orientation = UIDeviceOrientation(rawValue: orientationValue) {
-
-                sendlog(message: "OO:\(orientationValue) \(orientation)")
-//                Task {
-//                    configureOrientation()
-//                }
-            }
+        
+            #if os(iOS)
+                        let orientationValue = SharedDefaults.group?.integer(
+                            forKey: "Orientation"
+                        ) ?? 0
 
 
 
-#else
-            print("No Make tihs!")
 
-#endif
+            #else
+                        print("No Make tihs!")
+
+            #endif
 
         case "SocketRetry":
             SocketClient.shared.retry()
@@ -711,7 +710,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             Task {
 
                 var logPage=SharedDefaults.group?.bool(forKey: "onlogPage") ?? false
-                
+
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "onlogPage", type: "Bool") {
 
