@@ -552,9 +552,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
         return await withCheckedContinuation { (cont: CheckedContinuation<CMSampleBuffer?, Never>) in
 
-                                              
-            CMSampleBufferGetSampleTimingInfo(sampleBuffer, at: 0, timingInfoOut: &timing)
-                               
+                                                            
             let frameC = FrameContext(timing: timing, outSet: outSet,
                                       inY: ycvTexIn.cv,inUV: uvcvTexIn.cv
             )
