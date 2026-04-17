@@ -232,11 +232,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         case "micAdd":
 
-            var newVolume = SharedDefaults.group?.double(forKey: "micAddVolume") ?? 1.0
-
-            guard let audioProcessor else { return }
+            
 
             Task {
+
+                var newVolume = SharedDefaults.group?.double(forKey: "micAddVolume") ?? 1.0
+
+                guard let audioProcessor else { return }
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "micAddVolume", type: "Double") {
 
@@ -264,12 +266,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         case "appAdd":
 
-            var newVolume = SharedDefaults.group?.double(forKey: "appAddVolume") ?? 1.0
-
-            guard let audioProcessor else { return }
+            
 
             Task {
 
+                var newVolume = SharedDefaults.group?.double(forKey: "appAddVolume") ?? 1.0
+
+                guard let audioProcessor else { return }
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "appAddVolume", type: "Double") {
 
@@ -299,12 +302,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         case "micVolumeChanged":
             
-            var
-            newVolume = SharedDefaults.group?.double(forKey: "micVolume") ?? 1.0
-
-            guard let audioProcessor else { return }
 
             Task {
+                var newVolume = SharedDefaults.group?.double(forKey: "micVolume") ?? 1.0
+
+                guard let audioProcessor else { return }
 
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "micVolume", type: "Double") {
@@ -337,12 +339,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         case "appVolumeChanged":
 
-            var newVolume = SharedDefaults.group?.double(forKey: "appVolume") ?? 1.0
-
-            guard let audioProcessor else { return }
-
 
             Task {
+
+                var newVolume = SharedDefaults.group?.double(forKey: "appVolume") ?? 1.0
+
+                guard let audioProcessor else { return }
+
 
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "appVolume", type: "Double") {
@@ -703,9 +706,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "onlogPage":
-            var logPage=SharedDefaults.group?.bool(forKey: "onlogPage") ?? false
+            
 
             Task {
+
+                var logPage=SharedDefaults.group?.bool(forKey: "onlogPage") ?? false
+                
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "onlogPage", type: "Bool") {
 
