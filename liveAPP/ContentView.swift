@@ -439,7 +439,7 @@ struct LiveVolumeView: View {
 
                         }
                     )
-                        , in: 0...1, step: 0.01,
+                        , in: 0.0...1.0, step: 0.01,
                         onEditingChanged: { editing in
 
                     if !editing {
@@ -529,7 +529,7 @@ struct LiveVolumeView: View {
                         }
                     )
 
-                        , in: 0...1, step: 0.01,
+                        , in: 0.0...1.0, step: 0.01,
                         onEditingChanged: { editing in
 
                     if !editing {
