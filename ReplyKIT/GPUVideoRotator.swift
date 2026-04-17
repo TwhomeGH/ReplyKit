@@ -506,9 +506,8 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         }
 
 
-        let infoGPU=gpuSemaphore.info()
-        
-        self.logTo("GPU Info:\(infoGPU.now):\(infoGPU.max)")
+     
+        self.logTo("GPU Info:\(info.now):\(info.max)")
         self.logTo("\(srcW)x\(srcH) -> \(dstW)x\(dstH) angle:\(angle)")
 
         guard let outSet = getReusableOutput(width: dstW, height: dstH) else { return nil }
@@ -540,9 +539,14 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
             audioProcess?.updateVideoPTS(now)
 
-            if now < lastPTS {
-                timing.presentationTimeStamp = lastPTS + CMTime(value: 1, timescale: 60)
+            
+            if let lastPTSS = lastPTS {                                  
+                if now < lastPTSS {
+                    timing.presentationTimeStamp = lastPTS + CMTime(value: 1, timescale: 60)
+                }
+
             }
+                                              
             lastPTS = timing.presentationTimeStamp
                                               
                                               
