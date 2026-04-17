@@ -986,6 +986,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     func updateAppAudioVolume(_ volume: Float) async {
         var settings = await mediaMixer.audioMixerSettings
         if var track = settings.tracks[0] {   // 0 是 app 音頻 track
+            if volume >= 1.0 {
+                
+                volume = 1.0
+            }
+            
             track.volume = volume            // volume 值 0.0 ~ 1.0
             settings.tracks[0] = track
         }
@@ -994,7 +999,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     func updateMicAudioVolume(_ volume: Float) async {
         var settings = await mediaMixer.audioMixerSettings
+
         if var track = settings.tracks[1] {   // 1 是麥克風 track
+
+            if volume >= 1.0 {
+                volume = 1.0
+            }
             track.volume = volume
             settings.tracks[1] = track
         }
