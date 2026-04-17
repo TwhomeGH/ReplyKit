@@ -108,7 +108,7 @@ final class VideoFrameProcessor {
 
     var hasPublished = false
 
-    private lazy var pipeline = FramePipeline(mediaMixer: mediaMixer,audioProcess:audioProcess ?? nil)
+    private lazy var pipeline = FramePipeline(mediaMixer: mediaMixer)
 
     init(mediaMixer: MediaMixer,
         sendlog: @escaping (String) -> Void) {
@@ -141,9 +141,9 @@ final class VideoFrameProcessor {
         sendlog("🧹 VideoFrameProcessor deinit — resources released")
     }
 
-    func process(_ sampleBuffer: CMSampleBuffer,oringintime: CMSampleTimingInfo) {
+    func process(_ sampleBuffer: CMSampleBuffer,oringinaltime: CMSampleTimingInfo) {
         Task {
-            await pipeline.enqueue(sampleBuffer,oringintime: oringintime)
+            await pipeline.enqueue(sampleBuffer,oringinaltime: oringinaltime)
         }
     }
 
