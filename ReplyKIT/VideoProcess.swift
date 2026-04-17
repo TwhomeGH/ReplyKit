@@ -38,7 +38,7 @@ actor FramePipeline {
     private func processLoop() async {
         while let buffer = latestBuffer {
             latestBuffer = nil
-            await processFrame(buffer,oringintime: lastestPTS)
+            await processFrame(buffer,oringintime: latestPTS)
         }
         isRunning = false
     }
