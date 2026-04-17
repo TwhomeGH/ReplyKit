@@ -367,7 +367,7 @@ final class AudioProcessor : @unchecked Sendable {
         
     var timing = CMSampleTimingInfo(
         duration: duration,
-        presentationTimeStamp: audioPTS.presentationTimeStamp,
+        presentationTimeStamp: audioPTS,
         decodeTimeStamp: decodeTime
     )
 
