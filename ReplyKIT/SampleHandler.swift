@@ -1371,7 +1371,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         
             videoProcessor = VideoFrameProcessor(
                 mediaMixer: mediaMixer,
-                audioProcess:audioProcessor,
                 sendlog: { message in
                     sendlog(message: message)
                 }
@@ -1403,7 +1402,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     func rebuildVideo() {
         videoProcessor = VideoFrameProcessor(
             mediaMixer: mediaMixer,
-            audioProcess:audioProcessor,
             sendlog: { message in
                 sendlog(message: message)
             }
@@ -2028,12 +2026,17 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         lastTimestamp = timestamp
 
         var timing = CMSampleTimingInfo()
+        // ✅ 用系統時間當 PTS 統一來源
+        let now = CMClockGetTime(CMClockGetHostTimeClock())
+        timing.presentationTimeStamp = now
+
         CMSampleBufferGetSampleTimingInfo(sampleBuffer, at: 0, timingInfoOut: &timing)
+
 
         switch sampleBufferType {
         case .video:
 
-           
+
 
             if needVideoConfiguration && !didConfigureVideo {
                 needVideoConfiguration = false
@@ -2057,9 +2060,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
 
-            if videoProcessor != nil && audioProcessor != nil {
+            if videoProcessor != nil {
 
-                videoProcessor?.process(sampleBuffer,oringintime:timing )
+                videoProcessor?.process(sampleBuffer,oringinaltime:timing )
 
             } else {
                 if lastTimestamp.seconds > lastlogTime + logInterval  {
@@ -2095,7 +2098,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 if audioProcessor != nil {
 
                     audioProcessor?
-                        .enqueue(sampleBuffer, trackType: trackType)
+                        .enqueue(sampleBuffer, trackType: trackType,oringinaltime:timing)
 
                 } else {
                     if lastTimestamp.seconds > lastlogTimeAudio + logInterval  {

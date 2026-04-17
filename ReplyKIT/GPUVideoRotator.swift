@@ -436,9 +436,9 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
 
         init(timing:CMSampleTimingInfo,
-             outSet: RPVideoRotatorNV12BatchQueueOptimized.ReusableOutputSet,
-             inY:CVMetalTexture,
-             inUV:CVMetalTexture
+            outSet: RPVideoRotatorNV12BatchQueueOptimized.ReusableOutputSet,
+            inY:CVMetalTexture,
+            inUV:CVMetalTexture
         ) {
 
             self.timing = timing
@@ -457,7 +457,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
 
     // MARK: - Enqueue Frame
-    func rotateAsync(sampleBuffer: CMSampleBuffer,originalTime: CMSampleTimingInfo?, angle: RotationAngle) async -> CMSampleBuffer? {
+    func rotateAsync(sampleBuffer: CMSampleBuffer,originalTime: CMSampleTimingInfo, angle: RotationAngle) async -> CMSampleBuffer? {
 
 
          // 延遲初始化 Metal/TextureCache
@@ -483,29 +483,18 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             Task { await gpuSemaphore.signal() }
         }
 
-       
+
         if let originalTime {
             timing = originalTime
 
         } else {
-            
-            let videoPTS = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-            let duration = CMSampleBufferGetDuration(sampleBuffer)
-            let decodeTime = CMSampleBufferGetDecodeTimeStamp(sampleBuffer)
-                
-        
-            
-            timing = CMSampleTimingInfo(
-                duration: duration,
-                presentationTimeStamp: videoPTS,
-                decodeTimeStamp: decodeTime
-            )
-
+            logTo("⚠️ 無法取得原始時間資訊，使用預設值")
+            timing = CMSampleTimingInfo(duration: .invalid, presentationTimeStamp: .invalid, decodeTimeStamp: .invalid)
         }
         
         guard let inBuffer = sampleBuffer.imageBuffer else { 
             await gpuSemaphore.signal()
-                                                          
+
             return nil 
         }
         let srcW = CVPixelBufferGetWidth(inBuffer)
@@ -527,14 +516,15 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         }
 
 
-     
+
         self.logTo("GPU Info:\(info.now):\(info.max) \(String(describing:self.timing))")
         self.logTo("\(srcW)x\(srcH) -> \(dstW)x\(dstH) angle:\(angle)")
 
         guard let outSet = getReusableOutput(width: dstW, height: dstH) else { return nil }
+
         guard let ycvTexIn = makeTexture(from: inBuffer, planeIndex: 0),
-              let uvcvTexIn = makeTexture(from: inBuffer, planeIndex: 1),
-              let cmd = queue?.makeCommandBuffer() else {
+            let uvcvTexIn = makeTexture(from: inBuffer, planeIndex: 1),
+            let cmd = queue?.makeCommandBuffer() else {
 
             recycleOutput(outSet)
 
@@ -546,24 +536,18 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         }
 
         renderPlaneYUV(cmd: cmd, srcY: ycvTexIn.tex, srcUV: uvcvTexIn.tex,
-                       dstY: outSet.yTex, dstUV: outSet.uvTex, angle: angle)
+                        dstY: outSet.yTex, dstUV: outSet.uvTex, angle: angle)
 
 
 
         return await withCheckedContinuation { (cont: CheckedContinuation<CMSampleBuffer?, Never>) in
 
-            var frameC: FrameContext!
-            if let timing = timing {                                       
-                frameC = FrameContext(timing: timing, outSet: outSet,
+            
+            var frameC = FrameContext(timing: originalTime, outSet: outSet,
                                             inY: ycvTexIn.cv,inUV: uvcvTexIn.cv
                 )
-            } else {
-                let now = CMClockGetTime(CMClockGetHostTimeClock())
-                let defaultTiming = CMSampleTimingInfo(duration: .invalid, presentationTimeStamp: now, decodeTimeStamp: .invalid)
-                frameC = FrameContext(timing: defaultTiming, outSet: outSet,
-                                            inY: ycvTexIn.cv,inUV: uvcvTexIn.cv
-                )
-            }
+
+            
 
             cmd.addCompletedHandler { [self] _ in
 
@@ -574,27 +558,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                 frameC.inY = nil
                 frameC.inUV = nil
 
-
-                
-                
-                // ✅ 用系統時間當 PTS（避免 GPU 延遲影響）
-                let now = CMClockGetTime(CMClockGetHostTimeClock())
-                frameC.timing.presentationTimeStamp = now
-
-                                            
-    
-                audioProcess?.updateVideoPTS(now)
-    
-                
-                if let lastPTSS = lastPTS {                                  
-                    if now < lastPTSS {
-                        frameC.timing.presentationTimeStamp = lastPTSS + CMTime(value: 1, timescale: 60)
-                    }
-    
-                }
-                
-                lastPTS = frameC.timing.presentationTimeStamp
-                
 
                 let wrapped = self.wrapPixelBuffer(
                     frameC.outPB, timing: frameC.timing
@@ -620,7 +583,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                 
 
             }
-                                              
+            
             cmd.commit()
         }
 

@@ -278,12 +278,6 @@ final class AudioProcessor : @unchecked Sendable {
     //音訊PTS校正用
     private var audioStartPTS: CMTime?
     private var currentPTS: CMTime = .zero
-    private let hostClock = CMClockGetHostTimeClock()
-
-    var audioPTSOffset: CMTime = .zero
-    var didSync = false
-
-    private var lastVideoPTS: CMTime?
     private var lastAudioPTS: CMTime?
     
     private var appAddVolume: Float
@@ -324,108 +318,23 @@ final class AudioProcessor : @unchecked Sendable {
 
 
 
-    func updateVideoPTS(_ pts: CMTime) {
-         // 🛑 1. 避免時間倒退
-
-    if let last = lastVideoPTS {
-
-        if CMTimeCompare(pts, last) <= 0 {
-
-            return
-
-        }
-        // 🛑 2. 過小變化忽略（避免抖動）
-
-    if let last = lastVideoPTS {
-
-        let diff = CMTimeGetSeconds(CMTimeSubtract(pts, last))
-
-        if diff < 0.1 { // 小於 100ms 不更新
-
-            return
-
-        }
-
-        }
-
-    }
-        
-        lastVideoPTS = pts
-    }
     
-    private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer) -> CMSampleBuffer {
-    
-    
-    
+private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer, originalTime: CMSampleTimingInfo) -> CMSampleBuffer {
 
-    let audioPTS = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-    let duration = CMSampleBufferGetDuration(sampleBuffer)
-    let decodeTime = CMSampleBufferGetDecodeTimeStamp(sampleBuffer)
-        
-
-        
-    var timing = CMSampleTimingInfo(
-        duration: duration,
-        presentationTimeStamp: audioPTS,
-        decodeTimeStamp: decodeTime
-    )
-
-    
-        
-    // 🟢 第一次：對齊系統時間
     if audioStartPTS == nil {
-        sendlog(message: "音訊PTS \(audioPTS)s 長度:\(duration) decodeTimeStamp:\(decodeTime)")
-        
-         if let videoPTS = lastVideoPTS {
-            audioStartPTS = videoPTS
-            currentPTS = videoPTS
-            lastAudioPTS = videoPTS
-
-         } 
+        audioStartPTS = originalTime.presentationTimeStamp
+        sendlog(message: "Audio PTS before retiming: \(originalTime.presentationTimeStamp.seconds)")
     }
 
-
-
-if let videoPTS = lastVideoPTS {
-
-    let drift = CMTimeSubtract(currentPTS, videoPTS)
-    let driftSeconds = CMTimeGetSeconds(drift)
-
-    // 🚨 只在第一次或嚴重錯誤時做一次對齊
-    if abs(driftSeconds) > 1.0 && !didSync {
-        
-        audioPTSOffset = CMTimeSubtract(videoPTS, currentPTS)
-        didSync = true
-
-        sendlog(message: String(format: "🚨 建立 offset: %.3fs", CMTimeGetSeconds(audioPTSOffset)))
-    }
-
-    // 👉 套用 offset（這才是重點）
-    currentPTS = CMTimeAdd(currentPTS, audioPTSOffset)
-
-    // 🟢 保證遞增
-    if let last = lastAudioPTS, CMTimeCompare(currentPTS, last) <= 0 {
-        currentPTS = CMTimeAdd(last, duration)
-    }
-}
-
-        
-
-    timing.presentationTimeStamp = currentPTS
-        
-    // 👉 累加（關鍵）
-    currentPTS = CMTimeAdd(currentPTS, duration)
-    lastAudioPTS = currentPTS
-
+    var timingInfo = [originalTime]
     var newBuffer: CMSampleBuffer?
     CMSampleBufferCreateCopyWithNewTiming(
         allocator: kCFAllocatorDefault,
         sampleBuffer: sampleBuffer,
         sampleTimingEntryCount: 1,
-        sampleTimingArray: &timing,
+        sampleTimingArray: &timingInfo,
         sampleBufferOut: &newBuffer
     )
-
     return newBuffer ?? sampleBuffer
 }
     
@@ -490,7 +399,7 @@ if let videoPTS = lastVideoPTS {
 
 
 
-    func enqueue(_ sampleBuffer: CMSampleBuffer, trackType: AudioTrackType) {
+    func enqueue(_ sampleBuffer: CMSampleBuffer, trackType: AudioTrackType,oringinaltime: CMSampleTimingInfo) {
         guard isActive else { return }
 
         // 1️⃣ 做增益
@@ -498,7 +407,7 @@ if let videoPTS = lastVideoPTS {
 
 
         //時間戳校正
-        let retimed = retimeAudioBuffer(amplified)
+        let retimed = retimeAudioBuffer(amplified, originalTime: oringinaltime)
         
         // 音量計算還是可以同步做（很快）
         processRMS(retimed, trackType: trackType)

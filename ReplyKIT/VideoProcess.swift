@@ -9,23 +9,21 @@ actor FramePipeline {
 
     private var rotator: RPVideoRotatorNV12BatchQueueOptimized?
     private let mediaMixer: MediaMixer
-    private let audioProcess: AudioProcessor?
     
     private var latestBuffer: CMSampleBuffer?
     private var latestPTS: CMSampleTimingInfo?
     
     private var isRunning = false
 
-    init(mediaMixer: MediaMixer,audioProcess:AudioProcessor?) {
+    init(mediaMixer: MediaMixer) {
         self.mediaMixer = mediaMixer
-        self.audioProcess = audioProcess
     }
 
     // 外部丟幀進來
-    func enqueue(_ sampleBuffer: CMSampleBuffer,oringintime: CMSampleTimingInfo) {
+    func enqueue(_ sampleBuffer: CMSampleBuffer,oringinaltime: CMSampleTimingInfo) {
         latestBuffer = sampleBuffer // 只保留最新幀（低延遲策略）
         
-        latestPTS = oringintime 
+        latestPTS = oringinaltime 
         
         if !isRunning {
             isRunning = true
@@ -38,22 +36,22 @@ actor FramePipeline {
     private func processLoop() async {
         while let buffer = latestBuffer {
             latestBuffer = nil
-            
+
             if let latestPTS {
                 print("Processing frame with PTS: \(latestPTS.presentationTimeStamp.value)/\(latestPTS.presentationTimeStamp.timescale)")
                 await processFrame(buffer,oringintime: latestPTS)
             }
             else {
                 print("Processing frame with unknown PTS")
-                await processFrame(buffer,oringintime: CMSampleTimingInfo(duration: .invalid, presentationTimeStamp: .invalid, decodeTimeStamp: .invalid))
+                await processFrame(buffer,oringinaltime: CMSampleTimingInfo(duration: .invalid, presentationTimeStamp: .invalid, decodeTimeStamp: .invalid))
             
             }
-
+            
         }
         isRunning = false
     }
 
-    private func processFrame(_ sampleBuffer: CMSampleBuffer,oringintime: CMSampleTimingInfo) async {
+    private func processFrame(_ sampleBuffer: CMSampleBuffer,oringinaltime: CMSampleTimingInfo) async {
         guard !Task.isCancelled else { return }
 
         if rotator == nil {
@@ -102,10 +100,7 @@ final class VideoFrameProcessor {
     var rotator: RPVideoRotatorNV12BatchQueueOptimized?
 
     private let mediaMixer: MediaMixer
-    private let audioProcess: AudioProcessor?
 
-    
-    
     private let sendlog: (String) -> Void
 
     var Rotate = RPConfig.shared.Rotate
@@ -116,11 +111,10 @@ final class VideoFrameProcessor {
 
     private lazy var pipeline = FramePipeline(mediaMixer: mediaMixer,audioProcess:audioProcess ?? nil)
 
-    init(mediaMixer: MediaMixer,audioProcess:AudioProcessor?,
-         sendlog: @escaping (String) -> Void) {
+    init(mediaMixer: MediaMixer,
+        sendlog: @escaping (String) -> Void) {
         self.mediaMixer = mediaMixer
 
-        self.audioProcess = audioProcess
         self.sendlog = sendlog
         self.isActive = true
         self.hasPublished = false
