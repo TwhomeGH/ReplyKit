@@ -161,12 +161,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         default:
 
-            appVolume = Float(RPConfig.shared.AppVolume)
-            micVolume = Float(RPConfig.shared.MicVolume)
-
-            sendlog(message:"Audio 音量更新 App:\(appVolume) Mic:\(micVolume)")
+           
 
             Task {
+                appVolume = Float(RPConfig.shared.AppVolume)
+                micVolume = Float(RPConfig.shared.MicVolume)
+
+                sendlog(message:"Audio 音量更新 App:\(appVolume) Mic:\(micVolume)")
                 await updateAppAudioVolume(appVolume)
                 await updateMicAudioVolume(micVolume)
             }
@@ -1222,6 +1223,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         micAddVolume=Float(newMicAddVolume)
         appAddVolume=Float(newAppAddVolume)
 
+        appVolume=Float(RPConfig.shared.AppVolume)
+        micVolume=Float(RPConfig.shared.MicVolume)
+
 
 
         let safelogKey = fixlogSafeKey(streamKey)
@@ -1231,9 +1235,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         // MARK: 是否在日誌Log mode由Socket內部處理
 
-        // 🔹 轉成 URL
-        sendlog(message: "🔹 推流 URL:\(fullURLString)")
-        sendlog(message: "App:\(appVolume)  Mic:\(micVolume) AppAdd:\(appAddVolume) MicAdd:\(micAddVolume)")
+
+        sendlog(message: "🔹 推流 URL:\(fullURLString)\nApp:\(appVolume)  Mic:\(micVolume) AppAdd:\(appAddVolume) MicAdd:\(micAddVolume)")
 
 
     }
@@ -1451,8 +1454,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     }
 
 
-   
-
     // MARK: 直播開始
     override func broadcastStarted(
         withSetupInfo setupInfo: [String : NSObject]?
@@ -1469,9 +1470,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
             //self.prepareCompressionSession()
-
-
-            ExtensionMessagePort.shared.connectToApp()
+            //ExtensionMessagePort.shared.connectToApp()
 
             // 同時發出兩個請求
             let result = await SocketClient.shared.requestRTMPKEYAndLog()
@@ -1497,6 +1496,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 logger.debug("✅ RTMP設定: \(String(describing: self.rtmpURL)) \(String(describing: self.rtmpKey))")
 
+                sendlog(message:"✅App:\(appVolume)  Mic:\(micVolume) AppAdd:\(appAddVolume) MicAdd:\(micAddVolume)")
+
 
                 await self.configureVideo()
                 await self.configureAudio()
@@ -1521,184 +1522,14 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     }
 
 
-    // MARK: - 暫停畫面控制
-    //    private var pauseTimer: DispatchSourceTimer?
-
-    // MARK: 重用暫停
-//    private var pausedNV12PixelBuffer: CVPixelBuffer?
-//    private var pausedBGRAcontext: CGContext?
-//    private var pausedBGRABuffer: CVPixelBuffer?
-
-  //  var isPause = false
-
-
-//    private let stateQueue = DispatchQueue(label: "broadcast.state.queue")
-//
-//    private var pausedFrameTimestamp: CMTime = .zero
-//    private let pausedFrameDuration = CMTimeMake(value: 1, timescale: 1) // 每秒一幀
-//
-//    private var pausedStartTime = CACurrentMediaTime()
-//    private var pausedFrameIndex: Int = 0
-
-    // MARK: - 暫停畫面邏輯
-//    private func startPausedFrameLoop() {
-//        let width = DWidth
-//        let height = DHeight
-//
-//        // 直接建立暫停畫面資源
-//        if pausedBGRABuffer == nil {
-//            pausedBGRABuffer = createPixelBuffer(width: width, height: height,
-//                                                 format: kCVPixelFormatType_32BGRA, reuse: nil)
-//            if let bgra = pausedBGRABuffer {
-//                pausedBGRAcontext = createContext(for: bgra)
-//                if let ctx = pausedBGRAcontext {
-//                    updatePausedContext(buffer: bgra, context: ctx, text: "直播暫停中")
-//                    sendlog(message: "✅ 暫停畫面 BGRA buffer 建立成功")
-//                }
-//            }
-//        }
-//
-//        if pausedNV12PixelBuffer == nil {
-//            pausedNV12PixelBuffer = createPixelBuffer(width: width, height: height,
-//                                                      format: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange, reuse: nil)
-//        }
-//
-//        // 啟動定時器推幀
-//        pauseTimer?.cancel()
-//        pauseTimer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
-//        pauseTimer?.schedule(deadline: .now(), repeating: 1.0 / 30.0)
-//        pauseTimer?.setEventHandler { [weak self] in
-//            guard let self = self,
-//                  let bgra = self.pausedBGRABuffer,
-//                  let nv12 = self.pausedNV12PixelBuffer else { return }
-//
-//            convertBGRAtoNV12(bgra: bgra, nv12: nv12)
-//
-//            var frameIndex = 0
-//            self.stateQueue.sync { frameIndex = self.pausedFrameIndex }
-//
-//            if let sampleBuffer = createSampleBuffer(from: nv12, frameIndex: &frameIndex) {
-//                self.stateQueue.sync { self.pausedFrameIndex = frameIndex }
-//                Task { await self.mediaMixer.append(sampleBuffer) }
-//            }
-//        }
-//        pauseTimer?.resume()
-//    }
-
-//    private var isRebuilding = false
-//    private var isCleanup = false
-
-
     // MARK: 直播暫停
     override func broadcastPaused() {
-
-//        guard !isCleanup else {
-//            sendlog(message: "⚠️ 正在重建中，忽略重複 Resume")
-//            return
-//        }
-//        isCleanup = true
-//        defer { isCleanup = false }
-//
-//
-//        stateQueue.sync {
-//            guard !isPause else {
-//                sendlog(message: "⚠️ 已處於暫停狀態（防重複觸發）")
-//                return
-//            }
-//            isPause = true
-//            pausedFrameIndex = 0
-//            pausedStartTime = CACurrentMediaTime()
-//            pausedFrameTimestamp = .zero
-//            sendlog(title: "SampleHandler", message: "⚠️ Broadcast paused - sending paused frame repeatedly")
-//        }
-
-        // 停止 Audio / Video 處理
-        //audioProcessor?.cleanup()
-
-
-        //videoProcessor?.cleanup()
-
-//        audioProcessor = nil
-//        videoProcessor = nil
-
-        // MARK: === 建立暫停畫面資源 ===
-        // 呼叫專門處理暫停畫面邏輯
-        //startPausedFrameLoop()
-
 
     }
 
     // MARK: 直播恢復
     override func broadcastResumed() {
-//        guard !isRebuilding else {
-//            sendlog(message: "⚠️ 正在重建中，忽略重複 Resume")
-//            return
-//        }
-//        isRebuilding = true
-//        defer { isRebuilding = false }
-//
-//
-//        stateQueue.sync {
-//            guard isPause else {
-//                sendlog(message: "⚠️ 非暫停狀態，忽略恢復操作（防重複觸發）")
-//                return
-//            }
-//            isPause = false
-//        }
-//
-//
-//        sendlog(title: "SampleHandler", message: "🎬 Broadcast resumed - stopping paused frame timer")
-//
-//        // 停止暫停畫面定時器
-//        if let timer = pauseTimer {
-//            timer.cancel()
-//            pauseTimer = nil
-//            sendlog(message: "🛑 已停止暫停畫面定時器")
-//        }
-//
-//        // 清理暫停畫面資源
-//        pausedBGRABuffer = nil
-//        pausedBGRAcontext = nil
-//        pausedNV12PixelBuffer = nil
-//
-//        // 重建或啟用音量監聽器
-//        if volumeNotifier == nil {
-//            volumeNotifier = VolumeNotifier()
-//            sendlog(message: "🔊 VolumeNotifier 重新建立")
-//        }
-//
-//        // MARK: 重建 VideoProcessor
-//        if videoProcessor == nil {
-//
-//
-//            videoProcessor = VideoFrameProcessor(
-//                mediaMixer: mediaMixer,
-//                rtmpStream: rtmpStream,
-//                sendlog: { message in
-//                    sendlog(message: message)
-//                }
-//            )
-//            sendlog(message: "🎥 VideoProcessor 重建完成")
-//        }
-//
-//        // MARK: 重建 AudioProcessor
-//        if audioProcessor == nil {
-//            audioProcessor = AudioProcessor(
-//                mediaMixer: mediaMixer,
-//                volumeNotifier: volumeNotifier!,
-//                appAddVolume: appAddVolume,
-//                micAddVolume: micAddVolume,
-//                appVolume: appVolume,
-//                micVolume: micVolume,
-//                onAudioPage: RPConfig.shared.onAudioPage
-//            )
-//            sendlog(message: "🎧 AudioProcessor 重建完成")
-//        }
-//
-//        // 重新啟用音視頻處理
-//        videoProcessor?.isActive = true
-//        audioProcessor?.isActive = true
-        //sendlog(message: "✅ 已重新啟用音視頻處理")
+
     }
 
     private var isBroadcasting = false
@@ -1716,7 +1547,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         disconnectMonitorTask?.cancel()
         disconnectMonitorTask = nil
 
-        ExtensionMessagePort.shared.disconnectFromApp()
+        //ExtensionMessagePort.shared.disconnectFromApp()
 
 
         needVideoConfiguration = true
@@ -1899,7 +1730,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         }
 
 
-       
+        
         if let orientationValue = CMGetAttachment(sampleBuffer, key: RPVideoSampleOrientationKey as CFString, attachmentModeOut: nil) as? NSNumber {
             sendlog(message: "ReplayKit 當前畫面方向: \(orientationValue)")
         }
