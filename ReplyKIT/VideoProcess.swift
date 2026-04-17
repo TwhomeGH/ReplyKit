@@ -12,6 +12,8 @@ actor FramePipeline {
     private let audioProcess: AudioProcessor?
     
     private var latestBuffer: CMSampleBuffer?
+    private var latestPTS: CMSampleTimingInfo?
+    
     private var isRunning = false
 
     init(mediaMixer: MediaMixer,audioProcess:AudioProcessor?) {
@@ -20,8 +22,9 @@ actor FramePipeline {
     }
 
     // 外部丟幀進來
-    func enqueue(_ sampleBuffer: CMSampleBuffer) {
+    func enqueue(_ sampleBuffer: CMSampleBuffer,oringintime: CMSampleTimingInfo) {
         latestBuffer = sampleBuffer // 只保留最新幀（低延遲策略）
+        lastestPTS = oringintime 
         if !isRunning {
             isRunning = true
             Task {
@@ -33,12 +36,12 @@ actor FramePipeline {
     private func processLoop() async {
         while let buffer = latestBuffer {
             latestBuffer = nil
-            await processFrame(buffer)
+            await processFrame(buffer,oringintime: lastestPTS)
         }
         isRunning = false
     }
 
-    private func processFrame(_ sampleBuffer: CMSampleBuffer) async {
+    private func processFrame(_ sampleBuffer: CMSampleBuffer,oringintime: CMSampleTimingInfo) async {
         guard !Task.isCancelled else { return }
 
         if rotator == nil {
@@ -70,6 +73,7 @@ actor FramePipeline {
 
         guard let rotated = await rotator.rotateAsync(
             sampleBuffer: sampleBuffer,
+            originalTime: oringintime,
             angle: angle
         ) else {
             print("GPU Fail!")
@@ -132,9 +136,9 @@ final class VideoFrameProcessor {
         sendlog("🧹 VideoFrameProcessor deinit — resources released")
     }
 
-    func process(_ sampleBuffer: CMSampleBuffer) {
+    func process(_ sampleBuffer: CMSampleBuffer,oringintime: CMSampleTimingInfo) {
         Task {
-            await pipeline.enqueue(sampleBuffer)
+            await pipeline.enqueue(sampleBuffer,oringintime: oringintime)
         }
     }
 
