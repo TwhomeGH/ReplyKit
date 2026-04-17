@@ -331,7 +331,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 }
 
                 sendlog(message: String(
-                    format: "麥克風音量更新: %.2f%% (原始值: %.5f)",
+                    format: "RE:麥克風音量更新: %.2f%% (原始值: %.5f)",
                     volumeToPercentage(newVolume),
                     newVolume
                 ))
@@ -340,7 +340,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 audioProcessor.updateVolumes(mic: micVolume)
 
 
-                await updateMicAudioVolume(Float(newVolume))
+                await updateMicAudioVolume(micVolume)
             }
 
         case "appVolumeChanged":
@@ -379,7 +379,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     appVolume=Float(newVolume)
                     audioProcessor.updateVolumes(app: appVolume)
 
-                    await updateAppAudioVolume(Float(newVolume))
+                    await updateAppAudioVolume(newVolume)
 
 
             }
@@ -393,7 +393,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             SocketClient.shared.retry()
             sendlog(message: "重連Socket!")
 
-       
+        
 
         case "DebugRotate":
 
@@ -1730,7 +1730,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         }
 
 
-        
+
         if let orientationValue = CMGetAttachment(sampleBuffer, key: RPVideoSampleOrientationKey as CFString, attachmentModeOut: nil) as? NSNumber {
             sendlog(message: "ReplayKit 當前畫面方向: \(orientationValue)")
         }
