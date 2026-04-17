@@ -427,7 +427,15 @@ struct LiveVolumeView: View {
                         Binding(
                     get: { volumeToPercentage(appVolume) },            // 從 appVolume 轉百分比
                     set: { newValue in
-                        appVolume = percentageToVolume(newValue)      // 將百分比轉回 appVolume
+
+                            // 加上邊界保護
+                            if newValue >= 0.999 {
+                                appVolume = 1.0
+                            } else if newValue <= 0.001 {
+                                appVolume = 0.0
+                            } else {
+                            appVolume = percentageToVolume(newValue)      // 將百分比轉回 appVolume
+                            }
                         }
                     )
                         , in: 0...1, step: 0.01,
@@ -507,7 +515,15 @@ struct LiveVolumeView: View {
                     get: { volumeToPercentage(micVolume) },            // 從 micVolume 轉百分比
                     set: { newValue in
 
-                        micVolume = percentageToVolume(newValue)      // 將百分比轉回 micVolume
+                        // 加上邊界保護
+                        if newValue >= 0.999 {
+                            micVolume = 1.0
+                        } else if newValue <= 0.001 {
+                            micVolume = 0.0
+                        } else {
+                            // 將百分比轉回 micVolume
+                            micVolume = percentageToVolume(newValue)
+                        }      
                         }
                     )
 
