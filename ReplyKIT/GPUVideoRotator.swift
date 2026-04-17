@@ -727,23 +727,14 @@ private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
             cachedFormatDescription = fmt
             cachedFormatSize = size
         } else {
-            // 建立失敗時，至少 log 一下
             sendlog(message: "CMVideoFormatDescriptionCreateForImageBuffer failed: \(status)")
+            return nil   // ❌ 不要傳 nil 給 formatDescription，直接結束
         }
     }
 
     guard let fmt = cachedFormatDescription else {
-        // 沒有 formatDescription，直接回傳一個空 sampleBuffer
-        var dummyBuffer: CMSampleBuffer?
-        var timingInfo = timing
-        CMSampleBufferCreateReadyWithImageBuffer(
-            allocator: kCFAllocatorDefault,
-            imageBuffer: pixelBuffer,
-            formatDescription: nil,
-            sampleTiming: &timingInfo,
-            sampleBufferOut: &dummyBuffer
-        )
-        return dummyBuffer
+        sendlog(message: "No valid formatDescription available")
+        return nil
     }
 
     var sampleBuffer: CMSampleBuffer?
@@ -752,23 +743,14 @@ private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
     let status = CMSampleBufferCreateReadyWithImageBuffer(
         allocator: kCFAllocatorDefault,
         imageBuffer: pixelBuffer,
-        formatDescription: fmt,
+        formatDescription: fmt,   // ✅ 一定要有有效的 fmt
         sampleTiming: &timingInfo,
         sampleBufferOut: &sampleBuffer
     )
 
     if status != noErr {
         sendlog(message: "CMSampleBufferCreateReadyWithImageBuffer failed: \(status)")
-        // 回傳原始 pixelBuffer 包裝的 fallback sampleBuffer
-        var fallback: CMSampleBuffer?
-        CMSampleBufferCreateReadyWithImageBuffer(
-            allocator: kCFAllocatorDefault,
-            imageBuffer: pixelBuffer,
-            formatDescription: fmt,
-            sampleTiming: &timingInfo,
-            sampleBufferOut: &fallback
-        )
-        return fallback
+        return nil
     }
 
     return sampleBuffer
