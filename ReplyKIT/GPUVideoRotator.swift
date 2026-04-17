@@ -577,12 +577,10 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
             cmd.commit()
         }
-        }
-
-
-
-
     }
+
+
+    
 
     // MARK: - Reusable Output
     private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
