@@ -39,7 +39,7 @@ actor FramePipeline {
 
             if let latestPTS {
                 print("Processing frame with PTS: \(latestPTS.presentationTimeStamp.value)/\(latestPTS.presentationTimeStamp.timescale)")
-                await processFrame(buffer,oringintime: latestPTS)
+                await processFrame(buffer,oringinaltime: latestPTS)
             }
             else {
                 print("Processing frame with unknown PTS")
