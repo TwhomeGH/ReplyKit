@@ -149,6 +149,33 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         var angle: UInt32
     }
 
+
+    struct OutputKey: Hashable {
+        let width: Int
+        let height: Int
+    }
+
+    
+    // 使用結構體作為 Dictionary 的 key
+    private var outputPool: [OutputKey: [ReusableOutputSet]] = [:]
+    private let outputPoolLock = NSLock()
+    private let maxPoolSize: Int
+
+
+    // 新增統一的 addToPool 方法
+        func addToPool(width: Int, height: Int, set: ReusableOutputSet) {
+            let key = OutputKey(width: width, height: height)
+            outputPoolLock.lock()
+            var pool = outputPool[key] ?? []
+            pool.append(set)
+            outputPool[key] = pool
+            outputPoolLock.unlock()
+        }
+
+
+
+
+
     // MARK: - Metal Output Pool
     final class ReusableOutputSet {
         let pixelBuffer: CVPixelBuffer
@@ -169,9 +196,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         }
     }
 
-    private var outputPool: [ (Int, Int): [ReusableOutputSet] ] = [:]
-    private let outputPoolLock = NSLock()
-    private let maxPoolSize: Int
 
 
 
@@ -285,36 +309,35 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     // MARK: - Cleanup
     func cleanupResources() {
-        isActive = false
-        hasMetalResources = false
+    isActive = false
+    hasMetalResources = false
 
-
-
-        // 清空 pool，釋放 CVMetalTexture
-        outputPoolLock.lock()
-        for (_, pool) in outputPool {
-            for outSet in pool {
-                outSet.cvY = nil
-                outSet.cvUV = nil
-            }
+    outputPoolLock.lock()
+    for (_, pool) in outputPool {
+        for outSet in pool {
+            outSet.cvY = nil
+            outSet.cvUV = nil
         }
-        outputPool.removeAll()
-        outputPoolLock.unlock()
-
-        // 清空 TextureCache
-        if let cache = textureCache {
-            CVMetalTextureCacheFlush(cache, 0)
-        }
-        textureCache = nil
-        queue = nil
-
-        pipelineBilinear = nil
-        pipelineBicubic = nil
-
-        let poolCount = outputPool.count
-        let bufferCount = outputPool.values.reduce(0) { $0 + $1.count }
-        logTo("cleanup called - releasing \(poolCount) output pool(s), \(bufferCount) pooled buffer(s)")
     }
+    outputPool.removeAll()
+    outputPoolLock.unlock()
+
+    if let cache = textureCache {
+        CVMetalTextureCacheFlush(cache, 0)
+    }
+    textureCache = nil
+    queue = nil
+
+    pipelineBilinear = nil
+    pipelineBicubic = nil
+
+    let poolCount = outputPool.count
+    let bufferCount = outputPool.values.reduce(0) { $0 + $1.count }
+    logTo("cleanup called - releasing \(poolCount) output pool(s), \(bufferCount) pooled buffer(s)")
+}
+
+
+
 
     // MARK: Init
     init?(dstW: Int = 0, dstH: Int = 0, debug: Bool = false,
@@ -582,68 +605,80 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     
 
-    // MARK: - Reusable Output
-    private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
-        outputPoolLock.lock()
-        defer { outputPoolLock.unlock() }
+  // MARK: - Reusable Output
+private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
+    outputPoolLock.lock()
+    defer { outputPoolLock.unlock() }
 
-        let key = (width, height)
-        if var pool = outputPool[key], !pool.isEmpty {
-            let set = pool.removeFirst()
-            outputPool[key] = pool
-            return set
-        }
-
-        var pb: CVPixelBuffer?
-        let attrs: [String: Any] = [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
-            kCVPixelBufferMetalCompatibilityKey as String: true,
-            kCVPixelBufferWidthKey as String: width,
-            kCVPixelBufferHeightKey as String: height
-        ]
-        let status = CVPixelBufferCreate(nil, width, height, kCVPixelFormatType_420YpCbCr8BiPlanarFullRange, attrs as CFDictionary, &pb)
-        guard status == kCVReturnSuccess, let pixelBuffer = pb else {
-
-            logTo("CVPixelBufferCreate failed with status: \(status)")
-            return nil
-        }
-
-        CVPixelBufferLockBaseAddress(pixelBuffer, [])
-
-        // 初始化 Y/UV 平面為黑畫面（Y=0, UV=128）
-        memset(CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0), 0,
-               CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0) * CVPixelBufferGetHeightOfPlane(pixelBuffer, 0))
-        memset(CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 1), 128,
-               CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 1) * CVPixelBufferGetHeightOfPlane(pixelBuffer, 1))
-        guard let yTex = makeTexture(from: pixelBuffer, planeIndex: 0),
-                let uvTex = makeTexture(from: pixelBuffer, planeIndex: 1) else {
-            // 釋放已建立但未用到的 pixelBuffer，避免記憶體洩漏
-            CVPixelBufferRelease(pixelBuffer)
-            return nil
-        }
-        return ReusableOutputSet(pixelBuffer: pixelBuffer, yTex: yTex.tex, uvTex: uvTex.tex,
-                                cvY: yTex.cv, cvUV: uvTex.cv, lastUsed: Date())
-    }
-
-    func recycleOutput(_ outSet: ReusableOutputSet) {
-    
-        let height = CVPixelBufferGetHeight(outSet.pixelBuffer)
-        let key = (width, height)
-
-        outputPoolLock.lock()
-
-        var pool = outputPool[key] ?? []
-        if pool.count >= maxPoolSize {
-            let removed = pool.removeFirst()
-            removed.cvY = nil
-            removed.cvUV = nil
-        }
-        pool.append(outSet)
+    let key = OutputKey(width: width, height: height)
+    if var pool = outputPool[key], !pool.isEmpty {
+        let set = pool.removeFirst()
         outputPool[key] = pool
-
-        outputPoolLock.unlock()
-
+        return set
     }
+
+    var pb: CVPixelBuffer?
+    let attrs: [String: Any] = [
+        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+        kCVPixelBufferMetalCompatibilityKey as String: true,
+        kCVPixelBufferWidthKey as String: width,
+        kCVPixelBufferHeightKey as String: height
+    ]
+    let status = CVPixelBufferCreate(nil, width, height,
+                                     kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+                                     attrs as CFDictionary, &pb)
+    guard status == kCVReturnSuccess, let pixelBuffer = pb else {
+        logTo("CVPixelBufferCreate failed with status: \(status)")
+        return nil
+    }
+
+    CVPixelBufferLockBaseAddress(pixelBuffer, [])
+
+    // 初始化 Y/UV 平面為黑畫面（Y=0, UV=128）
+    memset(CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0), 0,
+           CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0) *
+           CVPixelBufferGetHeightOfPlane(pixelBuffer, 0))
+    memset(CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 1), 128,
+           CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 1) *
+           CVPixelBufferGetHeightOfPlane(pixelBuffer, 1))
+
+    guard let yTex = makeTexture(from: pixelBuffer, planeIndex: 0),
+          let uvTex = makeTexture(from: pixelBuffer, planeIndex: 1) else {
+        CVPixelBufferRelease(pixelBuffer)
+        return nil
+    }
+
+    return ReusableOutputSet(pixelBuffer: pixelBuffer,
+                             yTex: yTex.tex,
+                             uvTex: uvTex.tex,
+                             cvY: yTex.cv,
+                             cvUV: uvTex.cv,
+                             lastUsed: Date())
+}
+
+
+
+    // MARK: - Recycle Output
+    func recycleOutput(_ outSet: ReusableOutputSet) {
+    let width = CVPixelBufferGetWidth(outSet.pixelBuffer)
+    let height = CVPixelBufferGetHeight(outSet.pixelBuffer)
+    let key = OutputKey(width: width, height: height)
+
+    outputPoolLock.lock()
+
+    var pool = outputPool[key] ?? []
+    if pool.count >= maxPoolSize {
+        let removed = pool.removeFirst()
+        removed.cvY = nil
+        removed.cvUV = nil
+    }
+    pool.append(outSet)
+    outputPool[key] = pool
+
+    outputPoolLock.unlock()
+}
+
+
 
     func makeTexture(from pixelBuffer: CVPixelBuffer, planeIndex: Int) -> (cv: CVMetalTexture, tex: MTLTexture)? {
         guard let cache = textureCache else { return nil }
