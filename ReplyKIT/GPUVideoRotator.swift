@@ -617,15 +617,12 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             CVPixelBufferRelease(pixelBuffer)
             return nil
         }
-        guard let yTex = makeTexture(from: pixelBuffer, planeIndex: 0),
-              let uvTex = makeTexture(from: pixelBuffer, planeIndex: 1) else { return nil }
         return ReusableOutputSet(pixelBuffer: pixelBuffer, yTex: yTex.tex, uvTex: uvTex.tex,
-                                cvY: yTex.cv, cvUV: uvTex.cv)
                                 cvY: yTex.cv, cvUV: uvTex.cv, lastUsed: Date())
     }
-    private func recycleOutput(_ outSet: ReusableOutputSet) {
 
-        let width = CVPixelBufferGetWidth(outSet.pixelBuffer)
+    private func recycleOutput(_ outSet: ReusableOutputSet) {
+    }
         let height = CVPixelBufferGetHeight(outSet.pixelBuffer)
         let key = (width, height)
 
