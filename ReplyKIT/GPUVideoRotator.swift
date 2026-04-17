@@ -552,14 +552,15 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
         return await withCheckedContinuation { (cont: CheckedContinuation<CMSampleBuffer?, Never>) in
 
+            var frameC: FrameContext!
             if let timing = timing {                                       
-                let frameC = FrameContext(timing: timing, outSet: outSet,
+                frameC = FrameContext(timing: timing, outSet: outSet,
                                             inY: ycvTexIn.cv,inUV: uvcvTexIn.cv
                 )
             } else {
                 let now = CMClockGetTime(CMClockGetHostTimeClock())
                 let defaultTiming = CMSampleTimingInfo(duration: .invalid, presentationTimeStamp: now, decodeTimeStamp: .invalid)
-                let frameC = FrameContext(timing: defaultTiming, outSet: outSet,
+                frameC = FrameContext(timing: defaultTiming, outSet: outSet,
                                             inY: ycvTexIn.cv,inUV: uvcvTexIn.cv
                 )
             }
