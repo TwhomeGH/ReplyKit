@@ -998,6 +998,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     track.volume = volume  
                 
                 }   // volume 值 0.0 ~ 1.0
+
+                settings.tracks[0] = track
                 
             }
         
@@ -1020,6 +1022,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     track.volume = volume  
                 
                 }   // volume 值 0.0 ~ 1.0
+                
+                settings.tracks[1] = track
         
             }
 
