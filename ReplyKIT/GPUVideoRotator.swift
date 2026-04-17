@@ -734,26 +734,8 @@ private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
 
     guard let fmt = cachedFormatDescription else { return nil }
 
-    var sampleBuffer: CMSampleBuffer?
-
     var newBuffer: CMSampleBuffer?
     var timingInfo = timing
-
-
-    let status = CMSampleBufferCreateCopyWithNewTiming(
-        allocator: kCFAllocatorDefault,
-        sampleBuffer: sampleBuffer,
-        sampleTimingEntryCount: 1,
-        sampleTimingArray: &timingInfo,
-        sampleBufferOut: &newBuffer
-    )
-
-    if status == noErr, let buffer = newBuffer {
-        return buffer
-    } else {
-        return sampleBuffer
-    }
-
 
 
     let status = CMSampleBufferCreateReadyWithImageBuffer(
