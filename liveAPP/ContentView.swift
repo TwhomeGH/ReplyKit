@@ -245,9 +245,10 @@ class LiveVolumeModel: ObservableObject {
             queue: .main
         ) { _ in
 
+
             DispatchQueue.main.async {
-                self.micVolume = getUserDefault(forKey: "micVolumeLive") ?? 0.0
-                self.appVolume = getUserDefault(forKey: "appVolumeLive") ?? 0.0
+                self.micVolumeLive = getUserDefault(forKey: "micVolumeLive") ?? 0.0
+                self.appVolumeLive = getUserDefault(forKey: "appVolumeLive") ?? 0.0
             }
 
         }
@@ -266,7 +267,7 @@ class LiveVolumeModel: ObservableObject {
 }
 
 
-/// UI 百分比 (0~1) → 真實音量 (0~1)，曲線控制低音量更細膩
+// MARK: UI 百分比 (0~1) → 真實音量 (0~1)，曲線控制低音量更細膩
 func percentageToVolume(_ percentage: Double) -> Double {
     let clamped = max(0, min(1, percentage))
 
@@ -507,6 +508,7 @@ struct LiveVolumeView: View {
                         Binding(
                     get: { volumeToPercentage(micVolume) },            // 從 micVolume 轉百分比
                     set: { newValue in
+
                         micVolume = percentageToVolume(newValue)      // 將百分比轉回 micVolume
                         }
                     )

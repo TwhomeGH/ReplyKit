@@ -157,6 +157,7 @@ final class VolumeNotifier {
         cleanup()
         sendlog(message:"Audio實時更新清理")
     }
+    
     func updateVolume(volume: Float, track: Int) {
         switch track {
         case 0: pendingAppVolume = volume

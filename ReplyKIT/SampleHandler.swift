@@ -148,7 +148,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
     private func reloadVolumes(type:Int = -1,volume:Float = 1.0) {
-        //sendlog(message:"app audio \(appVolume)\(micVolume)")
 
         switch type {
         case 0:
@@ -165,7 +164,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             appVolume = Float(RPConfig.shared.AppVolume)
             micVolume = Float(RPConfig.shared.MicVolume)
 
-            sendlog(message:"Audio update App:\(appVolume) Mic:\(micVolume)")
+            sendlog(message:"Audio 音量更新 App:\(appVolume) Mic:\(micVolume)")
 
             Task {
                 await updateAppAudioVolume(appVolume)
