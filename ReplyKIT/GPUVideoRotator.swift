@@ -169,32 +169,13 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         }
     }
 
-    private var outputPool: [ReusableOutputSet] = []
+    private var outputPool: [ (Int, Int): [ReusableOutputSet] ] = [:]
     private let outputPoolLock = NSLock()
     private let maxPoolSize: Int
 
 
 
-    final class LockedBox<T> {
-        private var value: T
-        private let lock = NSLock()
-
-        init(_ value: T) {
-            self.value = value
-        }
-
-        func get() -> T {
-            lock.lock()
-            defer { lock.unlock() }
-            return value
-        }
-
-        func set(_ newValue: T) {
-            lock.lock()
-            value = newValue
-            lock.unlock()
-        }
-    }
+    // LockedBox no longer needed, removed.
 
     // MARK: - ASync GPU semaphore
     actor AsyncSemaphore {
@@ -208,7 +189,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         }
 
         // ✅ 不可變快照（整包替換）
-        private nonisolated let snapshot = LockedBox(Info(now: 0, max: 0))
+        private var snapshot = Info(now: 0, max: 0)
 
         init(value: Int) {
             capacity = value
@@ -219,17 +200,17 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
 
         func update(_ max:Int) {
-            guard capacity != max && capacity > 2 else { return }
+            guard capacity != max else { return }
             capacity = max
 
-            snapshot.set(Info(now: available, max: max))
+            snapshot = Info(now: available, max: max)
             logger.debug("更新GPU等待上限:\(self.capacity)")
 
         }
         func wait() async {
             if available > 0 {
                 available -= 1
-                snapshot.set(Info(now: available,  max: capacity))
+                snapshot = Info(now: available,  max: capacity)
                 return
             }
 
@@ -248,7 +229,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
             // ✅ 被喚醒後，正式佔用一個 permit
             available -= 1
-            snapshot.set(Info(now: available, max: capacity))
+            snapshot = Info(now: available, max: capacity)
 
 
 
@@ -256,25 +237,26 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         }
 
         private func removeCurrentContinuation() {
-            // 取消等待：只移除，不放行
-            waiters.removeAll()
+            // 只移除當前被取消的 continuation，避免全部移除導致其他協程無法 resume
+            if !waiters.isEmpty {
+                _ = waiters.removeFirst()
+            }
         }
 
         func signal() {
             if !waiters.isEmpty {
-                let _ = waiters.removeFirst()
-                
+                let cont = waiters.removeFirst()
+                cont.resume(returning: ())
             } else {
                 available = min(available + 1, capacity)
-
             }
 
-            snapshot.set(Info(now: available, max: capacity))
+            snapshot = Info(now: available, max: capacity)
         }
-
-        nonisolated func info() -> Info {
-                snapshot.get()
-            }
+            return snapshot.get()
+        func info() -> Info {
+            return snapshot
+        }
 
 
         func reset() {
@@ -284,7 +266,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             // 2️⃣ 重置容量
 
             available = capacity
-            snapshot.set(Info(now: available, max: capacity))
+            snapshot = Info(now: available, max: capacity)
 
         }
     }
@@ -309,9 +291,11 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
         // 清空 pool，釋放 CVMetalTexture
         outputPoolLock.lock()
-        for outSet in outputPool {
-            outSet.cvY = nil
-            outSet.cvUV = nil
+        for (_, pool) in outputPool {
+            for outSet in pool {
+                outSet.cvY = nil
+                outSet.cvUV = nil
+            }
         }
         outputPool.removeAll()
         outputPoolLock.unlock()
@@ -487,8 +471,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
         
         guard let inBuffer = sampleBuffer.imageBuffer else { 
-            await gpuSemaphore.signal()
-
             return nil 
         }
         let srcW = CVPixelBufferGetWidth(inBuffer)
@@ -522,9 +504,13 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
             recycleOutput(outSet)
 
+            // 必須釋放 semaphore，否則會 deadlock
             Task {
-            await gpuSemaphore.signal()
+                await gpuSemaphore.signal()
             }
+
+            return nil
+        }
 
             return nil
         }
@@ -533,25 +519,25 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                         dstY: outSet.yTex, dstUV: outSet.uvTex, angle: angle)
 
 
-
+        // Add a timeout to prevent hanging if cmd.addCompletedHandler is never called
         return await withCheckedContinuation { (cont: CheckedContinuation<CMSampleBuffer?, Never>) in
 
-            
-            var frameC = FrameContext(timing: originalTime, outSet: outSet,
-                                            inY: ycvTexIn.cv,inUV: uvcvTexIn.cv
-                )
+            var didResume = false
+            let timeout: UInt64 = 2_000_000_000 // 2 seconds in nanoseconds
 
-            
+            var frameC = FrameContext(timing: originalTime, outSet: outSet,
+                                        inY: ycvTexIn.cv, inUV: uvcvTexIn.cv
+            )
 
             cmd.addCompletedHandler { [self] _ in
+                guard !didResume else { return }
+                didResume = true
 
-                
                 CVPixelBufferLockBaseAddress(frameC.outPB, [])
                 CVPixelBufferUnlockBaseAddress(frameC.outPB, [])
-                
+
                 frameC.inY = nil
                 frameC.inUV = nil
-
 
                 let wrapped = self.wrapPixelBuffer(
                     frameC.outPB, timing: frameC.timing
@@ -564,21 +550,32 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                     )
                 }
 
-
                 cont.resume(returning: wrapped)
 
                 // ✅ semaphore 一定要在 GPU 真完成後 signal（現在位置正確）
                 Task {
                     await self.gpuSemaphore.signal()
-                    
                 }
                 self.recycleOutput(frameC.outSet)
                 self.logTo("GPU Frame down :\(frameC.timing.presentationTimeStamp)s")
-                
-
             }
-            
+
+            // Timeout handler
+            Task {
+                try? await Task.sleep(nanoseconds: timeout)
+                if !didResume {
+                    didResume = true
+                    self.logTo("GPU Frame timeout, resuming continuation with nil")
+                    cont.resume(returning: nil)
+                    Task {
+                        await self.gpuSemaphore.signal()
+                    }
+                    self.recycleOutput(frameC.outSet)
+                }
+            }
+
             cmd.commit()
+        }
         }
 
 
@@ -591,10 +588,10 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         outputPoolLock.lock()
         defer { outputPoolLock.unlock() }
 
-        if let idx = outputPool.firstIndex(where: { CVPixelBufferGetWidth($0.pixelBuffer) == width &&
-                                                    CVPixelBufferGetHeight($0.pixelBuffer) == height }) {
-            let set = outputPool.remove(at: idx)
-            set.lastUsed = Date()
+        let key = (width, height)
+        if var pool = outputPool[key], !pool.isEmpty {
+            let set = pool.removeFirst()
+            outputPool[key] = pool
             return set
         }
 
@@ -605,47 +602,47 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             kCVPixelBufferWidthKey as String: width,
             kCVPixelBufferHeightKey as String: height
         ]
-        CVPixelBufferCreate(nil, width, height, kCVPixelFormatType_420YpCbCr8BiPlanarFullRange, attrs as CFDictionary, &pb)
-        guard let pixelBuffer = pb else { return nil }
-
+        let status = CVPixelBufferCreate(nil, width, height, kCVPixelFormatType_420YpCbCr8BiPlanarFullRange, attrs as CFDictionary, &pb)
+        guard status == kCVReturnSuccess, let pixelBuffer = pb else {
+            logTo("CVPixelBufferCreate failed with status: \(status)")
         CVPixelBufferLockBaseAddress(pixelBuffer, [])
 
+        // 初始化 Y/UV 平面為黑畫面（Y=0, UV=128）
         memset(CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0), 0,
                CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0) * CVPixelBufferGetHeightOfPlane(pixelBuffer, 0))
         memset(CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 1), 128,
                CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 1) * CVPixelBufferGetHeightOfPlane(pixelBuffer, 1))
-
-        CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
-
+        guard let yTex = makeTexture(from: pixelBuffer, planeIndex: 0),
+              let uvTex = makeTexture(from: pixelBuffer, planeIndex: 1) else {
+            // 釋放已建立但未用到的 pixelBuffer，避免記憶體洩漏
+            CVPixelBufferRelease(pixelBuffer)
+            return nil
+        }
         guard let yTex = makeTexture(from: pixelBuffer, planeIndex: 0),
               let uvTex = makeTexture(from: pixelBuffer, planeIndex: 1) else { return nil }
-
         return ReusableOutputSet(pixelBuffer: pixelBuffer, yTex: yTex.tex, uvTex: uvTex.tex,
+                                cvY: yTex.cv, cvUV: uvTex.cv)
                                 cvY: yTex.cv, cvUV: uvTex.cv, lastUsed: Date())
     }
-
     private func recycleOutput(_ outSet: ReusableOutputSet) {
 
-        outSet.lastUsed = Date()
-        let removed: ReusableOutputSet?
+        let width = CVPixelBufferGetWidth(outSet.pixelBuffer)
+        let height = CVPixelBufferGetHeight(outSet.pixelBuffer)
+        let key = (width, height)
 
         outputPoolLock.lock()
 
-        if outputPool.count >= maxPoolSize {
-
-            removed = outputPool.removeFirst()
-            outputPool.append(outSet)
-
-        } else {
-            removed = nil
-            outputPool.append(outSet)
+        var pool = outputPool[key] ?? []
+        if pool.count >= maxPoolSize {
+            let removed = pool.removeFirst()
+            removed.cvY = nil
+            removed.cvUV = nil
         }
+        pool.append(outSet)
+        outputPool[key] = pool
 
         outputPoolLock.unlock()
-
-        removed?.cvY = nil
-        removed?.cvUV = nil
-
+    }
     }
 
     private func makeTexture(from pixelBuffer: CVPixelBuffer, planeIndex: Int) -> (cv: CVMetalTexture, tex: MTLTexture)? {
