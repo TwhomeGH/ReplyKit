@@ -253,9 +253,10 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
             snapshot = Info(now: available, max: capacity)
         }
-            return snapshot.get()
+
+        
         func info() -> Info {
-            return snapshot
+            return snapshot.get()
         }
 
 
