@@ -1008,7 +1008,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
              // 1 是 麥克風 track
             if volume >= 1.0 {
                 
-                settings.tracks[1].volume = .default
+                settings.tracks[1] = .default
 
             } else {
                 
