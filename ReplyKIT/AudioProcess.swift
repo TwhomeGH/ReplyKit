@@ -280,6 +280,9 @@ final class AudioProcessor : @unchecked Sendable {
     private var currentPTS: CMTime = .zero
     private let hostClock = CMClockGetHostTimeClock()
 
+    var audioPTSOffset: CMTime = .zero
+    var didSync = false
+
     private var lastVideoPTS: CMTime?
     private var lastAudioPTS: CMTime?
     
@@ -388,24 +391,19 @@ if let videoPTS = lastVideoPTS {
     let drift = CMTimeSubtract(currentPTS, videoPTS)
     let driftSeconds = CMTimeGetSeconds(drift)
 
-    // 🚨 1. 大誤差：直接對齊（避免永遠追）
-    if abs(driftSeconds) > 1.0 {
-        currentPTS = videoPTS
+    // 🚨 只在第一次或嚴重錯誤時做一次對齊
+    if abs(driftSeconds) > 1.0 && !didSync {
+        
+        audioPTSOffset = CMTimeSubtract(videoPTS, currentPTS)
+        didSync = true
 
-        sendlog(message: String(format: "🚨 音訊時間軸重置 drift: %.3fs", driftSeconds))
-    }
-    
-    // 🟡 2. 中小誤差：輕微修正（不要太大力）
-    else if abs(driftSeconds) > 0.1 {
-        let adjustSeconds = -driftSeconds * 0.05   // ← 原本 0.1 改小
-        let adjust = CMTime(seconds: adjustSeconds, preferredTimescale: 1000)
-
-        currentPTS = CMTimeAdd(currentPTS, adjust)
-
-        sendlog(message: String(format: "校正音訊 drift: %.3fs, adjust: %.3fs", driftSeconds, adjustSeconds))
+        sendlog(message: String(format: "🚨 建立 offset: %.3fs", CMTimeGetSeconds(audioPTSOffset)))
     }
 
-    // 🟢 3. 保底：確保時間單調遞增（這段你原本是對的）
+    // 👉 套用 offset（這才是重點）
+    currentPTS = CMTimeAdd(currentPTS, audioPTSOffset)
+
+    // 🟢 保證遞增
     if let last = lastAudioPTS, CMTimeCompare(currentPTS, last) <= 0 {
         currentPTS = CMTimeAdd(last, duration)
     }
