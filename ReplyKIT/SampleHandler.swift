@@ -2030,7 +2030,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         let duration = CMSampleBufferGetDuration(sampleBuffer)
 
-        var timing = CMSampleTimingInfo(
+        let timing = CMSampleTimingInfo(
             duration: duration,
             presentationTimeStamp: now,
             decodeTimeStamp: CMTime.invalid

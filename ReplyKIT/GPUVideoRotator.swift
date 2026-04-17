@@ -482,13 +482,9 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         }
 
 
-        if let originalTime {
-            timing = originalTime
+        timing = originalTime
 
-        } else {
-            logTo("⚠️ 無法取得原始時間資訊，使用預設值")
-            timing = CMSampleTimingInfo(duration: .invalid, presentationTimeStamp: .invalid, decodeTimeStamp: .invalid)
-        }
+        
         
         guard let inBuffer = sampleBuffer.imageBuffer else { 
             await gpuSemaphore.signal()
