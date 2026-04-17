@@ -483,8 +483,10 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         if info.now == 0 {
             // 👉 GPU 已滿，直接丟掉這幀（避免排隊造成大卡）
             logTo("GPU 滿載 可用Frame正在處理 丟幀")
-            return nil
+            return
         }
+
+        self.logTo("GPU Info:\(info.now):\(info.max) \(String(describing:self.timing))")
 
         }
 
@@ -524,7 +526,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
 
 
-        self.logTo("GPU Info:\(info.now):\(info.max) \(String(describing:self.timing))")
+
         self.logTo("\(srcW)x\(srcH) -> \(dstW)x\(dstH) angle:\(angle)")
 
         guard let outSet = getReusableOutput(width: dstW, height: dstH) else { return nil }
