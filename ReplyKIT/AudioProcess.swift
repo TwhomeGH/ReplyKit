@@ -381,15 +381,16 @@ final class AudioProcessor : @unchecked Sendable {
     let driftSeconds = CMTimeGetSeconds(drift)
 
     if abs(driftSeconds) > 0.05 {
-        let correction = driftSeconds * 0.1
-
+   
         let adjust = CMTime(
-            seconds: correction,
+            seconds: -driftSeconds,
             preferredTimescale: 1000
         )
 
-        sendlog(message:"音訊發生偏移重新修正")
-        currentPTS = CMTimeSubtract(currentPTS, adjust)
+        currentPTS = CMTimeAdd(currentPTS, adjust)
+    
+        sendlog(message: "音訊偏移 \(driftSeconds)s，已修正")
+       
      }
     }
         
