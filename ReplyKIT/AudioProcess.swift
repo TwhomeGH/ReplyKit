@@ -381,29 +381,26 @@ final class AudioProcessor : @unchecked Sendable {
          } 
     }
 
-    if let videoPTS = lastVideoPTS {
+if let videoPTS = lastVideoPTS {
     let drift = CMTimeSubtract(currentPTS, videoPTS)
     let driftSeconds = CMTimeGetSeconds(drift)
 
     if abs(driftSeconds) > 0.1 { //100ms
-   
         let adjustSeconds = -driftSeconds * 0.1
         let adjust = CMTime(seconds: adjustSeconds, preferredTimescale: 1000)
-       
+
         currentPTS = CMTimeAdd(currentPTS, adjust)
 
-        if let last = lastAudioPTS {
-            if CMTimeCompare(currentPTS, last) <= 0 {
-                currentPTS = CMTimeAdd(last, CMTime(value: 1, timescale: 1000)) // +1ms
-            }
+        if let last = lastAudioPTS, CMTimeCompare(currentPTS, last) <= 0 {
+            // 使用實際 duration 來確保時間軸連續
+            currentPTS = CMTimeAdd(last, duration)
         }
-
         
-    
-        sendlog(message: "音訊偏移 \(driftSeconds)s，已修正")
-       
-     }
+            if CMTimeCompare(currentPTS, last) <= 0 {
+                currentPTS = CMTimeAdd(last, CMTime(value: 100, timescale: 1000)) // +100ms
+            }
     }
+}
         
 
     timing.presentationTimeStamp = currentPTS
