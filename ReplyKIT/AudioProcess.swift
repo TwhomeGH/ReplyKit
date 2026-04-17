@@ -359,19 +359,24 @@ final class AudioProcessor : @unchecked Sendable {
     let sampleRate = asbd.mSampleRate
     let numSamples = CMSampleBufferGetNumSamples(sampleBuffer)
 
-    let duration = CMTime(
-        value: CMTimeValue(numSamples),
-        timescale: CMTimeScale(sampleRate)
-    )
+    let audioPTS = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+    let duration = CMSampleBufferGetDuration(sampleBuffer)
+    let decodeTime = CMSampleBufferGetDecodeTimeStamp(sampleBuffer)
+        
 
+        
     var timing = CMSampleTimingInfo(
         duration: duration,
-        presentationTimeStamp: .zero,
-        decodeTimeStamp: .invalid
+        presentationTimeStamp: audioPTS.presentationTimeStamp,
+        decodeTimeStamp: decodeTime
     )
 
+    
+        
     // 🟢 第一次：對齊系統時間
     if audioStartPTS == nil {
+        sendlog(message: "音訊PTS \(audioPTS)s 長度:\(duration) decodeTimeStamp:\(decodeTime)")
+        
          if let videoPTS = lastVideoPTS {
             audioStartPTS = videoPTS
             currentPTS = videoPTS
