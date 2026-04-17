@@ -316,7 +316,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     // MARK: Init
     init?(dstW: Int = 0, dstH: Int = 0, debug: Bool = false,
-          maxPoolSize: Int = 10 , useBic:QualityMode = .live ) {
+            maxPoolSize: Int = 10 , useBic:QualityMode = .live ) {
 
         self.qualityMode = useBic
         self.dstWW = dstW
@@ -374,13 +374,14 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         }
 
         return true
+
     }
     
 
     private func buildComputePipeline() -> Bool {
         do {
             guard let dev = device,
-                  let lib = dev.makeDefaultLibrary() else { return false }
+                    let lib = dev.makeDefaultLibrary() else { return false }
 
             // --- Pipeline A：直播（bilinear）---
             if pipelineBilinear == nil {
@@ -699,6 +700,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     guard status == noErr else { return nil }
 
     return sampleBuffer
+
 }
 
 
@@ -719,7 +721,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         }
 
         guard let compute = pipeline,
-              let encoder = cmd.makeComputeCommandEncoder() else { return }
+                let encoder = cmd.makeComputeCommandEncoder() else { return }
 
 
 
@@ -743,7 +745,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                                 threadsPerThreadgroup: MTLSize(width: tgWidth, height: tgHeight, depth: 1))
         encoder.endEncoding()
     }
-}
+
 
 
 
