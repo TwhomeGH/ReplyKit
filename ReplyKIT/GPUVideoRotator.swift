@@ -528,7 +528,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
 
      
-        self.logTo("GPU Info:\(info.now):\(info.max) \(self.timing)")
+        self.logTo("GPU Info:\(info.now):\(info.max) \(String(describing:self.timing))")
         self.logTo("\(srcW)x\(srcH) -> \(dstW)x\(dstH) angle:\(angle)")
 
         guard let outSet = getReusableOutput(width: dstW, height: dstH) else { return nil }
