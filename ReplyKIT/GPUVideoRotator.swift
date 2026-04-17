@@ -554,7 +554,13 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
             if let timing = timing {                                       
                 let frameC = FrameContext(timing: timing, outSet: outSet,
-                                          inY: ycvTexIn.cv,inUV: uvcvTexIn.cv
+                                            inY: ycvTexIn.cv,inUV: uvcvTexIn.cv
+                )
+            } else {
+                let now = CMClockGetTime(CMClockGetHostTimeClock())
+                let defaultTiming = CMSampleTimingInfo(duration: .invalid, presentationTimeStamp: now, decodeTimeStamp: .invalid)
+                let frameC = FrameContext(timing: defaultTiming, outSet: outSet,
+                                            inY: ycvTexIn.cv,inUV: uvcvTexIn.cv
                 )
             }
 

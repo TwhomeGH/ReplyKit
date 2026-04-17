@@ -352,12 +352,11 @@ final class AudioProcessor : @unchecked Sendable {
     
     private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer) -> CMSampleBuffer {
     guard let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer),
-          let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc)?.pointee else {
+            let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc)?.pointee else {
         return sampleBuffer
     }
 
-    let sampleRate = asbd.mSampleRate
-    let numSamples = CMSampleBufferGetNumSamples(sampleBuffer)
+
 
     let audioPTS = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
     let duration = CMSampleBufferGetDuration(sampleBuffer)

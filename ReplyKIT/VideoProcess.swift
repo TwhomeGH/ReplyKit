@@ -38,7 +38,17 @@ actor FramePipeline {
     private func processLoop() async {
         while let buffer = latestBuffer {
             latestBuffer = nil
-            await processFrame(buffer,oringintime: latestPTS)
+            
+            if let latestPTS {
+                print("Processing frame with PTS: \(latestPTS.presentationTimeStamp.value)/\(latestPTS.presentationTimeStamp.timescale)")
+                await processFrame(buffer,oringintime: latestPTS)
+            }
+            else {
+                print("Processing frame with unknown PTS")
+                await processFrame(buffer,oringintime: CMSampleTimingInfo(duration: .invalid, presentationTimeStamp: .invalid, decodeTimeStamp: .invalid))
+            
+            }
+
         }
         isRunning = false
     }
