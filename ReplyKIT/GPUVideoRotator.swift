@@ -621,7 +621,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                                 cvY: yTex.cv, cvUV: uvTex.cv, lastUsed: Date())
     }
 
-    private func recycleOutput(_ outSet: ReusableOutputSet) {
+    func recycleOutput(_ outSet: ReusableOutputSet) {
     }
         let height = CVPixelBufferGetHeight(outSet.pixelBuffer)
         let key = (width, height)
@@ -703,62 +703,10 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     return sampleBuffer
 }
-    
-
-    private func oldwrapPixelBuffer(
-        _ pixelBuffer: CVPixelBuffer,
-        timing: CMSampleTimingInfo
-    ) -> CMSampleBuffer? {
-
-
-
-        var timing = timing
-
-        let width = CVPixelBufferGetWidth(pixelBuffer)
-        let height = CVPixelBufferGetHeight(pixelBuffer)
-        let size = CGSize(width: width, height: height)
-
-
-        // 只有在第一次或解析度改變時才重新建立
-        if cachedFormatDescription == nil || cachedFormatSize != size {
-            var formatDesc: CMFormatDescription?
-            guard CMVideoFormatDescriptionCreateForImageBuffer(
-                allocator: kCFAllocatorDefault,
-                imageBuffer: pixelBuffer,
-                formatDescriptionOut: &formatDesc
-            ) == noErr,
-          
-            let fmt = formatDesc else {
-                 return nil
-            }
-
-            cachedFormatDescription = fmt
-            cachedFormatSize = size
-         }
-
-        guard let fmt = cachedFormatDescription else { return nil }
-             
-
-        // 3️⃣ 建立新的 sampleBuffer
-        var sampleBuffer: CMSampleBuffer?
-        let status = CMSampleBufferCreateForImageBuffer(
-            allocator: kCFAllocatorDefault,
-            imageBuffer: pixelBuffer,
-            dataReady: true,
-            makeDataReadyCallback: nil,
-            refcon: nil,
-            formatDescription: fmt,
-            sampleTiming: &timing,
-            sampleBufferOut: &sampleBuffer
-        )
-
-        guard status == noErr else { return nil }
-        return sampleBuffer
-    }
 
 
     // MARK: - Render YUV
-    private func renderPlaneYUV(cmd: MTLCommandBuffer,
+    func renderPlaneYUV(cmd: MTLCommandBuffer,
                                 srcY: MTLTexture, srcUV: MTLTexture,
                                 dstY: MTLTexture, dstUV: MTLTexture,
                                 angle: RotationAngle) {
