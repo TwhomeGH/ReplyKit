@@ -2027,6 +2027,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         lastTimestamp = timestamp
 
+        var timing = CMSampleTimingInfo()
+        CMSampleBufferGetSampleTimingInfo(sampleBuffer, at: 0, timingInfoOut: &timing)
+
         switch sampleBufferType {
         case .video:
 
@@ -2056,7 +2059,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             if videoProcessor != nil && audioProcessor != nil {
 
-                videoProcessor?.process(sampleBuffer,oringintime:timestamp)
+                videoProcessor?.process(sampleBuffer,oringintime:timing )
 
             } else {
                 if lastTimestamp.seconds > lastlogTime + logInterval  {
