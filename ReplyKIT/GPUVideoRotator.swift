@@ -656,12 +656,17 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
         var cvTex: CVMetalTexture?
         let status = CVMetalTextureCacheCreateTextureFromImage(nil, cache, pixelBuffer, nil,
-                                                               pixelFormat, width, height, planeIndex, &cvTex)
+                                                                pixelFormat, width, height, planeIndex, &cvTex)
         guard status == kCVReturnSuccess, let cv = cvTex, let tex = CVMetalTextureGetTexture(cv) else { return nil }
         return (cv: cv, tex: tex)
     }
 
 
+    /// Wraps a CVPixelBuffer into a CMSampleBuffer with the given timing info.
+    /// - Parameters:
+    ///   - pixelBuffer: The pixel buffer to wrap.
+    ///   - timing: The timing information for the sample buffer.
+    /// - Returns: A CMSampleBuffer containing the pixel buffer and timing, or nil on failure.
     private func wrapPixelBuffer(
     _ pixelBuffer: CVPixelBuffer,
     timing: CMSampleTimingInfo
@@ -690,10 +695,8 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     guard let fmt = cachedFormatDescription else { return nil }
 
-    // ✅ 這行是關鍵（替換掉原本的）
     var sampleBuffer: CMSampleBuffer?
-
-    var timingInfo = [ timing ] // CMSampleBufferCreateReadyWithImageBuffer 需要陣列形式的 timing info
+    var timingInfo = [ timing ]
 
     let status = CMSampleBufferCreateReadyWithImageBuffer(
         allocator: kCFAllocatorDefault,
