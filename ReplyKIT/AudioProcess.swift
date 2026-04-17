@@ -157,7 +157,7 @@ final class VolumeNotifier {
         cleanup()
         sendlog(message:"Audio實時更新清理")
     }
-    
+
     func updateVolume(volume: Float, track: Int) {
         switch track {
         case 0: pendingAppVolume = volume
@@ -327,17 +327,25 @@ private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer, originalTime: CMS
         sendlog(message: "Audio PTS before retiming: \(originalTime.presentationTimeStamp.seconds)")
     }
 
-    var timingInfo = [originalTime]
     var newBuffer: CMSampleBuffer?
+    var timingInfo = originalTime
     
-    CMSampleBufferCreateCopyWithNewTiming(
-        allocator: kCFAllocatorDefault,
-        sampleBuffer: sampleBuffer,
-        sampleTimingEntryCount: 1,
-        sampleTimingArray: &timingInfo,
-        sampleBufferOut: &newBuffer
+    
+    let status = CMSampleBufferCreateCopyWithNewTiming(
+    allocator: kCFAllocatorDefault,
+    sampleBuffer: sampleBuffer,
+    sampleTimingEntryCount: 1,
+    sampleTimingArray: &timingInfo,
+    sampleBufferOut: &newBuffer
     )
-    return newBuffer ?? sampleBuffer
+
+    if status == noErr, let buffer = newBuffer {
+        return buffer
+    } else {
+        return sampleBuffer
+    }
+
+
 }
     
     func updateVolumes(

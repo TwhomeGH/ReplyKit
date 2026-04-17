@@ -186,7 +186,7 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
 
 
             if ChangeBit == false {
-                sendlog(message: "已停用調整碼率!")
+                
                 return
             }
             // 緩降

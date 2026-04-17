@@ -735,7 +735,26 @@ private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
     guard let fmt = cachedFormatDescription else { return nil }
 
     var sampleBuffer: CMSampleBuffer?
-    var timingInfo = [ timing ]
+
+    var newBuffer: CMSampleBuffer?
+    var timingInfo = timing
+
+
+    let status = CMSampleBufferCreateCopyWithNewTiming(
+        allocator: kCFAllocatorDefault,
+        sampleBuffer: sampleBuffer,
+        sampleTimingEntryCount: 1,
+        sampleTimingArray: &timingInfo,
+        sampleBufferOut: &newBuffer
+    )
+
+    if status == noErr, let buffer = newBuffer {
+        return buffer
+    } else {
+        return sampleBuffer
+    }
+
+
 
     let status = CMSampleBufferCreateReadyWithImageBuffer(
         allocator: kCFAllocatorDefault,
@@ -754,27 +773,14 @@ private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
 
     // MARK: - Render YUV
     func renderPlaneYUV(cmd: MTLCommandBuffer,
-                                srcY: MTLTexture, srcUV: MTLTexture,
-                                dstY: MTLTexture, dstUV: MTLTexture,
-                                angle: RotationAngle) {
+                        srcY: MTLTexture, srcUV: MTLTexture,
+                        dstY: MTLTexture, dstUV: MTLTexture,
+                        angle: RotationAngle) {
 
-
-        let pipeline: MTLComputePipelineState?
-
-        switch qualityMode {
-        case .live:
-            pipeline = pipelineBilinear
-        case .quality:
-            pipeline = pipelineBicubic
-        }
-
-        guard let compute = pipeline,
-                let encoder = cmd.makeComputeCommandEncoder() else { return }
-
-
+        guard let compute = (qualityMode == .live ? pipelineBilinear : pipelineBicubic),
+            let encoder = cmd.makeComputeCommandEncoder() else { return }
 
         encoder.setComputePipelineState(compute)
-
         encoder.setTexture(srcY, index: 0)
         encoder.setTexture(srcUV, index: 1)
         encoder.setTexture(dstY, index: 2)
@@ -783,10 +789,10 @@ private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
         let tgWidth = min(compute.threadExecutionWidth, 16)
         let tgHeight = max(1, compute.maxTotalThreadsPerThreadgroup / tgWidth)
 
+
         var params = Params(srcWidth: UInt32(srcY.width), srcHeight: UInt32(srcY.height),
                             dstWidth: UInt32(dstY.width), dstHeight: UInt32(dstY.height),
-                            angle: UInt32(angle.rawValue)
-                            )
+                            angle: UInt32(angle.rawValue))
 
         encoder.setBytes(&params, length: MemoryLayout<Params>.stride, index: 0)
         encoder.dispatchThreads(MTLSize(width: dstY.width, height: dstY.height, depth: 1),
@@ -812,7 +818,7 @@ extension CVMetalTextureCache {
     static func create(device: MTLDevice) throws -> CVMetalTextureCache {
         var cache: CVMetalTextureCache?
         guard CVMetalTextureCacheCreate(nil, nil, device, nil, &cache) == kCVReturnSuccess,
-              let texCache = cache else { throw NSError() }
+                let texCache = cache else { throw NSError() }
         return texCache
     }
 }
