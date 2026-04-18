@@ -503,16 +503,9 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
         
         //await gpuSemaphore.wait()
-        let res = await asyncWait(NGPUSemaphore, timeout: .now() + 0.2)// 加入超時，避免死鎖
+        //let res = await asyncWait(NGPUSemaphore, timeout: .now() + 0.2)// 加入超時，避免死鎖
 
 
-        if res == .timedOut {
-            logTo("GPU Semaphore wait timed out - skipping frame to avoid deadlock")
-            return nil
-        } else if res == .success {
-            // Handle successful wait
-            logTo("GPU Semaphore wait succeeded")
-        }
 
         
 
@@ -520,7 +513,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         
             //釋放釋放資源
             
-            NGPUSemaphore.signal()
+            
             //Task { await gpuSemaphore.signal() }
 
 
@@ -568,7 +561,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             //     await gpuSemaphore.signal()
             // }
 
-            NGPUSemaphore.signal()
+            
 
             return nil
         }
@@ -615,7 +608,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                 //     await self.gpuSemaphore.signal()
                 // }
 
-                NGPUSemaphore.signal()
+                
 
                 self.recycleOutput(frameC.outSet)
                 self.logTo("GPU Frame down :\(frameC.timing.presentationTimeStamp)s")
