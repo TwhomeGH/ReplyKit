@@ -1277,7 +1277,14 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         var DW = 1334
         var DH = 1920
 
-        if ADWidth > 0 && ADHeight > 0 {
+        if ODWidth > 0 && ODHeight > 0 {
+            sendlog(message: "[NV]用戶指定輸出寬高：\(ODWidth) x \(ODHeight)")
+            DW = ODHeight
+            DH = ODWidth
+            
+        }
+        
+        else if ADWidth > 0 && ADHeight > 0 {
             sendlog(message: "[CV]用戶設定寬高：\(ADWidth) x \(ADHeight)")
             DW = ADHeight
             DH = ADWidth
@@ -1494,6 +1501,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         isBroadcasting = true
         isStopping = false
+        needVideoConfiguration = true
 
         Task {
 
