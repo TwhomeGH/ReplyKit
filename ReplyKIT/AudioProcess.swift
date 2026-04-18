@@ -370,10 +370,12 @@ private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer, originalTime: CMS
 
     func enqueue(_ sampleBuffer: CMSampleBuffer, trackType: AudioTrackType,oringinaltime: CMSampleTimingInfo) {
 
-        if audioSemaphore.wait(timeout: .now + .milliseconds(5)) == .timedOut {
+        let res = audioSemaphore.wait(timeout: .now + .milliseconds(5)) 
+        
+        if res == .timedOut {
             return
-
         }
+        
         queue.async { [weak self] in
             guard let self = self, self.isActive else { return }
             
