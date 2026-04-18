@@ -15,6 +15,8 @@ final class VideoFrameProcessor {
         qos: .utility
     )
 
+    private let gpuSemaphore = DispatchSemaphore(value: 10)
+
     private let sendlog: (String) -> Void
 
     var Rotate = RPConfig.shared.Rotate
@@ -53,6 +55,8 @@ final class VideoFrameProcessor {
 
     func process(_ sampleBuffer: CMSampleBuffer,oringinaltime: CMSampleTimingInfo) {
 
+        gpuSemaphore.wait(timeout:now()+0.3)
+        
         queue.async { [weak self] in
 
             guard let self = self, self.isActive else { return }
@@ -85,6 +89,8 @@ final class VideoFrameProcessor {
 
 
             Task {
+
+                defer { gpuSemaphore.signal() }
 
             guard let rotated = await rotator.rotateAsync(
                 sampleBuffer: sampleBuffer,
