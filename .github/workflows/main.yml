@@ -48,7 +48,7 @@ jobs:
           begin
           data = JSON.parse(STDIN.read)
           schemes = data.dig('project','schemes') || []
-          puts schemes.find { |s| s.include?('ReplyKit') } || schemes[0] || 'ReplyKit'
+          puts schemes.find { |s| s.include?('ReplyKIT') } || schemes[0] || 'ReplyKIT'
           rescue JSON::ParserError
           puts 'ReplyKit'
           end
@@ -72,7 +72,7 @@ jobs:
           file_to_build=$(echo $file_to_build | awk '{$1=$1;print}')
 
           xcodebuild clean -$filetype "$file_to_build" -scheme "$scheme" -configuration Release
-         
+          
     
           xcodebuild archive \
             -$filetype "$file_to_build" \
