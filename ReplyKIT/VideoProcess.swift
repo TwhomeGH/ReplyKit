@@ -11,8 +11,7 @@ final class VideoFrameProcessor {
     private let mediaMixer: MediaMixer
 
     private let queue = DispatchQueue(
-        label: "video.processor.queue",
-        qos: .utility
+        label: "video.processor.queue"
     )
 
     private let gpuSemaphore = DispatchSemaphore(value: 5)
