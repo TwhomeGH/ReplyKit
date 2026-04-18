@@ -299,7 +299,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     private let gpuSemaphore = AsyncSemaphore(value: 5)
 
-    private let NGPUSemaphore = DispatchSemaphore(value: 10)
+    private let NGPUSemaphore = DispatchSemaphore(value: 5)
     
 
     func cleanup() async {
@@ -503,7 +503,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
         
         //await gpuSemaphore.wait()
-        let res = await asyncWait(NGPUSemaphore, timeout: .now() + 0.1)// 加入超時，避免死鎖
+        let res = await asyncWait(NGPUSemaphore, timeout: .now() + 0.5)// 加入超時，避免死鎖
 
 
         if res == .timedOut {
