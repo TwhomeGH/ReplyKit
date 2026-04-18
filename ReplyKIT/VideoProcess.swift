@@ -96,7 +96,7 @@ final class VideoFrameProcessor {
             }
 
            
-                await mediaMixer.append(rotated)
+                await self.mediaMixer.append(rotated)
             }
         }
 
