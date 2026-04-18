@@ -163,7 +163,7 @@ class SocketClient : @unchecked Sendable {
 
     func closeConnection() {
 
-        queue.async {
+        queue.async { [self] in
             
         isConnection = false
         isProcessingBatch = false
