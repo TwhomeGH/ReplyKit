@@ -15,7 +15,7 @@ final class VideoFrameProcessor {
         qos: .utility
     )
 
-    private let gpuSemaphore = DispatchSemaphore(value: 10)
+    private let gpuSemaphore = DispatchSemaphore(value: 5)
 
     private let sendlog: (String) -> Void
 
