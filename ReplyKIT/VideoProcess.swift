@@ -56,6 +56,15 @@ final class VideoFrameProcessor {
     func process(_ sampleBuffer: CMSampleBuffer,oringinaltime: CMSampleTimingInfo) {
 
         gpuSemaphore.wait(timeout:now()+0.3)
+
+        
+        if res == .timedOut {
+            sendlog(message:"GPU Semaphore wait timed out - skipping frame to avoid deadlock")
+            return
+        } else if res == .success {
+            // Handle successful wait
+            sendlog(message:"GPU Semaphore wait succeeded")
+        }
         
         queue.async { [weak self] in
 
