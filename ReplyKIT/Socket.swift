@@ -163,6 +163,8 @@ class SocketClient : @unchecked Sendable {
 
     func closeConnection() {
 
+        queue.async {
+            
         isConnection = false
         isProcessingBatch = false
         isReconnecting = false
@@ -176,7 +178,9 @@ class SocketClient : @unchecked Sendable {
         receiveBuffer.removeAll()  // ✅ 清空累積 buffer
 
         //stopObservingLocalChanges()
-        logTo("SocketClient connection closed")
+        self.logTo("SocketClient connection closed")
+
+        }
     }
 
 
