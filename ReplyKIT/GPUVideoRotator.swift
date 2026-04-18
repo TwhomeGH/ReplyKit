@@ -298,6 +298,8 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
 
     private let gpuSemaphore = AsyncSemaphore(value: 5)
+
+    private let NGPUSemaphore = DispatchSemaphore(value: 10)
     
 
     func cleanup() async {
@@ -477,25 +479,40 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         
 
         // ✅ 🔥 先看 GPU 是否已滿
-        Task {
+        // Task {
 
-        let info = await gpuSemaphore.info()
-        if info.now == 0 {
-            // 👉 GPU 已滿，直接丟掉這幀（避免排隊造成大卡）
-            logTo("GPU 滿載 可用Frame正在處理 丟幀")
-            return
-        }
+        // let info = await gpuSemaphore.info()
+        // if info.now == 0 {
+        //     // 👉 GPU 已滿，直接丟掉這幀（避免排隊造成大卡）
+        //     logTo("GPU 滿載 可用Frame正在處理 丟幀")
+        //     return
+        // }
 
-        self.logTo("GPU Info:\(info.now):\(info.max) \(String(describing:self.timing))")
+        // self.logTo("GPU Info:\(info.now):\(info.max) \(String(describing:self.timing))")
 
-        }
+        // }
 
         
-        await gpuSemaphore.wait()
+        //await gpuSemaphore.wait()
+
+        let res = await NGPUSemaphore.wait(timeout: .now() + 0.1) // 加入超時，避免死鎖
+
+        if res == .timedOut {
+            logTo("GPU Semaphore wait timed out - skipping frame to avoid deadlock")
+            return nil
+        } else if res == .success {
+            // Handle successful wait
+            logTo("GPU Semaphore wait succeeded")
+        }
 
         defer {
+        
             //釋放釋放資源
-            Task { await gpuSemaphore.signal() }
+        
+            NGPUSemaphore.signal()
+            //Task { await gpuSemaphore.signal() }
+
+
         }
 
 
@@ -538,9 +555,11 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             recycleOutput(outSet)
 
             // 必須釋放 semaphore，否則會 deadlock
-            Task {
-                await gpuSemaphore.signal()
-            }
+            // Task {
+            //     await gpuSemaphore.signal()
+            // }
+
+            NGPUSemaphore.signal()
 
             return nil
         }
@@ -583,25 +602,14 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                 cont.resume(returning: wrapped)
 
                 // ✅ semaphore 一定要在 GPU 真完成後 signal（現在位置正確）
-                Task {
-                    await self.gpuSemaphore.signal()
-                }
+                // Task {
+                //     await self.gpuSemaphore.signal()
+                // }
+
+                NGPUSemaphore.signal()
+
                 self.recycleOutput(frameC.outSet)
                 self.logTo("GPU Frame down :\(frameC.timing.presentationTimeStamp)s")
-            }
-
-            // Timeout handler
-            Task {
-                try? await Task.sleep(nanoseconds: timeout)
-                if !didResume {
-                    didResume = true
-                    self.logTo("GPU Frame timeout, resuming continuation with nil")
-                    cont.resume(returning: nil)
-                    Task {
-                        await self.gpuSemaphore.signal()
-                    }
-                    self.recycleOutput(frameC.outSet)
-                }
             }
 
             cmd.commit()

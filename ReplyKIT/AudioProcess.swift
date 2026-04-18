@@ -218,53 +218,13 @@ func volumeToPercentage(_ volume: Double) -> Double {
 }
 
 
-// MARK: 專用管線
-actor AudioPipeline {
-
-    private let mediaMixer: MediaMixer
-
-    private var queue: [(CMSampleBuffer, AudioTrackType)] = []
-    private var isRunning = false
-
-    init(mediaMixer: MediaMixer) {
-        self.mediaMixer = mediaMixer
-    }
-
-    func enqueue(_ buffer: CMSampleBuffer, track: AudioTrackType) {
-        queue.append((buffer, track))
-
-        if !isRunning {
-            isRunning = true
-            Task {
-                await processLoop()
-            }
-        }
-    }
-
-    private func processLoop() async {
-        while !queue.isEmpty {
-            let (buffer, track) = queue.removeFirst()
-            await processFrame(buffer, track: track)
-        }
-        isRunning = false
-    }
-
-    private func processFrame(
-        _ buffer: CMSampleBuffer,
-        track: AudioTrackType
-    ) async {
-
-        // 直接 append（音訊不能丟）
-        await mediaMixer.append(buffer, track: track.rawValue)
-    }
-}
 
 // MARK: 音頻線程
 
 final class AudioProcessor : @unchecked Sendable {
 
     // MARK: Buffer
-   
+    
     private let mediaMixer: MediaMixer
     private var volumeNotifier: VolumeNotifier
     private let queue = DispatchQueue(
@@ -272,7 +232,6 @@ final class AudioProcessor : @unchecked Sendable {
         qos: .utility
     )
 
-    private lazy var pipeline = AudioPipeline(mediaMixer: mediaMixer)
 
     var isActive = true
 
@@ -410,12 +369,13 @@ private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer, originalTime: CMS
 
 
     func enqueue(_ sampleBuffer: CMSampleBuffer, trackType: AudioTrackType,oringinaltime: CMSampleTimingInfo) {
-        guard isActive else { return }
-
+        
+        queue.async { [weak self] in
+            guard let self = self, self.isActive else { return }
+            
+        
         // 1️⃣ 做增益
         let amplified = applyGain(sampleBuffer, trackType: trackType)
-
-
         //時間戳校正
         let retimed = retimeAudioBuffer(amplified, originalTime: oringinaltime)
         
@@ -424,7 +384,10 @@ private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer, originalTime: CMS
 
         // 3️⃣ 丟進 AudioPipeline（FIFO，不丟幀）
         Task {
-            await pipeline.enqueue(retimed, track: trackType)
+            // 直接 append（音訊不能丟）
+            await mediaMixer.append(buffer, track: trackType.rawValue)
+        }
+
         }
     }
 

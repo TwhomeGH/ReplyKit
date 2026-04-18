@@ -96,6 +96,9 @@ class SocketClient : @unchecked Sendable {
 
     private let queue = DispatchQueue(label: "SocketClientQueue")
 
+    // 心跳相關 專用 Queue 和 Timer
+    private let queueHeart = DispatchQueue(label: "SocketClientQueueHeartbeat")
+
     private var HeartbeatTimer: DispatchSourceTimer?
 
     func startHearbeat(interval: TimeInterval = 50.0) {
@@ -106,7 +109,7 @@ class SocketClient : @unchecked Sendable {
 
         logTo("啟用Socket心跳")
 
-        let timer = DispatchSource.makeTimerSource(queue: .main)
+        let timer = DispatchSource.makeTimerSource(queue: queueHeart)
         timer.schedule(
             deadline: .now() + interval,
             repeating: interval,
