@@ -58,11 +58,16 @@ final class VideoFrameProcessor {
 
         
         if res == .timedOut {
-            sendlog("GPU Semaphore wait timed out - skipping frame to avoid deadlock")
+            if RPConfig.shared.enableRotateLog {
+                sendlog("GPU Semaphore wait timed out - skipping frame to avoid deadlock")
+            }
             return
         } else if res == .success {
+            if RPConfig.shared.enableRotateLog {
             // Handle successful wait
             sendlog("GPU Semaphore wait succeeded")
+
+            }
         }
         
         queue.async { [weak self] in
