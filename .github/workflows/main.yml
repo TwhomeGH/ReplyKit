@@ -42,12 +42,16 @@ jobs:
       # 2️⃣ Detect default scheme
       - name: Set default scheme
         run: |
-          scheme_list=$(xcodebuild -list -json | tr -d "\n")
+          scheme_list=$(xcodebuild -list -json 2>/dev/null || echo '{}')
           default=$(echo "$scheme_list" | ruby -e "
           require 'json'
+          begin
           data = JSON.parse(STDIN.read)
-          schemes = data['project']['schemes']
-          puts schemes.find { |s| s.include?('ReplyKit') } || schemes[0]
+          schemes = data.dig('project','schemes') || []
+          puts schemes.find { |s| s.include?('ReplyKit') } || schemes[0] || 'ReplyKit'
+          rescue JSON::ParserError
+          puts 'ReplyKit'
+          end
           ")
 
           echo $default > default
