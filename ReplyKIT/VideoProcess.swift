@@ -55,7 +55,7 @@ final class VideoFrameProcessor {
 
     func process(_ sampleBuffer: CMSampleBuffer,oringinaltime: CMSampleTimingInfo) {
 
-        let res = gpuSemaphore.wait(timeout: .now()  + 0.005 ）
+        let res = gpuSemaphore.wait(timeout: .now() + .milliseconds(5))
 
         
         if res == .timedOut {
