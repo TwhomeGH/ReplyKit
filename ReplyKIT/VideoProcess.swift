@@ -51,7 +51,7 @@ final class VideoFrameProcessor {
     }
 
 
-    private func process(_ sampleBuffer: CMSampleBuffer,oringinaltime: CMSampleTimingInfo) async {
+    private func process(_ sampleBuffer: CMSampleBuffer,oringinaltime: CMSampleTimingInfo) {
 
         queue.async { [weak self] in
             guard let self = self, self.isActive else { return }
@@ -98,6 +98,9 @@ final class VideoFrameProcessor {
 
 
     
+
+    }
+
 
 }
 
