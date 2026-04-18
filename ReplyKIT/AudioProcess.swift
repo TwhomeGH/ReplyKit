@@ -385,7 +385,7 @@ private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer, originalTime: CMS
         // 3️⃣ 丟進 AudioPipeline（FIFO，不丟幀）
         Task {
             // 直接 append（音訊不能丟）
-            await mediaMixer.append(buffer, track: trackType.rawValue)
+            await mediaMixer.append(sampleBuffer, track: trackType.rawValue)
         }
 
         }

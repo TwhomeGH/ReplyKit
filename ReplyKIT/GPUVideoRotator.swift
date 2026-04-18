@@ -466,6 +466,15 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
 
 
+    func asyncWait(_ semaphore: DispatchSemaphore, timeout: DispatchTime) async -> DispatchTimeoutResult {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global().async {
+                let result = semaphore.wait(timeout: timeout)
+                continuation.resume(returning: result)
+            }
+        }
+    }
+
 
     // MARK: - Enqueue Frame
     func rotateAsync(sampleBuffer: CMSampleBuffer,originalTime: CMSampleTimingInfo, angle: RotationAngle) async -> CMSampleBuffer? {
@@ -494,8 +503,8 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
         
         //await gpuSemaphore.wait()
+        let res = await asyncWait(NGPUSemaphore, timeout: .now() + 0.1)// 加入超時，避免死鎖
 
-        let res = await NGPUSemaphore.wait(timeout: .now() + 0.1) // 加入超時，避免死鎖
 
         if res == .timedOut {
             logTo("GPU Semaphore wait timed out - skipping frame to avoid deadlock")
@@ -505,10 +514,12 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             logTo("GPU Semaphore wait succeeded")
         }
 
+        
+
         defer {
         
             //釋放釋放資源
-        
+            
             NGPUSemaphore.signal()
             //Task { await gpuSemaphore.signal() }
 
@@ -572,7 +583,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         return await withCheckedContinuation { (cont: CheckedContinuation<CMSampleBuffer?, Never>) in
 
             var didResume = false
-            let timeout: UInt64 = 2_000_000_000 // 2 seconds in nanoseconds
+            
 
             let frameC = FrameContext(timing: originalTime, outSet: outSet,
                                         inY: ycvTexIn.cv, inUV: uvcvTexIn.cv
