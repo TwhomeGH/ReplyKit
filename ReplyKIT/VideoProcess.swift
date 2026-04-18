@@ -55,7 +55,7 @@ final class VideoFrameProcessor {
 
     func process(_ sampleBuffer: CMSampleBuffer,oringinaltime: CMSampleTimingInfo) {
 
-        gpuSemaphore.wait(timeout:now()+0.3)
+        let res = gpuSemaphore.wait(timeout:now()+0.3)
 
         
         if res == .timedOut {
@@ -99,7 +99,7 @@ final class VideoFrameProcessor {
 
             Task {
 
-                defer { gpuSemaphore.signal() }
+                defer { self.gpuSemaphore.signal() }
 
             guard let rotated = await rotator.rotateAsync(
                 sampleBuffer: sampleBuffer,
