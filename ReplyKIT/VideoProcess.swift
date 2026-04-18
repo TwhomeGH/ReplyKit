@@ -51,9 +51,10 @@ final class VideoFrameProcessor {
     }
 
 
-    private func process(_ sampleBuffer: CMSampleBuffer,oringinaltime: CMSampleTimingInfo) {
+    func process(_ sampleBuffer: CMSampleBuffer,oringinaltime: CMSampleTimingInfo) {
 
         queue.async { [weak self] in
+
             guard let self = self, self.isActive else { return }
 
             if rotator == nil {
@@ -82,6 +83,9 @@ final class VideoFrameProcessor {
                 rawValue: UInt32(RPConfig.shared.Rotate)
             ) ?? .landscapeRight
 
+
+            Task {
+
             guard let rotated = await rotator.rotateAsync(
                 sampleBuffer: sampleBuffer,
                 originalTime: oringinaltime,
@@ -91,7 +95,7 @@ final class VideoFrameProcessor {
                 return
             }
 
-            Task {
+           
                 await mediaMixer.append(rotated)
             }
         }
