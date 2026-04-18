@@ -526,9 +526,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
         }
 
-
         timing = originalTime
-
 
         
         guard let inBuffer = sampleBuffer.imageBuffer else { 
