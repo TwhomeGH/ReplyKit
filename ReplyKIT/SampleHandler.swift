@@ -955,8 +955,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         rtmpConnection = RTMPConnection()
         rtmpStream = RTMPStream(connection: rtmpConnection!)
-        //進行Socket初始化
-        SocketClient.shared.setupConnection()
+        
         
         ADWidth = RPConfig.shared.ADWidth
         ADHeight = RPConfig.shared.ADHeight
@@ -972,8 +971,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     }
 
     deinit {
-        rtmpConnection = nil
-        rtmpStream = nil
+        logger.info("ReplyKit Debug deinit")
 
     }
 
@@ -1471,6 +1469,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         Task {
+
+        //進行Socket初始化
+        SocketClient.shared.setupConnection()
 
         logger.info("運行通知")
 

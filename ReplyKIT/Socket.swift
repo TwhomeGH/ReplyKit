@@ -152,13 +152,20 @@ class SocketClient : @unchecked Sendable {
 
   
     // MARK: - 連線初始化
-     func setupConnection(host: String = "localhost" , port: UInt16 = 9322) {
-        connection = NWConnection(
-            host: NWEndpoint.Host(host),
-            port: NWEndpoint.Port(rawValue: port)!,
-            using: .tcp
-        )
-        start()
+    func setupConnection(host: String = "localhost" , port: UInt16 = 9322) {
+        queue.async { [self] in
+            connection = NWConnection(
+                host: NWEndpoint.Host(host),
+                port: NWEndpoint.Port(rawValue: port)!,
+                using: .tcp
+            )
+            start()
+
+            isConnection = false
+            isProcessingBatch = false
+            isReconnecting = false
+
+        }
     }
 
     func closeConnection() {
@@ -199,9 +206,7 @@ class SocketClient : @unchecked Sendable {
 
                 startHearbeat()
                 sendLog(message:"Socket連接成功 擴展端通信")
-                // ✅ 喚醒所有等待連線的人
-                connectContinuations.forEach { $0.resume() }
-                connectContinuations.removeAll()
+                
 
                 
 
@@ -330,7 +335,6 @@ class SocketClient : @unchecked Sendable {
 
     private func _requestRTMPKEYAndLog() async throws -> Bool {
 
-        try await SocketClient.shared.waitUntilConnected()
 
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Bool, Error>) in
 
@@ -364,7 +368,7 @@ class SocketClient : @unchecked Sendable {
             }
         } catch TimeoutError.timedOut {
             logger.debug("RTMPKEY timeout")
-       
+        
             return false
         } catch {
             logger.debug("RTMPKEY error: \(error)")
@@ -374,8 +378,6 @@ class SocketClient : @unchecked Sendable {
     }
 
     private func _requestRTMPKEY() async throws -> Bool {
-
-        try await SocketClient.shared.waitUntilConnected()
 
 
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Bool, Error>) in
@@ -416,7 +418,6 @@ class SocketClient : @unchecked Sendable {
 
     func _requestLogConfig() async throws -> Bool {
 
-        try await SocketClient.shared.waitUntilConnected()
 
         self.isProcessingBatch = true
 
@@ -498,16 +499,6 @@ class SocketClient : @unchecked Sendable {
     }
 
 
-    private var connectContinuations: [CheckedContinuation<Void, Error>] = []
-
-    func waitUntilConnected() async throws {
-        if isConnection { return }
-
-        return try await withCheckedThrowingContinuation { cont in
-
-            connectContinuations.append(cont)
-        }
-    }
 
 
 
