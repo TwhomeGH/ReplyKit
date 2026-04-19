@@ -109,8 +109,8 @@ kernel void rotateNV12_bilinear(
     float offsetY = (outH - scaledH) * 0.5f;
 
 
-    float srcXf = ( (float(gid.x) - offsetX) * 1.0f ) / uniformScale;
-    float srcYf = ( (float(gid.y) - offsetY) * 1.0f ) / uniformScale;
+    float srcXf = (float(gid.x) - offsetX) / uniformScale;
+    float srcYf = (float(gid.y) - offsetY) / uniformScale;
 
 
 
