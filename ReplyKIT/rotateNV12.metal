@@ -105,25 +105,29 @@ kernel void rotateNV12_bilinear(
     float srcYf = (float(gid.y) - offsetY) * uniformScale;
 
 
-   switch(params.angle) {
+  switch(params.angle) {
     case 0:  /* 保持 srcXf/srcYf，不再覆蓋 */ break;
+
     case 90: {
         float tmpX = srcXf;
-        srcXf = float(W-1) - srcYf;
+        srcXf = (float(H) - 1.0f) - srcYf;  // ✅ 用 H
         srcYf = tmpX;
         break;
     }
+
     case 180: {
-        srcXf = float(W-1) - srcXf;
-        srcYf = float(H-1) - srcYf;
+        srcXf = (float(W) - 1.0f) - srcXf;
+        srcYf = (float(H) - 1.0f) - srcYf;
         break;
     }
+
     case 270: {
         float tmpY = srcYf;
-        srcYf = float(H-1) - srcXf;
+        srcYf = (float(W) - 1.0f) - srcXf;  // ✅ 用 W
         srcXf = tmpY;
         break;
     }
+
     default: break;
 }
 
@@ -197,23 +201,27 @@ kernel void rotateNV12_bicubic(
 
    switch(params.angle) {
     case 0:  /* 保持 srcXf/srcYf，不再覆蓋 */ break;
+
     case 90: {
         float tmpX = srcXf;
-        srcXf = float(W-1) - srcYf;
+        srcXf = (float(H) - 1.0f) - srcYf;  // ✅ 用 H
         srcYf = tmpX;
         break;
     }
+
     case 180: {
-        srcXf = float(W-1) - srcXf;
-        srcYf = float(H-1) - srcYf;
+        srcXf = (float(W) - 1.0f) - srcXf;
+        srcYf = (float(H) - 1.0f) - srcYf;
         break;
     }
+
     case 270: {
         float tmpY = srcYf;
-        srcYf = float(H-1) - srcXf;
+        srcYf = (float(W) - 1.0f) - srcXf;  // ✅ 用 W
         srcXf = tmpY;
         break;
     }
+
     default: break;
 }
 
