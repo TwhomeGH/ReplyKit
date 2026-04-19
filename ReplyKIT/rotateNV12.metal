@@ -121,17 +121,21 @@ kernel void rotateNV12_bilinear(
         case 90: {
             float tmpX = srcXf;
             float tmpY = srcYf;
-            srcXf = (float(H) - 1.0f) - tmpY; 
-            srcYf = tmpX;
-            break;
+            srcXf = tmpY;                     // X ← Y
+            srcYf = (float(W) - 1.0f) - tmpX; // Y ← W-1 - X
         }
+
+
+
         case 180:{ srcXf=(float(W)-1.0f)-srcXf; srcYf=(float(H)-1.0f)-srcYf; break; }
         case 270: {
             float tmpX = srcXf;
             float tmpY = srcYf;
 
-            srcXf = tmpY ;  
-            srcYf = (float(W) - 1.0f) - tmpX;                      
+            srcXf = (float(H) - 1.0f) - tmpY; // X ← H-1 - Y
+            srcYf = tmpX;                     // Y ← X
+
+                 
             break;
         }
     }
@@ -205,8 +209,6 @@ kernel void rotateNV12_bicubic(
     float scaledH = rotH * uniformScale;
 
 
-
-
     // 計算置中偏移量
     float offsetX = (outW - scaledW) * 0.5f;
     float offsetY = (outH - scaledH) * 0.5f;
@@ -226,17 +228,21 @@ kernel void rotateNV12_bicubic(
         case 90: {
             float tmpX = srcXf;
             float tmpY = srcYf;
-            srcXf = (float(H) - 1.0f) - tmpY; 
-            srcYf = tmpX;
-            break;
+            srcXf = tmpY;                     // X ← Y
+            srcYf = (float(W) - 1.0f) - tmpX; // Y ← W-1 - X
         }
+
+
+
         case 180:{ srcXf=(float(W)-1.0f)-srcXf; srcYf=(float(H)-1.0f)-srcYf; break; }
         case 270: {
             float tmpX = srcXf;
             float tmpY = srcYf;
 
-            srcXf = tmpY ;  
-            srcYf = (float(W) - 1.0f) - tmpX;                      
+            srcXf = (float(H) - 1.0f) - tmpY; // X ← H-1 - Y
+            srcYf = tmpX;                     // Y ← X
+
+                 
             break;
         }
     }
