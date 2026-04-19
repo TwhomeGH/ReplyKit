@@ -122,7 +122,7 @@ kernel void rotateNV12_bilinear(
             float tmpX = srcXf;
             float tmpY = srcYf;
             srcXf = (float(H) - 1.0f) - tmpY; 
-            srcYf = tmpX
+            srcYf = tmpX;
             break;
         }
         case 180:{ srcXf=(float(W)-1.0f)-srcXf; srcYf=(float(H)-1.0f)-srcYf; break; }
@@ -227,7 +227,7 @@ kernel void rotateNV12_bicubic(
             float tmpX = srcXf;
             float tmpY = srcYf;
             srcXf = (float(H) - 1.0f) - tmpY; 
-            srcYf = tmpX
+            srcYf = tmpX;
             break;
         }
         case 180:{ srcXf=(float(W)-1.0f)-srcXf; srcYf=(float(H)-1.0f)-srcYf; break; }
