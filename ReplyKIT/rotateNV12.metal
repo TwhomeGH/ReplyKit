@@ -87,8 +87,8 @@ kernel void rotateNV12_bilinear(
     if (gid.x >= outW || gid.y >= outH) return;
 
 
-    float scaleX = float(W)  / float(outW);
-    float scaleY = float(H) / float(outH);
+    float scaleX = float(outW) / float(W);
+    float scaleY = float(outH) / float(H);
 
     // 等比例縮放
     float uniformScale = min(scaleX, scaleY);
