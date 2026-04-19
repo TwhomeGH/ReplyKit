@@ -108,21 +108,9 @@ kernel void rotateNV12_bilinear(
     float offsetX = (outW - scaledW) * 0.5f;
     float offsetY = (outH - scaledH) * 0.5f;
 
-    float dstXf = float(gid.x) + 0.5f;
+    float srcXf = (float(gid.x) + 0.5f - offsetX) / uniformScale;
 
-    float rotX = (dstXf - offsetX) / uniformScale;
-
-    float centerX = 0.5f * (rotW - W);
-    float srcXf = rotX - centerX;
-
-    float dstYf = float(gid.y) + 0.5f;
-
-    // 先做 scale + offset
-    float rotY = (dstYf - offsetY) / uniformScale;
-
-    // ⭐補 rotation center correction（關鍵修正）
-    float centerY = 0.5f * (rotH - H);
-    float srcYf = rotY - centerY;
+    float srcYf = (float(gid.y) + 0.5f - offsetY) / uniformScale;
 
     switch(params.angle) {
     case 0: break;
@@ -249,21 +237,9 @@ kernel void rotateNV12_bicubic(
     float offsetX = (outW - scaledW) * 0.5f;
     float offsetY = (outH - scaledH) * 0.5f;
 
-    float dstXf = float(gid.x) + 0.5f;
+    float srcXf = (float(gid.x) + 0.5f - offsetX) / uniformScale;
 
-    float rotX = (dstXf - offsetX) / uniformScale;
-
-    float centerX = 0.5f * (rotW - W);
-    float srcXf = rotX - centerX;
-
-    float dstYf = float(gid.y) + 0.5f;
-
-    // 先做 scale + offset
-    float rotY = (dstYf - offsetY) / uniformScale;
-
-    // ⭐補 rotation center correction（關鍵修正）
-    float centerY = 0.5f * (rotH - H);
-    float srcYf = rotY - centerY;
+    float srcYf = (float(gid.y) + 0.5f - offsetY) / uniformScale;
 
 
 
