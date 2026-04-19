@@ -1497,13 +1497,15 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         // User has requested to start the broadcast. Setup info from the UI extension can be suppdlied but optional.
 
 
+
+
+
+        Task {
+
         logger.info("運行通知")
 
         isBroadcasting = true
         isStopping = false
-        needVideoConfiguration = true
-
-        Task {
 
 
             //self.prepareCompressionSession()
@@ -1575,32 +1577,34 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     func broadcastEnd(message:String = "正常結束")  {
         // User has requested to finish the broadcast.
 
-        isStopping = true
-        isBroadcasting = false
-
-        SocketClient.shared.sendStreamEnd()
-
-        // 停止斷線監控 Task
-        disconnectMonitorTask?.cancel()
-        disconnectMonitorTask = nil
-
-        //ExtensionMessagePort.shared.disconnectFromApp()
-
-
-        needVideoConfiguration = true
-        needAudioConfiguration = true
-
-        removeObservers()
-        isSessionReady = false
-
-        DeviceOrientationManager.shared.stopUpdates()
-
-        volumeNotifier?.cleanup()
-        volumeNotifier=nil
+        
 
 
 
         Task {
+
+                isStopping = true
+            isBroadcasting = false
+
+            SocketClient.shared.sendStreamEnd()
+
+            // 停止斷線監控 Task
+            disconnectMonitorTask?.cancel()
+            disconnectMonitorTask = nil
+
+            //ExtensionMessagePort.shared.disconnectFromApp()
+
+
+            needVideoConfiguration = true
+            needAudioConfiguration = true
+
+            removeObservers()
+            isSessionReady = false
+
+            DeviceOrientationManager.shared.stopUpdates()
+
+            volumeNotifier?.cleanup()
+            volumeNotifier=nil
 
             await mediaMixer.removeOutput(rtmpStream)
             await mediaMixer.stopRunning()
@@ -1781,6 +1785,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             case 90,270:
                 avfrom = .landscapeRight
             default:
+                avfrom = .landscapeRight
                 break
         }
 
