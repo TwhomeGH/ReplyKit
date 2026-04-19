@@ -97,46 +97,48 @@ kernel void rotateNV12_bilinear(
     float uniformScale = min(scaleX, scaleY);
 
 
-    // ❗直接用 dst space 做 center（不要再用 scaledW/H）
-    float offsetX = (float(outW) - float(rotW) * uniformScale) * 0.5f;
-    float offsetY = (float(outH) - float(rotH) * uniformScale) * 0.5f;
+    
+
+    float2 dst = float2(gid.x + 0.5f, gid.y + 0.5f);
+
+    // output center
+    float2 outCenter = float2(rotW, rotH) * 0.5f;
+
+    float2 scaledSize = float2(rotW, rotH) * uniformScale;
+    float2 offset = (float2(outW, outH) - scaledSize) * 0.5f;
+
+    float2 p = (dst - offset) / uniformScale;
 
 
-    float srcXf = (float(gid.x) + 0.5f - offsetX) / uniformScale;
-
-    float srcYf = (float(gid.y) + 0.5f - offsetY) / uniformScale;
+    float2x2 R;
 
     switch(params.angle) {
-    case 0: break;
+    case 0:
+        R = float2x2(1,0, 0,1);
+        break;
 
-    case 90: { // 🔁 改成逆時針
-        float tmpX = srcXf;
-        float tmpY = srcYf;
+    case 90:   // CCW
+        R = float2x2(0,-1, 1,0);
+        break;
 
-        srcXf = (float(H) - 1.0f) - tmpY;
-        srcYf = tmpX;
+    case 180:
+        R = float2x2(-1,0, 0,-1);
+        break;
 
+    case 270:
+        R = float2x2(0,1, -1,0);
         break;
     }
 
-    case 180: {
-        srcXf = (float(W) - 1.0f) - srcXf;
-        srcYf = (float(H) - 1.0f) - srcYf;
-        break;
-    }
 
-   case 270: { // ✅ 順時針 270°
-        float tmpX = srcXf;
-        float tmpY = srcYf;
+    float2 srcCenter = float2(W, H) * 0.5f;
 
-        srcXf = (float(H) - 1.0f) - tmpY;
-        srcYf = tmpX;
+    // final mapping
+    float2 src = R * p;
+    src += srcCenter;
 
-        break;
-    }
-}
-
-
+    float srcXf = src.x;
+    float srcYf = src.y;
 
     // --- Y bilinear ---
     if (srcXf < 0.0f || srcXf > float(W - 1) ||
@@ -224,47 +226,44 @@ kernel void rotateNV12_bicubic(
     float uniformScale = min(scaleX, scaleY);
 
     // ❗直接用 dst space 做 center（不要再用 scaledW/H）
-    float offsetX = (float(outW) - float(rotW) * uniformScale) * 0.5f;
-    float offsetY = (float(outH) - float(rotH) * uniformScale) * 0.5f;
+    float2 dst = float2(gid.x + 0.5f, gid.y + 0.5f);
+
+    // output center
+    float2 outCenter = float2(outW, outH) * 0.5f;
+
+    // normalized screen space
+    float2 scaledSize = float2(rotW, rotH) * uniformScale;
+    float2 offset = (float2(outW, outH) - scaledSize) * 0.5f;
+
+    float2 p = (dst - offset) / uniformScale;
 
 
-
-    float srcXf = (float(gid.x) + 0.5f - offsetX) / uniformScale;
-
-    float srcYf = (float(gid.y) + 0.5f - offsetY) / uniformScale;
-
-
+    float2x2 R;
 
     switch(params.angle) {
-    case 0: break;
+    case 0:
+        R = float2x2(1,0, 0,1);
+        break;
 
-    case 90: { // 🔁 改成逆時針
-        float tmpX = srcXf;
-        float tmpY = srcYf;
+    case 90:
+        R = float2x2(0,-1, 1,0);
+        break;
 
-        srcXf = (float(H) - 1.0f) - tmpY;
-        srcYf = tmpX;
+    case 180:
+        R = float2x2(-1,0, 0,-1);
+        break;
 
+    case 270:
+        R = float2x2(0,1, -1,0);
         break;
     }
 
-    case 180: {
-        srcXf = (float(W) - 1.0f) - srcXf;
-        srcYf = (float(H) - 1.0f) - srcYf;
-        break;
-    }
+    float2 srcCenter = float2(W, H) * 0.5f;
 
-    case 270: { // ✅ 順時針 270°
-        float tmpX = srcXf;
-        float tmpY = srcYf;
+    float2 src = R * p + srcCenter;
 
-        srcXf = (float(H) - 1.0f) - tmpY;
-        srcYf = tmpX;
-
-        break;
-    }
-}
-
+    float srcXf = src.x;
+    float srcYf = src.y;
 
     uint maxX = srcY.get_width();
     uint maxY = srcY.get_height();
@@ -277,61 +276,46 @@ kernel void rotateNV12_bicubic(
     half yVal;
 
     if (srcXf < 0.0f || srcXf > float(W - 1) ||
-        srcYf < 0.0f || srcYf > float(H - 1)) {
+    srcYf < 0.0f || srcYf > float(H - 1)) {
 
-        // 黑邊
-        yVal = half(0.0);
+    yVal = half(0.0);
 
     } else {
 
-        yVal = bicubicSampleY_4fetch(
-            srcY,
-            linearClampSampler,
-            float2(srcXf / float(W), srcYf / float(H)),
-            uint2(maxX, maxY)
+       yVal = bicubicSampleY_4fetch(
+        srcY,
+        linearClampSampler,
+        float2(srcXf / float(W), srcYf / float(H)),
+        uint2(srcY.get_width(), srcY.get_height())
         );
+
     }
 
     dstY.write(yVal, gid);
 
 
-    // --- UV plane ---
+ 
     // --- 替換原本 UV plane 的讀取 ---
-    if (srcXf < 0.0f || srcXf > float(W - 1) ||
-    srcYf < 0.0f || srcYf > float(H - 1)) {
 
-    dstUV.write(
-        half4(0.5, 0.5, 0.0, 1.0),
-        uint2(gid.x/2, gid.y/2)
-    );
+    uint2 uvPos = uint2(gid.x >> 1, gid.y >> 1);
+
+    if (srcXf < 0.0f || srcXf > float(W - 1) ||
+        srcYf < 0.0f || srcYf > float(H - 1)) {
+
+        dstUV.write(half4(0.5, 0.5, 0.0, 1.0), uvPos);
 
     } else {
 
-        float halfW = float(rotW) * 0.5f;
-        float halfH = float(rotH) * 0.5f;
-
-        float2 uvCoord = float2(srcXf, srcYf) * 0.5f;
-
-        // clamp 改成 rot space
-        uvCoord = clamp(
-            uvCoord,
-            float2(0.0f),
-            float2(halfW - 1.0f, halfH - 1.0f)
-        );
+        float2 uvCoord = (float2(srcXf, srcYf) + 0.5f) * 0.5f;
 
         half2 uvVal = srcUV.sample(
             linearClampSampler,
-            (uvCoord + 0.5f) / float2(halfW, halfH)
+            uvCoord / float2(W * 0.5f, H * 0.5f)
         ).rg;
-
-
-        uint2 uvDst = uint2(gid.x/2, gid.y/2);
-        uvDst.x = min(uvDst.x, dstUV.get_width()-1);
-        uvDst.y = min(uvDst.y, dstUV.get_height()-1);
 
         dstUV.write(
             half4(uvVal.x, uvVal.y, 0.0, 1.0),
-            uvDst
+            uvPos
         );
     }
 
