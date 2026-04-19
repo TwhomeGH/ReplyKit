@@ -116,12 +116,12 @@ kernel void rotateNV12_bilinear(
     switch(params.angle) {
     case 0: break;
 
-    case 90: { // ✅ 順時針 90°
-    float tmpX = srcXf;
-    float tmpY = srcYf;
+    case 90: { // 🔁 改成逆時針
+        float tmpX = srcXf;
+        float tmpY = srcYf;
 
-        srcXf = tmpY;
-        srcYf = (float(W) - 1.0f) - tmpX;
+        srcXf = (float(H) - 1.0f) - tmpY;
+        srcYf = tmpX;
 
         break;
     }
@@ -160,14 +160,23 @@ kernel void rotateNV12_bilinear(
     if ((gid.x & 1u) == 0 && (gid.y & 1u) == 0) {
 
 
-        float2 uvPos = float2(
-            clamp(srcXf * 0.5f + 0.25f , 0.0f, float(W*0.5f - 1)),
-            clamp(srcYf * 0.5f + 0.25f , 0.0f, float(H*0.5f - 1))
+
+        float halfW = float(W) * 0.5f;
+        float halfH = float(H) * 0.5f;
+
+        float2 uvCoord = float2(srcXf, srcYf) * 0.5f;
+
+        uvCoord = clamp(
+            uvCoord,
+            float2(0.0f, 0.0f),
+            float2(halfW - 1.0f, halfH - 1.0f)
         );
+
+
 
         half2 uvVal = srcUV.sample(
             linearClampSampler,
-            uvPos / float2(W*0.5f, H*0.5f)
+            (uvCoord + 0.5f) / float2(halfW, halfH)
         ).rg;
 
 
@@ -207,7 +216,7 @@ kernel void rotateNV12_bicubic(
     float scaleY = float(outH) / float(rotH);
 
     // 等比例縮放
-    float uniformScale = min(scaleX, scaleY);
+    float uniformScale = max(scaleX, scaleY);
 
     // 縮放後的實際寬高
     float scaledW = rotW * uniformScale;
@@ -229,12 +238,12 @@ kernel void rotateNV12_bicubic(
     switch(params.angle) {
     case 0: break;
 
-    case 90: { // ✅ 順時針 90°
+    case 90: { // 🔁 改成逆時針
         float tmpX = srcXf;
         float tmpY = srcYf;
 
-        srcXf = tmpY;
-        srcYf = (float(W) - 1.0f) - tmpX;
+        srcXf = (float(H) - 1.0f) - tmpY;
+        srcYf = tmpX;
 
         break;
     }
@@ -293,18 +302,23 @@ kernel void rotateNV12_bicubic(
     // --- 替換原本 UV plane 的讀取 ---
     if ((gid.x & 1u) == 0 && (gid.y & 1u) == 0) {
         
-        float2 uvPos = float2(
-            clamp(srcXf * 0.5f + 0.25f , 0.0f, float(W*0.5f - 1)),
-            clamp(srcYf * 0.5f + 0.25f , 0.0f, float(H*0.5f - 1))
+        float halfW = float(W) * 0.5f;
+        float halfH = float(H) * 0.5f;
+
+        float2 uvCoord = float2(srcXf, srcYf) * 0.5f;
+
+        uvCoord = clamp(
+            uvCoord,
+            float2(0.0f, 0.0f),
+            float2(halfW - 1.0f, halfH - 1.0f)
         );
 
 
 
         half2 uvVal = srcUV.sample(
             linearClampSampler,
-            uvPos / float2(W*0.5f, H*0.5f)
+            (uvCoord + 0.5f) / float2(halfW, halfH)
         ).rg;
-
         
 
         uint2 uvDst = uint2(gid.x/2, gid.y/2);
