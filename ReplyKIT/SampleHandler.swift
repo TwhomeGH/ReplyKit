@@ -1850,8 +1850,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         videoSettings.profileLevel = profilelvl
         videoSettings.scalingMode = .letterbox
-        videoSetttings.bitrate = RPConfig.shared.BitRate
-        videoSettings.videoSize = .init(width: DW, height: DH)
+        videoSettings.bitrate = RPConfig.shared.BitRate
+        videoSettings.videoSize = newSize
         videoSettings.expectedFrameRate = 60.0
         videoSettings.maxKeyFrameIntervalDuration = 2
 
@@ -1877,7 +1877,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     override func processSampleBuffer(_ sampleBuffer: CMSampleBuffer, with sampleBufferType: RPSampleBufferType) {
 
-        guard isBroadcasting, !isStopping else { return }
 
         // 這裡的 sampleBuffer 是 ReplayKit 給的原始幀數據，還沒有經過我們的處理器修改
         //let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
