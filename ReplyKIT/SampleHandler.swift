@@ -1472,6 +1472,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         //進行Socket初始化
         SocketClient.shared.setupConnection()
+        SocketClient.shared.sendLog(message: "直播開始，初始化Socket連線")
 
         logger.info("運行通知")
 
@@ -1524,7 +1525,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
                 await self.startRTMP(url: self.rtmpURL , key: self.rtmpKey)
-                
+
                 sendlog(message:"✅ Processor 初始化完成")
 
                 logger.info("✅ Processor 初始化完成")
@@ -1848,6 +1849,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         sendlog(message: "H264Profilelevel: \(profilelvl)")
 
         videoSettings.profileLevel = profilelvl
+        videoSettings.scalingMode = .letterbox
+        videoSetttings.bitrate = RPConfig.shared.BitRate
+        videoSettings.videoSize = .init(width: DW, height: DH)
+        videoSettings.expectedFrameRate = 60.0
+        videoSettings.maxKeyFrameIntervalDuration = 2
+
 
         if lastConfiguredSize != newSize {
             lastConfiguredSize = newSize
