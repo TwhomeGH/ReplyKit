@@ -162,10 +162,10 @@ kernel void rotateNV12_bilinear(
             clamp(srcYf * 0.5f + 0.25f, 0.0f, float(H/2 - 1))
         );
 
-        half2 uvVal = half2(srcUV.sample(
+        half2 uvVal = srcUV.sample(
             linearClampSampler,
             uvPos / float2(W*0.5f, H*0.5f)
-        ).rg);
+        ).rg;
 
 
         dstUV.write(
@@ -287,9 +287,10 @@ kernel void rotateNV12_bicubic(
 
 
 
-        half2 uvVal = half2(srcUV.sample(linearClampSampler,
+        half2 uvVal = srcUV.sample(
+            linearClampSampler,
             uvPos / float2(W*0.5f, H*0.5f)
-        ));
+        ).rg;
 
         
 
