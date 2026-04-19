@@ -121,16 +121,17 @@ kernel void rotateNV12_bilinear(
         case 90: {
             float tmpX = srcXf;
             float tmpY = srcYf;
-            srcXf = tmpY;                     // X ← Y
-            srcYf = (float(W) - 1.0f) - tmpX; // Y ← W-1 - X
+            srcXf = (float(H) - 1.0f) - tmpY; 
+            srcYf = tmpX
             break;
         }
         case 180:{ srcXf=(float(W)-1.0f)-srcXf; srcYf=(float(H)-1.0f)-srcYf; break; }
         case 270: {
             float tmpX = srcXf;
             float tmpY = srcYf;
-            srcXf = (float(H) - 1.0f) - tmpY; // X ← H-1 - Y
-            srcYf = tmpX;                     // Y ← X
+
+            srcXf = tmpY ;  
+            srcYf = (float(W) - 1.0f) - tmpX;                      
             break;
         }
     }
@@ -142,8 +143,8 @@ kernel void rotateNV12_bilinear(
         linearClampSampler,
 
         float2(
-            clamp(srcXf, 0.0f, float(W-1)) / float(W),
-            clamp(srcYf, 0.0f, float(H-1)) / float(H)
+            clamp(srcXf, 0.0f, float(rotW-1)) / float(W),
+            clamp(srcYf, 0.0f, float(rotH-1)) / float(H)
         )
 
     ).x;
@@ -225,16 +226,17 @@ kernel void rotateNV12_bicubic(
         case 90: {
             float tmpX = srcXf;
             float tmpY = srcYf;
-            srcXf = tmpY;                     // X ← Y
-            srcYf = (float(W) - 1.0f) - tmpX; // Y ← W-1 - X
+            srcXf = (float(H) - 1.0f) - tmpY; 
+            srcYf = tmpX
             break;
         }
         case 180:{ srcXf=(float(W)-1.0f)-srcXf; srcYf=(float(H)-1.0f)-srcYf; break; }
         case 270: {
             float tmpX = srcXf;
             float tmpY = srcYf;
-            srcXf = (float(H) - 1.0f) - tmpY; // X ← H-1 - Y
-            srcYf = tmpX;                     // Y ← X
+
+            srcXf = tmpY ;  
+            srcYf = (float(W) - 1.0f) - tmpX;                      
             break;
         }
     }
@@ -256,8 +258,8 @@ kernel void rotateNV12_bicubic(
                                      srcY,
                                      linearClampSampler,
                                      float2(
-                                        clamp(srcXf, 0.0f, float(W-1)) / float(W),
-                                        clamp(srcYf, 0.0f, float(H-1)) / float(H)
+                                        clamp(srcXf, 0.0f, float(rotW-1)) / float(W),
+                                        clamp(srcYf, 0.0f, float(rotH-1)) / float(H)
                                      ),
                                      uint2(maxX, maxY)
                                      );
