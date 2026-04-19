@@ -1850,7 +1850,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         videoSettings.profileLevel = profilelvl
         videoSettings.scalingMode = .letterbox
-        videoSettings.bitrate = RPConfig.shared.BitRate
+        
         videoSettings.videoSize = newSize
         videoSettings.expectedFrameRate = 60.0
         videoSettings.maxKeyFrameIntervalDuration = 2
