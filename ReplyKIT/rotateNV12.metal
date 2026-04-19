@@ -144,45 +144,56 @@ kernel void rotateNV12_bilinear(
 
 
     // --- Y bilinear ---
-     half yVal = srcY.sample(
-        linearClampSampler,
-        float2(
-            clamp(srcXf , 0.0f, float(W - 1)) / float(W),
-            clamp(srcYf , 0.0f, float(H - 1)) / float(H)
-        )
-    ).x;
+    if (srcXf < 0.0f || srcXf > float(W - 1) ||
+        srcYf < 0.0f || srcYf > float(H - 1)) {
 
-    dstY.write(yVal, gid);
+        // 超出範圍 → 黑邊
+        dstY.write(half(0.0), gid);
+
+    } else {
+
+        half yVal = srcY.sample(
+            linearClampSampler,
+            float2(srcXf / float(W), srcYf / float(H))
+        ).x;
+
+        dstY.write(yVal, gid);
+    }
 
     // --- UV bilinear ---
-    if ((gid.x & 1u) == 0 && (gid.y & 1u) == 0) {
+   if (srcXf < 0.0f || srcXf > float(W - 1) ||
+    srcYf < 0.0f || srcYf > float(H - 1)) {
 
+    // 黑邊 UV（對應黑色）
+    dstUV.write(
+        half4(0.5, 0.5, 0.0, 1.0),
+        uint2(gid.x >> 1, gid.y >> 1)
+    );
 
+} else {
 
-        float halfW = float(W) * 0.5f;
-        float halfH = float(H) * 0.5f;
+    float halfW = float(W) * 0.5f;
+    float halfH = float(H) * 0.5f;
 
-        float2 uvCoord = float2(srcXf, srcYf) * 0.5f;
+    float2 uvCoord = float2(srcXf, srcYf) * 0.5f;
 
-        uvCoord = clamp(
-            uvCoord,
-            float2(0.0f, 0.0f),
-            float2(halfW - 1.0f, halfH - 1.0f)
-        );
+    uvCoord = clamp(
+        uvCoord,
+        float2(0.0f),
+        float2(W * 0.5f - 1.0f, H * 0.5f - 1.0f)
+    );
 
-
-
-        half2 uvVal = srcUV.sample(
-            linearClampSampler,
-            (uvCoord + 0.5f) / float2(halfW, halfH)
-        ).rg;
-
+    half2 uvVal = srcUV.sample(
+        linearClampSampler,
+        (uvCoord + 0.5f) / float2(halfW, halfH)
+    ).rg;
 
         dstUV.write(
             half4(uvVal.x, uvVal.y, 0.0, 1.0),
             uint2(gid.x >> 1, gid.y >> 1)
         );
     }
+
 }
 
 // --- Main kernel ---
@@ -267,61 +278,69 @@ kernel void rotateNV12_bicubic(
     uint maxY = srcY.get_height();
 
 
-    //switch(params.angle) {
-    //    case 0:  srcXf = float(gid.x)*scaleX; srcYf = float(gid.y)*scaleY; break;
-    //    case 90: srcXf = float(W-1) - float(gid.y)*(float(W)/dstH); srcYf = float(gid.x)*(float(H)/dstW); break;
-    //    case 180: srcXf = float(W-1) - float(gid.x)*scaleX; srcYf = float(H-1) - float(gid.y)*scaleY; break;
-    //    case 270: srcXf = float(gid.y)*(float(W)/dstH); srcYf = float(H-1) - float(gid.x)*(float(H)/dstW); break;
-    //    default: srcXf = float(gid.x)*scaleX; srcYf = float(gid.y)*scaleY; break;
-    //}
+   
 
 
 
-    half yVal = bicubicSampleY_4fetch(
-                                     srcY,
-                                     linearClampSampler,
-                                      float2(
-                                        clamp(srcXf , 0.0f, float(W - 1)) / float(W),
-                                        clamp(srcYf , 0.0f, float(H - 1)) / float(H)
-                                    ),
-                                     uint2(maxX, maxY)
-                                     );
+    half yVal;
 
+    if (srcXf < 0.0f || srcXf > float(W - 1) ||
+        srcYf < 0.0f || srcYf > float(H - 1)) {
 
+        // 黑邊
+        yVal = half(0.0);
 
+    } else {
 
-
+        yVal = bicubicSampleY_4fetch(
+            srcY,
+            linearClampSampler,
+            float2(srcXf / float(W), srcYf / float(H)),
+            uint2(maxX, maxY)
+        );
+    }
 
     dstY.write(yVal, gid);
 
 
     // --- UV plane ---
     // --- 替換原本 UV plane 的讀取 ---
-    if ((gid.x & 1u) == 0 && (gid.y & 1u) == 0) {
-        
-        float halfW = float(W) * 0.5f;
-        float halfH = float(H) * 0.5f;
+    if (srcXf < 0.0f || srcXf > float(W - 1) ||
+    srcYf < 0.0f || srcYf > float(H - 1)) {
+
+    dstUV.write(
+        half4(0.5, 0.5, 0.0, 1.0),
+        uint2(gid.x/2, gid.y/2)
+    );
+
+    } else {
+
+        float halfW = float(rotW) * 0.5f;
+        float halfH = float(rotH) * 0.5f;
 
         float2 uvCoord = float2(srcXf, srcYf) * 0.5f;
 
+        // clamp 改成 rot space
         uvCoord = clamp(
             uvCoord,
-            float2(0.0f, 0.0f),
+            float2(0.0f),
             float2(halfW - 1.0f, halfH - 1.0f)
         );
-
-
 
         half2 uvVal = srcUV.sample(
             linearClampSampler,
             (uvCoord + 0.5f) / float2(halfW, halfH)
         ).rg;
-        
 
+        
         uint2 uvDst = uint2(gid.x/2, gid.y/2);
         uvDst.x = min(uvDst.x, dstUV.get_width()-1);
         uvDst.y = min(uvDst.y, dstUV.get_height()-1);
-        dstUV.write(half4(uvVal.x, uvVal.y, 0.0, 1.0), uvDst);
+
+        dstUV.write(
+            half4(uvVal.x, uvVal.y, 0.0, 1.0),
+            uvDst
+        );
     }
 
 }
