@@ -101,8 +101,8 @@ kernel void rotateNV12_bilinear(
     float offsetX = (outW - scaledW) * 0.5f;
     float offsetY = (outH - scaledH) * 0.5f;
 
-    float srcXf = (float(gid.x) - offsetX) * uniformScale;
-    float srcYf = (float(gid.y) - offsetY) * uniformScale;
+    float srcXf = (float(gid.x) - offsetX) / uniformScale;
+    float srcYf = (float(gid.y) - offsetY) / uniformScale;
 
 switch(params.angle) {
     case 0: {
@@ -111,7 +111,6 @@ switch(params.angle) {
     }
 
     case 90: {
-        // (x', y') = (y, W-1-x)
         float tmpX = srcXf;
         float tmpY = srcYf;
         srcXf = tmpY;                     // X ← Y
@@ -120,14 +119,12 @@ switch(params.angle) {
     }
 
     case 180: {
-        // (x', y') = (W-1-x, H-1-y)
         srcXf = (float(W) - 1.0f) - srcXf;
         srcYf = (float(H) - 1.0f) - srcYf;
         break;
     }
 
     case 270: {
-        // (x', y') = (H-1-y, x)
         float tmpX = srcXf;
         float tmpY = srcYf;
         srcXf = (float(H) - 1.0f) - tmpY; // X ← H-1 - Y
@@ -199,8 +196,8 @@ kernel void rotateNV12_bicubic(
     float offsetX = (outW - scaledW) * 0.5f;
     float offsetY = (outH - scaledH) * 0.5f;
 
-    float srcXf = (float(gid.x) - offsetX) * uniformScale;
-    float srcYf = (float(gid.y) - offsetY) * uniformScale;
+    float srcXf = (float(gid.x) - offsetX) / uniformScale;
+    float srcYf = (float(gid.y) - offsetY) / uniformScale;
 
 
 switch(params.angle) {
@@ -210,7 +207,6 @@ switch(params.angle) {
     }
 
     case 90: {
-        // (x', y') = (y, W-1-x)
         float tmpX = srcXf;
         float tmpY = srcYf;
         srcXf = tmpY;                     // X ← Y
@@ -219,14 +215,12 @@ switch(params.angle) {
     }
 
     case 180: {
-        // (x', y') = (W-1-x, H-1-y)
         srcXf = (float(W) - 1.0f) - srcXf;
         srcYf = (float(H) - 1.0f) - srcYf;
         break;
     }
 
     case 270: {
-        // (x', y') = (H-1-y, x)
         float tmpX = srcXf;
         float tmpY = srcYf;
         srcXf = (float(H) - 1.0f) - tmpY; // X ← H-1 - Y
@@ -236,6 +230,7 @@ switch(params.angle) {
 
     default: break;
 }
+
     uint maxX = srcY.get_width();
     uint maxY = srcY.get_height();
 
