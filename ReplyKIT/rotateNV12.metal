@@ -115,31 +115,30 @@ kernel void rotateNV12_bilinear(
 
 
     switch(params.angle) {
-        case 0: break;
+    case 0: break;
 
-
-        case 90: {
-            float tmpX = srcXf;
-            float tmpY = srcYf;
-            srcXf = tmpY;                     // X ← Y
-            srcYf = (float(W) - 1.0f) - tmpX; // Y ← W-1 - X
-            break;
-        }
-
-
-
-        case 180:{ srcXf=(float(W)-1.0f)-srcXf; srcYf=(float(H)-1.0f)-srcYf; break; }
-        case 270: {
-            float tmpX = srcXf;
-            float tmpY = srcYf;
-
-            srcXf = (float(H) - 1.0f) - tmpY; // X ← H-1 - Y
-            srcYf = tmpX;                     // Y ← X
-
-                 
-            break;
-        }
+    case 90: {
+        float tmpX = srcXf;
+        float tmpY = srcYf;
+        srcXf = tmpY;                     // X ← Y
+        srcYf = (float(W) - 1.0f) - tmpX; // Y ← W-1 - X
+        break;
     }
+
+    case 180: {
+        srcXf = (float(W) - 1.0f) - srcXf;
+        srcYf = (float(H) - 1.0f) - srcYf;
+        break;
+    }
+
+    case 270: {
+        float tmpX = srcXf;
+        float tmpY = srcYf;
+        srcXf = (float(H) - 1.0f) - tmpY; // X ← H-1 - Y
+        srcYf = tmpX;                     // Y ← X
+        break;
+    }
+}
 
 
 
@@ -225,27 +224,30 @@ kernel void rotateNV12_bicubic(
 
 
     switch(params.angle) {
-        case 0: break;
+    case 0: break;
 
-
-       case 90: {
-            float tmpX = srcXf;
-            float tmpY = srcYf;
-            srcXf = (float(H) - 1.0f) - tmpY; // X ← H-1 - Y
-            srcYf = tmpX;                     // Y ← X
-            break;
-        }
-
-
-        case 180:{ srcXf=(float(W)-1.0f)-srcXf; srcYf=(float(H)-1.0f)-srcYf; break; }
-        case 270: {
-            float tmpX = srcXf;
-            float tmpY = srcYf;
-            srcXf = tmpY;                     // X ← Y
-            srcYf = (float(W) - 1.0f) - tmpX; // Y ← W-1 - X
-            break;
-        }
+    case 90: {
+        float tmpX = srcXf;
+        float tmpY = srcYf;
+        srcXf = tmpY;                     // X ← Y
+        srcYf = (float(W) - 1.0f) - tmpX; // Y ← W-1 - X
+        break;
     }
+
+    case 180: {
+        srcXf = (float(W) - 1.0f) - srcXf;
+        srcYf = (float(H) - 1.0f) - srcYf;
+        break;
+    }
+
+    case 270: {
+        float tmpX = srcXf;
+        float tmpY = srcYf;
+        srcXf = (float(H) - 1.0f) - tmpY; // X ← H-1 - Y
+        srcYf = tmpX;                     // Y ← X
+        break;
+    }
+}
 
 
     uint maxX = srcY.get_width();
