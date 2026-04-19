@@ -124,6 +124,8 @@ switch(params.angle) {
 
     case 270: {
         float tmpY = srcYf;
+        float tmpX = srcXf;
+
         srcXf = (float(H) - 1.0f) - tmpY;  // X ← H-1 - Y
         srcYf = tmpX;                     // Y ← X
         break;
@@ -218,6 +220,8 @@ kernel void rotateNV12_bicubic(
 
     case 270: {
         float tmpY = srcYf;
+        float tmpX = srcXf;
+
         srcXf = (float(H) - 1.0f) - tmpY;  // X ← H-1 - Y
         srcYf = tmpX;                     // Y ← X
         break;
