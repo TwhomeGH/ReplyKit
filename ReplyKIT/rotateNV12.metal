@@ -76,13 +76,13 @@ inline float2 mapDstToSrc(
         R = float2x2(1, 0, 0, 1);
         break;
     case 90:
-        R = float2x2(0, -1, 1, 0);
+        R = float2x2(0, 1, -1, 0);
         break;
     case 180:
         R = float2x2(-1, 0, 0, -1);
         break;
     default: // 270
-        R = float2x2(0, 1, -1, 0);
+        R = float2x2(0, -1, 1, 0);
         break;
     }
 
