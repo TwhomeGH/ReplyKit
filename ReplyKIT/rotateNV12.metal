@@ -123,6 +123,7 @@ kernel void rotateNV12_bilinear(
             float tmpY = srcYf;
             srcXf = tmpY;                     // X ← Y
             srcYf = (float(W) - 1.0f) - tmpX; // Y ← W-1 - X
+            break;
         }
 
 
