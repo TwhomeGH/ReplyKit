@@ -105,8 +105,8 @@ kernel void rotateNV12_bilinear(
 
 
     // 計算置中偏移量
-    float offsetX = (outW - scaledW) * 0.5f;
-    float offsetY = (outH - scaledH) * 0.5f;
+    float offsetY = (rotH - scaledH) * 0.5f;
+    float offsetX = (rutW - scaledW) * 0.5f;
 
     float srcXf = (float(gid.x) + 0.5f - offsetX) / uniformScale;
 
