@@ -25,7 +25,7 @@
           "version": "4.9.9",
           "buildVersion": "2.3.0",
           "date": "2026-04-13T21:26:00+08:00",
-          "localizedDescription": "FixBugs修繕音軌的PTS對齊",
+          "localizedDescription": "重寫 rotateNV12_bilinear 與 rotateNV12_bicubic，修正 4:3 到 16:9 等比例適應時的畫面對齊、90/270 度方向顛倒，以及 NV12 UV 色度對齊不穩問題；並保留先前音軌 PTS 對齊修正。",
           "minOSVersion": "16.0"
         }
       ],
