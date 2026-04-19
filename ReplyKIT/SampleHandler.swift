@@ -1514,7 +1514,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 await self.configureMediaMixer()
 
 
-                await self.startRTMP(url: self.rtmpURL , key: self.rtmpKey)
+                
 
                 sendlog(message:"✅ MediaMixer 配置完成")
 
@@ -1522,6 +1522,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 self.initProcessors()
 
+
+                await self.startRTMP(url: self.rtmpURL , key: self.rtmpKey)
+                
                 sendlog(message:"✅ Processor 初始化完成")
 
                 logger.info("✅ Processor 初始化完成")
