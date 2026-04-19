@@ -838,7 +838,7 @@ private func fallbackSampleBuffer(
         encoder.setBytes(&params, length: MemoryLayout<Params>.stride, index: 0)
 
         if OutWW > 0 && OutHH > 0 {
-            logTo("GPU Shader 寬高參數:\(OutWW)x\(OutHH)")
+            logTo("GPU Shader 寬高 參數:\(OutWW)x\(OutHH)")
             encoder.dispatchThreads(MTLSize(width: OutWW, height: OutHH, depth: 1),
                                 threadsPerThreadgroup: MTLSize(width: tgWidth, height: tgHeight, depth: 1))
 

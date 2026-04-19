@@ -92,51 +92,36 @@ kernel void rotateNV12_bilinear(
 
     float scaleX = float(outW) / float(rotW);
     float scaleY = float(outH) / float(rotH);
-
-    // 等比例縮放
     float uniformScale = min(scaleX, scaleY);
 
+
+
+
+
     // 縮放後的實際寬高
-    float scaledW = W * uniformScale;
-    float scaledH = H * uniformScale;
+    float scaledW = rotW * uniformScale;
+    float scaledH = rotH * uniformScale;
+
+
 
     // 計算置中偏移量
     float offsetX = (outW - scaledW) * 0.5f;
     float offsetY = (outH - scaledH) * 0.5f;
 
+
     float srcXf = (float(gid.x) - offsetX) / uniformScale;
     float srcYf = (float(gid.y) - offsetY) / uniformScale;
 
-switch(params.angle) {
-    case 0: {
-        // 保持 srcXf/srcYf
-        break;
+
+
+    switch(params.angle) {
+        case 0: break;
+        case 90: { float tmpX=srcXf, tmpY=srcYf; srcXf=tmpY; srcYf=(float(W)-1.0f)-tmpX; break; }
+        case 180:{ srcXf=(float(W)-1.0f)-srcXf; srcYf=(float(H)-1.0f)-srcYf; break; }
+        case 270:{ float tmpX=srcXf, tmpY=srcYf; srcXf=(float(H)-1.0f)-tmpY; srcYf=tmpX; break; }
     }
 
-    case 90: {
-        float tmpX = srcXf;
-        float tmpY = srcYf;
-        srcXf = tmpY;                     // X ← Y
-        srcYf = (float(W) - 1.0f) - tmpX; // Y ← W-1 - X
-        break;
-    }
 
-    case 180: {
-        srcXf = (float(W) - 1.0f) - srcXf;
-        srcYf = (float(H) - 1.0f) - srcYf;
-        break;
-    }
-
-    case 270: {
-        float tmpX = srcXf;
-        float tmpY = srcYf;
-        srcXf = (float(H) - 1.0f) - tmpY; // X ← H-1 - Y
-        srcYf = tmpX;                     // Y ← X
-        break;
-    }
-
-    default: break;
-}
 
     // --- Y bilinear ---
     half yVal = srcY.sample(
@@ -196,47 +181,30 @@ kernel void rotateNV12_bicubic(
     float uniformScale = min(scaleX, scaleY);
 
     // 縮放後的實際寬高
-    float scaledW = W * uniformScale;
-    float scaledH = H * uniformScale;
+    float scaledW = rotW * uniformScale;
+    float scaledH = rotH * uniformScale;
+
+
+
 
     // 計算置中偏移量
     float offsetX = (outW - scaledW) * 0.5f;
     float offsetY = (outH - scaledH) * 0.5f;
 
+   
     float srcXf = (float(gid.x) - offsetX) / uniformScale;
     float srcYf = (float(gid.y) - offsetY) / uniformScale;
 
 
-switch(params.angle) {
-    case 0: {
-        // 保持 srcXf/srcYf
-        break;
-    }
 
-    case 90: {
-        float tmpX = srcXf;
-        float tmpY = srcYf;
-        srcXf = tmpY;                     // X ← Y
-        srcYf = (float(W) - 1.0f) - tmpX; // Y ← W-1 - X
-        break;
-    }
 
-    case 180: {
-        srcXf = (float(W) - 1.0f) - srcXf;
-        srcYf = (float(H) - 1.0f) - srcYf;
-        break;
-    }
 
-    case 270: {
-        float tmpX = srcXf;
-        float tmpY = srcYf;
-        srcXf = (float(H) - 1.0f) - tmpY; // X ← H-1 - Y
-        srcYf = tmpX;                     // Y ← X
-        break;
+    switch(params.angle) {
+        case 0: break;
+        case 90: { float tmpX=srcXf, tmpY=srcYf; srcXf=tmpY; srcYf=(float(W)-1.0f)-tmpX; break; }
+        case 180:{ srcXf=(float(W)-1.0f)-srcXf; srcYf=(float(H)-1.0f)-srcYf; break; }
+        case 270:{ float tmpX=srcXf, tmpY=srcYf; srcXf=(float(H)-1.0f)-tmpY; srcYf=tmpX; break; }
     }
-
-    default: break;
-}
 
     uint maxX = srcY.get_width();
     uint maxY = srcY.get_height();
