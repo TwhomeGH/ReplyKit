@@ -1757,6 +1757,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         var avfrom = lastVideoOrientation
         let newSize: CGSize
 
+        sendlog(message: "ReplayKit 畫面方向 : \(RPConfig.shared.Rotate)")
+
         switch RPConfig.shared.Rotate {
             case 0,180:
                 avfrom = .portrait
