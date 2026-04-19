@@ -235,7 +235,7 @@ kernel void rotateNV12_bicubic(
 
     // 計算置中偏移量
     float offsetY = (rotH - scaledH) * 0.5f;
-    float offsetX = (rutW - scaledW) * 0.5f;
+    float offsetX = (rotW - scaledW) * 0.5f;
 
     float srcXf = (float(gid.x) + 0.5f - offsetX) / uniformScale;
 
