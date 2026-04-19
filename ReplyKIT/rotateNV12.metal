@@ -105,13 +105,13 @@ kernel void rotateNV12_bilinear(
     float srcYf = (float(gid.y) - offsetY) * uniformScale;
 
 
-  switch(params.angle) {
-    case 0:  /* 保持 srcXf/srcYf，不再覆蓋 */ break;
+ switch(params.angle) {
+    case 0:  /* 保持 srcXf/srcYf */ break;
 
     case 90: {
         float tmpX = srcXf;
-        srcXf = (float(H) - 1.0f) - srcYf;  // ✅ 用 H
-        srcYf = tmpX;
+        srcXf = srcYf;                  // X ← Y
+        srcYf = (float(W) - 1.0f) - tmpX; // Y ← W-1 - X
         break;
     }
 
@@ -123,14 +123,13 @@ kernel void rotateNV12_bilinear(
 
     case 270: {
         float tmpY = srcYf;
-        srcYf = (float(W) - 1.0f) - srcXf;  // ✅ 用 W
-        srcXf = tmpY;
+        srcYf = srcXf;                  // Y ← X
+        srcXf = (float(H) - 1.0f) - tmpY; // X ← H-1 - Y
         break;
     }
 
     default: break;
 }
-
 
 
 
@@ -199,13 +198,13 @@ kernel void rotateNV12_bicubic(
     float srcYf = (float(gid.y) - offsetY) * uniformScale;
 
 
-   switch(params.angle) {
-    case 0:  /* 保持 srcXf/srcYf，不再覆蓋 */ break;
+  switch(params.angle) {
+    case 0:  /* 保持 srcXf/srcYf */ break;
 
     case 90: {
         float tmpX = srcXf;
-        srcXf = (float(H) - 1.0f) - srcYf;  // ✅ 用 H
-        srcYf = tmpX;
+        srcXf = srcYf;                  // X ← Y
+        srcYf = (float(W) - 1.0f) - tmpX; // Y ← W-1 - X
         break;
     }
 
@@ -217,8 +216,8 @@ kernel void rotateNV12_bicubic(
 
     case 270: {
         float tmpY = srcYf;
-        srcYf = (float(W) - 1.0f) - srcXf;  // ✅ 用 W
-        srcXf = tmpY;
+        srcYf = srcXf;                  // Y ← X
+        srcXf = (float(H) - 1.0f) - tmpY; // X ← H-1 - Y
         break;
     }
 
