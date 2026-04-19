@@ -143,11 +143,11 @@ kernel void rotateNV12_bilinear(
 
 
     // --- Y bilinear ---
-    half yVal = srcY.sample(
+     half yVal = srcY.sample(
         linearClampSampler,
         float2(
-            clamp(srcXf + 0.5f, 0.0f, float(W)) / float(W),
-            clamp(srcYf + 0.5f, 0.0f, float(H)) / float(H)
+            clamp(srcXf + 0.5f, 0.0f, float(W - 1)) / float(W),
+            clamp(srcYf + 0.5f, 0.0f, float(H - 1)) / float(H)
         )
     ).x;
 
@@ -158,8 +158,8 @@ kernel void rotateNV12_bilinear(
 
 
         float2 uvPos = float2(
-            clamp(srcXf * 0.5f + 0.25f, 0.0f, float(W*0.5f)),
-            clamp(srcYf * 0.5f + 0.25f, 0.0f, float(H*0.5f))
+            clamp(srcXf * 0.5f + 0.25f, 0.0f, float(W*0.5f - 1)),
+            clamp(srcYf * 0.5f + 0.25f, 0.0f, float(H*0.5f - 1))
         );
 
         half2 uvVal = srcUV.sample(
@@ -262,12 +262,14 @@ kernel void rotateNV12_bicubic(
     //    default: srcXf = float(gid.x)*scaleX; srcYf = float(gid.y)*scaleY; break;
     //}
 
+
+
     half yVal = bicubicSampleY_4fetch(
                                      srcY,
                                      linearClampSampler,
-                                     float2(
-                                        clamp(srcXf + 0.5f, 0.0f, float(W)) / float(W),
-                                        clamp(srcYf + 0.5f, 0.0f, float(H)) / float(H)
+                                      float2(
+                                        clamp(srcXf + 0.5f, 0.0f, float(W - 1)) / float(W),
+                                        clamp(srcYf + 0.5f, 0.0f, float(H - 1)) / float(H)
                                     ),
                                      uint2(maxX, maxY)
                                      );
@@ -285,8 +287,8 @@ kernel void rotateNV12_bicubic(
     if ((gid.x & 1u) == 0 && (gid.y & 1u) == 0) {
         
         float2 uvPos = float2(
-            clamp(srcXf * 0.5f + 0.25f, 0.0f, float(W*0.5f)),
-            clamp(srcYf * 0.5f + 0.25f, 0.0f, float(H*0.5f))
+            clamp(srcXf * 0.5f + 0.25f, 0.0f, float(W*0.5f - 1)),
+            clamp(srcYf * 0.5f + 0.25f, 0.0f, float(H*0.5f - 1))
         );
 
 
