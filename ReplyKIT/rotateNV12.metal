@@ -49,6 +49,50 @@ half bicubicSampleY_4fetch(
     return mix(col0, col1, half(f.y));
 }
 
+inline float2 mapDstToSrc(
+    float2 dstPx,
+    uint srcW,
+    uint srcH,
+    uint outW,
+    uint outH,
+    uint angle
+) {
+    uint rotW = (angle % 180 == 0) ? srcW : srcH;
+    uint rotH = (angle % 180 == 0) ? srcH : srcW;
+
+    float scaleX = float(outW) / float(rotW);
+    float scaleY = float(outH) / float(rotH);
+    float uniformScale = min(scaleX, scaleY);
+
+    float2 scaledSize = float2(rotW, rotH) * uniformScale;
+    float2 offset = (float2(outW, outH) - scaledSize) * 0.5f;
+
+    // dst -> rotated-image space
+    float2 p = (dstPx - offset) / uniformScale;
+
+    float2x2 R;
+    switch (angle) {
+    case 0:
+        R = float2x2(1, 0, 0, 1);
+        break;
+    case 90:
+        R = float2x2(0, -1, 1, 0);
+        break;
+    case 180:
+        R = float2x2(-1, 0, 0, -1);
+        break;
+    default: // 270
+        R = float2x2(0, 1, -1, 0);
+        break;
+    }
+
+    float2 rotCenter = float2(rotW, rotH) * 0.5f;
+    float2 srcCenter = float2(srcW, srcH) * 0.5f;
+
+    // Rotate around image center instead of the top-left corner.
+    return R * (p - rotCenter) + srcCenter;
+}
+
 
 
 
@@ -86,56 +130,8 @@ kernel void rotateNV12_bilinear(
 
     if (gid.x >= outW || gid.y >= outH) return;
 
-
-    uint rotW = (params.angle % 180 == 0) ? W : H;
-    uint rotH = (params.angle % 180 == 0) ? H : W;
-
-
-    // 縮放後的實際寬高
-    float scaleX = float(outW) / float(rotW);
-    float scaleY = float(outH) / float(rotH);
-    float uniformScale = min(scaleX, scaleY);
-
-
-    
-
-    float2 dst = float2(gid.x + 0.5f, gid.y + 0.5f);
-
-    // output center
-    float2 outCenter = float2(rotW, rotH) * 0.5f;
-
-    float2 scaledSize = float2(rotW, rotH) * uniformScale;
-    float2 offset = (float2(outW, outH) - scaledSize) * 0.5f;
-
-    float2 p = (dst - offset) / uniformScale;
-
-
-    float2x2 R;
-
-    switch(params.angle) {
-    case 0:
-        R = float2x2(1,0, 0,1);
-        break;
-
-    case 90:   // CCW
-        R = float2x2(0,-1, 1,0);
-        break;
-
-    case 180:
-        R = float2x2(-1,0, 0,-1);
-        break;
-
-    case 270:
-        R = float2x2(0,1, -1,0);
-        break;
-    }
-
-
-    float2 srcCenter = float2(W, H) * 0.5f;
-
-    // final mapping
-    float2 src = R * p;
-    src += srcCenter;
+    float2 dst = float2(gid) + 0.5f;
+    float2 src = mapDstToSrc(dst, W, H, outW, outH, params.angle);
 
     float srcXf = src.x;
     float srcYf = src.y;
@@ -158,37 +154,37 @@ kernel void rotateNV12_bilinear(
     }
 
     // --- UV bilinear ---
-   if (srcXf < 0.0f || srcXf > float(W - 1) ||
-    srcYf < 0.0f || srcYf > float(H - 1)) {
+    // Only one thread writes each 2x2 chroma sample to avoid NV12 UV write races.
+    if (((gid.x & 1u) == 0u) && ((gid.y & 1u) == 0u)) {
+        uint2 uvPos = uint2(gid.x >> 1, gid.y >> 1);
+        float2 uvDst = float2(gid) + 1.0f;
+        float2 uvSrc = mapDstToSrc(uvDst, W, H, outW, outH, params.angle);
 
-    // 黑邊 UV（對應黑色）
-    dstUV.write(
-        half4(0.5, 0.5, 0.0, 1.0),
-        uint2(gid.x >> 1, gid.y >> 1)
-    );
+        if (uvSrc.x < 0.0f || uvSrc.x > float(W - 1) ||
+            uvSrc.y < 0.0f || uvSrc.y > float(H - 1)) {
 
-} else {
+            dstUV.write(
+                half4(0.5, 0.5, 0.0, 1.0),
+                uvPos
+            );
 
-    float halfW = float(W) * 0.5f;
-    float halfH = float(H) * 0.5f;
+        } else {
+            float2 uvCoord = clamp(
+                uvSrc * 0.5f,
+                float2(0.0f),
+                float2(float(W) * 0.5f - 1.0f, float(H) * 0.5f - 1.0f)
+            );
 
-    float2 uvCoord = float2(srcXf, srcYf) * 0.5f;
+            half2 uvVal = srcUV.sample(
+                linearClampSampler,
+                (uvCoord + 0.5f) / float2(float(W) * 0.5f, float(H) * 0.5f)
+            ).rg;
 
-    uvCoord = clamp(
-        uvCoord,
-        float2(0.0f),
-        float2(W * 0.5f - 1.0f, H * 0.5f - 1.0f)
-    );
-
-    half2 uvVal = srcUV.sample(
-        linearClampSampler,
-        (uvCoord + 0.5f) / float2(halfW, halfH)
-    ).rg;
-
-        dstUV.write(
-            half4(uvVal.x, uvVal.y, 0.0, 1.0),
-            uint2(gid.x >> 1, gid.y >> 1)
-        );
+            dstUV.write(
+                half4(uvVal.x, uvVal.y, 0.0, 1.0),
+                uvPos
+            );
+        }
     }
 
 }
@@ -213,65 +209,11 @@ kernel void rotateNV12_bicubic(
     uint outH = (params.oDstH > 0) ? params.oDstH : dstH;
 
     if (gid.x >= outW || gid.y >= outH) return;
-
-
-    uint rotW = (params.angle % 180 == 0) ? W : H;
-    uint rotH = (params.angle % 180 == 0) ? H : W;
-
-    // 縮放後的實際寬高
-    float scaleX = float(outW) / float(rotW);
-    float scaleY = float(outH) / float(rotH);
-
-    // 等比例縮放
-    float uniformScale = min(scaleX, scaleY);
-
-    // ❗直接用 dst space 做 center（不要再用 scaledW/H）
-    float2 dst = float2(gid.x + 0.5f, gid.y + 0.5f);
-
-    // output center
-    float2 outCenter = float2(outW, outH) * 0.5f;
-
-    // normalized screen space
-    float2 scaledSize = float2(rotW, rotH) * uniformScale;
-    float2 offset = (float2(outW, outH) - scaledSize) * 0.5f;
-
-    float2 p = (dst - offset) / uniformScale;
-
-
-    float2x2 R;
-
-    switch(params.angle) {
-    case 0:
-        R = float2x2(1,0, 0,1);
-        break;
-
-    case 90:
-        R = float2x2(0,-1, 1,0);
-        break;
-
-    case 180:
-        R = float2x2(-1,0, 0,-1);
-        break;
-
-    case 270:
-        R = float2x2(0,1, -1,0);
-        break;
-    }
-
-    float2 srcCenter = float2(W, H) * 0.5f;
-
-    float2 src = R * p + srcCenter;
+    float2 dst = float2(gid) + 0.5f;
+    float2 src = mapDstToSrc(dst, W, H, outW, outH, params.angle);
 
     float srcXf = src.x;
     float srcYf = src.y;
-
-    uint maxX = srcY.get_width();
-    uint maxY = srcY.get_height();
-
-
-   
-
-
 
     half yVal;
 
@@ -285,7 +227,7 @@ kernel void rotateNV12_bicubic(
        yVal = bicubicSampleY_4fetch(
         srcY,
         linearClampSampler,
-        float2(srcXf / float(W), srcYf / float(H)),
+        float2(srcXf, srcYf),
         uint2(srcY.get_width(), srcY.get_height())
         );
 
@@ -297,26 +239,33 @@ kernel void rotateNV12_bicubic(
  
     // --- 替換原本 UV plane 的讀取 ---
 
-    uint2 uvPos = uint2(gid.x >> 1, gid.y >> 1);
+    if (((gid.x & 1u) == 0u) && ((gid.y & 1u) == 0u)) {
+        uint2 uvPos = uint2(gid.x >> 1, gid.y >> 1);
+        float2 uvDst = float2(gid) + 1.0f;
+        float2 uvSrc = mapDstToSrc(uvDst, W, H, outW, outH, params.angle);
 
-    if (srcXf < 0.0f || srcXf > float(W - 1) ||
-        srcYf < 0.0f || srcYf > float(H - 1)) {
+        if (uvSrc.x < 0.0f || uvSrc.x > float(W - 1) ||
+            uvSrc.y < 0.0f || uvSrc.y > float(H - 1)) {
 
-        dstUV.write(half4(0.5, 0.5, 0.0, 1.0), uvPos);
+            dstUV.write(half4(0.5, 0.5, 0.0, 1.0), uvPos);
 
-    } else {
+        } else {
+            float2 uvCoord = clamp(
+                uvSrc * 0.5f,
+                float2(0.0f),
+                float2(float(W) * 0.5f - 1.0f, float(H) * 0.5f - 1.0f)
+            );
 
-        float2 uvCoord = (float2(srcXf, srcYf) + 0.5f) * 0.5f;
+            half2 uvVal = srcUV.sample(
+                linearClampSampler,
+                (uvCoord + 0.5f) / float2(float(W) * 0.5f, float(H) * 0.5f)
+            ).rg;
 
-        half2 uvVal = srcUV.sample(
-            linearClampSampler,
-            uvCoord / float2(W * 0.5f, H * 0.5f)
-        ).rg;
-
-        dstUV.write(
-            half4(uvVal.x, uvVal.y, 0.0, 1.0),
-            uvPos
-        );
+            dstUV.write(
+                half4(uvVal.x, uvVal.y, 0.0, 1.0),
+                uvPos
+            );
+        }
     }
 
 }
