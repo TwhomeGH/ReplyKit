@@ -140,7 +140,12 @@ kernel void rotateNV12_bilinear(
     // --- Y bilinear ---
     half yVal = srcY.sample(
         linearClampSampler,
-        float2(srcXf / params.srcWidth, srcYf / params.srcHeight)
+
+        float2(
+            clamp(srcXf, 0.0f, float(W-1)) / float(W),
+            clamp(srcYf, 0.0f, float(H-1)) / float(H)
+        )
+
     ).x;
 
     dstY.write(yVal, gid);
@@ -250,7 +255,10 @@ kernel void rotateNV12_bicubic(
     half yVal = bicubicSampleY_4fetch(
                                      srcY,
                                      linearClampSampler,
-                                     float2(srcXf, srcYf),
+                                     float2(
+                                        clamp(srcXf, 0.0f, float(W-1)) / float(W),
+                                        clamp(srcYf, 0.0f, float(H-1)) / float(H)
+                                     ),
                                      uint2(maxX, maxY)
                                      );
 
