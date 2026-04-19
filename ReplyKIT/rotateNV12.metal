@@ -109,16 +109,30 @@ kernel void rotateNV12_bilinear(
     float offsetY = (outH - scaledH) * 0.5f;
 
 
-    float srcXf = (float(gid.x) - offsetX) / uniformScale;
-    float srcYf = (float(gid.y) - offsetY) / uniformScale;
+    float srcXf = ( (float(gid.x) - offsetX) * 1.0f ) / uniformScale;
+    float srcYf = ( (float(gid.y) - offsetY) * 1.0f ) / uniformScale;
 
 
 
     switch(params.angle) {
         case 0: break;
-        case 90: { float tmpX=srcXf, tmpY=srcYf; srcXf=tmpY; srcYf=(float(W)-1.0f)-tmpX; break; }
+
+
+        case 90: {
+            float tmpX = srcXf;
+            float tmpY = srcYf;
+            srcXf = tmpY;                     // X ← Y
+            srcYf = (float(W) - 1.0f) - tmpX; // Y ← W-1 - X
+            break;
+        }
         case 180:{ srcXf=(float(W)-1.0f)-srcXf; srcYf=(float(H)-1.0f)-srcYf; break; }
-        case 270:{ float tmpX=srcXf, tmpY=srcYf; srcXf=(float(H)-1.0f)-tmpY; srcYf=tmpX; break; }
+        case 270: {
+            float tmpX = srcXf;
+            float tmpY = srcYf;
+            srcXf = (float(H) - 1.0f) - tmpY; // X ← H-1 - Y
+            srcYf = tmpX;                     // Y ← X
+            break;
+        }
     }
 
 
@@ -201,10 +215,25 @@ kernel void rotateNV12_bicubic(
 
     switch(params.angle) {
         case 0: break;
-        case 90: { float tmpX=srcXf, tmpY=srcYf; srcXf=tmpY; srcYf=(float(W)-1.0f)-tmpX; break; }
+
+
+        case 90: {
+            float tmpX = srcXf;
+            float tmpY = srcYf;
+            srcXf = tmpY;                     // X ← Y
+            srcYf = (float(W) - 1.0f) - tmpX; // Y ← W-1 - X
+            break;
+        }
         case 180:{ srcXf=(float(W)-1.0f)-srcXf; srcYf=(float(H)-1.0f)-srcYf; break; }
-        case 270:{ float tmpX=srcXf, tmpY=srcYf; srcXf=(float(H)-1.0f)-tmpY; srcYf=tmpX; break; }
+        case 270: {
+            float tmpX = srcXf;
+            float tmpY = srcYf;
+            srcXf = (float(H) - 1.0f) - tmpY; // X ← H-1 - Y
+            srcYf = tmpX;                     // Y ← X
+            break;
+        }
     }
+
 
     uint maxX = srcY.get_width();
     uint maxY = srcY.get_height();
