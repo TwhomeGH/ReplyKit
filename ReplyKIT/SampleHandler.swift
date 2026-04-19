@@ -1066,8 +1066,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         let newSize:CGSize
 
-        if ADWidth > 0 && ADHeight > 0 {
-            sendlog(message: "用戶設定寬高：\(ADWidth) x \(ADHeight)")
+        if ODWidth > 0 && ODHeight > 0 {
+            sendlog(message: "畫布設定寬高：\(ODWidth) x \(ODHeight)")
+            size.width = CGFloat(ODHeight)
+            size.height = CGFloat(ODWidth)
+        }else if ADWidth > 0 && ADHeight > 0 {
+            sendlog(message: "用戶設定目標寬高：\(ADWidth) x \(ADHeight)")
             size.width = CGFloat(ADHeight)
             size.height = CGFloat(ADWidth)
         }
