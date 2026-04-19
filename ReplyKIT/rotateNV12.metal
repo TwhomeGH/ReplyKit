@@ -90,23 +90,17 @@ kernel void rotateNV12_bilinear(
     uint rotW = (params.angle % 180 == 0) ? W : H;
     uint rotH = (params.angle % 180 == 0) ? H : W;
 
+
+    // 縮放後的實際寬高
     float scaleX = float(outW) / float(rotW);
     float scaleY = float(outH) / float(rotH);
     float uniformScale = min(scaleX, scaleY);
 
 
+    // ❗直接用 dst space 做 center（不要再用 scaledW/H）
+    float offsetX = (float(outW) - float(rotW) * uniformScale) * 0.5f;
+    float offsetY = (float(outH) - float(rotH) * uniformScale) * 0.5f;
 
-
-
-    // 縮放後的實際寬高
-    float scaledW = rotW * uniformScale;
-    float scaledH = rotH * uniformScale;
-
-
-
-    // 計算置中偏移量
-    float offsetY = (rotH - scaledH) * 0.5f;
-    float offsetX = (rotW - scaledW) * 0.5f;
 
     float srcXf = (float(gid.x) + 0.5f - offsetX) / uniformScale;
 
@@ -222,20 +216,18 @@ kernel void rotateNV12_bicubic(
     uint rotW = (params.angle % 180 == 0) ? W : H;
     uint rotH = (params.angle % 180 == 0) ? H : W;
 
+    // 縮放後的實際寬高
     float scaleX = float(outW) / float(rotW);
     float scaleY = float(outH) / float(rotH);
 
     // 等比例縮放
-    float uniformScale = max(scaleX, scaleY);
+    float uniformScale = min(scaleX, scaleY);
 
-    // 縮放後的實際寬高
-    float scaledW = rotW * uniformScale;
-    float scaledH = rotH * uniformScale;
+    // ❗直接用 dst space 做 center（不要再用 scaledW/H）
+    float offsetX = (float(outW) - float(rotW) * uniformScale) * 0.5f;
+    float offsetY = (float(outH) - float(rotH) * uniformScale) * 0.5f;
 
 
-    // 計算置中偏移量
-    float offsetY = (rotH - scaledH) * 0.5f;
-    float offsetX = (rotW - scaledW) * 0.5f;
 
     float srcXf = (float(gid.x) + 0.5f - offsetX) / uniformScale;
 
