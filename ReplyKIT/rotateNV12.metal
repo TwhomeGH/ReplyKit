@@ -143,8 +143,8 @@ kernel void rotateNV12_bilinear(
         linearClampSampler,
 
         float2(
-            clamp(srcXf, 0.0f, float(rotW-1)) / float(W),
-            clamp(srcYf, 0.0f, float(rotH-1)) / float(H)
+            clamp(srcXf, 0.0f, float(W-1)) / float(W),
+            clamp(srcYf, 0.0f, float(H-1)) / float(H)
         )
 
     ).x;
@@ -258,8 +258,8 @@ kernel void rotateNV12_bicubic(
                                      srcY,
                                      linearClampSampler,
                                      float2(
-                                        clamp(srcXf, 0.0f, float(rotW-1)) / float(W),
-                                        clamp(srcYf, 0.0f, float(rotH-1)) / float(H)
+                                        clamp(srcXf, 0.0f, float(W-1)) / float(W),
+                                        clamp(srcYf, 0.0f, float(H-1)) / float(H)
                                      ),
                                      uint2(maxX, maxY)
                                      );
