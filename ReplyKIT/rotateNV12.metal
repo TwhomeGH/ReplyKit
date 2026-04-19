@@ -6,7 +6,10 @@ struct Params {
     uint srcHeight;
     uint dstWidth;
     uint dstHeight;
+    uint oDstW;       // 額外目標寬
+    uint oDstH;       // 額外目標高
     uint angle;       // 0 / 90 / 180 / 270
+   
 
 };
 
@@ -76,21 +79,50 @@ kernel void rotateNV12_bilinear(
     uint dstW = params.dstWidth;
     uint dstH = params.dstHeight;
 
-    if (gid.x >= params.dstWidth || gid.y >= params.dstHeight) return;
+
+    // 決定最終輸出寬高
+    uint outW = (params.oDstW > 0) ? params.oDstW : dstW;
+    uint outH = (params.oDstH > 0) ? params.oDstH : dstH;
+
+    if (gid.x >= outW || gid.y >= outH) return;
 
 
-    float scaleX = float(params.srcWidth)  / float(params.dstWidth);
-    float scaleY = float(params.srcHeight) / float(params.dstHeight);
+    float scaleX = float(w)  / float(outW);
+    float scaleY = float(H) / float(outH);
 
-    float srcXf, srcYf;
+    // 等比例縮放
+    float uniformScale = min(scaleX, scaleY);
 
-    switch(params.angle) {
-        case 0:  srcXf = float(gid.x)*scaleX; srcYf = float(gid.y)*scaleY; break;
-        case 90: srcXf = float(W-1) - float(gid.y)*(float(W)/dstH); srcYf = float(gid.x)*(float(H)/dstW); break;
-        case 180: srcXf = float(W-1) - float(gid.x)*scaleX; srcYf = float(H-1) - float(gid.y)*scaleY; break;
-        case 270: srcXf = float(gid.y)*(float(W)/dstH); srcYf = float(H-1) - float(gid.x)*(float(H)/dstW); break;
-        default: srcXf = float(gid.x)*scaleX; srcYf = float(gid.y)*scaleY; break;
+    float offsetX = (outW - W / uniformScale) * 0.5f;
+    float offsetY = (outH - H / uniformScale) * 0.5f;
+
+    float srcXf = (float(gid.x) - offsetX) * uniformScale;
+    float srcYf = (float(gid.y) - offsetY) * uniformScale;
+
+
+   switch(params.angle) {
+    case 0:  /* 保持 srcXf/srcYf，不再覆蓋 */ break;
+    case 90: {
+        float tmpX = srcXf;
+        srcXf = float(W-1) - srcYf;
+        srcYf = tmpX;
+        break;
     }
+    case 180: {
+        srcXf = float(W-1) - srcXf;
+        srcYf = float(H-1) - srcYf;
+        break;
+    }
+    case 270: {
+        float tmpY = srcYf;
+        srcYf = float(H-1) - srcXf;
+        srcXf = tmpY;
+        break;
+    }
+    default: break;
+}
+
+
 
 
     // --- Y bilinear ---

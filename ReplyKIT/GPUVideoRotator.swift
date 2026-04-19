@@ -140,12 +140,17 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     var dstWW: Int = 0
     var dstHH: Int = 0
+    var OutWW: Int = 0
+    var OutHH: Int = 0
+
     var debug: Bool = false
     struct Params {
         var srcWidth: UInt32
         var srcHeight: UInt32
         var dstWidth: UInt32
         var dstHeight: UInt32
+        var oDstW:UInt32
+        var oDstH:UInt32
         var angle: UInt32
     }
 
@@ -342,12 +347,14 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
 
     // MARK: Init
-    init?(dstW: Int = 0, dstH: Int = 0, debug: Bool = false,
+    init?(dstW: Int = 0, dstH: Int = 0,outW:Int=0, outH:Int=0, debug: Bool = false,
             maxPoolSize: Int = 10 , useBic:QualityMode = .live ) {
 
         self.qualityMode = useBic
         self.dstWW = dstW
         self.dstHH = dstH
+        self.OutWW = outW
+        self.OutHH = outH
         self.debug = debug
         self.maxPoolSize = maxPoolSize
 
@@ -822,6 +829,7 @@ private func fallbackSampleBuffer(
 
         var params = Params(srcWidth: UInt32(srcY.width), srcHeight: UInt32(srcY.height),
                             dstWidth: UInt32(dstY.width), dstHeight: UInt32(dstY.height),
+                            oDstW: UInt32(OutWW), oDstH: UInt32(OutHH),
                             angle: UInt32(angle.rawValue))
 
         encoder.setBytes(&params, length: MemoryLayout<Params>.stride, index: 0)

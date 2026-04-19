@@ -77,12 +77,17 @@ final class VideoFrameProcessor {
             if rotator == nil {
                 let dstRW = RPConfig.shared.ADWidth
                 let dstRH = RPConfig.shared.ADHeight
+                let outW = RPConfig.shared.ODWidth
+                let outH = RPConfig.shared.ODHeight
+
                 let mode: RPVideoRotatorNV12BatchQueueOptimized.QualityMode =
                     RPConfig.shared.useBic ? .quality : .live
 
                 rotator = RPVideoRotatorNV12BatchQueueOptimized(
                     dstW: dstRW,
                     dstH: dstRH,
+                    outW: outW,
+                    outH: outH,
                     debug: RPConfig.shared.enableRotateLog,
                     maxPoolSize: RPConfig.shared.BufferCount,
                     useBic: mode
