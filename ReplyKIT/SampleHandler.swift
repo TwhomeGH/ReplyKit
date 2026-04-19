@@ -1561,7 +1561,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         Task {
 
-                isStopping = true
+            isStopping = true
             isBroadcasting = false
 
             SocketClient.shared.sendStreamEnd()

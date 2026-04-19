@@ -150,10 +150,9 @@ class SocketClient : @unchecked Sendable {
         closeConnection()
     }
 
-  
+    
     // MARK: - 連線初始化
     func setupConnection(host: String = "localhost" , port: UInt16 = 9322) {
-        queue.async { [self] in
             connection = NWConnection(
                 host: NWEndpoint.Host(host),
                 port: NWEndpoint.Port(rawValue: port)!,
@@ -165,13 +164,10 @@ class SocketClient : @unchecked Sendable {
             isProcessingBatch = false
             isReconnecting = false
 
-        }
     }
 
     func closeConnection() {
 
-        queue.async { [self] in
-            
         isConnection = false
         isProcessingBatch = false
         isReconnecting = false
@@ -187,7 +183,7 @@ class SocketClient : @unchecked Sendable {
         //stopObservingLocalChanges()
         self.logTo("SocketClient connection closed")
 
-        }
+        
     }
 
 
