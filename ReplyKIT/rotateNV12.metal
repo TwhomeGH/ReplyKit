@@ -110,7 +110,7 @@ kernel void rotateNV12_bilinear(
 
 
     float srcXf = ( (float(gid.x) + 0.5f - offsetX) ) / uniformScale;
-    float srcYf = ( (float(gid.y) + 0.5f - offsetY) ) / uniformScale;
+    float srcYf = ((float(gid.y) + 0.5f - offsetY) - 0.5f * (uniformScale - 1.0f)) / uniformScale;
 
 
     switch(params.angle) {
@@ -229,7 +229,7 @@ kernel void rotateNV12_bicubic(
 
    
     float srcXf = ( (float(gid.x) + 0.5f - offsetX) ) / uniformScale;
-    float srcYf = ( (float(gid.y) + 0.5f - offsetY) ) / uniformScale;
+    float srcYf = ((float(gid.y) + 0.5f - offsetY) - 0.5f * (uniformScale - 1.0f)) / uniformScale;
 
 
 
