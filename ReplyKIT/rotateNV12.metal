@@ -121,7 +121,9 @@ kernel void rotateNV12_bilinear(
         float tmpX = srcXf;
         float tmpY = srcYf;
         srcXf = tmpY;                     // X ← Y
-        srcYf = tmpX;  
+        srcYf = (float(W) - 1.0f) - tmpX; // Y ← W-1 - X
+
+ 
         break;
     }
 
@@ -134,8 +136,9 @@ kernel void rotateNV12_bilinear(
     case 270: {
         float tmpX = srcXf;
         float tmpY = srcYf;
-        srcXf = tmpY; // X ← H-1 - Y
-        srcYf = (float(W) - 1.0f) - tmpX;                     // Y ← X
+        srcXf = (float(H) - 1.0f) - tmpY; // X ← H-1 - Y
+        srcYf = tmpX                    // Y ← X
+
         break;
     }
 }
@@ -146,8 +149,8 @@ kernel void rotateNV12_bilinear(
      half yVal = srcY.sample(
         linearClampSampler,
         float2(
-            clamp(srcXf  , 0.0f, float(W - 1)) / float(W),
-            clamp(srcYf  , 0.0f, float(H - 1)) / float(H)
+            clamp(srcXf + 0.5f  , 0.0f, float(W - 1)) / float(W),
+            clamp(srcYf + 0.5f , 0.0f, float(H - 1)) / float(H)
         )
     ).x;
 
@@ -158,8 +161,8 @@ kernel void rotateNV12_bilinear(
 
 
         float2 uvPos = float2(
-            clamp(srcXf , 0.0f, float(W*0.5f - 1)),
-            clamp(srcYf , 0.0f, float(H*0.5f - 1))
+            clamp(srcXf * 0.5f + 0.25f , 0.0f, float(W*0.5f - 1)),
+            clamp(srcYf * 0.5f + 0.25f , 0.0f, float(H*0.5f - 1))
         );
 
         half2 uvVal = srcUV.sample(
@@ -230,7 +233,7 @@ kernel void rotateNV12_bicubic(
         float tmpX = srcXf;
         float tmpY = srcYf;
         srcXf = tmpY;                     // X ← Y
-        srcYf = tmpX;  
+        srcYf = (float(W) - 1.0f) - tmpX; // Y ← W-1 - X 
         break;
     }
 
@@ -243,8 +246,10 @@ kernel void rotateNV12_bicubic(
     case 270: {
         float tmpX = srcXf;
         float tmpY = srcYf;
-        srcXf = tmpY; // X ← H-1 - Y
-        srcYf = (float(W) - 1.0f) - tmpX;                     // Y ← X
+        srcXf = (float(H) - 1.0f) - tmpY; // X ← H-1 - Y
+        srcYf = tmpX;                     // Y ← X
+
+
         break;
     }
 }
@@ -268,8 +273,8 @@ kernel void rotateNV12_bicubic(
                                      srcY,
                                      linearClampSampler,
                                       float2(
-                                        clamp(srcXf , 0.0f, float(W - 1)) / float(W),
-                                        clamp(srcYf , 0.0f, float(H - 1)) / float(H)
+                                        clamp(srcXf + 0.5f, 0.0f, float(W - 1)) / float(W),
+                                        clamp(srcYf + 0.5f, 0.0f, float(H - 1)) / float(H)
                                     ),
                                      uint2(maxX, maxY)
                                      );
@@ -287,8 +292,8 @@ kernel void rotateNV12_bicubic(
     if ((gid.x & 1u) == 0 && (gid.y & 1u) == 0) {
         
         float2 uvPos = float2(
-            clamp(srcXf  , 0.0f, float(W*0.5f - 1)),
-            clamp(srcYf  , 0.0f, float(H*0.5f - 1))
+            clamp(srcXf * 0.5f + 0.25f , 0.0f, float(W*0.5f - 1)),
+            clamp(srcYf * 0.5f + 0.25f , 0.0f, float(H*0.5f - 1))
         );
 
 
