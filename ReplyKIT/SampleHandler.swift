@@ -1274,34 +1274,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     func configureVideo() async {
         // Video settings
 
-        var DW = 1334
-        var DH = 1920
-
-        if ODWidth > 0 && ODHeight > 0 {
-            sendlog(message: "[NV]用戶指定輸出寬高：\(ODWidth) x \(ODHeight)")
-            DW = ODHeight
-            DH = ODWidth
-            
-        }
         
-        else if ADWidth > 0 && ADHeight > 0 {
-            sendlog(message: "[CV]用戶設定寬高：\(ADWidth) x \(ADHeight)")
-            DW = ADHeight
-            DH = ADWidth
-        }
 
         await mediaMixer.setSessionPreset(.inputPriority)
 
-        var videoSettings = await rtmpStream.videoSettings
-        videoSettings.scalingMode = .letterbox
-        videoSettings.profileLevel = kVTProfileLevel_H264_High_AutoLevel as String
-        videoSettings.videoSize = .init(width: DW, height: DH)
-        videoSettings.expectedFrameRate = 60.0
-        videoSettings.maxKeyFrameIntervalDuration = 2
-
-
-        try? await rtmpStream.setVideoSettings(videoSettings)
-
+        
         // Video mixer passthrough
         var videoMixerSettings = await mediaMixer.videoMixerSettings
         videoMixerSettings.mode = .passthrough
@@ -1311,16 +1288,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         sendlog(message:"VTrack:\(track)")
 
 
-        do {
-            try await mediaMixer.setFrameRate(60.0)
-            let fps = await mediaMixer.frameRate
-            sendlog(message: "FPS OK: \(fps)")
-
-
-        } catch {
-            sendlog(message: "FPS Error:\(error)")
-        }
-
+        
         
         await mediaMixer.setVideoMixerSettings(videoMixerSettings)
 
