@@ -832,9 +832,25 @@ private func fallbackSampleBuffer(
                             oDstW: UInt32(OutWW), oDstH: UInt32(OutHH),
                             angle: UInt32(angle.rawValue))
 
+
+        
+
         encoder.setBytes(&params, length: MemoryLayout<Params>.stride, index: 0)
-        encoder.dispatchThreads(MTLSize(width: dstY.width, height: dstY.height, depth: 1),
+
+        if OutWW > 0 && OutHH > 0 {
+            logTo("GPU Shader 寬高參數:\(OutWW)x\(OutHH)")
+            encoder.dispatchThreads(MTLSize(width: OutWW, height: OutHH, depth: 1),
                                 threadsPerThreadgroup: MTLSize(width: tgWidth, height: tgHeight, depth: 1))
+
+        } else {
+            logTo("GPU Shader 寬高參數使用輸入尺寸:\(srcY.width)x\(srcY.height)")
+            encoder.dispatchThreads(MTLSize(width: dstY.width, height: dstY.height, depth: 1),
+                                threadsPerThreadgroup: MTLSize(width: tgWidth, height: tgHeight, depth: 1))
+
+        }
+
+
+
         encoder.endEncoding()
     }
 

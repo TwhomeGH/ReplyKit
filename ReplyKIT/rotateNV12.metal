@@ -87,8 +87,11 @@ kernel void rotateNV12_bilinear(
     if (gid.x >= outW || gid.y >= outH) return;
 
 
-    float scaleX = float(outW) / float(W);
-    float scaleY = float(outH) / float(H);
+    uint rotW = (params.angle % 180 == 0) ? W : H;
+    uint rotH = (params.angle % 180 == 0) ? H : W;
+
+    float scaleX = float(outW) / float(rotW);
+    float scaleY = float(outH) / float(rotH);
 
     // 等比例縮放
     float uniformScale = min(scaleX, scaleY);
@@ -183,8 +186,12 @@ kernel void rotateNV12_bicubic(
     if (gid.x >= outW || gid.y >= outH) return;
 
 
-    float scaleX = float(outW) / float(W);
-    float scaleY = float(outH) / float(H);
+    uint rotW = (params.angle % 180 == 0) ? W : H;
+    uint rotH = (params.angle % 180 == 0) ? H : W;
+
+    float scaleX = float(outW) / float(rotW);
+    float scaleY = float(outH) / float(rotH);
+
     // 等比例縮放
     float uniformScale = min(scaleX, scaleY);
 
