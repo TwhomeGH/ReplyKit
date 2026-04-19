@@ -1464,6 +1464,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             _ = try await rtmpStream.publish(key)
 
+
+            sendlog(message:"🎉 RTMP:\(url)/ KEY:\(fixlogSafeKey(key)) 連線中...",flush: true)
             // step 4: 標記 session ready
             await MainActor.run {
                 // Add output
@@ -1917,6 +1919,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         case .video:
 
 
+            if sampleBuffer.dataReadiness == .ready {
 
             if needVideoConfiguration && !didConfigureVideo {
                 needVideoConfiguration = false
@@ -1954,6 +1957,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 }
             }
 
+
+            }
 
 
             break
