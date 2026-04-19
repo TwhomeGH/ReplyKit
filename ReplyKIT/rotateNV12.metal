@@ -93,8 +93,18 @@ kernel void rotateNV12_bilinear(
     // 等比例縮放
     float uniformScale = min(scaleX, scaleY);
 
-    float offsetX = (outW - W / uniformScale) * 0.5f;
-    float offsetY = (outH - H / uniformScale) * 0.5f;
+    // 縮放後的實際寬高
+    float scaledW = W * uniformScale;
+    float scaledH = H * uniformScale;
+
+    // 計算置中偏移量
+    float offsetX = (outW - scaledW) * 0.5f;
+    float offsetY = (outH - scaledH) * 0.5f;
+
+
+
+
+
 
     float srcXf = (float(gid.x) - offsetX) * uniformScale;
     float srcYf = (float(gid.y) - offsetY) * uniformScale;
