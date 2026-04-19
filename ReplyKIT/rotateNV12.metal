@@ -114,7 +114,7 @@ switch(params.angle) {
         float tmpX = srcXf;
         float tmpY = srcYf;
         srcXf = tmpY;                     // X ← Y
-        srcYf = (float(H) - 1.0f) - tmpX; // Y ← H-1 - X
+        srcYf = (float(W) - 1.0f) - tmpX; // Y ← W-1 - X
         break;
     }
 
@@ -127,7 +127,7 @@ switch(params.angle) {
     case 270: {
         float tmpX = srcXf;
         float tmpY = srcYf;
-        srcXf = (float(W) - 1.0f) - tmpY; // X ← W-1 - Y
+        srcXf = (float(H) - 1.0f) - tmpY; // X ← H-1 - Y
         srcYf = tmpX;                     // Y ← X
         break;
     }
@@ -210,7 +210,7 @@ switch(params.angle) {
         float tmpX = srcXf;
         float tmpY = srcYf;
         srcXf = tmpY;                     // X ← Y
-        srcYf = (float(H) - 1.0f) - tmpX; // Y ← H-1 - X
+        srcYf = (float(W) - 1.0f) - tmpX; // Y ← W-1 - X
         break;
     }
 
@@ -223,7 +223,7 @@ switch(params.angle) {
     case 270: {
         float tmpX = srcXf;
         float tmpY = srcYf;
-        srcXf = (float(W) - 1.0f) - tmpY; // X ← W-1 - Y
+        srcXf = (float(H) - 1.0f) - tmpY; // X ← H-1 - Y
         srcYf = tmpX;                     // Y ← X
         break;
     }
