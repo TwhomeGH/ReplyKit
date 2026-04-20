@@ -575,7 +575,11 @@ final class PIPService: NSObject, @unchecked Sendable {
     // MARK: 時間顯示
     private func drawTimeOverlay(in cg: CGContext, size: CGSize) {
 
-        
+        cg.saveGState()
+
+        // 在這裡翻轉座標系統
+        cg.translateBy(x: 0, y: size.height)
+        cg.scaleBy(x: 1.0, y: -1.0)
 
         var elapsedSeconds: Double = 0
 
@@ -687,11 +691,7 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         UIGraphicsPushContext(cg)
 
-        cg.saveGState()
 
-        // 在這裡翻轉座標系統
-        cg.translateBy(x: 0, y: size.height)
-        cg.scaleBy(x: 1.0, y: -1.0)
 
         // clockImage 與時間字串對齊：用 capHeight 對齊文字中線
         clockImage?.draw(
