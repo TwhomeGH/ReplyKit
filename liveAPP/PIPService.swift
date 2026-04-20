@@ -531,9 +531,12 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         if let icon,
            let cgIcon = icon.withRenderingMode(.alwaysTemplate).cgImage {
+
+            let baselineY = rect.minY + padding.top + (font.capHeight - iconSize) * 0.5
+
             let iconRect = CGRect(
                 x: textOriginX,
-                y: rect.minY + (rect.height - iconSize) * 0.5,
+                y: baselineY,
                 width: iconSize,
                 height: iconSize
             )
@@ -718,7 +721,7 @@ final class PIPService: NSObject, @unchecked Sendable {
         let elapsedTextSize = (elapsedString as NSString).size(withAttributes: [.font: elapsedFont])
         var badgeX = timeTextPoint.x + elapsedTextSize.width + 8
         // 改成：跟 timeTextPoint 對齊 baseline
-        let badgeY = timeTextPoint.y
+        let badgeY = timeTextPoint.y + (elapsedFont.capHeight - elapsedLabelFont.lineHeight) * 0.5
 
         if !LPConfig.shared.StreamEndMes.isEmpty {
             var endColor = #colorLiteral(red: 1, green: 0.4538183808, blue: 0.1835401952, alpha: 1)
