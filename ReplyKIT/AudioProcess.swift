@@ -447,15 +447,15 @@ private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer, originalTime: CMS
         // 1️⃣ 做增益
         let amplified = applyGain(sampleBuffer, trackType: trackType)
 
+
+        let denoised = amplified
+        
         // 2️⃣ 可選的噪聲修正（如果開啟了）
         if RPConfig.shared.enableNoiseFix {
         // 做音訊處理（例如去除 60Hz 噪聲）
         let denoised  = applyNoiseFixFFT(amplified, targetFrequency: 60.0, sampleRate: 48000.0)
 
-        } else {
-            let denoised = amplified
-
-        }
+        }  
 
         //時間戳校正
         let retimed = retimeAudioBuffer(denoised, originalTime: oringinaltime)
