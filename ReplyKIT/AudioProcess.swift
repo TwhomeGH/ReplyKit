@@ -306,39 +306,42 @@ private func applyNoiseFixFFT(_ buffer: CMSampleBuffer,
         return buffer
     }
 
-    // 複數向量
+    // 建立 real/imag buffer
     var real = [Float](repeating: 0, count: sampleCount)
     var imag = [Float](repeating: 0, count: sampleCount)
-    floatPtr.withMemoryRebound(to: DSPComplex.self, capacity: sampleCount) { complexPtr in
-        for i in 0..<sampleCount {
-            real[i] = floatPtr[i]
+
+    // 複製輸入樣本到 real
+    for i in 0..<sampleCount {
+        real[i] = floatPtr[i]
+    }
+
+    // 用 withUnsafeMutableBufferPointer 確保指標有效
+    real.withUnsafeMutableBufferPointer { realBuf in
+        imag.withUnsafeMutableBufferPointer { imagBuf in
+            var splitComplex = DSPSplitComplex(realp: realBuf.baseAddress!,
+                                               imagp: imagBuf.baseAddress!)
+
+            // Forward FFT
+            vDSP_fft_zip(fftSetup, &splitComplex, 1, log2n, FFTDirection(FFT_FORWARD))
+
+            // Notch filter
+            let bin = Int((targetFrequency / sampleRate) * Float(sampleCount))
+            let bwBins = Int((bandwidth / sampleRate) * Float(sampleCount))
+            for i in max(0, bin - bwBins)...min(sampleCount/2, bin + bwBins) {
+                splitComplex.realp[i] = 0
+                splitComplex.imagp[i] = 0
+            }
+
+            // Inverse FFT
+            vDSP_fft_zip(fftSetup, &splitComplex, 1, log2n, FFTDirection(FFT_INVERSE))
+
+            // 正規化
+            var scale = Float(1.0 / Float(sampleCount))
+            vDSP_vsmul(splitComplex.realp, 1, &scale, floatPtr, 1, vDSP_Length(sampleCount))
         }
     }
 
-    var splitComplex = DSPSplitComplex(realp: &real, imagp: &imag)
-
-    // Forward FFT
-    vDSP_fft_zip(fftSetup, &splitComplex, 1, log2n, FFTDirection(FFT_FORWARD))
-
-    // 計算目標頻率對應的 bin
-    let bin = Int((targetFrequency / sampleRate) * Float(sampleCount))
-    let bwBins = Int((bandwidth / sampleRate) * Float(sampleCount))
-
-    // Notch filter: 把目標頻率附近的 bin 壓低
-    for i in max(0, bin - bwBins)...min(sampleCount/2, bin + bwBins) {
-        splitComplex.realp[i] = 0
-        splitComplex.imagp[i] = 0
-    }
-
-    // Inverse FFT
-    vDSP_fft_zip(fftSetup, &splitComplex, 1, log2n, FFTDirection(FFT_INVERSE))
-
-    // 正規化
-    var scale = Float(1.0 / Float(sampleCount))
-    vDSP_vsmul(splitComplex.realp, 1, &scale, floatPtr, 1, vDSP_Length(sampleCount))
-
     vDSP_destroy_fftsetup(fftSetup)
-
     return buffer
 }
     
@@ -449,7 +452,7 @@ private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer, originalTime: CMS
 
 
         let denoised = amplified
-        
+
         // 2️⃣ 可選的噪聲修正（如果開啟了）
         if RPConfig.shared.enableNoiseFix {
         // 做音訊處理（例如去除 60Hz 噪聲）
