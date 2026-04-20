@@ -347,8 +347,12 @@ private func applyNoiseFixFFT(_ buffer: CMSampleBuffer,
     }
 
     vDSP_destroy_fftsetup(fftSetup)
-    
-    
+    return buffer
+}
+
+
+
+
 
 private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer, originalTime: CMSampleTimingInfo) -> CMSampleBuffer {
 
