@@ -658,10 +658,12 @@ final class PIPService: NSObject, @unchecked Sendable {
         let paddingX: CGFloat = 6
         let paddingY: CGFloat = 4
 
+        let spacingY: CGFloat = 24   // 你要的上下間距
+
         // 背景矩形
         let bgRect = CGRect(
         x: (size.width - textSize.width ) / 2 - paddingX,
-        y: elapsedPoint.y,   // ← 改成跟 elapsedPoint 對齊
+        y: elapsedPoint.y  + spacingY, // ← 與 elapsedPoint 保持間距
         width: textSize.width  + paddingX * 2,
         height: textSize.height  + paddingY * 2
         )
@@ -673,8 +675,8 @@ final class PIPService: NSObject, @unchecked Sendable {
         // 畫文字
 
         let textPoint = CGPoint(
-            x: bgRect.minX + paddingX,
-            y: bgRect.maxY - paddingY - textSize.height   // ← 用 maxY 往上扣，避免上下反
+        x: bgRect.minX + paddingX,
+        y: bgRect.maxY - paddingY - textSize.height   // ← 從底部往上算，文字就正了
         )
 
 
