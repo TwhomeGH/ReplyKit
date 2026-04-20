@@ -573,6 +573,8 @@ final class PIPService: NSObject, @unchecked Sendable {
     // MARK: 時間顯示
     private func drawTimeOverlay(in cg: CGContext, size: CGSize) {
 
+        
+
         var elapsedSeconds: Double = 0
 
         if let start = LPConfig.shared.streamStartTime {
@@ -683,6 +685,12 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         UIGraphicsPushContext(cg)
 
+        cg.saveGState()
+
+        // 在這裡翻轉座標系統
+        cg.translateBy(x: 0, y: size.height)
+        cg.scaleBy(x: 1.0, y: -1.0)
+
         // clockImage 與時間字串對齊：用 capHeight 對齊文字中線
         clockImage?.draw(
             in: CGRect(
@@ -746,6 +754,9 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         fullLine.draw(at: textPoint)
 
+
+        cg.restoreGState()
+
         UIGraphicsPopContext()
 
 
@@ -800,16 +811,12 @@ final class PIPService: NSObject, @unchecked Sendable {
             }
 
 
-            cg.saveGState()
 
-            // 上下翻轉座標系統
-            cg.translateBy(x: 0, y: size.height)
-            cg.scaleBy(x: 1.0, y: -1.0)
             if let overlay = overlayImage(size: size) {
                 cg.draw(overlay, in: CGRect(origin: .zero, size: size))
             }
 
-            cg.restoreGState()
+            
 
         }
 
@@ -1168,19 +1175,7 @@ final class PIPService: NSObject, @unchecked Sendable {
             self.frameCount += 1
 
 
-//            if let debugLayer = debugDisplayLayer,
-//               debugLayer.isReadyForMoreMediaData {
-//                debugLayer.enqueue(sampleBuffer)
-//            }
-//
-//            // 更新 debugImageView
-//            if UIApplication.shared.applicationState == .active ,
-//               CACurrentMediaTime() - self.lastDebugUpdate > 0.1 {
-//
-//                self.lastDebugUpdate = CACurrentMediaTime()
-//
-//
-//            }
+            
 
             // 啟動 PiP
             if !self.didStartPiP && self.frameCount >= self.pipStartThreshold {
