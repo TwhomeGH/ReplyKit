@@ -660,33 +660,34 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         let spacingY: CGFloat = 24   // 你要的上下間距
 
-        // 背景矩形
+        // 背景矩形：置中 + 與 elapsedPoint 保持間距
         let bgRect = CGRect(
-        x: (size.width - textSize.width ) / 2 - paddingX,
-        y: elapsedPoint.y  + spacingY, // ← 與 elapsedPoint 保持間距
-        width: textSize.width  + paddingX * 2,
-        height: textSize.height  + paddingY * 2
+            x: (size.width - textSize.width) / 2 - paddingX,
+            y: elapsedPoint.y + spacingY,
+            width: textSize.width + paddingX * 2,
+            height: textSize.height + paddingY * 2
         )
 
         // 畫背景
         cg.setFillColor(UIColor.black.withAlphaComponent(0.45).cgColor)
         cg.fill(bgRect)
 
-        // 畫文字
 
+        // 文字定位：從底部往上算，避免上下反
         let textPoint = CGPoint(
-        x: bgRect.minX + paddingX,
-        y: bgRect.maxY - paddingY - textSize.height   // ← 從底部往上算，文字就正了
+            x: bgRect.minX + paddingX,
+            y: bgRect.maxY - paddingY - textSize.height
         )
 
 
 
         UIGraphicsPushContext(cg)
 
+        // clockImage 與時間字串對齊：用 capHeight 對齊文字中線
         clockImage?.draw(
             in: CGRect(
                 x: elapsedPoint.x,
-                y: elapsedPoint.y + (elapsedLabelFont.capHeight - imageHeight) * 0.5,
+                y: elapsedPoint.y + (elapsedFont.capHeight - imageHeight) * 0.5, // ← 對齊文字中線
                 width: imageWidth,
                 height: imageHeight
             )
