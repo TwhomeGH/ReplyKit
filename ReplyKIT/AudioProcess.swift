@@ -632,7 +632,16 @@ private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer, originalTime: CMS
 
             if self.noiseProfile == nil {
                 if self.noiseBuffers.count < self.noiseBufferTarget {
-                    self.noiseBuffers.append(sampleBuffer)
+                    
+                    // 只收集麥克風的 buffer 來建立 noise profile，因為 app 音訊通常不包含背景噪音
+                    if trackType == .mic {
+                        self.noiseBuffers.append(sampleBuffer)
+                        sendlog(message: "Collecting noise buffer \(self.noiseBuffers.count + 1)/\(self.noiseBufferTarget) for mic track")
+                    } else {
+                        sendlog(message: "Not Collecting noise buffer \(self.noiseBuffers.count + 1)/\(self.noiseBufferTarget) for app track")
+                    }
+
+                   
                 }
                 if self.noiseBuffers.count == self.noiseBufferTarget {
                     self.noiseProfile = buildAverageNoiseProfile(from: self.noiseBuffers,
