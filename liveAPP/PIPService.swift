@@ -356,7 +356,7 @@ final class PIPService: NSObject, @unchecked Sendable {
 
     func markOverlayDirty() {
         isMark = true
-        cachedTimeImage = nil
+        cachedOverlayImage = nil
         currentFPS = max(currentFPS, 8)
         renderTimer?.schedule(deadline: .now(), repeating: 1 / max(currentFPS, 1))
         decayDeadline = .now() + decayDelay
@@ -496,65 +496,71 @@ final class PIPService: NSObject, @unchecked Sendable {
 
 
     // MARK: 直播結束訊息框
-    func roundedBadgeAttachment(
+    private func drawBadge(
+        in cg: CGContext,
         text: String,
         font: UIFont,
-        textColor: UIColor = .white,
-        bgColor: UIColor = .systemRed,
-        padding: UIEdgeInsets = UIEdgeInsets(top: 2, left: 6, bottom: 2, right: 6)
-    ) -> NSAttributedString {
+        origin: CGPoint,
+        textColor: UIColor,
+        bgColor: UIColor,
+        icon: UIImage? = nil,
+        iconTintColor: UIColor? = nil,
+        padding: UIEdgeInsets = UIEdgeInsets(top: 2, left: 8, bottom: 2, right: 8)
+    ) -> CGFloat {
+        let textSize = (text as NSString).size(withAttributes: [.font: font])
+        let iconSize = icon.map { _ in max(font.lineHeight - 2, 10) } ?? 0
+        let iconSpacing: CGFloat = icon == nil ? 0 : 4
 
-        let label = UILabel()
-        label.text = text
-        label.font = font
-        label.textColor = textColor
-        label.backgroundColor = bgColor
-        label.textAlignment = .center
-        label.layer.cornerRadius = (font.lineHeight + padding.top + padding.bottom) / 2
-        label.clipsToBounds = true
-
-        label.sizeToFit()
-        label.frame = CGRect(
-            x: 0,
-            y: 0,
-            width: label.bounds.width + padding.left + padding.right,
-            height: label.bounds.height + padding.top + padding.bottom
+        let rect = CGRect(
+            x: origin.x,
+            y: origin.y,
+            width: ceil(textSize.width + padding.left + padding.right + iconSize + iconSpacing),
+            height: ceil(textSize.height + padding.top + padding.bottom)
         )
 
-        UIGraphicsBeginImageContextWithOptions(label.bounds.size, false, 0)
-
-        label.layer.render(in: UIGraphicsGetCurrentContext()!)
-
-        let image = UIGraphicsGetImageFromCurrentImageContext()
-
-        UIGraphicsEndImageContext()
-
-        let attachment = NSTextAttachment()
-        attachment.image = image
-
-        // 垂直置中對齊文字
-        attachment.bounds = CGRect(
-            x: 0,
-            y: (font.capHeight - label.bounds.height) / 2,
-            width: label.bounds.width,
-            height: label.bounds.height
+        let path = UIBezierPath(
+            roundedRect: rect,
+            cornerRadius: rect.height * 0.5
         )
+        cg.saveGState()
+        cg.setFillColor(bgColor.cgColor)
+        path.fill()
+        cg.restoreGState()
 
-        return NSAttributedString(attachment: attachment)
-    }
+        var textOriginX = rect.minX + padding.left
 
-    private func viewerBadgeAttachment(font: UIFont) -> NSAttributedString? {
-        guard let viewerCount = LPConfig.shared.streamViewerCount else {
-            return nil
+        if let icon,
+           let cgIcon = icon.withRenderingMode(.alwaysTemplate).cgImage {
+            let iconRect = CGRect(
+                x: textOriginX,
+                y: rect.minY + (rect.height - iconSize) * 0.5,
+                width: iconSize,
+                height: iconSize
+            )
+
+            cg.saveGState()
+            cg.clip(to: iconRect, mask: cgIcon)
+            cg.setFillColor((iconTintColor ?? textColor).cgColor)
+            cg.fill(iconRect)
+            cg.restoreGState()
+
+            textOriginX += iconSize + iconSpacing
         }
 
-        return roundedBadgeAttachment(
-            text: " \(viewerCount) ",
-            font: font,
-            textColor: UIColor(white: 0.16, alpha: 1.0),
-            bgColor: UIColor(white: 0.83, alpha: 1.0),
-            padding: UIEdgeInsets(top: 2, left: 8, bottom: 2, right: 8)
+        let textPoint = CGPoint(
+            x: textOriginX,
+            y: rect.minY + padding.top
         )
+
+        (text as NSString).draw(
+            at: textPoint,
+            withAttributes: [
+                .font: font,
+                .foregroundColor: textColor
+            ]
+        )
+
+        return rect.width
     }
 
     func currentTimeString() -> String {
@@ -599,8 +605,6 @@ final class PIPService: NSObject, @unchecked Sendable {
             , weight: .medium
         )
 
-        let elapsedAttr = NSMutableAttributedString()
-
         let lightRed3 = #colorLiteral(red: 1.0, green: 0.6, blue: 0.6, alpha: 1.0)
 
         // 1️⃣ 插入圖標代替 "用時" / "已過"
@@ -613,61 +617,6 @@ final class PIPService: NSObject, @unchecked Sendable {
         let imageWidth: CGFloat = imageHeight
         // bounds.y 負值會把圖片往上頂對齊文字基線
         imageAttachment.bounds = CGRect(x: 0, y: (elapsedLabelFont.capHeight - imageHeight)/2, width: imageWidth, height: imageHeight)
-
-        let imageString = NSAttributedString(attachment: imageAttachment)
-
-        // "已過" 紅色
-        elapsedAttr.append(imageString)
-
-        // 數字白色
-        elapsedAttr.append(NSAttributedString(
-            string: elapsedString,
-            attributes: [
-                .font: elapsedFont,
-                .foregroundColor: UIColor.white
-            ]
-        ))
-
-        // "秒" 紅色
-        elapsedAttr.append(NSAttributedString(
-            string: " ",
-            attributes: [
-                .font: elapsedLabelFont,
-                .foregroundColor: lightRed3
-            ]
-        ))
-
-        if !LPConfig.shared.StreamEndMes.isEmpty {
-
-            var endColor = #colorLiteral(red: 1, green: 0.4538183808, blue: 0.1835401952, alpha: 1)
-            if LPConfig.shared.StreamEnded {
-                endColor = #colorLiteral(red: 0.2549019754, green: 0.2745098174, blue: 0.3019607961, alpha: 1)
-            }
-
-            elapsedAttr.append(
-                roundedBadgeAttachment(
-                    text: " \(LPConfig.shared.StreamEndMes) ",
-                    font: elapsedLabelFont,
-                    bgColor: endColor
-                )
-            )
-        }
-
-        if let viewerBadge = viewerBadgeAttachment(font: elapsedLabelFont) {
-            elapsedAttr.append(NSAttributedString(
-                string: " ",
-                attributes: [
-                    .font: elapsedLabelFont,
-                    .foregroundColor: UIColor.white
-                ]
-            ))
-            elapsedAttr.append(viewerBadge)
-        }
-
-
-
-        // 計算位置（上方偏右）
-        //let elapsedSize = elapsedAttr.size()
 
         let elapsedPoint = CGPoint(
             x: 50 ,
@@ -733,7 +682,56 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         UIGraphicsPushContext(cg)
 
-        elapsedAttr.draw(at: elapsedPoint)
+        imageString.draw(at: CGPoint(x: elapsedPoint.x, y: elapsedPoint.y))
+
+        let timeTextPoint = CGPoint(
+            x: elapsedPoint.x + imageWidth + 4,
+            y: elapsedPoint.y
+        )
+        (elapsedString as NSString).draw(
+            at: timeTextPoint,
+            withAttributes: [
+                .font: elapsedFont,
+                .foregroundColor: UIColor.white
+            ]
+        )
+
+        let elapsedTextSize = (elapsedString as NSString).size(withAttributes: [.font: elapsedFont])
+        var badgeX = timeTextPoint.x + elapsedTextSize.width + 8
+        let badgeY = elapsedPoint.y - 1
+
+        if !LPConfig.shared.StreamEndMes.isEmpty {
+            var endColor = #colorLiteral(red: 1, green: 0.4538183808, blue: 0.1835401952, alpha: 1)
+            if LPConfig.shared.StreamEnded {
+                endColor = #colorLiteral(red: 0.2549019754, green: 0.2745098174, blue: 0.3019607961, alpha: 1)
+            }
+
+            let statusWidth = drawBadge(
+                in: cg,
+                text: LPConfig.shared.StreamEndMes,
+                font: elapsedLabelFont,
+                origin: CGPoint(x: badgeX, y: badgeY),
+                textColor: .white,
+                bgColor: endColor,
+                padding: UIEdgeInsets(top: 2, left: 8, bottom: 2, right: 8)
+            )
+            badgeX += statusWidth + 6
+        }
+
+        if let viewerCount = LPConfig.shared.streamViewerCount {
+            _ = drawBadge(
+                in: cg,
+                text: "\(viewerCount)",
+                font: elapsedLabelFont,
+                origin: CGPoint(x: badgeX, y: badgeY),
+                textColor: UIColor(white: 0.16, alpha: 1.0),
+                bgColor: UIColor(white: 0.83, alpha: 1.0),
+                icon: UIImage(systemName: "person.2.fill"),
+                iconTintColor: UIColor(white: 0.22, alpha: 1.0),
+                padding: UIEdgeInsets(top: 2, left: 8, bottom: 2, right: 8)
+            )
+        }
+
         fullLine.draw(at: textPoint)
 
         UIGraphicsPopContext()
@@ -742,7 +740,7 @@ final class PIPService: NSObject, @unchecked Sendable {
     }
 
 
-    private var cachedTimeImage: CGImage?
+    private var cachedOverlayImage: CGImage?
     private var lastTimeText: String = ""
     private var lastOverlaySignature: String = ""
 
@@ -754,59 +752,52 @@ final class PIPService: NSObject, @unchecked Sendable {
     }
 
 
-    private func timeOverlayImage(size: CGSize) -> CVPixelBuffer? {
-
-        let nowText = currentTimeString() // 你現在 formatter 那段
+    private func overlayImage(size: CGSize) -> CGImage? {
+        let nowText = currentTimeString()
         let overlaySig = overlaySignature()
 
         if nowText == lastTimeText,
            overlaySig == lastOverlaySignature,
-           let cached = cachedTimeImage,
+           let cached = cachedOverlayImage,
            !isMark {
-            let pixelBuffer = gpuRenderer?.render(
-                time:CIImage(cgImage: cached),
-                containerSize: frameSize
-            )
-
-            return pixelBuffer
+            return cached
         }
 
         lastTimeText = nowText
         lastOverlaySignature = overlaySig
 
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let img = renderer.image { ctx in
+            drawTimeOverlay(in: ctx.cgContext, size: frameSize)
+        }
 
-        // 將 PixelBuffer 尺寸用原大小
+        cachedOverlayImage = img.cgImage
+        isMark = false
+        return img.cgImage
+    }
 
+    private func timeOverlayImage(size: CGSize) -> CVPixelBuffer? {
         let renderer = UIGraphicsImageRenderer(size: size)
 
-        let img = renderer.image { ctx in
+        let composed = renderer.image { ctx in
             let cg = ctx.cgContext
 
-            // ✅ 先畫 messagesLayer
+            // 訊息 layer 每幀都要重畫，不能跟 overlay 一起吃 cache
             if let layer = messagesLayer?.container {
                 layer.render(in: cg)
             }
 
-            drawTimeOverlay(in: cg, size: frameSize)
+            if let overlay = overlayImage(size: size) {
+                cg.draw(overlay, in: CGRect(origin: .zero, size: size))
+            }
         }
 
-        guard let cgImage = img.cgImage else { return nil }
+        guard let cgImage = composed.cgImage else { return nil }
 
-        let pixelBuffer = gpuRenderer?.render(
-            time:CIImage(cgImage: cgImage),
+        return gpuRenderer?.render(
+            time: CIImage(cgImage: cgImage),
             containerSize: frameSize
         )
-
-//        let buffer = createPixelBuffer(from: cgImage, size: size)
-
-        cachedTimeImage = cgImage
-        isMark = false
-
-        return pixelBuffer
-       // let ci = CIImage(cgImage: img.cgImage!)
-
-        //return ci
-
     }
 
 
@@ -1100,7 +1091,7 @@ final class PIPService: NSObject, @unchecked Sendable {
         // Clear GPU Resource
         ciContext = nil
         pixelBufferPool = nil
-        cachedTimeImage = nil
+        cachedOverlayImage = nil
         lastOverlaySignature = ""
         lastTimeText = ""
 
