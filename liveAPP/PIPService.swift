@@ -529,26 +529,26 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         var textOriginX = rect.minX + padding.left
 
-        if let icon,
-           let cgIcon = icon.withRenderingMode(.alwaysTemplate).cgImage {
-
-            let baselineY = rect.minY + padding.top + (font.capHeight - iconSize) * 0.5
-
+        if let icon {
             let iconRect = CGRect(
                 x: textOriginX,
-                y: baselineY,
+                y: rect.minY + padding.top + (font.capHeight - iconSize) * 0.5,
                 width: iconSize,
                 height: iconSize
             )
 
             cg.saveGState()
-            cg.clip(to: iconRect, mask: cgIcon)
-            cg.setFillColor((iconTintColor ?? textColor).cgColor)
-            cg.fill(iconRect)
+            cg.translateBy(x: 0, y: rect.height)   // 翻轉座標
+            cg.scaleBy(x: 1.0, y: -1.0)
+
+            icon.withTintColor(iconTintColor ?? textColor, renderingMode: .alwaysTemplate)
+                .draw(in: iconRect)
+
             cg.restoreGState()
 
             textOriginX += iconSize + iconSpacing
         }
+
 
         let textPoint = CGPoint(
             x: textOriginX,
