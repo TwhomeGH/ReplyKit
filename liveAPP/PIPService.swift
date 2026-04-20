@@ -736,13 +736,25 @@ final class PIPService: NSObject, @unchecked Sendable {
 
     private var cachedTimeImage: CGImage?
     private var lastTimeText: String = ""
+    private var lastOverlaySignature: String = ""
+
+    private func overlaySignature() -> String {
+        let status = LPConfig.shared.StreamEndMes
+        let viewerCount = LPConfig.shared.streamViewerCount.map(String.init) ?? ""
+        let ended = LPConfig.shared.StreamEnded ? "1" : "0"
+        return "\(status)|\(viewerCount)|\(ended)"
+    }
 
 
     private func timeOverlayImage(size: CGSize) -> CVPixelBuffer? {
 
         let nowText = currentTimeString() // 你現在 formatter 那段
+        let overlaySig = overlaySignature()
 
-        if nowText == lastTimeText, let cached = cachedTimeImage, !isMark {
+        if nowText == lastTimeText,
+           overlaySig == lastOverlaySignature,
+           let cached = cachedTimeImage,
+           !isMark {
             logTo("使用Cache")
 
             let pixelBuffer = gpuRenderer?.render(
@@ -754,6 +766,7 @@ final class PIPService: NSObject, @unchecked Sendable {
         }
 
         lastTimeText = nowText
+        lastOverlaySignature = overlaySig
 
 
         // 將 PixelBuffer 尺寸用原大小
@@ -781,6 +794,7 @@ final class PIPService: NSObject, @unchecked Sendable {
 //        let buffer = createPixelBuffer(from: cgImage, size: size)
 
         cachedTimeImage = cgImage
+        isMark = false
 
         return pixelBuffer
        // let ci = CIImage(cgImage: img.cgImage!)
@@ -1081,6 +1095,8 @@ final class PIPService: NSObject, @unchecked Sendable {
         ciContext = nil
         pixelBufferPool = nil
         cachedTimeImage = nil
+        lastOverlaySignature = ""
+        lastTimeText = ""
 
         cleanupMessageslayer()
 
