@@ -219,6 +219,49 @@ func volumeToPercentage(_ volume: Double) -> Double {
 
 
 
+
+/// 從多個噪音 buffer 建立平均 noiseProfile
+func buildAverageNoiseProfile(from buffers: [CMSampleBuffer],
+                              sampleRate: Float = 44100.0) -> [Float] {
+    var accumulated: [Float]? = nil
+    var count = 0
+    
+    for buf in buffers {
+        let profile = estimateNoiseProfile(from: buf, sampleRate: sampleRate)
+        if accumulated == nil {
+            accumulated = profile
+        } else {
+            vDSP_vadd(accumulated!, 1, profile, 1, &accumulated!, 1, vDSP_Length(profile.count))
+        }
+        count += 1
+    }
+    
+    // 平均化
+    if var acc = accumulated {
+        var divisor = Float(count)
+        vDSP_vsdiv(acc, 1, &divisor, &acc, 1, vDSP_Length(acc.count))
+        return acc
+    }
+    return []
+}
+
+
+
+/// 收集指定數量的背景噪音 buffer
+/// - 這裡假設你有一個 captureSession 或 audioInput 能提供 CMSampleBuffer
+func collectNoiseBuffers(count: Int,
+                         capture: () -> CMSampleBuffer?) -> [CMSampleBuffer] {
+    var buffers: [CMSampleBuffer] = []
+    for _ in 0..<count {
+        if let buf = capture() {
+            buffers.append(buf)
+        }
+    }
+    return buffers
+}
+
+
+    
 // MARK: 音頻線程
 
 final class AudioProcessor : @unchecked Sendable {
@@ -249,6 +292,7 @@ final class AudioProcessor : @unchecked Sendable {
 
     var rmsInterval: CFTimeInterval = 0.1
 
+
     init(mediaMixer: MediaMixer,
          volumeNotifier: VolumeNotifier,
          appAddVolume: Float,
@@ -264,6 +308,11 @@ final class AudioProcessor : @unchecked Sendable {
         self.micVolume = micVolume
         self.onAudioPage = onAudioPage
         self.isActive = true
+
+        
+
+
+
     }
 
     func cleanup() {
@@ -276,6 +325,8 @@ final class AudioProcessor : @unchecked Sendable {
         sendlog(message:"🧹 AudioProcessor deinit — resources released")
     }
 
+/// 使用 Wiener Filter 進行背景噪音抑制
+    
 /// 使用 Wiener Filter 進行背景噪音抑制
 private func wienerFilter(_ buffer: CMSampleBuffer,
                           sampleRate: Float = 44100.0,
@@ -382,6 +433,83 @@ private func wienerFilter(_ buffer: CMSampleBuffer,
 }
 
 
+    
+/// 從一個只有背景噪音的 buffer 建立噪音功率譜
+func estimateNoiseProfile(from buffer: CMSampleBuffer,
+                          sampleRate: Float = 44100.0) -> [Float] {
+    guard let blockBuffer = CMSampleBufferGetDataBuffer(buffer),
+          let formatDesc = CMSampleBufferGetFormatDescription(buffer),
+          let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc) else {
+        return []
+    }
+
+    var lengthAtOffset: Int = 0
+    var totalLength: Int = 0
+    var dataPointer: UnsafeMutablePointer<Int8>?
+
+    let status = CMBlockBufferGetDataPointer(blockBuffer,
+                                             atOffset: 0,
+                                             lengthAtOffsetOut: &lengthAtOffset,
+                                             totalLengthOut: &totalLength,
+                                             dataPointerOut: &dataPointer)
+    if status != kCMBlockBufferNoErr || dataPointer == nil {
+        return []
+    }
+
+    let sampleCount: Int
+    var floatSamples: [Float]
+
+    // 支援 Float32 / Int16 PCM
+    if asbd.pointee.mBitsPerChannel == 32 {
+        let floatPtr = UnsafeMutablePointer<Float>(OpaquePointer(dataPointer!))
+        sampleCount = totalLength / MemoryLayout<Float>.size
+        floatSamples = Array(UnsafeBufferPointer(start: floatPtr, count: sampleCount))
+    } else if asbd.pointee.mBitsPerChannel == 16 {
+        let int16Ptr = UnsafeMutablePointer<Int16>(OpaquePointer(dataPointer!))
+        sampleCount = totalLength / MemoryLayout<Int16>.size
+        floatSamples = (0..<sampleCount).map { Float(int16Ptr[$0]) / Float(Int16.max) }
+    } else {
+        return []
+    }
+
+    // 找最近的 2^n 長度
+    let log2n = vDSP_Length(log2(Float(sampleCount)).rounded(.down))
+    let fftLength = 1 << log2n
+
+    guard let fftSetup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2)) else {
+        return []
+    }
+
+    var real = [Float](repeating: 0, count: fftLength)
+    var imag = [Float](repeating: 0, count: fftLength)
+
+    let copyCount = min(sampleCount, fftLength)
+    for i in 0..<copyCount {
+        real[i] = floatSamples[i]
+    }
+
+    var magnitudes = [Float](repeating: 0, count: fftLength/2)
+
+    real.withUnsafeMutableBufferPointer { realBuf in
+        imag.withUnsafeMutableBufferPointer { imagBuf in
+            var splitComplex = DSPSplitComplex(realp: realBuf.baseAddress!,
+                                               imagp: imagBuf.baseAddress!)
+
+            // Forward FFT
+            vDSP_fft_zip(fftSetup, &splitComplex, 1, log2n, FFTDirection(FFT_FORWARD))
+
+            // 計算頻譜能量
+            vDSP_zvabs(&splitComplex, 1, &magnitudes, 1, vDSP_Length(fftLength/2))
+        }
+    }
+
+    vDSP_destroy_fftsetup(fftSetup)
+
+    return magnitudes
+}
+
+
+
 
 
 
@@ -472,13 +600,12 @@ private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer, originalTime: CMS
     }
 
 
-    func estimateNoiseProfile(from buffer: CMSampleBuffer, sampleRate: Float = 44100.0) -> [Float] {
-        // 跟 wienerFilter 裡的 FFT 步驟類似
-        // 這裡只做一次 FFT，取出 magnitudes 當作 noiseProfile
-        // 建議多次取樣平均，效果更穩定
-        return magnitudes
-        }
+    
 
+
+    private var noiseBuffers: [CMSampleBuffer] = []
+    private let noiseBufferTarget = 10  // 收集 10 個 buffer
+    var noiseProfile: [Float]? = nil     
 
 
     func enqueue(_ sampleBuffer: CMSampleBuffer, trackType: AudioTrackType,oringinaltime: CMSampleTimingInfo) {
@@ -501,15 +628,29 @@ private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer, originalTime: CMS
 
         // 2️⃣ 可選的噪聲修正（如果開啟了）
         if RPConfig.shared.enableNoiseFix {
-                
-                // 先建立 noiseProfile
-                let noiseProfile = estimateNoiseProfile(from: noiseBuffer, sampleRate: 44100)
 
-                // 在每個音訊 buffer 上呼叫 Wiener Filter
-                let processedBuffer = wienerFilter(buffer,
-                                                sampleRate: 44100,
-                                                noiseProfile: noiseProfile)
+            if self.noiseProfile == nil {
+                if self.noiseBuffers.count < self.noiseBufferTarget {
+                    self.noiseBuffers.append(sampleBuffer)
+                }
+                if self.noiseBuffers.count == self.noiseBufferTarget {
+                    self.noiseProfile = buildAverageNoiseProfile(from: self.noiseBuffers,
+                                                                 sampleRate: 44100)
+                    self.noiseBuffers.removeAll()
+
+                    sendlog(message: "Noise profile estimated from \(self.noiseBufferTarget) buffers")
+                }
+            }
+
+            // 3️⃣ 使用固定 noiseProfile 做 Wiener Filter
+            if let profile = self.noiseProfile {
+                let processedBuffer = wienerFilter(amplified,
+                                                   sampleRate: 44100,
+                                                   noiseProfile: profile)
                 denoised = processedBuffer
+            }
+
+
         }  
 
         //時間戳校正
