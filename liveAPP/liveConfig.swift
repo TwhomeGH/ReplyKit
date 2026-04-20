@@ -55,7 +55,7 @@ final class LPConfig {
 
     var StreamEnded: Bool = false
     var StreamEndMes:String = ""
-    var streamViewerCount: String?
+    var streamViewerCount: Int?
     var streamViewerList: [String] = []
 
     // 上一場直播時長

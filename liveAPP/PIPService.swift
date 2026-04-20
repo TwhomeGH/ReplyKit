@@ -536,8 +536,7 @@ final class PIPService: NSObject, @unchecked Sendable {
     }
 
     private func viewerBadgeAttachment(font: UIFont) -> NSAttributedString? {
-        guard let viewerCount = LPConfig.shared.streamViewerCount,
-              !viewerCount.isEmpty else {
+        guard let viewerCount = LPConfig.shared.streamViewerCount else {
             return nil
         }
 
