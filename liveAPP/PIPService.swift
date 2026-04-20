@@ -661,7 +661,7 @@ final class PIPService: NSObject, @unchecked Sendable {
         // 背景矩形
         let bgRect = CGRect(
             x: (size.width - textSize.width ) / 2 - paddingX,   // 水平置中
-            y: 40 , // 往下移，避免遮到左上按鈕，可調整
+            y: elapsedPoint.y,   // 改成跟 elapsedPoint 對齊 , // 往下移，避免遮到左上按鈕，可調整
 
             width: textSize.width  + paddingX * 2,
             height: textSize.height  + paddingY * 2
