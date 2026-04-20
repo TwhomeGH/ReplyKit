@@ -286,7 +286,6 @@ private func applyNoiseFixFFT(_ buffer: CMSampleBuffer,
                               bandwidth: Float = 5.0) -> CMSampleBuffer {
     guard let blockBuffer = CMSampleBufferGetDataBuffer(buffer) else { return buffer }
 
-    // 分開兩個變數避免 overlapping access
     var lengthAtOffset: Int = 0
     var totalLength: Int = 0
     var dataPointer: UnsafeMutablePointer<Int8>?
@@ -303,22 +302,23 @@ private func applyNoiseFixFFT(_ buffer: CMSampleBuffer,
     let floatPtr = UnsafeMutablePointer<Float>(OpaquePointer(dataPointer!))
     let sampleCount = totalLength / MemoryLayout<Float>.size
 
-    // 建立 FFT setup
-    let log2n = vDSP_Length(log2(Float(sampleCount)))
+    // 找最近的 2^n 長度
+    let log2n = vDSP_Length(log2(Float(sampleCount)).rounded(.down))
+    let fftLength = 1 << log2n
+
     guard let fftSetup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2)) else {
         return buffer
     }
 
-    // 建立 real/imag buffer
-    var real = [Float](repeating: 0, count: sampleCount)
-    var imag = [Float](repeating: 0, count: sampleCount)
+    var real = [Float](repeating: 0, count: fftLength)
+    var imag = [Float](repeating: 0, count: fftLength)
 
     // 複製輸入樣本到 real
-    for i in 0..<sampleCount {
+    let copyCount = min(sampleCount, fftLength)
+    for i in 0..<copyCount {
         real[i] = floatPtr[i]
     }
 
-    // 用 withUnsafeMutableBufferPointer 確保指標有效
     real.withUnsafeMutableBufferPointer { realBuf in
         imag.withUnsafeMutableBufferPointer { imagBuf in
             var splitComplex = DSPSplitComplex(realp: realBuf.baseAddress!,
@@ -328,9 +328,9 @@ private func applyNoiseFixFFT(_ buffer: CMSampleBuffer,
             vDSP_fft_zip(fftSetup, &splitComplex, 1, log2n, FFTDirection(FFT_FORWARD))
 
             // Notch filter
-            let bin = Int((targetFrequency / sampleRate) * Float(sampleCount))
-            let bwBins = Int((bandwidth / sampleRate) * Float(sampleCount))
-            for i in max(0, bin - bwBins)...min(sampleCount/2, bin + bwBins) {
+            let bin = Int((targetFrequency / sampleRate) * Float(fftLength))
+            let bwBins = Int((bandwidth / sampleRate) * Float(fftLength))
+            for i in max(0, bin - bwBins)...min(fftLength/2, bin + bwBins) {
                 splitComplex.realp[i] = 0
                 splitComplex.imagp[i] = 0
             }
@@ -338,15 +338,16 @@ private func applyNoiseFixFFT(_ buffer: CMSampleBuffer,
             // Inverse FFT
             vDSP_fft_zip(fftSetup, &splitComplex, 1, log2n, FFTDirection(FFT_INVERSE))
 
-            // 正規化
-            var scale = Float(1.0 / Float(sampleCount))
-            vDSP_vsmul(splitComplex.realp, 1, &scale, floatPtr, 1, vDSP_Length(sampleCount))
+            // 正規化 (real + imag)
+            var scale = Float(1.0 / Float(fftLength))
+            for i in 0..<copyCount {
+                floatPtr[i] = splitComplex.realp[i] * scale
+            }
         }
     }
 
     vDSP_destroy_fftsetup(fftSetup)
-    return buffer
-}
+    
     
 
 private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer, originalTime: CMSampleTimingInfo) -> CMSampleBuffer {
