@@ -282,9 +282,13 @@ final class AudioProcessor : @unchecked Sendable {
     
 private func applyNoiseFixFFT(_ buffer: CMSampleBuffer,
                               targetFrequency: Float = 60.0,
-                              sampleRate: Float = 48000.0,
+                              sampleRate: Float = 44100.0,
                               bandwidth: Float = 5.0) -> CMSampleBuffer {
-    guard let blockBuffer = CMSampleBufferGetDataBuffer(buffer) else { return buffer }
+    guard let blockBuffer = CMSampleBufferGetDataBuffer(buffer),
+          let formatDesc = CMSampleBufferGetFormatDescription(buffer),
+          let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc) else {
+        return buffer
+    }
 
     var lengthAtOffset: Int = 0
     var totalLength: Int = 0
@@ -299,8 +303,24 @@ private func applyNoiseFixFFT(_ buffer: CMSampleBuffer,
         return buffer
     }
 
-    let floatPtr = UnsafeMutablePointer<Float>(OpaquePointer(dataPointer!))
-    let sampleCount = totalLength / MemoryLayout<Float>.size
+    let sampleCount: Int
+    var floatSamples: [Float]
+
+    // 判斷格式：Float32 或 Int16
+    if asbd.pointee.mBitsPerChannel == 32 {
+        // Float32
+        let floatPtr = UnsafeMutablePointer<Float>(OpaquePointer(dataPointer!))
+        sampleCount = totalLength / MemoryLayout<Float>.size
+        floatSamples = Array(UnsafeBufferPointer(start: floatPtr, count: sampleCount))
+    } else if asbd.pointee.mBitsPerChannel == 16 {
+        // Int16 → Float
+        let int16Ptr = UnsafeMutablePointer<Int16>(OpaquePointer(dataPointer!))
+        sampleCount = totalLength / MemoryLayout<Int16>.size
+        floatSamples = (0..<sampleCount).map { Float(int16Ptr[$0]) / Float(Int16.max) }
+    } else {
+        // 其他格式不支援
+        return buffer
+    }
 
     // 找最近的 2^n 長度
     let log2n = vDSP_Length(log2(Float(sampleCount)).rounded(.down))
@@ -313,10 +333,9 @@ private func applyNoiseFixFFT(_ buffer: CMSampleBuffer,
     var real = [Float](repeating: 0, count: fftLength)
     var imag = [Float](repeating: 0, count: fftLength)
 
-    // 複製輸入樣本到 real
     let copyCount = min(sampleCount, fftLength)
     for i in 0..<copyCount {
-        real[i] = floatPtr[i]
+        real[i] = floatSamples[i]
     }
 
     real.withUnsafeMutableBufferPointer { realBuf in
@@ -338,17 +357,32 @@ private func applyNoiseFixFFT(_ buffer: CMSampleBuffer,
             // Inverse FFT
             vDSP_fft_zip(fftSetup, &splitComplex, 1, log2n, FFTDirection(FFT_INVERSE))
 
-            // 正規化 (real + imag)
+            // 正規化
             var scale = Float(1.0 / Float(fftLength))
             for i in 0..<copyCount {
-                floatPtr[i] = splitComplex.realp[i] * scale
+                floatSamples[i] = splitComplex.realp[i] * scale
             }
         }
     }
 
     vDSP_destroy_fftsetup(fftSetup)
+
+    // 寫回原始 buffer
+    if asbd.pointee.mBitsPerChannel == 32 {
+        let floatPtr = UnsafeMutablePointer<Float>(OpaquePointer(dataPointer!))
+        for i in 0..<copyCount {
+            floatPtr[i] = floatSamples[i]
+        }
+    } else if asbd.pointee.mBitsPerChannel == 16 {
+        let int16Ptr = UnsafeMutablePointer<Int16>(OpaquePointer(dataPointer!))
+        for i in 0..<copyCount {
+            int16Ptr[i] = Int16(clamping: Int(floatSamples[i] * Float(Int16.max)))
+        }
+    }
+
     return buffer
 }
+
 
 
 
