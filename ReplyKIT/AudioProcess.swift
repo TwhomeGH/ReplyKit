@@ -279,7 +279,7 @@ final class AudioProcessor : @unchecked Sendable {
 
 
 // 將 60Hz 噪聲從音訊中去除（如果有的話），避免干擾音量計算和聽感
-
+    
 private func applyNoiseFixFFT(_ buffer: CMSampleBuffer,
                               targetFrequency: Float = 60.0,
                               sampleRate: Float = 48000.0,
