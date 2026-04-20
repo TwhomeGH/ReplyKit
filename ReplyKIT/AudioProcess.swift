@@ -262,71 +262,8 @@ func collectNoiseBuffers(count: Int,
 
 
     
-// MARK: 音頻線程
-
-final class AudioProcessor : @unchecked Sendable {
-
-    // MARK: Buffer
     
-    private let mediaMixer: MediaMixer
-    private var volumeNotifier: VolumeNotifier
-    private let queue = DispatchQueue(
-        label: "audio.processor.queue"
-    )
-
-    private let audioSemaphore = DispatchSemaphore(value: 5)
-
-    var isActive = true
-
-    //音訊PTS校正用
-    private var audioStartPTS: CMTime?
-    private var currentPTS: CMTime = .zero
-    private var lastAudioPTS: CMTime?
-    
-    private var appAddVolume: Float
-    private var micAddVolume: Float
-    private var appVolume: Float
-    private var micVolume: Float
-    private var onAudioPage: Bool
-    private var lastRMSUpdateTime: CFTimeInterval = 0
-
-    var rmsInterval: CFTimeInterval = 0.1
-
-
-    init(mediaMixer: MediaMixer,
-         volumeNotifier: VolumeNotifier,
-         appAddVolume: Float,
-         micAddVolume: Float,
-         appVolume: Float,
-         micVolume: Float,
-         onAudioPage: Bool) {
-        self.mediaMixer = mediaMixer
-        self.volumeNotifier = volumeNotifier
-        self.appAddVolume = appAddVolume
-        self.micAddVolume = micAddVolume
-        self.appVolume = appVolume
-        self.micVolume = micVolume
-        self.onAudioPage = onAudioPage
-        self.isActive = true
-
-        
-
-
-
-    }
-
-    func cleanup() {
-        queue.async {
-            self.isActive = false
-        }
-    }
-    deinit {
-        cleanup()
-        sendlog(message:"🧹 AudioProcessor deinit — resources released")
-    }
-
-/// 使用 Wiener Filter 進行背景噪音抑制
-    
+   
 /// 使用 Wiener Filter 進行背景噪音抑制
 private func wienerFilter(_ buffer: CMSampleBuffer,
                           sampleRate: Float = 44100.0,
@@ -407,7 +344,7 @@ private func wienerFilter(_ buffer: CMSampleBuffer,
             vDSP_fft_zip(fftSetup, &splitComplex, 1, log2n, FFTDirection(FFT_INVERSE))
 
             // 正規化
-            var scale = Float(1.0 / Float(fftLength))
+            let scale = Float(1.0 / Float(fftLength))
             for i in 0..<copyCount {
                 floatSamples[i] = splitComplex.realp[i] * scale
             }
@@ -507,6 +444,70 @@ func estimateNoiseProfile(from buffer: CMSampleBuffer,
 
     return magnitudes
 }
+
+// MARK: 音頻線程
+
+final class AudioProcessor : @unchecked Sendable {
+
+    // MARK: Buffer
+    
+    private let mediaMixer: MediaMixer
+    private var volumeNotifier: VolumeNotifier
+    private let queue = DispatchQueue(
+        label: "audio.processor.queue"
+    )
+
+    private let audioSemaphore = DispatchSemaphore(value: 5)
+
+    var isActive = true
+
+    //音訊PTS校正用
+    private var audioStartPTS: CMTime?
+    private var currentPTS: CMTime = .zero
+    private var lastAudioPTS: CMTime?
+    
+    private var appAddVolume: Float
+    private var micAddVolume: Float
+    private var appVolume: Float
+    private var micVolume: Float
+    private var onAudioPage: Bool
+    private var lastRMSUpdateTime: CFTimeInterval = 0
+
+    var rmsInterval: CFTimeInterval = 0.1
+
+
+    init(mediaMixer: MediaMixer,
+         volumeNotifier: VolumeNotifier,
+         appAddVolume: Float,
+         micAddVolume: Float,
+         appVolume: Float,
+         micVolume: Float,
+         onAudioPage: Bool) {
+        self.mediaMixer = mediaMixer
+        self.volumeNotifier = volumeNotifier
+        self.appAddVolume = appAddVolume
+        self.micAddVolume = micAddVolume
+        self.appVolume = appVolume
+        self.micVolume = micVolume
+        self.onAudioPage = onAudioPage
+        self.isActive = true
+
+        
+
+
+
+    }
+
+    func cleanup() {
+        queue.async {
+            self.isActive = false
+        }
+    }
+    deinit {
+        cleanup()
+        sendlog(message:"🧹 AudioProcessor deinit — resources released")
+    }
+
 
 
 
