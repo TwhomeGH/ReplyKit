@@ -286,19 +286,22 @@ private func applyNoiseFixFFT(_ buffer: CMSampleBuffer,
                               bandwidth: Float = 5.0) -> CMSampleBuffer {
     guard let blockBuffer = CMSampleBufferGetDataBuffer(buffer) else { return buffer }
 
-    var length = 0
+    // 分開兩個變數避免 overlapping access
+    var lengthAtOffset: Int = 0
+    var totalLength: Int = 0
     var dataPointer: UnsafeMutablePointer<Int8>?
+
     let status = CMBlockBufferGetDataPointer(blockBuffer,
                                              atOffset: 0,
-                                             lengthAtOffsetOut: &length,
-                                             totalLengthOut: &length,
+                                             lengthAtOffsetOut: &lengthAtOffset,
+                                             totalLengthOut: &totalLength,
                                              dataPointerOut: &dataPointer)
     if status != kCMBlockBufferNoErr || dataPointer == nil {
         return buffer
     }
 
     let floatPtr = UnsafeMutablePointer<Float>(OpaquePointer(dataPointer!))
-    let sampleCount = length / MemoryLayout<Float>.size
+    let sampleCount = totalLength / MemoryLayout<Float>.size
 
     // 建立 FFT setup
     let log2n = vDSP_Length(log2(Float(sampleCount)))
@@ -456,7 +459,7 @@ private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer, originalTime: CMS
         // 2️⃣ 可選的噪聲修正（如果開啟了）
         if RPConfig.shared.enableNoiseFix {
         // 做音訊處理（例如去除 60Hz 噪聲）
-        let denoised  = applyNoiseFixFFT(amplified, targetFrequency: 60.0, sampleRate: 48000.0)
+            denoised  = applyNoiseFixFFT(amplified, targetFrequency: 60.0, sampleRate: 48000.0)
 
         }  
 
