@@ -535,6 +535,21 @@ final class PIPService: NSObject, @unchecked Sendable {
         return NSAttributedString(attachment: attachment)
     }
 
+    private func viewerBadgeAttachment(font: UIFont) -> NSAttributedString? {
+        guard let viewerCount = LPConfig.shared.streamViewerCount,
+              !viewerCount.isEmpty else {
+            return nil
+        }
+
+        return roundedBadgeAttachment(
+            text: " \(viewerCount) ",
+            font: font,
+            textColor: UIColor(white: 0.16, alpha: 1.0),
+            bgColor: UIColor(white: 0.83, alpha: 1.0),
+            padding: UIEdgeInsets(top: 2, left: 8, bottom: 2, right: 8)
+        )
+    }
+
     func currentTimeString() -> String {
         let f = StaticFormatter.formatter
         f.dateFormat = "yyyy/MM/dd aHH:mm:ss"
@@ -629,6 +644,17 @@ final class PIPService: NSObject, @unchecked Sendable {
                     bgColor:EndColor
                 )
             )
+
+            if let viewerBadge = viewerBadgeAttachment(font: elapsedLabelFont) {
+                elapsedAttr.append(NSAttributedString(
+                    string: " ",
+                    attributes: [
+                        .font: elapsedLabelFont,
+                        .foregroundColor: UIColor.clear
+                    ]
+                ))
+                elapsedAttr.append(viewerBadge)
+            }
         }
 
 

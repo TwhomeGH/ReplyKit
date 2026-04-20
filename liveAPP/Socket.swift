@@ -442,6 +442,8 @@ class SocketServer:ObservableObject {
         let img:String?
         let giftImg:String?
         var isMain:Bool?
+        let userNum: String?
+        let userList: [String]?
     }
     struct SLogMessage:Codable {
         let title:String
@@ -518,6 +520,32 @@ class SocketServer:ObservableObject {
 
 
 
+    }
+
+    private func updateAudienceInfo(
+        userNum: String?,
+        userList: [String]?
+    ) {
+        var didChange = false
+
+        if let userNum {
+            let trimmed = userNum.trimmingCharacters(in: .whitespacesAndNewlines)
+            let nextValue = trimmed.isEmpty ? nil : trimmed
+            if LPConfig.shared.streamViewerCount != nextValue {
+                LPConfig.shared.streamViewerCount = nextValue
+                didChange = true
+            }
+        }
+
+        if let userList,
+           LPConfig.shared.streamViewerList != userList {
+            LPConfig.shared.streamViewerList = userList
+            didChange = true
+        }
+
+        if didChange {
+            PIPService.shared.markDirty()
+        }
     }
 
 
@@ -611,6 +639,8 @@ class SocketServer:ObservableObject {
         LPConfig.shared.streamStartTime = Date()
         LPConfig.shared.StreamEndMes = "直播中"
         LPConfig.shared.StreamEnded = false
+        LPConfig.shared.streamViewerCount = nil
+        LPConfig.shared.streamViewerList = []
 
 
         var CPayloadKey = payload
@@ -706,6 +736,13 @@ class SocketServer:ObservableObject {
                 let img : String? = dict.img
                 let giftImg: String? = dict.giftImg
                 let isMain: Bool = dict.isMain ?? true
+                let userNum: String? = dict.userNum
+                let userList: [String]? = dict.userList
+
+                updateAudienceInfo(
+                    userNum: userNum,
+                    userList: userList
+                )
 
 
                 renderChatMessage(
