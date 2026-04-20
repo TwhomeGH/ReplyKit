@@ -537,18 +537,12 @@ final class PIPService: NSObject, @unchecked Sendable {
                 height: iconSize
             )
 
-            cg.saveGState()
-            cg.translateBy(x: 0, y: rect.height)   // 翻轉座標
-            cg.scaleBy(x: 1.0, y: -1.0)
-
+            // 直接用 UIImage.draw(in:) 繪製，避免上下顛倒
             icon.withTintColor(iconTintColor ?? textColor, renderingMode: .alwaysTemplate)
                 .draw(in: iconRect)
 
-            cg.restoreGState()
-
             textOriginX += iconSize + iconSpacing
         }
-
 
         let textPoint = CGPoint(
             x: textOriginX,
