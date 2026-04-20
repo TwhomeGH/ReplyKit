@@ -276,12 +276,10 @@ final class AudioProcessor : @unchecked Sendable {
         sendlog(message:"🧹 AudioProcessor deinit — resources released")
     }
 
-
-
-/// 使用頻譜減法進行背景噪音抑制
-private func spectralSubtraction(_ buffer: CMSampleBuffer,
-                                 sampleRate: Float = 44100.0,
-                                 noiseProfile: [Float]) -> CMSampleBuffer {
+/// 使用 Wiener Filter 進行背景噪音抑制
+private func wienerFilter(_ buffer: CMSampleBuffer,
+                          sampleRate: Float = 44100.0,
+                          noiseProfile: [Float]) -> CMSampleBuffer {
     guard let blockBuffer = CMSampleBufferGetDataBuffer(buffer),
           let formatDesc = CMSampleBufferGetFormatDescription(buffer),
           let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc) else {
@@ -345,12 +343,13 @@ private func spectralSubtraction(_ buffer: CMSampleBuffer,
             var magnitudes = [Float](repeating: 0, count: fftLength/2)
             vDSP_zvabs(&splitComplex, 1, &magnitudes, 1, vDSP_Length(fftLength/2))
 
-            // 頻譜減法：輸入能量 - 噪音能量
+            // Wiener Filter 增益
             for i in 0..<magnitudes.count {
-                let reduced = max(0, magnitudes[i] - noiseProfile[i])
-                let scale = reduced / (magnitudes[i] + 1e-6) // 避免除零
-                splitComplex.realp[i] *= scale
-                splitComplex.imagp[i] *= scale
+                let S = magnitudes[i]
+                let N = noiseProfile[i]
+                let gain = S / (S + N + 1e-6) // 避免除零
+                splitComplex.realp[i] *= gain
+                splitComplex.imagp[i] *= gain
             }
 
             // Inverse FFT
@@ -473,6 +472,12 @@ private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer, originalTime: CMS
     }
 
 
+    func estimateNoiseProfile(from buffer: CMSampleBuffer, sampleRate: Float = 44100.0) -> [Float] {
+        // 跟 wienerFilter 裡的 FFT 步驟類似
+        // 這裡只做一次 FFT，取出 magnitudes 當作 noiseProfile
+        // 建議多次取樣平均，效果更穩定
+        return magnitudes
+        }
 
 
 
@@ -496,9 +501,15 @@ private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer, originalTime: CMS
 
         // 2️⃣ 可選的噪聲修正（如果開啟了）
         if RPConfig.shared.enableNoiseFix {
-        // 做音訊處理（ 目前只有頻譜減法去除 60Hz 噪聲，未來可以擴展更多功能）
-            denoised  = spectralSubtraction(amplified, targetFrequency: 60.0, sampleRate: 48000.0)
+                
+                // 先建立 noiseProfile
+                let noiseProfile = estimateNoiseProfile(from: noiseBuffer, sampleRate: 44100)
 
+                // 在每個音訊 buffer 上呼叫 Wiener Filter
+                let processedBuffer = wienerFilter(buffer,
+                                                sampleRate: 44100,
+                                                noiseProfile: noiseProfile)
+                denoised = processedBuffer
         }  
 
         //時間戳校正
