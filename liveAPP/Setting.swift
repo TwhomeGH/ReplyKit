@@ -586,8 +586,7 @@ struct LogSettingView:View {
             Toggle(isOn:$enableNoiseFix){
                     Text("啟用降噪功能！")
                 }
-                Text("啟用後會對音訊進行降噪處理，減少背景噪聲，提升語音清晰度 處理60hz噪聲"
-                )
+                Text("啟用後會對音訊進行降噪處理，減少背景噪聲，提升語音清晰度 頻譜減法去除 也是最常見簡易的降噪方法，主要針對固定頻率的噪聲（例如 60Hz 電源噪聲）進行抑制，對於其他類型的噪聲效果有限")
                 .font(.footnote)
                 .foregroundColor(.secondary)
                 .padding(.bottom, 5)

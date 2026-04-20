@@ -278,12 +278,10 @@ final class AudioProcessor : @unchecked Sendable {
 
 
 
-// 將 60Hz 噪聲從音訊中去除（如果有的話），避免干擾音量計算和聽感
-    
-private func applyNoiseFixFFT(_ buffer: CMSampleBuffer,
-                              targetFrequency: Float = 60.0,
-                              sampleRate: Float = 44100.0,
-                              bandwidth: Float = 5.0) -> CMSampleBuffer {
+/// 使用頻譜減法進行背景噪音抑制
+private func spectralSubtraction(_ buffer: CMSampleBuffer,
+                                 sampleRate: Float = 44100.0,
+                                 noiseProfile: [Float]) -> CMSampleBuffer {
     guard let blockBuffer = CMSampleBufferGetDataBuffer(buffer),
           let formatDesc = CMSampleBufferGetFormatDescription(buffer),
           let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc) else {
@@ -306,19 +304,16 @@ private func applyNoiseFixFFT(_ buffer: CMSampleBuffer,
     let sampleCount: Int
     var floatSamples: [Float]
 
-    // 判斷格式：Float32 或 Int16
+    // 支援 Float32 / Int16 PCM
     if asbd.pointee.mBitsPerChannel == 32 {
-        // Float32
         let floatPtr = UnsafeMutablePointer<Float>(OpaquePointer(dataPointer!))
         sampleCount = totalLength / MemoryLayout<Float>.size
         floatSamples = Array(UnsafeBufferPointer(start: floatPtr, count: sampleCount))
     } else if asbd.pointee.mBitsPerChannel == 16 {
-        // Int16 → Float
         let int16Ptr = UnsafeMutablePointer<Int16>(OpaquePointer(dataPointer!))
         sampleCount = totalLength / MemoryLayout<Int16>.size
         floatSamples = (0..<sampleCount).map { Float(int16Ptr[$0]) / Float(Int16.max) }
     } else {
-        // 其他格式不支援
         return buffer
     }
 
@@ -346,12 +341,16 @@ private func applyNoiseFixFFT(_ buffer: CMSampleBuffer,
             // Forward FFT
             vDSP_fft_zip(fftSetup, &splitComplex, 1, log2n, FFTDirection(FFT_FORWARD))
 
-            // Notch filter
-            let bin = Int((targetFrequency / sampleRate) * Float(fftLength))
-            let bwBins = Int((bandwidth / sampleRate) * Float(fftLength))
-            for i in max(0, bin - bwBins)...min(fftLength/2, bin + bwBins) {
-                splitComplex.realp[i] = 0
-                splitComplex.imagp[i] = 0
+            // 計算頻譜能量
+            var magnitudes = [Float](repeating: 0, count: fftLength/2)
+            vDSP_zvabs(&splitComplex, 1, &magnitudes, 1, vDSP_Length(fftLength/2))
+
+            // 頻譜減法：輸入能量 - 噪音能量
+            for i in 0..<magnitudes.count {
+                let reduced = max(0, magnitudes[i] - noiseProfile[i])
+                let scale = reduced / (magnitudes[i] + 1e-6) // 避免除零
+                splitComplex.realp[i] *= scale
+                splitComplex.imagp[i] *= scale
             }
 
             // Inverse FFT
@@ -497,8 +496,8 @@ private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer, originalTime: CMS
 
         // 2️⃣ 可選的噪聲修正（如果開啟了）
         if RPConfig.shared.enableNoiseFix {
-        // 做音訊處理（例如去除 60Hz 噪聲）
-            denoised  = applyNoiseFixFFT(amplified, targetFrequency: 60.0, sampleRate: 48000.0)
+        // 做音訊處理（ 目前只有頻譜減法去除 60Hz 噪聲，未來可以擴展更多功能）
+            denoised  = spectralSubtraction(amplified, targetFrequency: 60.0, sampleRate: 48000.0)
 
         }  
 
