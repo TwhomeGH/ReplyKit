@@ -660,12 +660,10 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         // 背景矩形
         let bgRect = CGRect(
-            x: (size.width - textSize.width ) / 2 - paddingX,   // 水平置中
-            y: elapsedPoint.y,   // 改成跟 elapsedPoint 對齊 , // 往下移，避免遮到左上按鈕，可調整
-
-            width: textSize.width  + paddingX * 2,
-            height: textSize.height  + paddingY * 2
-
+        x: (size.width - textSize.width ) / 2 - paddingX,
+        y: elapsedPoint.y,   // ← 改成跟 elapsedPoint 對齊
+        width: textSize.width  + paddingX * 2,
+        height: textSize.height  + paddingY * 2
         )
 
         // 畫背景
@@ -674,8 +672,10 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         // 畫文字
 
-        let textPoint = CGPoint(x: bgRect.minX + paddingX, y: bgRect.minY + paddingY)
-
+        let textPoint = CGPoint(
+            x: bgRect.minX + paddingX,
+            y: bgRect.minY + paddingY
+        )
 
 
         UIGraphicsPushContext(cg)
