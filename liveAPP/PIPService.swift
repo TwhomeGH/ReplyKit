@@ -354,6 +354,14 @@ final class PIPService: NSObject, @unchecked Sendable {
 
     }
 
+    func markOverlayDirty() {
+        isMark = true
+        cachedTimeImage = nil
+        currentFPS = max(currentFPS, 8)
+        renderTimer?.schedule(deadline: .now(), repeating: 1 / max(currentFPS, 1))
+        decayDeadline = .now() + decayDelay
+    }
+
     func waitFade() {
 
         PIPLogTo("PIP 等待Fade中")
@@ -631,29 +639,29 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         if !LPConfig.shared.StreamEndMes.isEmpty {
 
-            var EndColor = #colorLiteral(red: 1, green: 0.4538183808, blue: 0.1835401952, alpha: 1)
+            var endColor = #colorLiteral(red: 1, green: 0.4538183808, blue: 0.1835401952, alpha: 1)
             if LPConfig.shared.StreamEnded {
-                EndColor = #colorLiteral(red: 0.2549019754, green: 0.2745098174, blue: 0.3019607961, alpha: 1)
+                endColor = #colorLiteral(red: 0.2549019754, green: 0.2745098174, blue: 0.3019607961, alpha: 1)
             }
 
             elapsedAttr.append(
                 roundedBadgeAttachment(
                     text: " \(LPConfig.shared.StreamEndMes) ",
                     font: elapsedLabelFont,
-                    bgColor:EndColor
+                    bgColor: endColor
                 )
             )
+        }
 
-            if let viewerBadge = viewerBadgeAttachment(font: elapsedLabelFont) {
-                elapsedAttr.append(NSAttributedString(
-                    string: " ",
-                    attributes: [
-                        .font: elapsedLabelFont,
-                        .foregroundColor: UIColor.clear
-                    ]
-                ))
-                elapsedAttr.append(viewerBadge)
-            }
+        if let viewerBadge = viewerBadgeAttachment(font: elapsedLabelFont) {
+            elapsedAttr.append(NSAttributedString(
+                string: " ",
+                attributes: [
+                    .font: elapsedLabelFont,
+                    .foregroundColor: UIColor.white
+                ]
+            ))
+            elapsedAttr.append(viewerBadge)
         }
 
 
@@ -755,8 +763,6 @@ final class PIPService: NSObject, @unchecked Sendable {
            overlaySig == lastOverlaySignature,
            let cached = cachedTimeImage,
            !isMark {
-            logTo("使用Cache")
-
             let pixelBuffer = gpuRenderer?.render(
                 time:CIImage(cgImage: cached),
                 containerSize: frameSize

@@ -542,7 +542,7 @@ class SocketServer:ObservableObject {
         }
 
         if didChange {
-            PIPService.shared.markDirty()
+            PIPService.shared.markOverlayDirty()
         }
     }
 
