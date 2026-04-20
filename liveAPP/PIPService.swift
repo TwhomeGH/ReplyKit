@@ -674,8 +674,9 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         let textPoint = CGPoint(
             x: bgRect.minX + paddingX,
-            y: bgRect.minY + paddingY
+            y: bgRect.maxY - paddingY - textSize.height   // ← 用 maxY 往上扣，避免上下反
         )
+
 
 
         UIGraphicsPushContext(cg)
