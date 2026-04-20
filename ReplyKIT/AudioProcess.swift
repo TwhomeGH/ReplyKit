@@ -454,7 +454,7 @@ private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer, originalTime: CMS
         let amplified = applyGain(sampleBuffer, trackType: trackType)
 
 
-        let denoised = amplified
+        var denoised = amplified
 
         // 2️⃣ 可選的噪聲修正（如果開啟了）
         if RPConfig.shared.enableNoiseFix {
