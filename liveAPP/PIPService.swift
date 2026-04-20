@@ -687,16 +687,18 @@ final class PIPService: NSObject, @unchecked Sendable {
         clockImage?.draw(
             in: CGRect(
                 x: elapsedPoint.x,
-                y: elapsedPoint.y + (elapsedFont.capHeight - imageHeight) * 0.5, // ← 對齊文字中線
+                y: elapsedPoint.y + (elapsedFont.capHeight - imageHeight) * 0.5,
                 width: imageWidth,
                 height: imageHeight
             )
         )
 
+        // 讓文字 baseline 與圖片中心對齊
         let timeTextPoint = CGPoint(
             x: elapsedPoint.x + imageWidth + 4,
-            y: elapsedPoint.y
+            y: elapsedPoint.y + (elapsedFont.capHeight - elapsedFont.lineHeight) * 0.5
         )
+
         (elapsedString as NSString).draw(
             at: timeTextPoint,
             withAttributes: [
