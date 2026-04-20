@@ -530,14 +530,20 @@ final class PIPService: NSObject, @unchecked Sendable {
         var textOriginX = rect.minX + padding.left
 
         if let icon {
-            // 先決定 icon 的目標高度（跟字體 lineHeight 差不多）
+
+            // 文字的 baseline
+            let textPointY = rect.minY + padding.top
+
+            // icon 高度取 capHeight，保持比例
             let targetHeight = font.capHeight
             let aspectRatio = icon.size.width / icon.size.height
             let targetWidth = targetHeight * aspectRatio
 
+
+            // iconRect：跟文字 baseline 對齊
             let iconRect = CGRect(
                 x: textOriginX,
-                y: rect.minY + padding.top + (font.capHeight - targetHeight) * 0.5,
+                y: textPointY + (font.capHeight - targetHeight), // baseline 對齊
                 width: targetWidth,
                 height: targetHeight
             )
