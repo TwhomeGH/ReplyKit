@@ -274,7 +274,9 @@
     "message": "message_text",
     "img": "https://img.icons8.com/?size=100&id=L8HgZUgz2jWS&format=png&color=000000",
     "giftImg": "https://img.icons8.com/?size=100&id=124077&format=png&color=000000",
-    "isMain": true
+    "isMain": true,
+    "userNum": "1234",
+    "userList": ["A", "B", "C"]
 }
 ```
 
@@ -290,6 +292,14 @@
   | img | String | 顯示用戶頭像用 使用圖示 URL |
   | giftImg | String | 贈送禮物圖示 URL |
   | isMain | Boolean | 是否為主要消息 (true/false) |
+  | userNum | String | 可選參數，觀眾數字串；若有提供，會顯示在 PiP「直播中」標籤旁邊 |
+  | userList | Array<String> | 可選參數，觀眾清單；目前會先接收保留，未提供也不影響既有功能 |
+
+  補充說明
+
+  - `userNum` 與 `userList` 都是可選欄位，舊格式只傳 `isMain` 也能正常使用
+  - 若 `userNum` 沒有傳入，PiP 不會額外顯示觀眾數標籤
+  - `userList` 目前先保留給後續功能使用，現階段不會直接顯示在 PiP 畫面上
 
 3. 發送方式（Python 範例）
 
@@ -321,7 +331,9 @@
             "message": "Hello World",
             "img": "https://img.icons8.com/?size=100&id=L8HgZUgz2jWS&format=png&color=000000",
             "giftImg": "https://img.icons8.com/?size=100&id=124077&format=png&color=000000",
-            "isMain": True
+            "isMain": True,
+            "userNum": "1234",
+            "userList": ["A", "B", "C"]
         }
 
         try:
