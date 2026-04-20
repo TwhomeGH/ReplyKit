@@ -530,19 +530,24 @@ final class PIPService: NSObject, @unchecked Sendable {
         var textOriginX = rect.minX + padding.left
 
         if let icon {
+            // 先決定 icon 的目標高度（跟字體 lineHeight 差不多）
+            let targetHeight = font.capHeight
+            let aspectRatio = icon.size.width / icon.size.height
+            let targetWidth = targetHeight * aspectRatio
+
             let iconRect = CGRect(
                 x: textOriginX,
-                y: rect.minY + padding.top + (font.capHeight - iconSize) * 0.5,
-                width: iconSize,
-                height: iconSize
+                y: rect.minY + padding.top + (font.capHeight - targetHeight) * 0.5,
+                width: targetWidth,
+                height: targetHeight
             )
 
-            // 直接用 UIImage.draw(in:) 繪製，避免上下顛倒
             icon.withTintColor(iconTintColor ?? textColor, renderingMode: .alwaysTemplate)
                 .draw(in: iconRect)
 
-            textOriginX += iconSize + iconSpacing
+            textOriginX += targetWidth + iconSpacing
         }
+
 
         let textPoint = CGPoint(
             x: textOriginX,
