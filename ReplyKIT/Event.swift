@@ -445,7 +445,7 @@ final class LogManager {
 
 
 
-
+// MARK: RPConfig - 全局配置管理
 
 final class RPConfig {
     static let shared = RPConfig()
@@ -486,6 +486,7 @@ final class RPConfig {
     var RotateOriginal : Bool
 
     // 音訊
+    var enableNoiseFix : Bool
     var AppVolumeAdd : Double
     var MicVolumeAdd : Double
 
@@ -564,6 +565,9 @@ final class RPConfig {
 
 
         BufferCount =  SharedDefaults.group?.integer(forKey: "BufferCount") ?? 5
+
+        // 音訊降噪 60hz以下會有風聲，開啟後會犧牲一點高頻細節，但能明顯降低風聲干擾
+        enableNoiseFix = SharedDefaults.group?.bool(forKey: "enableNoiseFix") ?? false
 
 
         // AppVolume

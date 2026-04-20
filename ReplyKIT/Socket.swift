@@ -590,6 +590,7 @@ class SocketClient : @unchecked Sendable {
         let Rotate: Int
         let RotateOriginal: Bool
 
+        let enableNoiseFix: Bool
         let appVolume: Double
         let micVolume: Double
         let appVolumeAdd: Double
@@ -651,6 +652,11 @@ class SocketClient : @unchecked Sendable {
             self.logTo(
                 "[Get]Audio App:\(c.appVolume) Mic:\(c.micVolume) AppAdd:\(c.appVolumeAdd) MicAdd:\(c.micVolumeAdd)"
             )
+            self.logTo(
+                "[Get]Audio enableNoiseFix:\(c.enableNoiseFix)"
+            )
+
+            RPConfig.shared.enableNoiseFix = c.enableNoiseFix
             RPConfig.shared.AppVolume = c.appVolume
             RPConfig.shared.MicVolume = c.micVolume
 

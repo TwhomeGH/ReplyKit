@@ -535,6 +535,8 @@ struct LogSettingView:View {
 
     @AppStorage("ChangeBit",store:userDefaults) private var ChangeBit = true
 
+    @AppStorage("enableNoiseFix",store:userDefaults) private var enableNoiseFix = false
+
 
     @ObservedObject var socket = SocketServer.shared
 
@@ -580,12 +582,24 @@ struct LogSettingView:View {
                     .padding(.bottom, 5)
 
 
+
+            Toggle(isOn:$enableNoiseFix){
+                    Text("啟用降噪功能！")
+                }
+                Text("啟用後會對音訊進行降噪處理，減少背景噪聲，提升語音清晰度 處理60hz噪聲"
+                )
+                .font(.footnote)
+                .foregroundColor(.secondary)
+                .padding(.bottom, 5)
+
+
             Toggle(isOn: $EnableRotatelog){
                 Text("啟用畫面旋轉調試日誌 ！")
             }
             .onChange(of:EnableRotatelog) { newValue in
                 CFNotificationCenterPostNotification(cfCenter, CFNotificationName("DebugRotate" as CFString), nil, nil, true)
             }
+
             Text("啟用後顯示, 關於畫面GPU旋轉處理情況")
                     .font(.footnote)
                     .foregroundColor(.secondary)

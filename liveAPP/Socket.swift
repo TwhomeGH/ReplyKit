@@ -577,6 +577,7 @@ class SocketServer:ObservableObject {
             "Rotate": userDefaults?.integer(forKey: "Rotate") ?? 90 ,
             
             "RotateOriginal":userDefaults?.bool(forKey: "RotateOriginal") ?? false ,
+            "enableNoiseFix": userDefaults?.bool(forKey: "enableNoiseFix") ?? false,
 
             "appVolume": userDefaults?
                 .double(forKey: "appVolume") ?? 1.0,
@@ -591,6 +592,8 @@ class SocketServer:ObservableObject {
 
 
         ]
+
+        sendlog(message: "降噪設定 enableNoiseFix:\(String(describing: payload["enableNoiseFix"]))")
 
         if let BCount = payload["videoBuffer"] as? Int {
             if BCount < 1 {

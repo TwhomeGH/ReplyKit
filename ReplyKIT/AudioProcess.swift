@@ -278,7 +278,71 @@ final class AudioProcessor : @unchecked Sendable {
 
 
 
+// 將 60Hz 噪聲從音訊中去除（如果有的話），避免干擾音量計算和聽感
+
+private func applyNoiseFixFFT(_ buffer: CMSampleBuffer,
+                              targetFrequency: Float = 60.0,
+                              sampleRate: Float = 48000.0,
+                              bandwidth: Float = 5.0) -> CMSampleBuffer {
+    guard let blockBuffer = CMSampleBufferGetDataBuffer(buffer) else { return buffer }
+
+    var length = 0
+    var dataPointer: UnsafeMutablePointer<Int8>?
+    let status = CMBlockBufferGetDataPointer(blockBuffer,
+                                             atOffset: 0,
+                                             lengthAtOffsetOut: &length,
+                                             totalLengthOut: &length,
+                                             dataPointerOut: &dataPointer)
+    if status != kCMBlockBufferNoErr || dataPointer == nil {
+        return buffer
+    }
+
+    let floatPtr = UnsafeMutablePointer<Float>(OpaquePointer(dataPointer!))
+    let sampleCount = length / MemoryLayout<Float>.size
+
+    // 建立 FFT setup
+    let log2n = vDSP_Length(log2(Float(sampleCount)))
+    guard let fftSetup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2)) else {
+        return buffer
+    }
+
+    // 複數向量
+    var real = [Float](repeating: 0, count: sampleCount)
+    var imag = [Float](repeating: 0, count: sampleCount)
+    floatPtr.withMemoryRebound(to: DSPComplex.self, capacity: sampleCount) { complexPtr in
+        for i in 0..<sampleCount {
+            real[i] = floatPtr[i]
+        }
+    }
+
+    var splitComplex = DSPSplitComplex(realp: &real, imagp: &imag)
+
+    // Forward FFT
+    vDSP_fft_zip(fftSetup, &splitComplex, 1, log2n, FFTDirection(FFT_FORWARD))
+
+    // 計算目標頻率對應的 bin
+    let bin = Int((targetFrequency / sampleRate) * Float(sampleCount))
+    let bwBins = Int((bandwidth / sampleRate) * Float(sampleCount))
+
+    // Notch filter: 把目標頻率附近的 bin 壓低
+    for i in max(0, bin - bwBins)...min(sampleCount/2, bin + bwBins) {
+        splitComplex.realp[i] = 0
+        splitComplex.imagp[i] = 0
+    }
+
+    // Inverse FFT
+    vDSP_fft_zip(fftSetup, &splitComplex, 1, log2n, FFTDirection(FFT_INVERSE))
+
+    // 正規化
+    var scale = Float(1.0 / Float(sampleCount))
+    vDSP_vsmul(splitComplex.realp, 1, &scale, floatPtr, 1, vDSP_Length(sampleCount))
+
+    vDSP_destroy_fftsetup(fftSetup)
+
+    return buffer
+}
     
+
 private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer, originalTime: CMSampleTimingInfo) -> CMSampleBuffer {
 
     if audioStartPTS == nil {
@@ -382,8 +446,19 @@ private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer, originalTime: CMS
         
         // 1️⃣ 做增益
         let amplified = applyGain(sampleBuffer, trackType: trackType)
+
+        // 2️⃣ 可選的噪聲修正（如果開啟了）
+        if RPConfig.shared.enableNoiseFix {
+        // 做音訊處理（例如去除 60Hz 噪聲）
+        let denoised  = applyNoiseFixFFT(amplified, targetFrequency: 60.0, sampleRate: 48000.0)
+
+        } else {
+            let denoised = amplified
+
+        }
+
         //時間戳校正
-        let retimed = retimeAudioBuffer(amplified, originalTime: oringinaltime)
+        let retimed = retimeAudioBuffer(denoised, originalTime: oringinaltime)
         
         // 音量計算還是可以同步做（很快）
         processRMS(retimed, trackType: trackType)
