@@ -709,7 +709,8 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         let elapsedTextSize = (elapsedString as NSString).size(withAttributes: [.font: elapsedFont])
         var badgeX = timeTextPoint.x + elapsedTextSize.width + 8
-        let badgeY = elapsedPoint.y - 1
+        // 改成：跟 timeTextPoint 對齊 baseline
+        let badgeY = timeTextPoint.y
 
         if !LPConfig.shared.StreamEndMes.isEmpty {
             var endColor = #colorLiteral(red: 1, green: 0.4538183808, blue: 0.1835401952, alpha: 1)
