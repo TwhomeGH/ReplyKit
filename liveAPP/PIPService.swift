@@ -796,9 +796,18 @@ final class PIPService: NSObject, @unchecked Sendable {
                 layer.render(in: cg)
             }
 
+
+            cg.saveGState()
+
+            // 上下翻轉座標系統
+            cg.translateBy(x: 0, y: size.height)
+            cg.scaleBy(x: 1.0, y: -1.0)
             if let overlay = overlayImage(size: size) {
                 cg.draw(overlay, in: CGRect(origin: .zero, size: size))
             }
+
+            cg.restoreGState()
+
         }
 
         guard let cgImage = composed.cgImage else { return nil }
