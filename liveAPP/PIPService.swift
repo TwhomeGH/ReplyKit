@@ -658,7 +658,7 @@ final class PIPService: NSObject, @unchecked Sendable {
         let paddingX: CGFloat = 6
         let paddingY: CGFloat = 4
 
-        let spacingY: CGFloat = 24   // 你要的上下間距
+        let spacingY: CGFloat = 20   // 你要的上下間距
 
         // 背景矩形：置中 + 與 elapsedPoint 保持間距
         let bgRect = CGRect(
