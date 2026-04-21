@@ -678,7 +678,7 @@ class SocketClient : @unchecked Sendable {
             RPConfig.shared.MicVolumeAdd = c.micVolumeAdd
             
 
-            self.logTo(logRES.join("\n"))
+            self.logTo(logRES.joined(separator: "\n"))
 
             if !self.isProcessingBatch {
                 // 單請求才 resume rtmpContinuation
