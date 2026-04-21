@@ -555,17 +555,79 @@ final class AudioPreProcessor {
     // 🎧 process（你原本 DSP pipeline）
     // ======================================================
     func process(_ sampleBuffer: CMSampleBuffer,
-                 track: AudioTrackType) {
+                track: AudioTrackType) {
 
-        // mic / app 分流
-        switch track {
-
-        case .app:
-            processApp(sampleBuffer)
-
-        case .mic:
-            processMic(sampleBuffer)
+        guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else {
+            return
         }
+
+        var dataPointer: UnsafeMutablePointer<Int8>?
+
+        CMBlockBufferGetDataPointer(
+            blockBuffer,
+            atOffset: 0,
+            lengthAtOffsetOut: nil,
+            totalLengthOut: nil,
+            dataPointerOut: &dataPointer
+        )
+
+        guard let rawPtr = dataPointer else {
+            return
+        }
+
+        // ======================================================
+        // 🎧 Int16 pointer
+        // ======================================================
+        let byteCount = CMBlockBufferGetDataLength(blockBuffer)
+        let sampleCount = byteCount / MemoryLayout<Int16>.size
+
+        let int16Ptr = UnsafeMutableRawPointer(rawPtr)
+            .bindMemory(to: Int16.self, capacity: sampleCount)
+
+        // ======================================================
+        // 🎧 Float buffer（必要轉換）
+        // ======================================================
+        var floatBuffer = [Float](repeating: 0, count: sampleCount)
+
+        vDSP_vflt16(int16Ptr, 1,
+                    &floatBuffer, 1,
+                    vDSP_Length(sampleCount))
+
+        var scale: Float = 1.0 / 32768.0
+        vDSP_vsmul(floatBuffer, 1,
+                &scale,
+                &floatBuffer, 1,
+                vDSP_Length(sampleCount))
+
+        // ======================================================
+        // 🎧 分流（真正 DSP 在這）
+        // ======================================================
+        floatBuffer.withUnsafeMutableBufferPointer { buf in
+            guard let base = buf.baseAddress else { return }
+
+            switch track {
+
+            case .app:
+                processApp(base, count: sampleCount)
+
+            case .mic:
+                processMic(base, count: sampleCount)
+            }
+        }
+
+        // ======================================================
+        // 🔚 Float → Int16（寫回原 buffer）
+        // ======================================================
+        var invScale: Float = 32768.0
+
+        vDSP_vsmul(floatBuffer, 1,
+                &invScale,
+                &floatBuffer, 1,
+                vDSP_Length(sampleCount))
+
+        vDSP_vfix16(floatBuffer, 1,
+                    int16Ptr, 1,
+                    vDSP_Length(sampleCount))
     }
 
     // ======================================================
@@ -573,7 +635,7 @@ final class AudioPreProcessor {
     // ======================================================
     private func applyPostGain(_ buffer: inout [Float], count: Int) {
 
-        let gain = micGain
+        let gain = state.micGain
 
         guard abs(gain - 1.0) > 0.001 else { return }
 
