@@ -607,38 +607,36 @@ final class AudioPreProcessor {
         // ======================================================
         // 🎧 2️⃣ Convert pointer view (NO allocation)
         // ======================================================
-        let frameCount = CMSampleBufferGetNumSamples(sampleBuffer)
-
-        let floatPtr = data.bindMemory(to: Float.self,
-                                       capacity: frameCount)
-
-        var buffer = UnsafeMutableBufferPointer(start: floatPtr,
-                                                count: frameCount)
+        guard var base = buffer.baseAddress,
+            buffer.count > 0 else {
+            return
+        }
+        
 
         // ======================================================
         // 🌫 3️⃣ Echo (in-place)
         // ======================================================
         if echo.hasReference {
-            echo.process(&buffer)
+            echo.process(base)
         }
 
         // ======================================================
         // 🧠 4️⃣ Noise suppression (in-place FFT buffer reuse)
         // ======================================================
 
-        if noiseFixEnabled {
-        ns.process(input: buffer.baseAddress!,
-                   output: buffer.baseAddress!)
+        if nosieFixEnabled {
+        ns.process(input:  base,
+                   output: base)
         
         }
 
         // ======================================================
         // 🎚 5️⃣ AGC (in-place SIMD)
         // ======================================================
-        agc.process(&buffer)
+        agc.process(base)
 
         // 4️⃣ 🎚 User Gain（你升級的地方）
-        self.applyPostGain(&buffer, trackType: track)
+        self.applyPostGain(base, trackType: track)
 
         // ======================================================
         // 🔚 return SAME sampleBuffer (zero-copy)
