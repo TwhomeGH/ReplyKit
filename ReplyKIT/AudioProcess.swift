@@ -265,12 +265,14 @@ final class AudioProcessor : @unchecked Sendable {
     private var onAudioPage: Bool
     private var lastRMSUpdateTime: CFTimeInterval = 0
 
-    private var audioPreProcessor: AudioPreProcessor?
+    private let audioEngine: AudioEngine
+
 
     var rmsInterval: CFTimeInterval = 0.1
     var mediaMixerWrapper: MediaMixerWrapper?
 
     private var noiseFixEnabledCached: Bool = false
+
 
     private func updateNoiseFixState() {
 
@@ -282,10 +284,12 @@ final class AudioProcessor : @unchecked Sendable {
 
     if current {
         sendlog(message: "🟢 NoiseFix ENABLED")
-        audioPreProcessor = AudioPreProcessor()
+        audioEngine.preProcessor.nosieFixEnabled = current
     } else {
         sendlog(message: "🔴 NoiseFix DISABLED")
-        audioPreProcessor = nil
+        
+        audioEngine.preProcessor.nosieFixEnabled = false
+
     }
 }
 
@@ -309,13 +313,9 @@ final class AudioProcessor : @unchecked Sendable {
 
         self.mediaMixerWrapper = MediaMixerWrapper(mixer: mediaMixer)
 
+        self.audioEngine = AudioEngine()
+        self.updateNoiseFixState()
 
-        if RPConfig.shared.enableNoiseFix {
-            self.audioPreProcessor = AudioPreProcessor()
-        } else {
-            self.audioPreProcessor = nil
-        
-        }
 
 
     }
@@ -375,8 +375,16 @@ final class AudioProcessor : @unchecked Sendable {
         app: Float? = nil,
         mic: Float? = nil
     ) {
-        if let appAdd = appAdd { self.appAddVolume = appAdd }
-        if let micAdd = micAdd { self.micAddVolume = micAdd }
+        if let appAdd = appAdd { 
+                self.appAddVolume = appAdd 
+                self.audioEngine.preProcessor.updateAppGain(appAdd)
+            }
+        if let micAdd = micAdd { 
+                self.micAddVolume = micAdd 
+                self.audioEngine.preProcessor.updateMicGain(micAdd)
+            
+            }
+            
         if let app = app { self.appVolume = app }
         if let mic = mic { self.micVolume = mic }
     }
@@ -386,20 +394,20 @@ final class AudioProcessor : @unchecked Sendable {
     }
 
     // MARK: 增益
-    private func applyGain(
-        _ buffer: CMSampleBuffer,
-        trackType: AudioTrackType
-    ) -> CMSampleBuffer {
+    // private func applyGain(
+    //     _ buffer: CMSampleBuffer,
+    //     trackType: AudioTrackType
+    // ) -> CMSampleBuffer {
 
-        let gain = (trackType == .app) ? self.appAddVolume : self.micAddVolume
-        let safeGain = gain.isFinite ? gain : 1.0
+    //     let gain = (trackType == .app) ? self.appAddVolume : self.micAddVolume
+    //     let safeGain = gain.isFinite ? gain : 1.0
 
-        if safeGain > 1.0 {
-            return amplifySIMD(buffer, gain: safeGain)
-        }
+    //     if safeGain > 1.0 {
+    //         return amplifySIMD(buffer, gain: safeGain)
+    //     }
 
-        return buffer
-    }
+    //     return buffer
+    // }
 
 
     // MARK: 音量統計
@@ -433,27 +441,18 @@ final class AudioProcessor : @unchecked Sendable {
         queue.async { [weak self] in
             guard let self = self, self.isActive else { return }
 
-            self.updateNoiseFixState()
-            
-        
-            // 1️⃣ 做增益
-            let amplified = applyGain(sampleBuffer, trackType: trackType)
 
-
-            var finalBuffer: CMSampleBuffer = amplified
+            var finalBuffer: CMSampleBuffer = sampleBuffer
 
             // 2️⃣ 可選的噪聲修正（如果開啟了）
             if noiseFixEnabledCached,
                 let _ = audioPreProcessor {
 
-                guard var floatBuffer = CMSampleBufferToFloatArray(amplified) else {
-                    return
-                }
-
-                audioPreProcessor?.process(&floatBuffer)
-
-                guard let processed = FloatArrayToCMSampleBuffer(floatBuffer,
-                                                                original: amplified) else {
+                // ======================================================
+                // 🎧 1️⃣ ZERO-COPY DSP ENTRY
+                // ======================================================
+                guard let processed = self.audioEngine.process(sampleBuffer,
+                                                                track: trackType) else {
                     return
                 }
 

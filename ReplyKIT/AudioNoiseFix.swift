@@ -490,49 +490,152 @@ final class RealTimeNoiseSuppressor {
 
 
 
+final class AudioEngine {
+
+    let preProcessor = AudioPreProcessor()
+
+    func process(_ sampleBuffer: CMSampleBuffer,
+                 track: AudioTrackType) -> CMSampleBuffer? {
+
+        guard let processed = preProcessor.process(sampleBuffer,
+                                                   track: track) else {
+            return sampleBuffer
+        }
+
+        return processed
+    }
+}
+
 
 
 // MARK: - Main PreProcessor (AGC + Echo + Noise Suppression)
+import AVFoundation
+import Accelerate
+
 final class AudioPreProcessor {
 
     private let agc = AGCProcessor()
     private let echo = EchoCanceller(size: 512)
+    private var ns = RealTimeNoiseSuppressor()
 
-    /// 🔥 你可以接你現在 NS engine reference
-    weak var noiseSuppressor: RealTimeNoiseSuppressor?
+    var noiseFixEnabled: Bool
 
-    // MARK: - Speaker reference (from playback side)
-    func setPlaybackReference(_ buffer: [Float]) {
-        echo.updateReference(buffer)
+    private var userMicGain: Float = 1.0
+    private var userAppGain: Float = 1.0
+
+    func updateMicGain(_ gain: Float) {
+        queue.async {
+            self.userMicGain = gain
+        }
     }
 
-    // MARK: - Main entry
-    func process(_ buffer: inout [Float]) {
+    func updateAppGain(_ gain: Float) {
+        queue.async {
+            self.userAppGain = gain
+        }
+    }
+
+    private func applyPostGain(_ buffer: inout [Float],
+                           trackType: AudioTrackType) {
+
+    let gain = (trackType == .app)
+        ? userAppGain
+        : userMicGain
+
+    var safeGain = gain.isFinite ? gain : 1.0
+
+    // ======================================================
+    // 🎚 Gain
+    // ======================================================
+    vDSP_vsmul(buffer, 1,
+               &safeGain,
+               &buffer, 1,
+               vDSP_Length(buffer.count))
+
+    // ======================================================
+    // 🚨 Soft limiter（防爆音）
+    // ======================================================
+    var maxVal: Float = 0.95
+    var minVal: Float = -0.95
+
+    vDSP_vclip(buffer, 1,
+               &minVal,
+               &maxVal,
+               &buffer, 1,
+               vDSP_Length(buffer.count))
+}
+
+    func process(_ sampleBuffer: CMSampleBuffer,
+                 track: AudioTrackType) -> CMSampleBuffer? {
+
+        guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer),
+              let format = CMSampleBufferGetFormatDescription(sampleBuffer)
+        else {
+            return sampleBuffer
+        }
 
         // ======================================================
-        // 🌫 Echo suppression (first step)
+        // 🔥 1️⃣ Direct AudioBufferList access (NO COPY)
         // ======================================================
-        echo.process(&buffer)
+        var audioBufferList = AudioBufferList()
+        var dataPointer: UnsafeMutableRawPointer?
+
+        CMBlockBufferGetDataPointer(
+            blockBuffer,
+            atOffset: 0,
+            lengthAtOffsetOut: nil,
+            totalLengthOut: nil,
+            dataPointerOut: &dataPointer
+        )
+
+        guard let data = dataPointer else {
+            return sampleBuffer
+        }
+
+        audioBufferList.mNumberBuffers = 1
+        audioBufferList.mBuffers.mNumberChannels = 1
+        audioBufferList.mBuffers.mDataByteSize = UInt32(CMSampleBufferGetNumSamples(sampleBuffer) * 2)
+        audioBufferList.mBuffers.mData = data
 
         // ======================================================
-        // 🎚 AGC (normalize level)
+        // 🎧 2️⃣ Convert pointer view (NO allocation)
+        // ======================================================
+        let frameCount = CMSampleBufferGetNumSamples(sampleBuffer)
+
+        let floatPtr = data.bindMemory(to: Float.self,
+                                       capacity: frameCount)
+
+        var buffer = UnsafeMutableBufferPointer(start: floatPtr,
+                                                count: frameCount)
+
+        // ======================================================
+        // 🌫 3️⃣ Echo (in-place)
+        // ======================================================
+        if echo.hasReference {
+            echo.process(&buffer)
+        }
+
+        // ======================================================
+        // 🧠 4️⃣ Noise suppression (in-place FFT buffer reuse)
+        // ======================================================
+
+        if noiseFixEnabled {
+        ns.process(input: buffer.baseAddress!,
+                   output: buffer.baseAddress!)
+        
+        }
+
+        // ======================================================
+        // 🎚 5️⃣ AGC (in-place SIMD)
         // ======================================================
         agc.process(&buffer)
 
+        // 4️⃣ 🎚 User Gain（你升級的地方）
+        self.applyPostGain(&buffer, trackType: trackType)
+
         // ======================================================
-        // 🧠 Noise suppression (your FFT engine)
+        // 🔚 return SAME sampleBuffer (zero-copy)
         // ======================================================
-        buffer.withUnsafeBufferPointer { ptr in
-            ptr.baseAddress!.withMemoryRebound(to: Float.self,
-                                               capacity: buffer.count) { p in
-
-                var output = [Float](repeating: 0, count: buffer.count)
-
-                noiseSuppressor?.process(input: p,
-                                          output: &output)
-
-                buffer = output
-            }
-        }
+        return sampleBuffer
     }
 }
