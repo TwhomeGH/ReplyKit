@@ -3,124 +3,6 @@ import Accelerate
 import AVFoundation
 
 
-func CMSampleBufferToFloatArray(_ sampleBuffer: CMSampleBuffer) -> [Float]? {
-
-    guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else {
-        return nil
-    }
-
-    let length = CMBlockBufferGetDataLength(blockBuffer)
-    var data = [UInt8](repeating: 0, count: length)
-
-    CMBlockBufferCopyDataBytes(blockBuffer,
-                               atOffset: 0,
-                               dataLength: length,
-                               destination: &data)
-
-    guard let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer),
-          let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc)
-    else {
-        return nil
-    }
-
-    let format = asbd.pointee
-
-    let sampleCount = length / Int(format.mBytesPerFrame)
-
-    var floatBuffer = [Float](repeating: 0, count: sampleCount)
-
-    // =========================
-    // 🎯 Int16 PCM
-    // =========================
-    if format.mBitsPerChannel == 16 {
-
-        data.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) in
-            let int16Ptr = ptr.bindMemory(to: Int16.self)
-
-            for i in 0..<sampleCount {
-                floatBuffer[i] = Float(int16Ptr[i]) / 32768.0
-            }
-        }
-
-    }
-    // =========================
-    // 🎯 Float32 PCM
-    // =========================
-    else if format.mBitsPerChannel == 32 {
-
-        data.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) in
-            let floatPtr = ptr.bindMemory(to: Float.self)
-            floatBuffer = Array(floatPtr)
-        }
-    }
-    else {
-        return nil
-    }
-
-    return floatBuffer
-}
-
-func FloatArrayToCMSampleBuffer(_ samples: [Float],
-                               original: CMSampleBuffer) -> CMSampleBuffer? {
-
-    guard let formatDesc = CMSampleBufferGetFormatDescription(original)
-    else {
-        return nil
-    }
-
-    
-    let sampleCount = samples.count
-
-    // 🎯 轉回 Int16
-    var int16Buffer = [Int16](repeating: 0, count: sampleCount)
-
-    for i in 0..<sampleCount {
-        let v = max(-1.0, min(1.0, samples[i]))
-        int16Buffer[i] = Int16(v * 32767.0)
-    }
-
-    let dataSize = sampleCount * MemoryLayout<Int16>.size
-
-    var blockBuffer: CMBlockBuffer?
-
-    CMBlockBufferCreateWithMemoryBlock(
-        allocator: kCFAllocatorDefault,
-        memoryBlock: &int16Buffer,
-        blockLength: dataSize,
-        blockAllocator: kCFAllocatorNull,
-        customBlockSource: nil,
-        offsetToData: 0,
-        dataLength: dataSize,
-        flags: 0,
-        blockBufferOut: &blockBuffer
-    )
-
-    guard let bb = blockBuffer else { return nil }
-
-    var newSampleBuffer: CMSampleBuffer?
-
-    var timingInfo = CMSampleTimingInfo()
-    CMSampleBufferGetSampleTimingInfo(original,
-                                      at: 0,
-                                      timingInfoOut: &timingInfo)
-
-    CMSampleBufferCreate(
-        allocator: kCFAllocatorDefault,
-        dataBuffer: bb,
-        dataReady: true,
-        makeDataReadyCallback: nil,
-        refcon: nil,
-        formatDescription: formatDesc,
-        sampleCount: sampleCount,
-        sampleTimingEntryCount: 1,
-        sampleTimingArray: &timingInfo,
-        sampleSizeEntryCount: 0,
-        sampleSizeArray: nil,
-        sampleBufferOut: &newSampleBuffer
-    )
-
-    return newSampleBuffer
-}
 
 final class AGCProcessor {
 
@@ -157,68 +39,34 @@ final class AGCProcessor {
 
 final class EchoCanceller {
 
-    // MARK: - Reference buffer (speaker playback history)
     private var referenceBuffer: [Float]
     private var writeIndex: Int = 0
 
-    // MARK: - tuning
-    private let baseAlpha: Float = 0.5
-    private let doubleTalkThreshold: Float = 0.002
-
-    // MARK: - init
     init(size: Int) {
         referenceBuffer = [Float](repeating: 0, count: size)
     }
 
-    // MARK: - Feed speaker audio (IMPORTANT: must be same stream rate)
-    func updateReference(_ ref: [Float]) {
+    func updateReference(_ ref: UnsafePointer<Float>, count: Int) {
 
-        let count = min(ref.count, referenceBuffer.count)
+        let size = referenceBuffer.count
+        let n = min(count, size)
 
-        for i in 0..<count {
-            let idx = (writeIndex + i) % referenceBuffer.count
+        for i in 0..<n {
+            let idx = (writeIndex + i) % size
             referenceBuffer[idx] = ref[i]
         }
 
-        writeIndex = (writeIndex + count) % referenceBuffer.count
+        writeIndex = (writeIndex + n) % size
     }
 
-    // MARK: - Core AEC process
-    func process(_ mic: UnsafeMutablePointer<Float>,
-                 count: Int) {
+    func process(_ mic: UnsafeMutablePointer<Float>, count: Int) {
 
-        guard !referenceBuffer.isEmpty else { return }
+        let size = referenceBuffer.count
 
-        let refSize = referenceBuffer.count
-
-        // ======================================================
-        // 🎯 mic energy (for double-talk detection)
-        // ======================================================
-        var micEnergy: Float = 0
-        vDSP_measqv(mic, 1, &micEnergy, vDSP_Length(count))
-        micEnergy = sqrt(micEnergy)
-
-        let isDoubleTalk = micEnergy > doubleTalkThreshold
-
-        // ======================================================
-        // 🎚 adaptive suppression strength
-        // ======================================================
-        let alpha: Float = isDoubleTalk ? 0.2 : baseAlpha
-
-        // ======================================================
-        // 🔥 main echo cancellation loop
-        // ======================================================
         for i in 0..<count {
-
-            let refIndex = (writeIndex + i) % refSize
-            let echo = referenceBuffer[refIndex] * alpha
-
-            var v = mic[i] - echo
-
-            // soft clamp (avoid harsh distortion)
-            v = max(min(v, 1.0), -1.0)
-
-            mic[i] = v
+            let idx = (writeIndex + i) % size
+            let echo = referenceBuffer[idx] * 0.5
+            mic[i] -= echo
         }
     }
 }
@@ -554,137 +402,109 @@ final class AudioEngine {
 
 final class AudioPreProcessor {
 
+    // ======================================================
+    // 🧠 Reusable buffers（關鍵：避免每次 alloc）
+    // ======================================================
+    private var micFloatBuffer: [Float]
+    private var tempFloatBuffer: [Float]
+
     private let agc = AGCProcessor()
-    private let echo = EchoCanceller(size: 512)
-    private var ns = RealTimeNoiseSuppressor()
+    private let echo = EchoCanceller(size: 1024)
+    private let ns = RealTimeNoiseSuppressor()
+    var nosieFix:Bool
 
-    var nosieFixEnabled: Bool
+    init(maxFrameSize: Int = 512,nosieFix:Bool = false ) {
+        self.micFloatBuffer = [Float](repeating: 0, count: maxFrameSize)
+        self.tempFloatBuffer = [Float](repeating: 0, count: maxFrameSize)
 
-    private var userMicGain: Float = 1.0
-    private var userAppGain: Float = 1.0
+        self.nosieFix = nosieFix 
 
-
-    init(nosieFix:Bool = false){
-        print("初始化運行AudioProcessor")
-        self.nosieFixEnabled = nosieFix
     }
 
-    func updateMicGain(_ gain: Float) {
-        
-            self.userMicGain = gain
+    // ======================================================
+    // 🎧 App reference（不做任何 DSP）
+    // ======================================================
+    func processApp(_ ptr: UnsafePointer<Int16>, count: Int) {
+
+        // ✔ 只做 conversion（reuse buffer，不 alloc）
+        ensureCapacity(count)
+
+        for i in 0..<count {
+            tempFloatBuffer[i] = Float(ptr[i]) / 32768.0
+        }
+
+        echo.updateReference(tempFloatBuffer)
     }
 
-    func updateAppGain(_ gain: Float) {
-            self.userAppGain = gain
+    // ======================================================
+    // 🎤 Mic main pipeline
+    // ======================================================
+    func processMic(_ ptr: UnsafePointer<Int16>, count: Int) {
+
+        ensureCapacity(count)
+
+        // ==================================================
+        // 1️⃣ Int16 → Float (reuse buffer)
+        // ==================================================
+        for i in 0..<count {
+            micFloatBuffer[i] = Float(ptr[i]) / 32768.0
+        }
+
+        // ==================================================
+        // 2️⃣ Echo cancel (in-place)
+        // ==================================================
+        echo.process(&micFloatBuffer, count: count)
+
+        // ==================================================
+        // 3️⃣ Noise suppression
+        // ==================================================
+
+        if nosieFix {
+        ns.process(input: &micFloatBuffer,
+                   output: &micFloatBuffer)
+
+        }
+
+        // ==================================================
+        // 4️⃣ AGC
+        // ==================================================
+        agc.process(&micFloatBuffer)
+
+        // ==================================================
+        // 5️⃣ User gain (final stage)
+        // ==================================================
+        applyPostGain(&micFloatBuffer, count: count)
     }
 
-    private func applyPostGain(_ buffer: UnsafeMutablePointer<Float>,
-                                count: Int,
-                                trackType: AudioTrackType) {
+    // ======================================================
+    // 🎚 user gain（最后 stage）
+    // ======================================================
+    private func applyPostGain(_ buffer: inout [Float], count: Int) {
 
-        let gain = (trackType == .app)
-            ? userAppGain
-            : userMicGain
+        let gain = 1.0 // or userMicGain
 
-        let safeGain = gain.isFinite ? gain : 1.0
+        guard abs(gain - 1.0) > 0.001 else { return }
 
-        // ======================================================
-        // 🎚 Gain
-        // ======================================================
+        var g = gain
         vDSP_vsmul(buffer, 1,
-                [safeGain],
-                buffer, 1,
-                vDSP_Length(count))
-
-        // ======================================================
-        // 🚨 Soft limiter（防爆音）
-        // ======================================================
-        var maxVal: Float = 0.95
-        var minVal: Float = -0.95
-
-        vDSP_vclip(buffer, 1,
-                &minVal,
-                &maxVal,
-                buffer, 1,
-                vDSP_Length(count))
+                   &g,
+                   &buffer, 1,
+                   vDSP_Length(count))
     }
 
-
-    private func processMic(_ base: UnsafeMutablePointer<Float>, count: Int) {
-
-        // Echo
-        if echo.hasReference {
-            echo.process(base, count: count)
+    // ======================================================
+    // 🧠 buffer safety
+    // ======================================================
+    private func ensureCapacity(_ count: Int) {
+        if micFloatBuffer.count < count {
+            micFloatBuffer = [Float](repeating: 0, count: count)
         }
 
-        // Noise suppression
-        if nosieFixEnabled {
-            ns.process(input: base, output: base)
+        if tempFloatBuffer.count < count {
+            tempFloatBuffer = [Float](repeating: 0, count: count)
         }
-
-        // AGC
-        agc.process(base, count: count)
-
-        // User gain
-        applyPostGain(base,
-                    count: count,
-                    trackType: .mic)
     }
-
-
-    private func processApp(_ base: UnsafeMutablePointer<Float>, count: Int) {
-
-        var gain = userAppGain
-
-        // 👇 1.0 = 完全 passthrough
-        guard abs(gain - 1.0) > 0.001 else {
-            return
-        }
-
-        vDSP_vsmul(base, 1,
-                &gain,
-                base, 1,
-                vDSP_Length(count))
-    }
-
-    // 分流處理
-    func process(_ sampleBuffer: CMSampleBuffer,
-                track: AudioTrackType) -> CMSampleBuffer? {
-
-        guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer)
-        else {
-            return sampleBuffer
-        }
-
-        var dataPointer: UnsafeMutableRawPointer?
-
-        CMBlockBufferGetDataPointer(
-            blockBuffer,
-            atOffset: 0,
-            lengthAtOffsetOut: nil,
-            totalLengthOut: nil,
-            dataPointerOut: &dataPointer
-        )
-
-        guard let data = dataPointer else {
-            return sampleBuffer
-        }
-
-        let count = CMSampleBufferGetNumSamples(sampleBuffer)
-
-        let base = data.bindMemory(to: Float.self, capacity: count)
-
-        // 👇🔥 關鍵：在這裡分流
-        switch track {
-        case .mic:
-            processMic(base, count: count)
-
-        case .app:
-            processApp(base, count: count)
-        }
-
-        return sampleBuffer
-    }
+}
 
     
 }
