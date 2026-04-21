@@ -271,27 +271,26 @@ final class AudioProcessor : @unchecked Sendable {
     var rmsInterval: CFTimeInterval = 0.1
     var mediaMixerWrapper: MediaMixerWrapper?
 
-    private var noiseFixEnabledCached: Bool = false
 
 
     private func updateNoiseFixState() {
 
-    let current = RPConfig.shared.enableNoiseFix
 
-    guard current != noiseFixEnabledCached else { return }
+        // 降噪處理
+        let noiseFix = RPConfig.shared.enableNoiseFix
+        // 回音處理
+        let EchoFix = RPConfig.shared.enableEchoFix
+        // 自動增益
+        let AGCFix = RPConfig.shared.enableAGCFix
 
-    noiseFixEnabledCached = current
 
-    if current {
-        sendlog(message: "🟢 NoiseFix ENABLED")
-        audioEngine.updateAudioState(noiseFix:current)
-    } else {
-        sendlog(message: "🔴 NoiseFix DISABLED")
+
+        sendlog(message: "音訊配置: 降噪:\(noiseFix) 回音處理:\(EchoFix) 自動增益:\(AGCFix)")
         
-        audioEngine.updateAudioState(noiseFix:false)
+        audioEngine.updateAudioState(noiseFix:noiseFix,echoFix:EchoFix,agcFix:AGCFix,micGain:self.micAddVolume)
 
+        
     }
-}
 
 
     init(mediaMixer: MediaMixer,
@@ -312,9 +311,17 @@ final class AudioProcessor : @unchecked Sendable {
 
 
         self.mediaMixerWrapper = MediaMixerWrapper(mixer: mediaMixer)
-        self.updateNoiseFixState()
 
-        self.audioEngine = AudioEngine(noiseFix:noiseFixEnabledCached)
+
+
+        // 降噪處理
+        let noiseFix = RPConfig.shared.enableNoiseFix
+        // 回音處理
+        let EchoFix = RPConfig.shared.enableEchoFix
+        // 自動增益
+        let AGCFix = RPConfig.shared.enableAGCFix
+
+        self.audioEngine = AudioEngine(noiseFix:noiseFix,echoFix:EchoFix,agcFix:AGCFix,micGain:micAddVolume)
         
 
 

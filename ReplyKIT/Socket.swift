@@ -590,7 +590,10 @@ class SocketClient : @unchecked Sendable {
         let Rotate: Int
         let RotateOriginal: Bool
 
+        let enableEchoFix: Bool
         let enableNoiseFix: Bool
+        let enableAGCFix: Bool
+
         let appVolume: Double
         let micVolume: Double
         let appVolumeAdd: Double
@@ -617,17 +620,24 @@ class SocketClient : @unchecked Sendable {
 
         queue.async {
 
-            self.logTo("[Get]RTMP:\(c.rtmpURL):\(fixlogSafeKey(c.rtmpKey))")
+            let logRES = [
+
+            ]
+
+            logRES.append("[Get]RTMP:\(c.rtmpURL):\(fixlogSafeKey(c.rtmpKey))")
+            
             RPConfig.shared.RTMPURL = c.rtmpURL
             RPConfig.shared.RTMPKey = c.rtmpKey
 
-            self.logTo("[Get]Bit:\(c.BitRate):\(c.ChangeBit) useBic:\(c.useBic)")
+            logRES.append("[Get]Bit:\(c.BitRate):\(c.ChangeBit) useBic:\(c.useBic)")
+
             RPConfig.shared.BitRate = c.BitRate
             RPConfig.shared.ChangeBit = c.ChangeBit
 
             RPConfig.shared.useBic = c.useBic
 
-            self.logTo("[Get]H264:\(c.h264level) : \(c.dstW)x\(c.dstH) \(c.videoBuffer) 方向:\(c.Rotate)")
+            logRES.append("[Get]H264:\(c.h264level) : \(c.dstW)x\(c.dstH) \(c.videoBuffer) 方向:\(c.Rotate)")
+
             RPConfig.shared.h264level = c.h264level
 
             RPConfig.shared.BufferCount = c.videoBuffer
@@ -638,7 +648,7 @@ class SocketClient : @unchecked Sendable {
             RPConfig.shared.ODWidth = c.odstW
             RPConfig.shared.ODHeight = c.odstH
 
-            self.logTo(
+            logRES.append(
                 "[Get]OutDraw:\(c.odstW)x\(c.odstH) RotateOriginal:\(c.RotateOriginal)"
             )
 
@@ -649,20 +659,27 @@ class SocketClient : @unchecked Sendable {
             RPConfig.shared.RotateOriginal = c.RotateOriginal
 
 
-            self.logTo(
+            logRES.append(
                 "[Get]Audio App:\(c.appVolume) Mic:\(c.micVolume) AppAdd:\(c.appVolumeAdd) MicAdd:\(c.micVolumeAdd)"
             )
-            self.logTo(
-                "[Get]Audio enableNoiseFix:\(c.enableNoiseFix)"
+            logRES.append(
+                "[Get]Audio 降噪處理:\(c.enableNoiseFix) 回音處理:\(c.enableEchoFix) 自動增益:\(c.enableAGCFix) "
             )
 
+
+            RPConfig.shared.enableEchoFix = c.enableEchoFix
             RPConfig.shared.enableNoiseFix = c.enableNoiseFix
+            RPConfig.shared.enableAGCFix = c.enableAGCFix
+
             RPConfig.shared.AppVolume = c.appVolume
             RPConfig.shared.MicVolume = c.micVolume
 
             RPConfig.shared.AppVolumeAdd = c.appVolumeAdd
             RPConfig.shared.MicVolumeAdd = c.micVolumeAdd
+            
 
+            self.logTo(logRES.join("\n"))
+            
             if !self.isProcessingBatch {
                 // 單請求才 resume rtmpContinuation
 

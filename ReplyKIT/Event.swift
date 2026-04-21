@@ -485,8 +485,17 @@ final class RPConfig {
     var Rotate : Int
     var RotateOriginal : Bool
 
-    // 音訊
+    // 音訊 
+
+    // 降噪
     var enableNoiseFix : Bool
+    // 回音消除
+    var enableEchoFix : Bool
+
+    // 自動增益
+    var enableAGCFix: Bool
+
+
     var AppVolumeAdd : Double
     var MicVolumeAdd : Double
 
@@ -566,8 +575,14 @@ final class RPConfig {
 
         BufferCount =  SharedDefaults.group?.integer(forKey: "BufferCount") ?? 5
 
-        // 音訊降噪 60hz以下會有風聲，開啟後會犧牲一點高頻細節，但能明顯降低風聲干擾
+        // 音訊回音消除
+        enableEchoFix = SharedDefaults.group?.bool(forKey: "enableEchoFix") ?? false
+
+        // 音訊降噪 頻譜處理
         enableNoiseFix = SharedDefaults.group?.bool(forKey: "enableNoiseFix") ?? false
+
+        // 音訊自動增益
+        enableAGCFix = SharedDefaults.group?.bool(forKey: "enableAGCFix") ?? false
 
 
         // AppVolume

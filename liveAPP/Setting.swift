@@ -536,6 +536,8 @@ struct LogSettingView:View {
     @AppStorage("ChangeBit",store:userDefaults) private var ChangeBit = true
 
     @AppStorage("enableNoiseFix",store:userDefaults) private var enableNoiseFix = false
+    @AppStorage("enableEchoFix",store:userDefaults) private var enableEchoFix = false
+    @AppStorage("enableAGCFix",store:userDefaults) private var enableAGCFix = false
 
 
     @ObservedObject var socket = SocketServer.shared
@@ -586,10 +588,27 @@ struct LogSettingView:View {
             Toggle(isOn:$enableNoiseFix){
                     Text("啟用降噪功能！")
                 }
-                Text("啟用後會對音訊進行降噪處理，減少背景噪聲，提升語音清晰度 頻譜減法去除")                                                                                                     
-                .font(.footnote)
-                .foregroundColor(.secondary)
-                .padding(.bottom, 5)
+
+            Text("啟用後會對音訊進行降噪處理，減少背景噪聲，提升語音清晰度 頻譜減法去除")                                                                                                     
+            .font(.footnote)
+            .foregroundColor(.secondary)
+            .padding(.bottom, 5)
+            
+            Toggle(isOn:$enableEchoFix){
+                Text("啟用回音消除功能！")
+            }
+            Text("啟用後會對音訊進行回音處理，減少應用音量重疊")                                                                                                     
+            .font(.footnote)
+            .foregroundColor(.secondary)
+            .padding(.bottom, 5)
+
+            Toggle(isOn:$enableAGCFix){
+                Text("啟用自動音量調整功能！")
+            }
+            Text("啟用後會對音訊進行自動大小增益")                                                                                                     
+            .font(.footnote)
+            .foregroundColor(.secondary)
+            .padding(.bottom, 5)
 
 
             Toggle(isOn: $EnableRotatelog){

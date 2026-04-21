@@ -577,7 +577,12 @@ class SocketServer:ObservableObject {
             "Rotate": userDefaults?.integer(forKey: "Rotate") ?? 90 ,
             
             "RotateOriginal":userDefaults?.bool(forKey: "RotateOriginal") ?? false ,
+            
+            "enableEchoFix" : userDefaults?.bool(forKey: "enableEchoFix") ?? false,
             "enableNoiseFix": userDefaults?.bool(forKey: "enableNoiseFix") ?? false,
+            "enableAGCFix" : userDefaults?.bool(forKey: "enableAGCFix") ?? false,
+            
+
 
             "appVolume": userDefaults?
                 .double(forKey: "appVolume") ?? 1.0,

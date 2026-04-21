@@ -387,12 +387,14 @@ final class AudioEngine {
     // ======================================================
     func updateAudioState(micGain: Float? = nil,
                           echoFix: Bool? = nil,
-                          noiseFix: Bool? = nil) {
+                          noiseFix: Bool? = nil,
+                          agcFix:Bool? = nil) {
 
         preProcessor.updateState(
             micGain: micGain,
             echoFix: echoFix,
-            noiseFix: noiseFix
+            noiseFix: noiseFix,
+            agcFix: agcFix
         )
     }
 
@@ -419,9 +421,9 @@ final class AudioPreProcessor {
     // ======================================================
     private struct State {
         var micGain: Float = 1.0
-        var echoFix: Bool = true
+        var echoFix: Bool = false
         var noiseFixEnabled: Bool = false
-        var agcFixEnabled: Bool = true
+        var agcFixEnabled: Bool = false
     }
 
     private var state = State()
@@ -477,11 +479,11 @@ final class AudioPreProcessor {
 
 
 
-    init(maxFrameSize: Int = 512,noiseFix:Bool = false ) {
+    init(maxFrameSize: Int = 512,noiseFix:Bool = nil,echoFix:Bool = nil, agcFix:Bool = nil,micGain:Float = nil) {
         self.micFloatBuffer = [Float](repeating: 0, count: maxFrameSize)
         self.tempFloatBuffer = [Float](repeating: 0, count: maxFrameSize)
 
-        self.updateState(noiseFix:noiseFix) 
+        self.updateState(noiseFix:noiseFix,echoFix:echoFix,agcFix:agcFix,micGain:micGain) 
 
     }
 
