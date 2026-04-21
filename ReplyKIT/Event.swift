@@ -609,7 +609,7 @@ var IntTime:TimeInterval = 5.0
 
 var logState = RPConfig.shared.enableLog
 
-private func updateLogFixState() {
+func updateLogFixState() {
 
     let current = RPConfig.shared.enableLog 
 
@@ -628,7 +628,7 @@ private func updateLogFixState() {
 
 var onlogState = RPConfig.shared.onlogPage
 
-private func updateONLogFixState() {
+func updateONLogFixState() {
 
     let current = RPConfig.shared.onlogPage
 

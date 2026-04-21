@@ -791,7 +791,7 @@ class SocketClient : @unchecked Sendable {
                 self.rtmpBatchContinuation = nil
                 self.isProcessingBatch = true
                 updateLogFixState()
-                updateonLogPageState()
+                updateONLogFixState()
                 
                 cont.resume(returning: true)
 
