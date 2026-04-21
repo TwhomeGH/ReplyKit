@@ -129,10 +129,10 @@ final class AGCProcessor {
     private let attack: Float = 0.01
     private let release: Float = 0.001
 
-    func process(_ buffer: inout [Float]) {
+    func process(_ buffer: UnsafeMutablePointer<Float>, count: Int) {
 
         var rms: Float = 0
-        vDSP_measqv(buffer, 1, &rms, vDSP_Length(buffer.count))
+        vDSP_measqv(buffer, 1, &rms, vDSP_Length(count))
         rms = sqrt(rms)
 
         guard rms > 0 else { return }
@@ -146,9 +146,11 @@ final class AGCProcessor {
         }
 
         vDSP_vsmul(buffer, 1,
-                   &gain,
-                   &buffer, 1,
-                   vDSP_Length(buffer.count))
+                &gain,
+                buffer, 1,
+                vDSP_Length(count))
+
+
     }
 }
 
@@ -166,9 +168,9 @@ final class EchoCanceller {
         referenceBuffer = ref
     }
 
-    func process(_ mic: inout [Float]) {
+    func process(_ mic: UnsafeMutablePointer<Float>, count: Int) {
 
-        let count = min(mic.count, referenceBuffer.count)
+        let count = min(count, referenceBuffer.count)
 
         let alpha: Float = 0.6
 
@@ -176,6 +178,8 @@ final class EchoCanceller {
             let echo = referenceBuffer[i] * alpha
             mic[i] -= echo
         }
+
+
     }
 }
 
@@ -468,23 +472,15 @@ final class RealTimeNoiseSuppressor {
             }
 
             vDSP_vadd(overlapBuffer, 1,
-                      interleaved, 1,
-                      &overlapBuffer, 1,
-                      vDSP_Length(fftSize))
+                interleaved, 1,
+                &overlapBuffer, 1,
+                vDSP_Length(fftSize))
 
-            
-            // boost（修正點：補償因窗函數和FFT造成的能量損失）
-            var boost: Float = 4.0
-            vDSP_vsmul(output, 1,
-                    &boost,
-                    output, 1,
-                    vDSP_Length(hopSize))
-            // ======================================================
-            // 1️⃣6️⃣ output
-            // ======================================================
             memcpy(output,
-                   overlapBuffer,
-                   hopSize * MemoryLayout<Float>.size)
+            overlapBuffer,
+            hopSize * MemoryLayout<Float>.size)
+                    
+
         }}
     }
 }
@@ -572,19 +568,53 @@ final class AudioPreProcessor {
                 vDSP_Length(buffer.count))
     }
 
-    func process(_ sampleBuffer: CMSampleBuffer,
-                    track: AudioTrackType) -> CMSampleBuffer? {
 
-        guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer),
-              let format = CMSampleBufferGetFormatDescription(sampleBuffer)
+    private func processMic(_ base: UnsafeMutablePointer<Float>, count: Int) {
+
+        // Echo
+        if echo.hasReference {
+            echo.process(base, count: count)
+        }
+
+        // Noise suppression
+        if nosieFixEnabled {
+            ns.process(input: base, output: base)
+        }
+
+        // AGC
+        agc.process(base, count: count)
+
+        // User gain
+        applyPostGain(base,
+                    count: count,
+                    trackType: .mic)
+    }
+
+
+    private func processApp(_ base: UnsafeMutablePointer<Float>, count: Int) {
+
+        let gain = userAppGain
+
+        // 👇 1.0 = 完全 passthrough
+        guard abs(gain - 1.0) > 0.001 else {
+            return
+        }
+
+        vDSP_vsmul(base, 1,
+                &gain,
+                base, 1,
+                vDSP_Length(count))
+    }
+
+    // 分流處理
+    func process(_ sampleBuffer: CMSampleBuffer,
+                track: AudioTrackType) -> CMSampleBuffer? {
+
+        guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer)
         else {
             return sampleBuffer
         }
 
-        // ======================================================
-        // 🔥 1️⃣ Direct AudioBufferList access (NO COPY)
-        // ======================================================
-        var audioBufferList = AudioBufferList()
         var dataPointer: UnsafeMutableRawPointer?
 
         CMBlockBufferGetDataPointer(
@@ -599,48 +629,21 @@ final class AudioPreProcessor {
             return sampleBuffer
         }
 
-        audioBufferList.mNumberBuffers = 1
-        audioBufferList.mBuffers.mNumberChannels = 1
-        audioBufferList.mBuffers.mDataByteSize = UInt32(CMSampleBufferGetNumSamples(sampleBuffer) * 2)
-        audioBufferList.mBuffers.mData = data
+        let count = CMSampleBufferGetNumSamples(sampleBuffer)
 
-        // ======================================================
-        // 🎧 2️⃣ Convert pointer view (NO allocation)
-        // ======================================================
-        guard var base = buffer.baseAddress,
-            buffer.count > 0 else {
-            return
-        }
-        
+        let base = data.bindMemory(to: Float.self, capacity: count)
 
-        // ======================================================
-        // 🌫 3️⃣ Echo (in-place)
-        // ======================================================
-        if echo.hasReference {
-            echo.process(base)
+        // 👇🔥 關鍵：在這裡分流
+        switch track {
+        case .mic:
+            processMic(base, count: count)
+
+        case .app:
+            processApp(base, count: count)
         }
 
-        // ======================================================
-        // 🧠 4️⃣ Noise suppression (in-place FFT buffer reuse)
-        // ======================================================
-
-        if nosieFixEnabled {
-        ns.process(input:  base,
-                   output: base)
-        
-        }
-
-        // ======================================================
-        // 🎚 5️⃣ AGC (in-place SIMD)
-        // ======================================================
-        agc.process(base)
-
-        // 4️⃣ 🎚 User Gain（你升級的地方）
-        self.applyPostGain(base, trackType: track)
-
-        // ======================================================
-        // 🔚 return SAME sampleBuffer (zero-copy)
-        // ======================================================
         return sampleBuffer
     }
+
+    
 }
