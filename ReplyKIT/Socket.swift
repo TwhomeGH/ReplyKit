@@ -620,7 +620,7 @@ class SocketClient : @unchecked Sendable {
 
         queue.async {
 
-            let logRES = [
+            var logRES = [
 
             ]
 
@@ -679,7 +679,7 @@ class SocketClient : @unchecked Sendable {
             
 
             self.logTo(logRES.join("\n"))
-            
+
             if !self.isProcessingBatch {
                 // 單請求才 resume rtmpContinuation
 
