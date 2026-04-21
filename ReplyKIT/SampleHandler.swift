@@ -1335,6 +1335,15 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         await rtmpStream.setBitRateStrategy(streamStataus)
 
+        var audioSet = await rtmpStream.audioSettings
+        audioSet.format = .opus
+        
+        await rtmpStream.setAudioSettings(audioSet)
+
+      
+        
+
+        
         await mediaMixer.addOutput(rtmpStream)
         await mediaMixer.startRunning()
 
