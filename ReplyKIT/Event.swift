@@ -607,7 +607,7 @@ final class RPConfig {
 var lastlogT = Date()
 var IntTime:TimeInterval = 5.0
 
-var logState = RPConfig.shared.enableLog
+var logState:Bool = RPConfig.shared.enableLog
 
 func updateLogFixState() {
 
@@ -626,7 +626,7 @@ func updateLogFixState() {
 
 }
 
-var onlogState = RPConfig.shared.onlogPage
+var onlogState:Bool = RPConfig.shared.onlogPage
 
 func updateONLogFixState() {
 

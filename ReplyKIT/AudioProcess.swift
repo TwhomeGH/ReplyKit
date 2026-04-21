@@ -450,7 +450,7 @@ final class AudioProcessor : @unchecked Sendable {
                     return
                 }
 
-                audioPreProcessor.process(&floatBuffer)
+                audioPreProcessor?.process(&floatBuffer)
 
                 guard let processed = FloatArrayToCMSampleBuffer(floatBuffer,
                                                                 original: amplified) else {

@@ -68,7 +68,7 @@ func FloatArrayToCMSampleBuffer(_ samples: [Float],
         return nil
     }
 
-    let format = asbd.pointee
+    
     let sampleCount = samples.count
 
     // 🎯 轉回 Int16
@@ -315,8 +315,18 @@ final class RealTimeNoiseSuppressor {
             var tmp1 = [Float](repeating: 0, count: mag.count)
             var tmp2 = [Float](repeating: 0, count: mag.count)
 
-            vDSP_vsmul(noiseEstimate, 1, &a, &tmp1, 1, vDSP_Length(mag.count))
-            vDSP_vsmul(mag, 1, &b, &tmp2, 1, vDSP_Length(mag.count))
+            // ✅ vector × vector（正確）
+            vDSP_vmul(split.realp, 1,
+                    gain, 1,
+                    split.realp, 1,
+                    vDSP_Length(gain.count))
+
+            vDSP_vmul(split.imagp, 1,
+                    gain, 1,
+                    split.imagp, 1,
+                    vDSP_Length(gain.count))
+
+
             vDSP_vadd(tmp1, 1, tmp2, 1, &noiseEstimate, 1, vDSP_Length(mag.count))
 
             // ======================================================
@@ -324,6 +334,9 @@ final class RealTimeNoiseSuppressor {
             // ======================================================
             var eps: Float = 1e-6
             var noiseSafe = noiseEstimate
+
+
+            
             vDSP_vsadd(noiseSafe, 1, &eps, &noiseSafe, 1, vDSP_Length(mag.count))
 
             var snr = [Float](repeating: 0, count: mag.count)
@@ -355,11 +368,15 @@ final class RealTimeNoiseSuppressor {
                            &gain, 1,
                            vDSP_Length(gain.count))
             } else {
-                var minGain: Float = 0.25
+
+                var minGain: Float = 0.05
+                var maxGain: Float = 1.0
+
                 vDSP_vclip(gain, 1,
-                           &minGain, &one,
-                           &gain, 1,
-                           vDSP_Length(gain.count))
+                        &minGain, &maxGain,
+                        &gain, 1,
+                        vDSP_Length(gain.count))
+                            
             }
 
             // ======================================================
@@ -368,11 +385,12 @@ final class RealTimeNoiseSuppressor {
             var alpha: Float = 0.25
             var beta: Float = 0.75
 
-            var temp = [Float](repeating: 0, count: gain.count)
+            var temp1 = [Float](repeating: 0, count: gain.count)
+            var temp2 = [Float](repeating: 0, count: gain.count)
 
-            vDSP_vsmul(gain, 1, &alpha, &temp, 1, vDSP_Length(gain.count))
-            vDSP_vsmul(prevGain, 1, &beta, &prevGain, 1, vDSP_Length(gain.count))
-            vDSP_vadd(prevGain, 1, temp, 1, &gain, 1, vDSP_Length(gain.count))
+            vDSP_vsmul(gain, 1, &alpha, &temp1, 1, vDSP_Length(gain.count))
+            vDSP_vsmul(prevGain, 1, &beta, &temp2, 1, vDSP_Length(gain.count))
+            vDSP_vadd(temp1, 1, temp2, 1, &gain, 1, vDSP_Length(gain.count))
 
             prevGain = gain
 
