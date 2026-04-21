@@ -2,6 +2,7 @@ import Foundation
 import Accelerate
 import AVFoundation
 
+
 func CMSampleBufferToFloatArray(_ sampleBuffer: CMSampleBuffer) -> [Float]? {
 
     guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else {
@@ -509,8 +510,7 @@ final class AudioEngine {
 
 
 // MARK: - Main PreProcessor (AGC + Echo + Noise Suppression)
-import AVFoundation
-import Accelerate
+
 
 final class AudioPreProcessor {
 
@@ -539,37 +539,37 @@ final class AudioPreProcessor {
     }
 
     private func applyPostGain(_ buffer: inout [Float],
-                           trackType: AudioTrackType) {
+                            trackType: AudioTrackType) {
 
-    let gain = (trackType == .app)
-        ? userAppGain
-        : userMicGain
+        let gain = (trackType == .app)
+            ? userAppGain
+            : userMicGain
 
-    var safeGain = gain.isFinite ? gain : 1.0
+        var safeGain = gain.isFinite ? gain : 1.0
 
-    // ======================================================
-    // 🎚 Gain
-    // ======================================================
-    vDSP_vsmul(buffer, 1,
-               &safeGain,
-               &buffer, 1,
-               vDSP_Length(buffer.count))
+        // ======================================================
+        // 🎚 Gain
+        // ======================================================
+        vDSP_vsmul(buffer, 1,
+                &safeGain,
+                &buffer, 1,
+                vDSP_Length(buffer.count))
 
-    // ======================================================
-    // 🚨 Soft limiter（防爆音）
-    // ======================================================
-    var maxVal: Float = 0.95
-    var minVal: Float = -0.95
+        // ======================================================
+        // 🚨 Soft limiter（防爆音）
+        // ======================================================
+        var maxVal: Float = 0.95
+        var minVal: Float = -0.95
 
-    vDSP_vclip(buffer, 1,
-               &minVal,
-               &maxVal,
-               &buffer, 1,
-               vDSP_Length(buffer.count))
-}
+        vDSP_vclip(buffer, 1,
+                &minVal,
+                &maxVal,
+                &buffer, 1,
+                vDSP_Length(buffer.count))
+    }
 
     func process(_ sampleBuffer: CMSampleBuffer,
-                 track: AudioTrackType) -> CMSampleBuffer? {
+                    track: AudioTrackType) -> CMSampleBuffer? {
 
         guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer),
               let format = CMSampleBufferGetFormatDescription(sampleBuffer)
