@@ -264,12 +264,10 @@ final class AudioProcessor : @unchecked Sendable {
     private var micVolume: Float
     private var onAudioPage: Bool
     private var lastRMSUpdateTime: CFTimeInterval = 0
-    private var denoiseModel: DenoiseModelWrapper?   // CoreML 模型
+    //private var denoiseModel: DenoiseModelWrapper?   // 待對接處理套件 模型
 
     var rmsInterval: CFTimeInterval = 0.1
-    var MediaMixerWrapper: MediaMixerWrapper {
-        MediaMixerWrapper(mixer: mediaMixer)
-    }
+    var mediaMixerWrapper: MediaMixerWrapper?
 
 
     init(mediaMixer: MediaMixer,
@@ -287,6 +285,9 @@ final class AudioProcessor : @unchecked Sendable {
         self.micVolume = micVolume
         self.onAudioPage = onAudioPage
         self.isActive = true
+
+
+        self.mediaMixerWrapper = MediaMixerWrapper(mixer: mediaMixer)
 
 
         if RPConfig.shared.enableNoiseFix {
@@ -430,7 +431,7 @@ final class AudioProcessor : @unchecked Sendable {
             if self.denoiseModel == nil {
                 sendlog(message: "噪聲修正已啟用，但模型未載入，將跳過噪聲修正。")
             } else {
-                    denoised = denoiseWithCoreML(amplified)
+                //待實作
             }
         }  
 
@@ -441,7 +442,11 @@ final class AudioProcessor : @unchecked Sendable {
         processRMS(retimed, trackType: trackType)
 
         // 3️⃣ 丟進 mediaMixer保護的 appendSync
-        self.MediaMixerWrapper.appendSync(retimed, track: trackType.rawValue)
+        if let mediaMixerWrapper = self.mediaMixerWrapper {
+            mediaMixerWrapper.appendSync(retimed, track: trackType.rawValue)
+        } else {
+            sendlog(message: "MediaMixerWrapper 尚未初始化，無法 append 音頻。")
+        }
 
         }
     }
