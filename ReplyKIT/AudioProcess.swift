@@ -313,7 +313,7 @@ final class AudioProcessor : @unchecked Sendable {
 
         self.mediaMixerWrapper = MediaMixerWrapper(mixer: mediaMixer)
         self.updateNoiseFixState()
-        
+
         self.audioEngine = AudioEngine(nosieFix:noiseFixEnabledCached)
         
 
@@ -445,20 +445,16 @@ final class AudioProcessor : @unchecked Sendable {
 
             var finalBuffer: CMSampleBuffer = sampleBuffer
 
-            // 2️⃣ 可選的噪聲修正（如果開啟了）
-            if noiseFixEnabledCached,
-                let _ = audioPreProcessor {
-
-                // ======================================================
-                // 🎧 1️⃣ ZERO-COPY DSP ENTRY
-                // ======================================================
-                guard let processed = self.audioEngine.process(sampleBuffer,
-                                                                track: trackType) else {
-                    return
-                }
-
-                finalBuffer = processed
+            // ======================================================
+            // 🎧 1️⃣ ZERO-COPY DSP ENTRY
+            // ======================================================
+            guard let processed = self.audioEngine.process(sampleBuffer,
+                                                            track: trackType) else {
+                return
             }
+
+            finalBuffer = processed
+            
 
 
             //時間戳校正

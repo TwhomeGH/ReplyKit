@@ -538,22 +538,23 @@ final class AudioPreProcessor {
             self.userAppGain = gain
     }
 
-    private func applyPostGain(_ buffer: inout [Float],
-                            trackType: AudioTrackType) {
+    private func applyPostGain(_ buffer: UnsafeMutablePointer<Float>,
+                                count: Int,
+                                trackType: AudioTrackType) {
 
         let gain = (trackType == .app)
             ? userAppGain
             : userMicGain
 
-        var safeGain = gain.isFinite ? gain : 1.0
+        let safeGain = gain.isFinite ? gain : 1.0
 
         // ======================================================
         // 🎚 Gain
         // ======================================================
         vDSP_vsmul(buffer, 1,
-                &safeGain,
-                &buffer, 1,
-                vDSP_Length(buffer.count))
+                [safeGain],
+                buffer, 1,
+                vDSP_Length(count))
 
         // ======================================================
         // 🚨 Soft limiter（防爆音）
@@ -564,8 +565,8 @@ final class AudioPreProcessor {
         vDSP_vclip(buffer, 1,
                 &minVal,
                 &maxVal,
-                &buffer, 1,
-                vDSP_Length(buffer.count))
+                buffer, 1,
+                vDSP_Length(count))
     }
 
 
