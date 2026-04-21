@@ -77,56 +77,46 @@ final class EchoCanceller {
 
 final class RealTimeNoiseSuppressor {
 
-    // MARK: - Config
-    private let frameSize: Int = 512
-    private let fftSize: Int = 1024
-    private let hopSize: Int = 512
 
-    // MARK: - FFT
+    private let frameSize = 512
+    private let fftSize = 1024
+    private let hopSize = 512
+
+    private let log2n: vDSP_Length = 10
+
     private var fftSetup: FFTSetup
 
-    // MARK: - Buffers
+    // buffers（全部重用，0 allocation）
     private var window: [Float]
-    private var synthesisWindow: [Float]
-
-    private var noiseEstimate: [Float]
-    private var prevGain: [Float]
-
     private var inputBuffer: [Float]
     private var fftBuffer: [Float]
+    private var outputBuffer: [Float]
 
-    // OLA
-    private var overlapBuffer: [Float]
+    private var real: [Float]
+    private var imag: [Float]
+    private var mag: [Float]
+    private var gain: [Float]
+    private var snr: [Float]
 
-    // MARK: - VAD
-    private var vadThreshold: Float = 0.002
-    private var vadHangover: Int = 5
-    private var vadCounter: Int = 0
-    private var isSpeech: Bool = false
+    private var noiseEstimate: [Float]
 
-    // MARK: - Init
     init() {
-
-        let log2n = vDSP_Length(log2(Float(fftSize)))
         fftSetup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2))!
 
         window = [Float](repeating: 0, count: fftSize)
-        synthesisWindow = [Float](repeating: 0, count: fftSize)
-
-        noiseEstimate = [Float](repeating: 1e-3, count: fftSize/2)
-        prevGain = [Float](repeating: 1.0, count: fftSize/2)
-
         inputBuffer = [Float](repeating: 0, count: fftSize)
         fftBuffer = [Float](repeating: 0, count: fftSize)
+        outputBuffer = [Float](repeating: 0, count: fftSize)
 
-        overlapBuffer = [Float](repeating: 0, count: fftSize)
+        real = [Float](repeating: 0, count: fftSize/2)
+        imag = [Float](repeating: 0, count: fftSize/2)
+        mag  = [Float](repeating: 0, count: fftSize/2)
+        gain = [Float](repeating: 1.0, count: fftSize/2)
+        snr  = [Float](repeating: 0, count: fftSize/2)
 
-        // analysis / synthesis window
+        noiseEstimate = [Float](repeating: 1e-3, count: fftSize/2)
+
         vDSP_hann_window(&window,
-                         vDSP_Length(fftSize),
-                         Int32(vDSP_HANN_NORM))
-
-        vDSP_hann_window(&synthesisWindow,
                          vDSP_Length(fftSize),
                          Int32(vDSP_HANN_NORM))
     }
@@ -135,35 +125,25 @@ final class RealTimeNoiseSuppressor {
         vDSP_destroy_fftsetup(fftSetup)
     }
 
-    // MARK: - Int16 → Float
-    private func decodeInt16(_ input: UnsafePointer<Float>) {
-        let ptr = input.withMemoryRebound(to: Int16.self,
-                                          capacity: frameSize) { $0 }
 
-        for i in 0..<frameSize {
-            inputBuffer[i] = Float(ptr[i]) / 32768.0
-        }
-    }
-
-    // MARK: - Process
-    func process(input: UnsafePointer<Float>,
-                 output: UnsafeMutablePointer<Float>) {
+    func process(_ ptr: UnsafeMutablePointer<Float>, count: Int) {
 
         // ======================================================
-        // 1️⃣ PCM decode
+        // 1️⃣ copy input（FFT 必須）
         // ======================================================
-        decodeInt16(input)
+        memcpy(&inputBuffer,
+               ptr,
+               count * MemoryLayout<Float>.size)
 
-        // ======================================================
-        // 2️⃣ shift buffer（簡化版：直接覆蓋前半）
-        // ======================================================
-        for i in 0..<frameSize {
-            inputBuffer[i] = inputBuffer[i]
-            inputBuffer[i + frameSize] = 0
+        // zero pad
+        if count < fftSize {
+            memset(&inputBuffer + count,
+                   0,
+                   (fftSize - count) * MemoryLayout<Float>.size)
         }
 
         // ======================================================
-        // 3️⃣ window
+        // 2️⃣ window
         // ======================================================
         vDSP_vmul(inputBuffer, 1,
                   window, 1,
@@ -171,128 +151,90 @@ final class RealTimeNoiseSuppressor {
                   vDSP_Length(fftSize))
 
         // ======================================================
-        // 4️⃣ FFT
+        // 3️⃣ FFT
         // ======================================================
-        var real = [Float](repeating: 0, count: fftSize/2)
-        var imag = [Float](repeating: 0, count: fftSize/2)
-
         real.withUnsafeMutableBufferPointer { rPtr in
         imag.withUnsafeMutableBufferPointer { iPtr in
 
-            var split = DSPSplitComplex(realp: rPtr.baseAddress!,
-                                        imagp: iPtr.baseAddress!)
+            var split = DSPSplitComplex(
+                realp: rPtr.baseAddress!,
+                imagp: iPtr.baseAddress!
+            )
 
             fftBuffer.withUnsafeBufferPointer { buf in
                 buf.baseAddress!.withMemoryRebound(to: DSPComplex.self,
                                                    capacity: fftSize/2) {
-                    vDSP_ctoz($0, 2, &split, 1, vDSP_Length(fftSize/2))
+                    vDSP_ctoz($0, 2, &split, 1,
+                              vDSP_Length(fftSize/2))
                 }
             }
 
             vDSP_fft_zrip(fftSetup,
                           &split,
                           1,
-                          vDSP_Length(log2(Float(fftSize))),
+                          log2n,
                           FFTDirection(FFT_FORWARD))
 
             // ======================================================
-            // 5️⃣ magnitude
+            // 4️⃣ magnitude
             // ======================================================
-            var mag = [Float](repeating: 0, count: fftSize/2)
-            vDSP_zvmags(&split, 1, &mag, 1, vDSP_Length(fftSize/2))
+            vDSP_zvmags(&split, 1,
+                        &mag, 1,
+                        vDSP_Length(mag.count))
 
             // ======================================================
-            // 6️⃣ VAD
-            // ======================================================
-            var energy: Float = 0
-            vDSP_measqv(mag, 1, &energy, vDSP_Length(mag.count))
-
-            if energy > vadThreshold {
-                vadCounter = vadHangover
-                isSpeech = true
-            } else {
-                vadCounter -= 1
-                if vadCounter <= 0 {
-                    isSpeech = false
-                }
-            }
-
-            // ======================================================
-            // 7️⃣ noise update
+            // 5️⃣ noise update
             // ======================================================
             var a: Float = 0.98
             var b: Float = 0.02
 
-            var tmp1 = [Float](repeating: 0, count: mag.count)
-            var tmp2 = [Float](repeating: 0, count: mag.count)
+            vDSP_vsmul(noiseEstimate, 1, &a,
+                       &noiseEstimate, 1,
+                       vDSP_Length(mag.count))
 
-            vDSP_vsmul(noiseEstimate, 1, &a, &tmp1, 1, vDSP_Length(mag.count))
-            vDSP_vsmul(mag, 1, &b, &tmp2, 1, vDSP_Length(mag.count))
-            vDSP_vadd(tmp1, 1, tmp2, 1, &noiseEstimate, 1, vDSP_Length(mag.count))
+            vDSP_vsmsa(mag, 1, &b, &noiseEstimate,
+                       &noiseEstimate, 1,
+                       vDSP_Length(mag.count))
 
             // ======================================================
-            // 8️⃣ SNR
+            // 6️⃣ SNR（正確方向）
             // ======================================================
             var eps: Float = 1e-6
-            var noiseSafe = noiseEstimate
-            vDSP_vsadd(noiseSafe, 1, &eps, &noiseSafe, 1, vDSP_Length(mag.count))
 
-            var snr = [Float](repeating: 0, count: mag.count)
+            vDSP_vsadd(noiseEstimate, 1, &eps,
+                       &noiseEstimate, 1,
+                       vDSP_Length(mag.count))
+
             vDSP_vdiv(mag, 1,
-                noiseSafe, 1,
-                &snr, 1,
-                vDSP_Length(mag.count))
-
-            // ======================================================
-            // 9️⃣ Wiener gain
-            // ======================================================
-            var one: Float = 1.0
-            var denom = [Float](repeating: 0, count: mag.count)
-            var gain = [Float](repeating: 0, count: mag.count)
-
-            vDSP_vsadd(snr, 1, &one, &denom, 1, vDSP_Length(mag.count))
-            vDSP_vdiv(denom, 1,
-                      snr, 1,
-                      &gain, 1,
+                      noiseEstimate, 1,
+                      &snr, 1,
                       vDSP_Length(mag.count))
 
             // ======================================================
-            // 🔟 VAD gate
+            // 7️⃣ Wiener gain
             // ======================================================
-            if !isSpeech {
-                var atten: Float = 0.3
+            var one: Float = 1.0
 
-                vDSP_vsmul(gain, 1,
-                           &atten,
-                           &gain, 1,
-                           vDSP_Length(gain.count))
-            }
+            vDSP_vsadd(snr, 1, &one,
+                       &gain, 1,
+                       vDSP_Length(snr.count))
+
+            vDSP_vdiv(snr, 1,
+                      gain, 1,
+                      &gain, 1,
+                      vDSP_Length(snr.count))
 
             // clamp
             var minGain: Float = 0.1
             var maxGain: Float = 1.0
+
             vDSP_vclip(gain, 1,
                        &minGain, &maxGain,
                        &gain, 1,
                        vDSP_Length(gain.count))
 
             // ======================================================
-            // 1️⃣1️⃣ smoothing
-            // ======================================================
-            var alpha: Float = 0.5
-            var beta: Float = 0.5
-
-            var temp1 = [Float](repeating: 0, count: gain.count)
-            var temp2 = [Float](repeating: 0, count: gain.count)
-
-            vDSP_vsmul(gain, 1, &alpha, &temp1, 1, vDSP_Length(gain.count))
-            vDSP_vsmul(prevGain, 1, &beta, &temp2, 1, vDSP_Length(gain.count))
-            vDSP_vadd(temp1, 1, temp2, 1, &gain, 1, vDSP_Length(gain.count))
-
-            prevGain = gain
-
-            // ======================================================
-            // 1️⃣2️⃣ apply gain（修正點）
+            // 8️⃣ apply gain
             // ======================================================
             vDSP_vmul(split.realp, 1,
                       gain, 1,
@@ -305,71 +247,40 @@ final class RealTimeNoiseSuppressor {
                       vDSP_Length(gain.count))
 
             // ======================================================
-            // 1️⃣3️⃣ IFFT
+            // 9️⃣ IFFT
             // ======================================================
             vDSP_fft_zrip(fftSetup,
                           &split,
                           1,
-                          vDSP_Length(log2(Float(fftSize))),
+                          log2n,
                           FFTDirection(FFT_INVERSE))
 
             // ======================================================
-            // 1️⃣4️⃣ split → interleaved
+            // 🔟 回到 time domain
             // ======================================================
-            var interleaved = [Float](repeating: 0, count: fftSize)
-
-            interleaved.withUnsafeMutableBufferPointer { ptr in
-                ptr.baseAddress!.withMemoryRebound(to: DSPComplex.self,
-                                                   capacity: fftSize/2) { complexPtr in
+            outputBuffer.withUnsafeMutableBufferPointer { outPtr in
+                outPtr.baseAddress!.withMemoryRebound(to: DSPComplex.self,
+                                                      capacity: fftSize/2) {
                     vDSP_ztoc(&split, 1,
-                              complexPtr, 2,
+                              $0, 2,
                               vDSP_Length(fftSize/2))
                 }
             }
 
-            // scale
             var scale: Float = 1.0 / Float(fftSize)
-            vDSP_vsmul(interleaved, 1,
+
+            vDSP_vsmul(outputBuffer, 1,
                        &scale,
-                       &interleaved, 1,
+                       &outputBuffer, 1,
                        vDSP_Length(fftSize))
-
-            // synthesis window
-            vDSP_vmul(interleaved, 1,
-                      synthesisWindow, 1,
-                      &interleaved, 1,
-                      vDSP_Length(fftSize))
-
-            // ======================================================
-            // 1️⃣5️⃣ overlap-add
-            // ======================================================
-
-
-            overlapBuffer.withUnsafeMutableBufferPointer { buf in
-                let base = buf.baseAddress!
-
-                // shift（安全版 memmove）
-                memmove(base,
-                        base.advanced(by: hopSize),
-                        (fftSize - hopSize) * MemoryLayout<Float>.size)
-
-                // clear tail
-                memset(base.advanced(by: fftSize - hopSize),
-                    0,
-                    hopSize * MemoryLayout<Float>.size)
-            }
-
-            vDSP_vadd(overlapBuffer, 1,
-                interleaved, 1,
-                &overlapBuffer, 1,
-                vDSP_Length(fftSize))
-
-            memcpy(output,
-            overlapBuffer,
-            hopSize * MemoryLayout<Float>.size)
-                    
-
         }}
+
+        // ======================================================
+        // 🔚 回寫（in-place）
+        // ======================================================
+        memcpy(ptr,
+               outputBuffer,
+               count * MemoryLayout<Float>.size)
     }
 }
 
@@ -536,8 +447,7 @@ final class AudioPreProcessor {
         // ==================================================
 
         if state.noiseFixEnabled {
-        ns.process(input: &micFloatBuffer,
-                   output: &micFloatBuffer)
+        ns.process(&micFloatBuffer, count: count)
 
         }
 
