@@ -374,24 +374,34 @@ final class RealTimeNoiseSuppressor {
 }
 
 
-
 final class AudioEngine {
 
-    let preProcessor : AudioPreProcessor
+    private let preProcessor: AudioPreProcessor
 
-    init(nosieFix:Bool = false ){
-        self.preProcessor = AudioPreProcessor(nosieFix:nosieFix)
+    init(noiseFix: Bool = false) {
+        self.preProcessor = AudioPreProcessor(nosieFix: noiseFix)
     }
 
+     // ======================================================
+    // 🎚 control layer
+    // ======================================================
+    func updateMicGain(_ value: Float) {
+        preProcessor.updateMicGain(value)
+    }
+
+
+    func setNoiseFix(_ enable: Bool) {
+        preProcessor.setNoiseFix(enable)
+    }
+
+
+    // ======================================================
+    // 🎧 routing only (no return transformation)
+    // ======================================================
     func process(_ sampleBuffer: CMSampleBuffer,
-                 track: AudioTrackType) -> CMSampleBuffer? {
+                 track: AudioTrackType) {
 
-        guard let processed = preProcessor.process(sampleBuffer,
-                                                   track: track) else {
-            return sampleBuffer
-        }
-
-        return processed
+        preProcessor.process(sampleBuffer, track: track)
     }
 }
 
@@ -411,13 +421,32 @@ final class AudioPreProcessor {
     private let agc = AGCProcessor()
     private let echo = EchoCanceller(size: 1024)
     private let ns = RealTimeNoiseSuppressor()
-    var nosieFix:Bool
+    
+
+
+    // MARK: - State
+    private var micGain: Float = 1.0
+    private var noiseFixEnabled: Bool = false
+
+    // ======================================================
+    // 🎚 control API
+    // ======================================================
+
+    func updateMicGain(_ value: Float) {
+        micGain = value.isFinite ? value : 1.0
+    }
+
+
+    func setNoiseFix(_ enable: Bool) {
+        noiseFixEnabled = enable
+    }
+
 
     init(maxFrameSize: Int = 512,nosieFix:Bool = false ) {
         self.micFloatBuffer = [Float](repeating: 0, count: maxFrameSize)
         self.tempFloatBuffer = [Float](repeating: 0, count: maxFrameSize)
 
-        self.nosieFix = nosieFix 
+        self.setNoiseFix(nosieFix) 
 
     }
 
@@ -481,7 +510,7 @@ final class AudioPreProcessor {
     // ======================================================
     private func applyPostGain(_ buffer: inout [Float], count: Int) {
 
-        let gain = 1.0 // or userMicGain
+        let gain = micGain
 
         guard abs(gain - 1.0) > 0.001 else { return }
 
@@ -504,6 +533,8 @@ final class AudioPreProcessor {
             tempFloatBuffer = [Float](repeating: 0, count: count)
         }
     }
+
+
 }
 
     

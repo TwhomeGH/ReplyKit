@@ -378,11 +378,11 @@ final class AudioProcessor : @unchecked Sendable {
     ) {
         if let appAdd = appAdd { 
                 self.appAddVolume = appAdd 
-                self.audioEngine.preProcessor.updateAppGain(appAdd)
+                
             }
         if let micAdd = micAdd { 
                 self.micAddVolume = micAdd 
-                self.audioEngine.preProcessor.updateMicGain(micAdd)
+                self.audioEngine.updateMicGain(micAdd)
             
             }
 
