@@ -314,7 +314,7 @@ final class AudioProcessor : @unchecked Sendable {
         self.mediaMixerWrapper = MediaMixerWrapper(mixer: mediaMixer)
         self.updateNoiseFixState()
 
-        self.audioEngine = AudioEngine(nosieFix:noiseFixEnabledCached)
+        self.audioEngine = AudioEngine(noiseFix:noiseFixEnabledCached)
         
 
 
