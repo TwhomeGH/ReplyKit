@@ -493,7 +493,11 @@ final class RealTimeNoiseSuppressor {
 
 final class AudioEngine {
 
-    let preProcessor = AudioPreProcessor()
+    let preProcessor : AudioPreProcessor
+
+    init(nosieFix:Bool = false ){
+        self.preProcessor = AudioPreProcessor(nosieFix:nosieFix)
+    }
 
     func process(_ sampleBuffer: CMSampleBuffer,
                  track: AudioTrackType) -> CMSampleBuffer? {
@@ -518,15 +522,15 @@ final class AudioPreProcessor {
     private let echo = EchoCanceller(size: 512)
     private var ns = RealTimeNoiseSuppressor()
 
-    var noiseFixEnabled: Bool
+    var nosieFixEnabled: Bool
 
     private var userMicGain: Float = 1.0
     private var userAppGain: Float = 1.0
 
 
-    init(){
+    init(nosieFix:Bool = false){
         print("初始化運行AudioProcessor")
-        
+        self.nosieFixEnabled = nosieFix
     }
 
     func updateMicGain(_ gain: Float) {
@@ -634,7 +638,7 @@ final class AudioPreProcessor {
         agc.process(&buffer)
 
         // 4️⃣ 🎚 User Gain（你升級的地方）
-        self.applyPostGain(&buffer, trackType: trackType)
+        self.applyPostGain(&buffer, trackType: track)
 
         // ======================================================
         // 🔚 return SAME sampleBuffer (zero-copy)

@@ -312,9 +312,10 @@ final class AudioProcessor : @unchecked Sendable {
 
 
         self.mediaMixerWrapper = MediaMixerWrapper(mixer: mediaMixer)
-
-        self.audioEngine = AudioEngine()
         self.updateNoiseFixState()
+        
+        self.audioEngine = AudioEngine(nosieFix:noiseFixEnabledCached)
+        
 
 
 
@@ -384,7 +385,7 @@ final class AudioProcessor : @unchecked Sendable {
                 self.audioEngine.preProcessor.updateMicGain(micAdd)
             
             }
-            
+
         if let app = app { self.appVolume = app }
         if let mic = mic { self.micVolume = mic }
     }
