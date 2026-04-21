@@ -326,7 +326,7 @@ struct LiveVolumeView: View {
 
         VStack {
             VStack {
-                Text("App增益: \(String(format: "%.1f", appAddVolume)) 倍")
+                Text("[棄用]App增益: \(String(format: "%.1f", appAddVolume)) 倍")
                     .font(.headline)
 
 
