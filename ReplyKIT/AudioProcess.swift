@@ -265,7 +265,7 @@ final class AudioProcessor : @unchecked Sendable {
     private var onAudioPage: Bool
     private var lastRMSUpdateTime: CFTimeInterval = 0
 
-    private let audioPreProcessor: AudioPreProcessor?
+    private var audioPreProcessor: AudioPreProcessor?
 
     var rmsInterval: CFTimeInterval = 0.1
     var mediaMixerWrapper: MediaMixerWrapper?

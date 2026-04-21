@@ -608,7 +608,8 @@ var lastlogT = Date()
 var IntTime:TimeInterval = 5.0
 
 
-var logger = Logger(subsystem: "com.nuclear.liveAPP", category: "ReplyKit")
+var logger = Logger(subsystem: "nuclear.liveAPP.ReplyKIT.log", category: "extension")
+
 var logState = RPConfig.shared.enableLog
 
 private func updateLogFixState() {

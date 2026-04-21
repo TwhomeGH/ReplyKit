@@ -1,6 +1,126 @@
 import Foundation
 import Accelerate
+import AVFoundation
 
+func CMSampleBufferToFloatArray(_ sampleBuffer: CMSampleBuffer) -> [Float]? {
+
+    guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else {
+        return nil
+    }
+
+    let length = CMBlockBufferGetDataLength(blockBuffer)
+    var data = [UInt8](repeating: 0, count: length)
+
+    CMBlockBufferCopyDataBytes(blockBuffer,
+                               atOffset: 0,
+                               dataLength: length,
+                               destination: &data)
+
+    guard let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer),
+          let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc)
+    else {
+        return nil
+    }
+
+    let format = asbd.pointee
+
+    let sampleCount = length / Int(format.mBytesPerFrame)
+
+    var floatBuffer = [Float](repeating: 0, count: sampleCount)
+
+    // =========================
+    // 🎯 Int16 PCM
+    // =========================
+    if format.mBitsPerChannel == 16 {
+
+        data.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) in
+            let int16Ptr = ptr.bindMemory(to: Int16.self)
+
+            for i in 0..<sampleCount {
+                floatBuffer[i] = Float(int16Ptr[i]) / 32768.0
+            }
+        }
+
+    }
+    // =========================
+    // 🎯 Float32 PCM
+    // =========================
+    else if format.mBitsPerChannel == 32 {
+
+        data.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) in
+            let floatPtr = ptr.bindMemory(to: Float.self)
+            floatBuffer = Array(floatPtr)
+        }
+    }
+    else {
+        return nil
+    }
+
+    return floatBuffer
+}
+
+func FloatArrayToCMSampleBuffer(_ samples: [Float],
+                               original: CMSampleBuffer) -> CMSampleBuffer? {
+
+    guard let formatDesc = CMSampleBufferGetFormatDescription(original),
+          let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc)
+    else {
+        return nil
+    }
+
+    let format = asbd.pointee
+    let sampleCount = samples.count
+
+    // 🎯 轉回 Int16
+    var int16Buffer = [Int16](repeating: 0, count: sampleCount)
+
+    for i in 0..<sampleCount {
+        let v = max(-1.0, min(1.0, samples[i]))
+        int16Buffer[i] = Int16(v * 32767.0)
+    }
+
+    let dataSize = sampleCount * MemoryLayout<Int16>.size
+
+    var blockBuffer: CMBlockBuffer?
+
+    CMBlockBufferCreateWithMemoryBlock(
+        allocator: kCFAllocatorDefault,
+        memoryBlock: &int16Buffer,
+        blockLength: dataSize,
+        blockAllocator: kCFAllocatorNull,
+        customBlockSource: nil,
+        offsetToData: 0,
+        dataLength: dataSize,
+        flags: 0,
+        blockBufferOut: &blockBuffer
+    )
+
+    guard let bb = blockBuffer else { return nil }
+
+    var newSampleBuffer: CMSampleBuffer?
+
+    var timingInfo = CMSampleTimingInfo()
+    CMSampleBufferGetSampleTimingInfo(original,
+                                      at: 0,
+                                      timingInfoOut: &timingInfo)
+
+    CMSampleBufferCreate(
+        allocator: kCFAllocatorDefault,
+        dataBuffer: bb,
+        dataReady: true,
+        makeDataReadyCallback: nil,
+        refcon: nil,
+        formatDescription: formatDesc,
+        sampleCount: sampleCount,
+        sampleTimingEntryCount: 1,
+        sampleTimingArray: &timingInfo,
+        sampleSizeEntryCount: 0,
+        sampleSizeArray: nil,
+        sampleBufferOut: &newSampleBuffer
+    )
+
+    return newSampleBuffer
+}
 
 final class AGCProcessor {
 
@@ -50,7 +170,7 @@ final class EchoCanceller {
 
         let count = min(mic.count, referenceBuffer.count)
 
-        var alpha: Float = 0.6
+        let alpha: Float = 0.6
 
         for i in 0..<count {
             let echo = referenceBuffer[i] * alpha
