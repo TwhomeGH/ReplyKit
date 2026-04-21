@@ -620,7 +620,7 @@ class SocketClient : @unchecked Sendable {
 
         queue.async {
 
-            var logRES = [
+            var logRES: [String] = [
 
             ]
 

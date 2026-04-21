@@ -378,8 +378,8 @@ final class AudioEngine {
 
     private let preProcessor: AudioPreProcessor
 
-    init(noiseFix: Bool = false) {
-        self.preProcessor = AudioPreProcessor(noiseFix: noiseFix)
+    init(noiseFix: Bool? = nil,echoFix:Bool?=nil,agcFix:Bool? = nil,micGain:Float?=nil) {
+        self.preProcessor = AudioPreProcessor(noiseFix: noiseFix,echoFix:echoFix,agcFix:agcFix,micGain:micGain)
     }
 
    // ======================================================
