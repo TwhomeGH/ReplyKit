@@ -443,7 +443,7 @@ final class AudioProcessor : @unchecked Sendable {
             guard let self = self, self.isActive else { return }
 
 
-            var finalBuffer: CMSampleBuffer = sampleBuffer
+            
 
             // ======================================================
             // 🎧 1️⃣ ZERO-COPY DSP ENTRY
@@ -453,12 +453,12 @@ final class AudioProcessor : @unchecked Sendable {
                 return
             }
 
-            finalBuffer = processed
+            
             
 
 
             //時間戳校正
-            let retimed = retimeAudioBuffer(finalBuffer, originalTime: oringinaltime)
+            let retimed = retimeAudioBuffer(sampleBuffer, originalTime: oringinaltime)
             
             // 音量計算還是可以同步做（很快）
             processRMS(retimed, trackType: trackType)

@@ -488,7 +488,8 @@ final class AudioPreProcessor {
     // ======================================================
     // 🎧 App reference（不做任何 DSP）
     // ======================================================
-    func processApp(_ ptr: UnsafePointer<Int16>, count: Int) {
+
+    func processApp(_ ptr: UnsafeMutablePointer<Float>, count: Int) {
 
         // ✔ 只做 conversion（reuse buffer，不 alloc）
         ensureCapacity(count)
@@ -509,7 +510,7 @@ final class AudioPreProcessor {
     // ======================================================
     // 🎤 Mic main pipeline
     // ======================================================
-    func processMic(_ ptr: UnsafePointer<Int16>, count: Int) {
+    func processMic(_ ptr: UnsafeMutablePointer<Float>, count: Int) {
 
         ensureCapacity(count)
 
@@ -532,7 +533,7 @@ final class AudioPreProcessor {
         // 3️⃣ Noise suppression
         // ==================================================
 
-        if state.nosieFixEnable {
+        if state.noiseFixEnabled {
         ns.process(input: &micFloatBuffer,
                    output: &micFloatBuffer)
 
@@ -541,7 +542,7 @@ final class AudioPreProcessor {
         // ==================================================
         // 4️⃣ AGC
         // ==================================================
-        if state.agcFix {
+        if state.agcFixEnabled {
         agc.process(&micFloatBuffer, count: count)
 
         }
