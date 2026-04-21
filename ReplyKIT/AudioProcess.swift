@@ -444,7 +444,7 @@ final class AudioProcessor : @unchecked Sendable {
 
             // 2️⃣ 可選的噪聲修正（如果開啟了）
             if noiseFixEnabledCached,
-                let pre = audioPreProcessor {
+                let _ = audioPreProcessor {
 
                 guard var floatBuffer = CMSampleBufferToFloatArray(amplified) else {
                     return

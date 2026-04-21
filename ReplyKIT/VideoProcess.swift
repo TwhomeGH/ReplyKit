@@ -29,9 +29,9 @@ final class VideoFrameProcessor {
         Rotate = current
 
         if current != Rotate {
-            sendlog(message: "🟢 New Rotate \(current)")
+            sendlog("🟢 New Rotate \(current)")
         } else {
-            sendlog(message: "🔴 Old Rotate \(Rotate)")
+            sendlog("🔴 Old Rotate \(Rotate)")
                 
         }
     }
