@@ -287,7 +287,7 @@ final class AudioProcessor : @unchecked Sendable {
 
         sendlog(message: "音訊配置: 降噪:\(noiseFix) 回音處理:\(EchoFix) 自動增益:\(AGCFix)")
         
-        audioEngine.updateAudioState(micGain:self.micAddVolume,noiseFix:noiseFix,echoFix:EchoFix,agcFix:AGCFix)
+        audioEngine.updateAudioState(micGain:self.micAddVolume,echoFix:EchoFix,noiseFix:noiseFix,agcFix:AGCFix)
 
         
     }

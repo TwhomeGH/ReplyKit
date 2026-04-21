@@ -483,7 +483,7 @@ final class AudioPreProcessor {
         self.micFloatBuffer = [Float](repeating: 0, count: maxFrameSize)
         self.tempFloatBuffer = [Float](repeating: 0, count: maxFrameSize)
 
-        self.updateState(micGain:micGain,noiseFix:noiseFix,echoFix:echoFix,agcFix:agcFix) 
+        self.updateState(micGain:micGain,echoFix:echoFix,noiseFix:noiseFix,agcFix:agcFix) 
 
     }
 
