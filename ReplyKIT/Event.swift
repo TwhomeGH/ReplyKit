@@ -618,28 +618,28 @@ func updateLogFixState() {
     logState = current
 
     if logState {
-        sendlog("🔄 Log Enabled")
+        sendlog(message:"🔄 Log Enabled")
     } else {
-        sendlog("🔄 Log Disabled")
+        sendlog(message:"🔄 Log Disabled")
 
     }
 
 }
 
-var onlogState:Bool = RPConfig.shared.onlogPage
+var onlogState:Bool = RPConfig.shared.onLogPage
 
 func updateONLogFixState() {
 
-    let current = RPConfig.shared.onlogPage
+    let current = RPConfig.shared.onLogPage
 
     guard current != onlogState else { return }
 
     onlogState = current
 
     if onlogState {
-        sendlog("🔄 Log Enabled")
+        sendlog(message:"🔄 Log Enabled")
     } else {
-        sendlog("🔄 Log Disabled")
+        sendlog(message:"🔄 Log Disabled")
 
     }
 
