@@ -449,13 +449,21 @@ final class RealTimeNoiseSuppressor {
             // ======================================================
             // 1️⃣5️⃣ overlap-add
             // ======================================================
-            memmove(&overlapBuffer[0],
-                    &overlapBuffer[hopSize],
-                    (fftSize - hopSize) * MemoryLayout<Float>.size)
 
-            memset(&overlapBuffer[fftSize - hopSize],
-                   0,
-                   hopSize * MemoryLayout<Float>.size)
+
+            overlapBuffer.withUnsafeMutableBufferPointer { buf in
+                let base = buf.baseAddress!
+
+                // shift（安全版 memmove）
+                memmove(base,
+                        base.advanced(by: hopSize),
+                        (fftSize - hopSize) * MemoryLayout<Float>.size)
+
+                // clear tail
+                memset(base.advanced(by: fftSize - hopSize),
+                    0,
+                    hopSize * MemoryLayout<Float>.size)
+            }
 
             vDSP_vadd(overlapBuffer, 1,
                       interleaved, 1,
