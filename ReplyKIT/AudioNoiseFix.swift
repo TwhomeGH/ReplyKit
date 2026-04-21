@@ -100,6 +100,9 @@ final class RealTimeNoiseSuppressor {
 
     private var noiseEstimate: [Float]
 
+    private var ringBuffer: [Float]
+    private var writeIndex: Int = 0
+
     init() {
         fftSetup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2))!
 
@@ -108,6 +111,9 @@ final class RealTimeNoiseSuppressor {
         fftBuffer = [Float](repeating: 0, count: fftSize)
         outputBuffer = [Float](repeating: 0, count: fftSize)
 
+        ringBuffer = [Float](repeating: 0, count: fftSize)
+        
+        
         real = [Float](repeating: 0, count: fftSize/2)
         imag = [Float](repeating: 0, count: fftSize/2)
         mag  = [Float](repeating: 0, count: fftSize/2)
@@ -126,164 +132,165 @@ final class RealTimeNoiseSuppressor {
     }
 
 
+    @inline(__always)
+    private func pushToRingBuffer(_ input: UnsafePointer<Float>, count: Int) {
+
+        for i in 0..<count {
+
+            ringBuffer[writeIndex] = input[i]
+
+            writeIndex += 1
+            if writeIndex >= fftSize {
+                writeIndex = 0
+            }
+        }
+    }
+
+    @inline(__always)
+    private func loadFFTWindow(_ out: inout [Float]) {
+
+        let start = writeIndex
+
+        for i in 0..<fftSize {
+
+            let idx = (start + i) % fftSize
+            out[i] = ringBuffer[idx]
+        }
+    }
+
     func process(_ ptr: UnsafeMutablePointer<Float>, count: Int) {
 
         // ======================================================
-        // 1️⃣ copy input（FFT 必須）
+        // 1️⃣ push into ring buffer
         // ======================================================
-        // ✅ copy input（必要，FFT需要固定buffer）
-        memcpy(&inputBuffer, ptr, count * MemoryLayout<Float>.size)
-
-        // zero padding
-        if count < fftSize {
-            inputBuffer.withUnsafeMutableBufferPointer { buf in
-                let base = buf.baseAddress!
-                memset(base.advanced(by: count),
-                    0,
-                    (fftSize - count) * MemoryLayout<Float>.size)
-            }
-        }
+            pushToRingBuffer(ptr, count: count)
 
         // ======================================================
-        // 2️⃣ window
+        // 2️⃣ load FFT frame (no memmove)
         // ======================================================
-        vDSP_vmul(inputBuffer, 1,
-                  window, 1,
-                  &fftBuffer, 1,
-                  vDSP_Length(fftSize))
+            loadFFTWindow(&inputBuffer)
 
         // ======================================================
-        // 3️⃣ FFT
+        // 3️⃣ window
         // ======================================================
+            vDSP_vmul(inputBuffer, 1,
+                    window, 1,
+                    &fftBuffer, 1,
+                    vDSP_Length(fftSize))
+
+        // ======================================================
+        // 4️⃣ FFT
+        // ======================================================
+        var real = [Float](repeating: 0, count: fftSize/2)
+        var imag = [Float](repeating: 0, count: fftSize/2)
+
         real.withUnsafeMutableBufferPointer { rPtr in
         imag.withUnsafeMutableBufferPointer { iPtr in
 
-            var split = DSPSplitComplex(
-                realp: rPtr.baseAddress!,
-                imagp: iPtr.baseAddress!
-            )
+            var split = DSPSplitComplex(realp: rPtr.baseAddress!,
+                                        imagp: iPtr.baseAddress!)
 
             fftBuffer.withUnsafeBufferPointer { buf in
                 buf.baseAddress!.withMemoryRebound(to: DSPComplex.self,
-                                                   capacity: fftSize/2) {
-                    vDSP_ctoz($0, 2, &split, 1,
-                              vDSP_Length(fftSize/2))
+                                                capacity: fftSize/2) {
+                    vDSP_ctoz($0, 2, &split, 1, vDSP_Length(fftSize/2))
                 }
             }
 
             vDSP_fft_zrip(fftSetup,
-                          &split,
-                          1,
-                          log2n,
-                          FFTDirection(FFT_FORWARD))
+                        &split,
+                        1,
+                        vDSP_Length(log2(Float(fftSize))),
+                        FFTDirection(FFT_FORWARD))
 
             // ======================================================
-            // 4️⃣ magnitude
+            // magnitude
             // ======================================================
-            vDSP_zvmags(&split, 1,
-                        &mag, 1,
-                        vDSP_Length(mag.count))
+            var mag = [Float](repeating: 0, count: fftSize/2)
+            vDSP_zvmags(&split, 1, &mag, 1, vDSP_Length(fftSize/2))
 
             // ======================================================
-            // 5️⃣ noise update
+            // VAD + noise model（保留你原本邏輯）
             // ======================================================
+            var energy: Float = 0
+            vDSP_measqv(mag, 1, &energy, vDSP_Length(mag.count))
+
+            isSpeech = energy > vadThreshold
+
+            // noise update
             var a: Float = 0.98
             var b: Float = 0.02
 
-            vDSP_vsmul(noiseEstimate, 1, &a,
-                       &noiseEstimate, 1,
-                       vDSP_Length(mag.count))
+            var tmp1 = [Float](repeating: 0, count: mag.count)
+            var tmp2 = [Float](repeating: 0, count: mag.count)
 
-            vDSP_vsmsa(mag, 1, &b, &noiseEstimate,
-                       &noiseEstimate, 1,
-                       vDSP_Length(mag.count))
-
-            // ======================================================
-            // 6️⃣ SNR（正確方向）
-            // ======================================================
-            var eps: Float = 1e-6
-
-            vDSP_vsadd(noiseEstimate, 1, &eps,
-                       &noiseEstimate, 1,
-                       vDSP_Length(mag.count))
-
-            vDSP_vdiv(mag, 1,
-                      noiseEstimate, 1,
-                      &snr, 1,
-                      vDSP_Length(mag.count))
+            vDSP_vsmul(noiseEstimate, 1, &a, &tmp1, 1, vDSP_Length(mag.count))
+            vDSP_vsmul(mag, 1, &b, &tmp2, 1, vDSP_Length(mag.count))
+            vDSP_vadd(tmp1, 1, tmp2, 1, &noiseEstimate, 1, vDSP_Length(mag.count))
 
             // ======================================================
-            // 7️⃣ Wiener gain
+            // gain compute
             // ======================================================
+            var snr = [Float](repeating: 0, count: mag.count)
+
+            vDSP_vdiv(noiseEstimate, 1,
+                    mag, 1,
+                    &snr, 1,
+                    vDSP_Length(mag.count))
+
+            var gain = [Float](repeating: 0, count: mag.count)
+
             var one: Float = 1.0
-
-            vDSP_vsadd(snr, 1, &one,
-                       &gain, 1,
-                       vDSP_Length(snr.count))
-
-            vDSP_vdiv(snr, 1,
-                      gain, 1,
-                      &gain, 1,
-                      vDSP_Length(snr.count))
-
-            // clamp
-            var minGain: Float = 0.1
-            var maxGain: Float = 1.0
-
-            vDSP_vclip(gain, 1,
-                       &minGain, &maxGain,
-                       &gain, 1,
-                       vDSP_Length(gain.count))
+            vDSP_vsadd(snr, 1, &one, &gain, 1, vDSP_Length(mag.count))
 
             // ======================================================
-            // 8️⃣ apply gain
+            // apply gain
             // ======================================================
             vDSP_vmul(split.realp, 1,
-                      gain, 1,
-                      split.realp, 1,
-                      vDSP_Length(gain.count))
+                    gain, 1,
+                    split.realp, 1,
+                    vDSP_Length(gain.count))
 
             vDSP_vmul(split.imagp, 1,
-                      gain, 1,
-                      split.imagp, 1,
-                      vDSP_Length(gain.count))
+                    gain, 1,
+                    split.imagp, 1,
+                    vDSP_Length(gain.count))
 
             // ======================================================
-            // 9️⃣ IFFT
+            // IFFT
             // ======================================================
             vDSP_fft_zrip(fftSetup,
-                          &split,
-                          1,
-                          log2n,
-                          FFTDirection(FFT_INVERSE))
+                        &split,
+                        1,
+                        vDSP_Length(log2(Float(fftSize))),
+                        FFTDirection(FFT_INVERSE))
 
             // ======================================================
-            // 🔟 回到 time domain
+            // output (直接寫回 ptr)
             // ======================================================
-            outputBuffer.withUnsafeMutableBufferPointer { outPtr in
-                outPtr.baseAddress!.withMemoryRebound(to: DSPComplex.self,
-                                                      capacity: fftSize/2) {
+            var out = [Float](repeating: 0, count: fftSize)
+
+            out.withUnsafeMutableBufferPointer { oPtr in
+                oPtr.baseAddress!.withMemoryRebound(to: DSPComplex.self,
+                                                    capacity: fftSize/2) {
                     vDSP_ztoc(&split, 1,
-                              $0, 2,
-                              vDSP_Length(fftSize/2))
+                            $0, 2,
+                            vDSP_Length(fftSize/2))
                 }
             }
 
             var scale: Float = 1.0 / Float(fftSize)
 
-            vDSP_vsmul(outputBuffer, 1,
-                       &scale,
-                       &outputBuffer, 1,
-                       vDSP_Length(fftSize))
-        }}
+            vDSP_vsmul(out, 1,
+                    &scale,
+                    &out, 1,
+                    vDSP_Length(fftSize))
 
-        // ======================================================
-        // 🔚 回寫（in-place）
-        // ======================================================
-        // 👉 最後寫回
-        memcpy(ptr,
-            overlapBuffer,
-           min(count, hopSize) * MemoryLayout<Float>.size)
+            // 👉 直接寫回（無 overlap buffer）
+            memcpy(ptr,
+                out,
+                count * MemoryLayout<Float>.size)
+        }}
     }
 }
 
