@@ -542,7 +542,7 @@ final class AudioPreProcessor {
         // 4️⃣ AGC
         // ==================================================
         if state.agcFix {
-        agc.process(&micFloatBuffer)
+        agc.process(&micFloatBuffer, count: count)
 
         }
         // ==================================================
