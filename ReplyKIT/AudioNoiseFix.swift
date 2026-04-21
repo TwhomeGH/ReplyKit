@@ -131,15 +131,17 @@ final class RealTimeNoiseSuppressor {
         // ======================================================
         // 1️⃣ copy input（FFT 必須）
         // ======================================================
-        memcpy(&inputBuffer,
-               ptr,
-               count * MemoryLayout<Float>.size)
+        // ✅ copy input（必要，FFT需要固定buffer）
+        memcpy(&inputBuffer, ptr, count * MemoryLayout<Float>.size)
 
-        // zero pad
+        // zero padding
         if count < fftSize {
-            memset(&inputBuffer + count,
-                   0,
-                   (fftSize - count) * MemoryLayout<Float>.size)
+            inputBuffer.withUnsafeMutableBufferPointer { buf in
+                let base = buf.baseAddress!
+                memset(base.advanced(by: count),
+                    0,
+                    (fftSize - count) * MemoryLayout<Float>.size)
+            }
         }
 
         // ======================================================
@@ -278,9 +280,10 @@ final class RealTimeNoiseSuppressor {
         // ======================================================
         // 🔚 回寫（in-place）
         // ======================================================
+        // 👉 最後寫回
         memcpy(ptr,
-               outputBuffer,
-               count * MemoryLayout<Float>.size)
+            overlapBuffer,
+           min(count, hopSize) * MemoryLayout<Float>.size)
     }
 }
 
