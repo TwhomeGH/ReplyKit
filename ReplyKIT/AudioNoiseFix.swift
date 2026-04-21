@@ -523,16 +523,19 @@ final class AudioPreProcessor {
     private var userMicGain: Float = 1.0
     private var userAppGain: Float = 1.0
 
+
+    init(){
+        print("初始化運行AudioProcessor")
+        
+    }
+
     func updateMicGain(_ gain: Float) {
-        queue.async {
+        
             self.userMicGain = gain
-        }
     }
 
     func updateAppGain(_ gain: Float) {
-        queue.async {
             self.userAppGain = gain
-        }
     }
 
     private func applyPostGain(_ buffer: inout [Float],
