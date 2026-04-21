@@ -634,7 +634,7 @@ final class AudioPreProcessor {
 
     private func processApp(_ base: UnsafeMutablePointer<Float>, count: Int) {
 
-        let gain = userAppGain
+        var gain = userAppGain
 
         // 👇 1.0 = 完全 passthrough
         guard abs(gain - 1.0) > 0.001 else {
