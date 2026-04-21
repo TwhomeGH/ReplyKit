@@ -737,6 +737,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 }
 
                 RPConfig.shared.onLogPage=logPage
+                updateonLogPageState()
 
 
                 if logPage {

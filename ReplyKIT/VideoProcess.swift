@@ -24,6 +24,8 @@ final class VideoFrameProcessor {
 
     var hasPublished = false
 
+    var debug = RPConfig.shared.enableRotateLog
+
 
     init(mediaMixer: MediaMixer,
         sendlog: @escaping (String) -> Void) {
@@ -51,19 +53,37 @@ final class VideoFrameProcessor {
         sendlog("🧹 VideoFrameProcessor deinit — resources released")
     }
 
+    private func updateVideoFixState() {
+
+        let current = RPConfig.shared.enableRotateLog
+
+        guard current != debug else { return }
+
+        debug = current
+
+        if debug {
+            sendlog("🔄 Rotate Log Enabled")
+        } else {
+            sendlog("🔄 Rotate Log Disabled")
+
+        }
+
+    }
+
 
     func process(_ sampleBuffer: CMSampleBuffer,oringinaltime: CMSampleTimingInfo) {
 
         let res = gpuSemaphore.wait(timeout: .now() + .milliseconds(5))
 
+        self.updateVideoFixState()
         
         if res == .timedOut {
-            if RPConfig.shared.enableRotateLog {
+            if debug {
                 sendlog("GPU Semaphore wait timed out - skipping frame to avoid deadlock")
             }
             return
         } else if res == .success {
-            if RPConfig.shared.enableRotateLog {
+            if debug {
             // Handle successful wait
             sendlog("GPU Semaphore wait succeeded")
 
@@ -88,7 +108,7 @@ final class VideoFrameProcessor {
                     dstH: dstRH,
                     outW: outW,
                     outH: outH,
-                    debug: RPConfig.shared.enableRotateLog,
+                    debug: debug,
                     maxPoolSize: RPConfig.shared.BufferCount,
                     useBic: mode
                 )
@@ -102,7 +122,7 @@ final class VideoFrameProcessor {
             guard let rotator else { return }
 
             let angle = RotationAngle(
-                rawValue: UInt32(RPConfig.shared.Rotate)
+                rawValue: UInt32(rotate.rawValue)
             ) ?? .landscapeRight
 
 

@@ -264,10 +264,30 @@ final class AudioProcessor : @unchecked Sendable {
     private var micVolume: Float
     private var onAudioPage: Bool
     private var lastRMSUpdateTime: CFTimeInterval = 0
-    //private var denoiseModel: DenoiseModelWrapper?   // 待對接處理套件 模型
+
+    private let audioPreProcessor: AudioPreProcessor?
 
     var rmsInterval: CFTimeInterval = 0.1
     var mediaMixerWrapper: MediaMixerWrapper?
+
+    private var noiseFixEnabledCached: Bool = false
+
+    private func updateNoiseFixState() {
+
+    let current = RPConfig.shared.enableNoiseFix
+
+    guard current != noiseFixEnabledCached else { return }
+
+    noiseFixEnabledCached = current
+
+    if current {
+        sendlog(message: "🟢 NoiseFix ENABLED")
+        audioPreProcessor = AudioPreProcessor()
+    } else {
+        sendlog(message: "🔴 NoiseFix DISABLED")
+        audioPreProcessor = nil
+    }
+}
 
 
     init(mediaMixer: MediaMixer,
@@ -291,15 +311,9 @@ final class AudioProcessor : @unchecked Sendable {
 
 
         if RPConfig.shared.enableNoiseFix {
-            sendlog(message: "目前此功能停用，等待後續更新")
-            // 在初始化時載入模型
-            //let remoteUrl = URL(string: "https://example.com/MyDenoiseModel.mlmodel")!
-            //self.denoiseModel = try? loadRemoteModel(from: remoteUrl)
-            // if self.denoiseModel != nil {
-            //     sendlog(message: "CoreML 模型載入成功！")
-            // } else {
-            //     sendlog(message: "CoreML 模型載入失敗，將跳過噪聲修正。")
-            // }
+            self.audioPreProcessor = AudioPreProcessor()
+        } else {
+            self.audioPreProcessor = nil
         
         }
 
@@ -418,36 +432,47 @@ final class AudioProcessor : @unchecked Sendable {
         
         queue.async { [weak self] in
             guard let self = self, self.isActive else { return }
+
+            self.updateNoiseFixState()
             
         
-        // 1️⃣ 做增益
-        let amplified = applyGain(sampleBuffer, trackType: trackType)
+            // 1️⃣ 做增益
+            let amplified = applyGain(sampleBuffer, trackType: trackType)
 
 
-        var denoised = amplified
+            var finalBuffer: CMSampleBuffer = amplified
 
-        // 2️⃣ 可選的噪聲修正（如果開啟了）
-        //if RPConfig.shared.enableNoiseFix {
-            //待實作
-            // if self.denoiseModel == nil {
-            //     sendlog(message: "噪聲修正已啟用，但模型未載入，將跳過噪聲修正。")
-            // } else {
-                
-            // }
-        //}  
+            // 2️⃣ 可選的噪聲修正（如果開啟了）
+            if noiseFixEnabledCached,
+                let pre = audioPreProcessor {
 
-        //時間戳校正
-        let retimed = retimeAudioBuffer(denoised, originalTime: oringinaltime)
-        
-        // 音量計算還是可以同步做（很快）
-        processRMS(retimed, trackType: trackType)
+                guard var floatBuffer = CMSampleBufferToFloatArray(amplified) else {
+                    return
+                }
 
-        // 3️⃣ 丟進 mediaMixer保護的 appendSync
-        if let mediaMixerWrapper = self.mediaMixerWrapper {
-            mediaMixerWrapper.appendSync(retimed, track: trackType)
-        } else {
-            sendlog(message: "MediaMixerWrapper 尚未初始化，無法 append 音頻。")
-        }
+                audioPreProcessor.process(&floatBuffer)
+
+                guard let processed = FloatArrayToCMSampleBuffer(floatBuffer,
+                                                                original: amplified) else {
+                    return
+                }
+
+                finalBuffer = processed
+            }
+
+
+            //時間戳校正
+            let retimed = retimeAudioBuffer(finalBuffer, originalTime: oringinaltime)
+            
+            // 音量計算還是可以同步做（很快）
+            processRMS(retimed, trackType: trackType)
+
+            // 3️⃣ 丟進 mediaMixer保護的 appendSync
+            if let mediaMixerWrapper = self.mediaMixerWrapper {
+                mediaMixerWrapper.appendSync(retimed, track: trackType)
+            } else {
+                sendlog(message: "MediaMixerWrapper 尚未初始化，無法 append 音頻。")
+            }
 
         }
     }

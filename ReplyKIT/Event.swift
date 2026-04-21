@@ -608,6 +608,46 @@ var lastlogT = Date()
 var IntTime:TimeInterval = 5.0
 
 
+var logger = Logger(subsystem: "com.nuclear.liveAPP", category: "ReplyKit")
+var logState = RPConfig.shared.enableLog
+
+private func updateLogFixState() {
+
+    let current = RPConfig.shared.enableLog 
+
+    guard current != logState else { return }
+
+    logState = current
+
+    if logState {
+        sendlog("🔄 Log Enabled")
+    } else {
+        sendlog("🔄 Log Disabled")
+
+    }
+
+}
+
+var onlogState = RPConfig.shared.onlogPage
+
+private func updateONLogFixState() {
+
+    let current = RPConfig.shared.onlogPage
+
+    guard current != onlogState else { return }
+
+    onlogState = current
+
+    if onlogState {
+        sendlog("🔄 Log Enabled")
+    } else {
+        sendlog("🔄 Log Disabled")
+
+    }
+
+}
+
+
 func sendlog(title: String = "ReplyKit", message: String, flush:Bool = false) {
 
     let noww=Date()
@@ -621,12 +661,9 @@ func sendlog(title: String = "ReplyKit", message: String, flush:Bool = false) {
             )
     }
 
-    if RPConfig.shared.enableLog {
-        if RPConfig.shared.onLogPage {
-
+    if logState {
+        if onlogState {
             LogManager.shared.log(title:title,message: message,flushImmediately: flush)
-
-            
 
         }
 
