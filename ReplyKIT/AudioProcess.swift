@@ -220,230 +220,24 @@ func volumeToPercentage(_ volume: Double) -> Double {
 
 
 
-/// 從多個噪音 buffer 建立平均 noiseProfile
-func buildAverageNoiseProfile(from buffers: [CMSampleBuffer],
-                              sampleRate: Float = 44100.0) -> [Float] {
-    var accumulated: [Float]? = nil
-    var count = 0
-    
-    for buf in buffers {
-        let profile = estimateNoiseProfile(from: buf, sampleRate: sampleRate)
-        if accumulated == nil {
-            accumulated = profile
-        } else {
-            vDSP_vadd(accumulated!, 1, profile, 1, &accumulated!, 1, vDSP_Length(profile.count))
+// MARK: MediaMixer 包裝器，提供安全的 appendSync 接口
+final class MediaMixerWrapper {
+
+    private let mixer: MediaMixer
+
+    init(mixer: MediaMixer) {
+        self.mixer = mixer
+    }
+
+    func appendSync(_ sampleBuffer: CMSampleBuffer, track: Int) {
+
+        Task { [weak mixer] in
+            guard let mixer else { return }
+            await mixer.append(sampleBuffer, track: track)
         }
-        count += 1
     }
-    
-    // 平均化
-    if var acc = accumulated {
-        var divisor = Float(count)
-        vDSP_vsdiv(acc, 1, &divisor, &acc, 1, vDSP_Length(acc.count))
-        return acc
-    }
-    return []
 }
 
-
-
-/// 收集指定數量的背景噪音 buffer
-/// - 這裡假設你有一個 captureSession 或 audioInput 能提供 CMSampleBuffer
-func collectNoiseBuffers(count: Int,
-                         capture: () -> CMSampleBuffer?) -> [CMSampleBuffer] {
-    var buffers: [CMSampleBuffer] = []
-    for _ in 0..<count {
-        if let buf = capture() {
-            buffers.append(buf)
-        }
-    }
-    return buffers
-}
-
-
-    
-    
-   
-/// 使用 Wiener Filter 進行背景噪音抑制
-private func wienerFilter(_ buffer: CMSampleBuffer,
-                          sampleRate: Float = 44100.0,
-                          noiseProfile: [Float]) -> CMSampleBuffer {
-    guard let blockBuffer = CMSampleBufferGetDataBuffer(buffer),
-          let formatDesc = CMSampleBufferGetFormatDescription(buffer),
-          let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc) else {
-        return buffer
-    }
-
-    var lengthAtOffset: Int = 0
-    var totalLength: Int = 0
-    var dataPointer: UnsafeMutablePointer<Int8>?
-
-    let status = CMBlockBufferGetDataPointer(blockBuffer,
-                                             atOffset: 0,
-                                             lengthAtOffsetOut: &lengthAtOffset,
-                                             totalLengthOut: &totalLength,
-                                             dataPointerOut: &dataPointer)
-    if status != kCMBlockBufferNoErr || dataPointer == nil {
-        return buffer
-    }
-
-    let sampleCount: Int
-    var floatSamples: [Float]
-
-    // 支援 Float32 / Int16 PCM
-    if asbd.pointee.mBitsPerChannel == 32 {
-        let floatPtr = UnsafeMutablePointer<Float>(OpaquePointer(dataPointer!))
-        sampleCount = totalLength / MemoryLayout<Float>.size
-        floatSamples = Array(UnsafeBufferPointer(start: floatPtr, count: sampleCount))
-    } else if asbd.pointee.mBitsPerChannel == 16 {
-        let int16Ptr = UnsafeMutablePointer<Int16>(OpaquePointer(dataPointer!))
-        sampleCount = totalLength / MemoryLayout<Int16>.size
-        floatSamples = (0..<sampleCount).map { Float(int16Ptr[$0]) / Float(Int16.max) }
-    } else {
-        return buffer
-    }
-
-    // 找最近的 2^n 長度
-    let log2n = vDSP_Length(log2(Float(sampleCount)).rounded(.down))
-    let fftLength = 1 << log2n
-
-    guard let fftSetup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2)) else {
-        return buffer
-    }
-
-    var real = [Float](repeating: 0, count: fftLength)
-    var imag = [Float](repeating: 0, count: fftLength)
-
-    let copyCount = min(sampleCount, fftLength)
-    for i in 0..<copyCount {
-        real[i] = floatSamples[i]
-    }
-
-    real.withUnsafeMutableBufferPointer { realBuf in
-        imag.withUnsafeMutableBufferPointer { imagBuf in
-            var splitComplex = DSPSplitComplex(realp: realBuf.baseAddress!,
-                                               imagp: imagBuf.baseAddress!)
-
-            // Forward FFT
-            vDSP_fft_zip(fftSetup, &splitComplex, 1, log2n, FFTDirection(FFT_FORWARD))
-
-            // 計算頻譜能量
-            var magnitudes = [Float](repeating: 0, count: fftLength/2)
-            vDSP_zvabs(&splitComplex, 1, &magnitudes, 1, vDSP_Length(fftLength/2))
-
-            // Wiener Filter 增益
-            for i in 0..<magnitudes.count {
-                let S = magnitudes[i]
-                let N = noiseProfile[i]
-                let gain = S / (S + N + 1e-6) // 避免除零
-                splitComplex.realp[i] *= gain
-                splitComplex.imagp[i] *= gain
-            }
-
-            // Inverse FFT
-            vDSP_fft_zip(fftSetup, &splitComplex, 1, log2n, FFTDirection(FFT_INVERSE))
-
-            // 正規化
-            let scale = Float(1.0 / Float(fftLength))
-            for i in 0..<copyCount {
-                floatSamples[i] = splitComplex.realp[i] * scale
-            }
-        }
-    }
-
-    vDSP_destroy_fftsetup(fftSetup)
-
-    // 寫回原始 buffer
-    if asbd.pointee.mBitsPerChannel == 32 {
-        let floatPtr = UnsafeMutablePointer<Float>(OpaquePointer(dataPointer!))
-        for i in 0..<copyCount {
-            floatPtr[i] = floatSamples[i]
-        }
-    } else if asbd.pointee.mBitsPerChannel == 16 {
-        let int16Ptr = UnsafeMutablePointer<Int16>(OpaquePointer(dataPointer!))
-        for i in 0..<copyCount {
-            int16Ptr[i] = Int16(clamping: Int(floatSamples[i] * Float(Int16.max)))
-        }
-    }
-
-    return buffer
-}
-
-
-    
-/// 從一個只有背景噪音的 buffer 建立噪音功率譜
-func estimateNoiseProfile(from buffer: CMSampleBuffer,
-                          sampleRate: Float = 44100.0) -> [Float] {
-    guard let blockBuffer = CMSampleBufferGetDataBuffer(buffer),
-          let formatDesc = CMSampleBufferGetFormatDescription(buffer),
-          let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc) else {
-        return []
-    }
-
-    var lengthAtOffset: Int = 0
-    var totalLength: Int = 0
-    var dataPointer: UnsafeMutablePointer<Int8>?
-
-    let status = CMBlockBufferGetDataPointer(blockBuffer,
-                                             atOffset: 0,
-                                             lengthAtOffsetOut: &lengthAtOffset,
-                                             totalLengthOut: &totalLength,
-                                             dataPointerOut: &dataPointer)
-    if status != kCMBlockBufferNoErr || dataPointer == nil {
-        return []
-    }
-
-    let sampleCount: Int
-    var floatSamples: [Float]
-
-    // 支援 Float32 / Int16 PCM
-    if asbd.pointee.mBitsPerChannel == 32 {
-        let floatPtr = UnsafeMutablePointer<Float>(OpaquePointer(dataPointer!))
-        sampleCount = totalLength / MemoryLayout<Float>.size
-        floatSamples = Array(UnsafeBufferPointer(start: floatPtr, count: sampleCount))
-    } else if asbd.pointee.mBitsPerChannel == 16 {
-        let int16Ptr = UnsafeMutablePointer<Int16>(OpaquePointer(dataPointer!))
-        sampleCount = totalLength / MemoryLayout<Int16>.size
-        floatSamples = (0..<sampleCount).map { Float(int16Ptr[$0]) / Float(Int16.max) }
-    } else {
-        return []
-    }
-
-    // 找最近的 2^n 長度
-    let log2n = vDSP_Length(log2(Float(sampleCount)).rounded(.down))
-    let fftLength = 1 << log2n
-
-    guard let fftSetup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2)) else {
-        return []
-    }
-
-    var real = [Float](repeating: 0, count: fftLength)
-    var imag = [Float](repeating: 0, count: fftLength)
-
-    let copyCount = min(sampleCount, fftLength)
-    for i in 0..<copyCount {
-        real[i] = floatSamples[i]
-    }
-
-    var magnitudes = [Float](repeating: 0, count: fftLength/2)
-
-    real.withUnsafeMutableBufferPointer { realBuf in
-        imag.withUnsafeMutableBufferPointer { imagBuf in
-            var splitComplex = DSPSplitComplex(realp: realBuf.baseAddress!,
-                                               imagp: imagBuf.baseAddress!)
-
-            // Forward FFT
-            vDSP_fft_zip(fftSetup, &splitComplex, 1, log2n, FFTDirection(FFT_FORWARD))
-
-            // 計算頻譜能量
-            vDSP_zvabs(&splitComplex, 1, &magnitudes, 1, vDSP_Length(fftLength/2))
-        }
-    }
-
-    vDSP_destroy_fftsetup(fftSetup)
-
-    return magnitudes
-}
 
 // MARK: 音頻線程
 
@@ -456,8 +250,6 @@ final class AudioProcessor : @unchecked Sendable {
     private let queue = DispatchQueue(
         label: "audio.processor.queue"
     )
-
-    private let audioSemaphore = DispatchSemaphore(value: 5)
 
     var isActive = true
 
@@ -472,8 +264,12 @@ final class AudioProcessor : @unchecked Sendable {
     private var micVolume: Float
     private var onAudioPage: Bool
     private var lastRMSUpdateTime: CFTimeInterval = 0
+    private var denoiseModel: DenoiseModelWrapper?   // CoreML 模型
 
     var rmsInterval: CFTimeInterval = 0.1
+    var MediaMixerWrapper: MediaMixerWrapper {
+        MediaMixerWrapper(mixer: mediaMixer)
+    }
 
 
     init(mediaMixer: MediaMixer,
@@ -492,20 +288,35 @@ final class AudioProcessor : @unchecked Sendable {
         self.onAudioPage = onAudioPage
         self.isActive = true
 
-        
 
+        if RPConfig.shared.enableNoiseFix {
+            sendlog(message: "目前此功能停用，等待後續更新")
+            // 在初始化時載入模型
+            //let remoteUrl = URL(string: "https://example.com/MyDenoiseModel.mlmodel")!
+            //self.denoiseModel = try? loadRemoteModel(from: remoteUrl)
+            // if self.denoiseModel != nil {
+            //     sendlog(message: "CoreML 模型載入成功！")
+            // } else {
+            //     sendlog(message: "CoreML 模型載入失敗，將跳過噪聲修正。")
+            // }
+        
+        }
 
 
     }
+
+
+
 
     func cleanup() {
         queue.async {
             self.isActive = false
+            self.sendlog(message:"🧹 AudioProcessor deinit — resources released")
         }
     }
     deinit {
         cleanup()
-        sendlog(message:"🧹 AudioProcessor deinit — resources released")
+        
     }
 
 
@@ -515,33 +326,33 @@ final class AudioProcessor : @unchecked Sendable {
 
 
 
-private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer, originalTime: CMSampleTimingInfo) -> CMSampleBuffer {
+    private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer, originalTime: CMSampleTimingInfo) -> CMSampleBuffer {
 
-    if audioStartPTS == nil {
-        audioStartPTS = originalTime.presentationTimeStamp
-        sendlog(message: "Audio PTS before retiming: \(originalTime.presentationTimeStamp.seconds)")
+        if audioStartPTS == nil {
+            audioStartPTS = originalTime.presentationTimeStamp
+            sendlog(message: "Audio PTS before retiming: \(originalTime.presentationTimeStamp.seconds)")
+        }
+
+        var newBuffer: CMSampleBuffer?
+        var timingInfo = originalTime
+        
+        
+        let status = CMSampleBufferCreateCopyWithNewTiming(
+        allocator: kCFAllocatorDefault,
+        sampleBuffer: sampleBuffer,
+        sampleTimingEntryCount: 1,
+        sampleTimingArray: &timingInfo,
+        sampleBufferOut: &newBuffer
+        )
+
+        if status == noErr, let buffer = newBuffer {
+            return buffer
+        } else {
+            return sampleBuffer
+        }
+
+
     }
-
-    var newBuffer: CMSampleBuffer?
-    var timingInfo = originalTime
-    
-    
-    let status = CMSampleBufferCreateCopyWithNewTiming(
-    allocator: kCFAllocatorDefault,
-    sampleBuffer: sampleBuffer,
-    sampleTimingEntryCount: 1,
-    sampleTimingArray: &timingInfo,
-    sampleBufferOut: &newBuffer
-    )
-
-    if status == noErr, let buffer = newBuffer {
-        return buffer
-    } else {
-        return sampleBuffer
-    }
-
-
-}
     
     func updateVolumes(
         appAdd: Float? = nil,
@@ -601,21 +412,8 @@ private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer, originalTime: CMS
     }
 
 
-    
-
-
-    private var noiseBuffers: [CMSampleBuffer] = []
-    private let noiseBufferTarget = 10  // 收集 10 個 buffer
-    var noiseProfile: [Float]? = nil     
-
-
     func enqueue(_ sampleBuffer: CMSampleBuffer, trackType: AudioTrackType,oringinaltime: CMSampleTimingInfo) {
 
-        let res = audioSemaphore.wait(timeout: .now() + .milliseconds(5)) 
-        
-        if res == .timedOut {
-            return
-        }
         
         queue.async { [weak self] in
             guard let self = self, self.isActive else { return }
@@ -629,38 +427,11 @@ private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer, originalTime: CMS
 
         // 2️⃣ 可選的噪聲修正（如果開啟了）
         if RPConfig.shared.enableNoiseFix {
-
-            if self.noiseProfile == nil {
-                if self.noiseBuffers.count < self.noiseBufferTarget {
-                    
-                    // 只收集麥克風的 buffer 來建立 noise profile，因為 app 音訊通常不包含背景噪音
-                    if trackType == .mic {
-                        self.noiseBuffers.append(sampleBuffer)
-                        sendlog(message: "Collecting noise buffer \(self.noiseBuffers.count + 1)/\(self.noiseBufferTarget) for mic track")
-                    } else {
-                        sendlog(message: "Not Collecting noise buffer \(self.noiseBuffers.count + 1)/\(self.noiseBufferTarget) for app track")
-                    }
-
-                   
-                }
-                if self.noiseBuffers.count == self.noiseBufferTarget {
-                    self.noiseProfile = buildAverageNoiseProfile(from: self.noiseBuffers,
-                                                                 sampleRate: 44100)
-                    self.noiseBuffers.removeAll()
-
-                    sendlog(message: "Noise profile estimated from \(self.noiseBufferTarget) buffers")
-                }
+            if self.denoiseModel == nil {
+                sendlog(message: "噪聲修正已啟用，但模型未載入，將跳過噪聲修正。")
+            } else {
+                    denoised = denoiseWithCoreML(amplified)
             }
-
-            // 3️⃣ 使用固定 noiseProfile 做 Wiener Filter
-            if let profile = self.noiseProfile {
-                let processedBuffer = wienerFilter(amplified,
-                                                   sampleRate: 44100,
-                                                   noiseProfile: profile)
-                denoised = processedBuffer
-            }
-
-
         }  
 
         //時間戳校正
@@ -669,14 +440,8 @@ private func retimeAudioBuffer(_ sampleBuffer: CMSampleBuffer, originalTime: CMS
         // 音量計算還是可以同步做（很快）
         processRMS(retimed, trackType: trackType)
 
-        // 3️⃣ 丟進 AudioPipeline（FIFO，不丟幀）
-        Task {
-
-            defer { self.audioSemaphore.signal() }
-
-            // 直接 append（音訊不能丟）
-            await self.mediaMixer.append(sampleBuffer, track: trackType.rawValue)
-        }
+        // 3️⃣ 丟進 mediaMixer保護的 appendSync
+        self.MediaMixerWrapper.appendSync(retimed, track: trackType.rawValue)
 
         }
     }
