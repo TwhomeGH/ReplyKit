@@ -379,7 +379,7 @@ final class AudioEngine {
     private let preProcessor: AudioPreProcessor
 
     init(noiseFix: Bool = false) {
-        self.preProcessor = AudioPreProcessor(nosieFix: noiseFix)
+        self.preProcessor = AudioPreProcessor(noiseFix: noiseFix)
     }
 
    // ======================================================
@@ -477,11 +477,11 @@ final class AudioPreProcessor {
 
 
 
-    init(maxFrameSize: Int = 512,nosieFix:Bool = false ) {
+    init(maxFrameSize: Int = 512,noiseFix:Bool = false ) {
         self.micFloatBuffer = [Float](repeating: 0, count: maxFrameSize)
         self.tempFloatBuffer = [Float](repeating: 0, count: maxFrameSize)
 
-        self.state.noiseFixEnabled(nosieFix) 
+        self.updateAudioState(noiseFix:noiseFix) 
 
     }
 
@@ -497,7 +497,13 @@ final class AudioPreProcessor {
             tempFloatBuffer[i] = Float(ptr[i]) / 32768.0
         }
 
-        echo.updateReference(tempFloatBuffer)
+        tempFloatBuffer.withUnsafeBufferPointer { ptr in
+            guard let base = ptr.baseAddress else { return }
+
+            echo.updateReference(base, count: ptr.count)
+        }
+
+        
     }
 
     // ======================================================
@@ -543,6 +549,23 @@ final class AudioPreProcessor {
         // 5️⃣ User gain (final stage)
         // ==================================================
         applyPostGain(&micFloatBuffer, count: count)
+    }
+
+     // ======================================================
+    // 🎧 process（你原本 DSP pipeline）
+    // ======================================================
+    func process(_ sampleBuffer: CMSampleBuffer,
+                 track: AudioTrackType) {
+
+        // mic / app 分流
+        switch track {
+
+        case .app:
+            processApp(sampleBuffer)
+
+        case .mic:
+            processMic(sampleBuffer)
+        }
     }
 
     // ======================================================
