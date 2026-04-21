@@ -288,7 +288,7 @@ final class AudioProcessor : @unchecked Sendable {
     } else {
         sendlog(message: "🔴 NoiseFix DISABLED")
         
-        audioEngine..updateAudioState(noiseFix:false)
+        audioEngine.updateAudioState(noiseFix:false)
 
     }
 }
