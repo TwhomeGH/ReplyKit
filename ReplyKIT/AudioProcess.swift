@@ -427,13 +427,14 @@ final class AudioProcessor : @unchecked Sendable {
         var denoised = amplified
 
         // 2️⃣ 可選的噪聲修正（如果開啟了）
-        if RPConfig.shared.enableNoiseFix {
-            if self.denoiseModel == nil {
-                sendlog(message: "噪聲修正已啟用，但模型未載入，將跳過噪聲修正。")
-            } else {
-                //待實作
-            }
-        }  
+        //if RPConfig.shared.enableNoiseFix {
+            //待實作
+            // if self.denoiseModel == nil {
+            //     sendlog(message: "噪聲修正已啟用，但模型未載入，將跳過噪聲修正。")
+            // } else {
+                
+            // }
+        //}  
 
         //時間戳校正
         let retimed = retimeAudioBuffer(denoised, originalTime: oringinaltime)
