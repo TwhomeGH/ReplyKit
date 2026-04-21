@@ -62,8 +62,7 @@ func CMSampleBufferToFloatArray(_ sampleBuffer: CMSampleBuffer) -> [Float]? {
 func FloatArrayToCMSampleBuffer(_ samples: [Float],
                                original: CMSampleBuffer) -> CMSampleBuffer? {
 
-    guard let formatDesc = CMSampleBufferGetFormatDescription(original),
-          let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc)
+    guard let formatDesc = CMSampleBufferGetFormatDescription(original)
     else {
         return nil
     }

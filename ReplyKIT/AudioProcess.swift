@@ -326,7 +326,7 @@ final class AudioProcessor : @unchecked Sendable {
     func cleanup() {
         queue.async {
             self.isActive = false
-            self.sendlog(message:"🧹 AudioProcessor deinit — resources released")
+            sendlog(message: "🧹 AudioProcessor deinit — resources released")
         }
     }
     deinit {
