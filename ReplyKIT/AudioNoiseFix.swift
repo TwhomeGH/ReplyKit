@@ -392,8 +392,8 @@ final class AudioEngine {
 
         preProcessor.updateState(
             micGain: micGain,
-            noiseFix: noiseFix,
             echoFix: echoFix,
+            noiseFix: noiseFix,
             agcFix: agcFix
         )
     }
