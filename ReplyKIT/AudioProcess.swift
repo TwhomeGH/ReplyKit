@@ -448,10 +448,8 @@ final class AudioProcessor : @unchecked Sendable {
             // ======================================================
             // 🎧 1️⃣ ZERO-COPY DSP ENTRY
             // ======================================================
-            guard let processed = self.audioEngine.process(sampleBuffer,
-                                                            track: trackType) else {
-                return
-            }
+            self.audioEngine.process(sampleBuffer,
+                                                            track: trackType)
 
             
             
