@@ -345,10 +345,10 @@ final class RealTimeNoiseSuppressor {
             vDSP_vsadd(noiseSafe, 1, &eps, &noiseSafe, 1, vDSP_Length(mag.count))
 
             var snr = [Float](repeating: 0, count: mag.count)
-            vDSP_vdiv(noiseSafe, 1,
-                      mag, 1,
-                      &snr, 1,
-                      vDSP_Length(mag.count))
+            vDSP_vdiv(mag, 1,
+                noiseSafe, 1,
+                &snr, 1,
+                vDSP_Length(mag.count))
 
             // ======================================================
             // 9️⃣ Wiener gain
@@ -367,7 +367,8 @@ final class RealTimeNoiseSuppressor {
             // 🔟 VAD gate
             // ======================================================
             if !isSpeech {
-                var atten: Float = 0.08
+                var atten: Float = 0.3
+
                 vDSP_vsmul(gain, 1,
                            &atten,
                            &gain, 1,
@@ -375,7 +376,7 @@ final class RealTimeNoiseSuppressor {
             }
 
             // clamp
-            var minGain: Float = 0.05
+            var minGain: Float = 0.1
             var maxGain: Float = 1.0
             vDSP_vclip(gain, 1,
                        &minGain, &maxGain,
@@ -385,8 +386,8 @@ final class RealTimeNoiseSuppressor {
             // ======================================================
             // 1️⃣1️⃣ smoothing
             // ======================================================
-            var alpha: Float = 0.25
-            var beta: Float = 0.75
+            var alpha: Float = 0.5
+            var beta: Float = 0.5
 
             var temp1 = [Float](repeating: 0, count: gain.count)
             var temp2 = [Float](repeating: 0, count: gain.count)
@@ -470,6 +471,13 @@ final class RealTimeNoiseSuppressor {
                       &overlapBuffer, 1,
                       vDSP_Length(fftSize))
 
+            
+            // boost（修正點：補償因窗函數和FFT造成的能量損失）
+            var boost: Float = 4.0
+            vDSP_vsmul(output, 1,
+                    &boost,
+                    output, 1,
+                    vDSP_Length(hopSize))
             // ======================================================
             // 1️⃣6️⃣ output
             // ======================================================
