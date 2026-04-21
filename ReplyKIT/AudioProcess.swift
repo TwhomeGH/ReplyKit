@@ -229,11 +229,11 @@ final class MediaMixerWrapper {
         self.mixer = mixer
     }
 
-    func appendSync(_ sampleBuffer: CMSampleBuffer, track: Int) {
+    func appendSync(_ sampleBuffer: CMSampleBuffer, track: AudioTrackType) {
 
         Task { [weak mixer] in
             guard let mixer else { return }
-            await mixer.append(sampleBuffer, track: track)
+            await mixer.append(sampleBuffer, track: track.rawValue)
         }
     }
 }
@@ -443,7 +443,7 @@ final class AudioProcessor : @unchecked Sendable {
 
         // 3️⃣ 丟進 mediaMixer保護的 appendSync
         if let mediaMixerWrapper = self.mediaMixerWrapper {
-            mediaMixerWrapper.appendSync(retimed, track: trackType.rawValue)
+            mediaMixerWrapper.appendSync(retimed, track: trackType)
         } else {
             sendlog(message: "MediaMixerWrapper 尚未初始化，無法 append 音頻。")
         }
