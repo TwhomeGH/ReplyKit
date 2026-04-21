@@ -157,29 +157,69 @@ final class AGCProcessor {
 
 final class EchoCanceller {
 
-    /// 播放出去的 reference audio（speaker）
+    // MARK: - Reference buffer (speaker playback history)
     private var referenceBuffer: [Float]
+    private var writeIndex: Int = 0
 
+    // MARK: - tuning
+    private let baseAlpha: Float = 0.5
+    private let doubleTalkThreshold: Float = 0.002
+
+    // MARK: - init
     init(size: Int) {
         referenceBuffer = [Float](repeating: 0, count: size)
     }
 
+    // MARK: - Feed speaker audio (IMPORTANT: must be same stream rate)
     func updateReference(_ ref: [Float]) {
-        referenceBuffer = ref
-    }
 
-    func process(_ mic: UnsafeMutablePointer<Float>, count: Int) {
-
-        let count = min(count, referenceBuffer.count)
-
-        let alpha: Float = 0.6
+        let count = min(ref.count, referenceBuffer.count)
 
         for i in 0..<count {
-            let echo = referenceBuffer[i] * alpha
-            mic[i] -= echo
+            let idx = (writeIndex + i) % referenceBuffer.count
+            referenceBuffer[idx] = ref[i]
         }
 
+        writeIndex = (writeIndex + count) % referenceBuffer.count
+    }
 
+    // MARK: - Core AEC process
+    func process(_ mic: UnsafeMutablePointer<Float>,
+                 count: Int) {
+
+        guard !referenceBuffer.isEmpty else { return }
+
+        let refSize = referenceBuffer.count
+
+        // ======================================================
+        // 🎯 mic energy (for double-talk detection)
+        // ======================================================
+        var micEnergy: Float = 0
+        vDSP_measqv(mic, 1, &micEnergy, vDSP_Length(count))
+        micEnergy = sqrt(micEnergy)
+
+        let isDoubleTalk = micEnergy > doubleTalkThreshold
+
+        // ======================================================
+        // 🎚 adaptive suppression strength
+        // ======================================================
+        let alpha: Float = isDoubleTalk ? 0.2 : baseAlpha
+
+        // ======================================================
+        // 🔥 main echo cancellation loop
+        // ======================================================
+        for i in 0..<count {
+
+            let refIndex = (writeIndex + i) % refSize
+            let echo = referenceBuffer[refIndex] * alpha
+
+            var v = mic[i] - echo
+
+            // soft clamp (avoid harsh distortion)
+            v = max(min(v, 1.0), -1.0)
+
+            mic[i] = v
+        }
     }
 }
 
