@@ -20,6 +20,22 @@ final class VideoFrameProcessor {
 
     var Rotate = RPConfig.shared.Rotate
 
+    private func updateNoiseFixState() {
+
+        let current = RPConfig.shared.Rotate
+
+        guard current != Rotate else { return }
+
+        Rotate = current
+
+        if current {
+            sendlog(message: "🟢 Rotate \(current)")
+        } else {
+            sendlog(message: "🔴 Rotate \(Rotate)")
+                
+        }
+    }
+
     var isActive = true
 
     var hasPublished = false
@@ -35,6 +51,7 @@ final class VideoFrameProcessor {
         self.isActive = true
         self.hasPublished = false
 
+        self.updateNoiseFixState()
     }
     func cleanup() {
         isActive = false
@@ -122,7 +139,7 @@ final class VideoFrameProcessor {
             guard let rotator else { return }
 
             let angle = RotationAngle(
-                rawValue: UInt32(rotate.rawValue)
+                rawValue: UInt32(Rotate)
             ) ?? .landscapeRight
 
 
