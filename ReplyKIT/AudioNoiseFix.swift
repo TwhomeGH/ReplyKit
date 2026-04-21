@@ -382,18 +382,19 @@ final class AudioEngine {
         self.preProcessor = AudioPreProcessor(nosieFix: noiseFix)
     }
 
-     // ======================================================
-    // 🎚 control layer
+   // ======================================================
+    // 🎛 封裝後的唯一控制入口
     // ======================================================
-    func updateMicGain(_ value: Float) {
-        preProcessor.updateMicGain(value)
+    func updateAudioState(micGain: Float? = nil,
+                          echoFix: Bool? = nil,
+                          noiseFix: Bool? = nil) {
+
+        preProcessor.updateState(
+            micGain: micGain,
+            echoFix: echoFix,
+            noiseFix: noiseFix
+        )
     }
-
-
-    func setNoiseFix(_ enable: Bool) {
-        preProcessor.setNoiseFix(enable)
-    }
-
 
     // ======================================================
     // 🎧 routing only (no return transformation)
@@ -412,6 +413,54 @@ final class AudioEngine {
 
 final class AudioPreProcessor {
 
+
+    // ======================================================
+    // 🎛 DSP State（唯一控制入口）
+    // ======================================================
+    private struct State {
+        var micGain: Float = 1.0
+        var echoFix: Bool = true
+        var noiseFixEnabled: Bool = false
+        var agcFixEnabled: Bool = true
+    }
+
+    private var state = State()
+
+    private let stateQueue = DispatchQueue(label: "audio.state.queue")
+
+
+    // MARK: - Public control API
+    // ======================================================
+    // 🎛 unified state update
+    // ======================================================
+    func updateState(micGain: Float? = nil,
+                     echoFix: Bool? = nil,
+                     noiseFix: Bool? = nil,
+                     agcFix: Bool? = nil) {
+
+        stateQueue.async {
+
+        if let micGain = micGain {
+            self.state.micGain = micGain.isFinite ? micGain : 1.0
+        }
+
+        if let echoFix = echoFix {
+            self.state.echoFix = echoFix
+        }
+
+        if let noiseFix = noiseFix {
+            self.state.noiseFixEnabled = noiseFix
+        }
+        if let agcFix = agcFix {
+            self.state.agcFixEnabled = agcFix
+        }
+
+
+        }
+    }
+
+
+
     // ======================================================
     // 🧠 Reusable buffers（關鍵：避免每次 alloc）
     // ======================================================
@@ -424,22 +473,8 @@ final class AudioPreProcessor {
     
 
 
-    // MARK: - State
-    private var micGain: Float = 1.0
-    private var noiseFixEnabled: Bool = false
+    
 
-    // ======================================================
-    // 🎚 control API
-    // ======================================================
-
-    func updateMicGain(_ value: Float) {
-        micGain = value.isFinite ? value : 1.0
-    }
-
-
-    func setNoiseFix(_ enable: Bool) {
-        noiseFixEnabled = enable
-    }
 
 
     init(maxFrameSize: Int = 512,nosieFix:Bool = false ) {
@@ -482,13 +517,16 @@ final class AudioPreProcessor {
         // ==================================================
         // 2️⃣ Echo cancel (in-place)
         // ==================================================
+        if state.echoFix {
         echo.process(&micFloatBuffer, count: count)
+
+        }
 
         // ==================================================
         // 3️⃣ Noise suppression
         // ==================================================
 
-        if nosieFix {
+        if state.nosieFixEnable {
         ns.process(input: &micFloatBuffer,
                    output: &micFloatBuffer)
 
@@ -497,8 +535,10 @@ final class AudioPreProcessor {
         // ==================================================
         // 4️⃣ AGC
         // ==================================================
+        if state.agcFix {
         agc.process(&micFloatBuffer)
 
+        }
         // ==================================================
         // 5️⃣ User gain (final stage)
         // ==================================================
