@@ -685,11 +685,12 @@ final class RPConfig {
 
             AppVolumeAdd:SharedDefaults.group?.double(forKey: "appAddVolume") ?? 1.0,
             MicVolumeAdd:SharedDefaults.group?.double(forKey: "micAddVolume") ?? 1.0,
+            // 音訊降噪 頻譜處理
+            enableNoiseFix:SharedDefaults.group?.bool(forKey: "enableNoiseFix") ?? false,
 
             // 音訊回音消除
             enableEchoFix:SharedDefaults.group?.bool(forKey: "enableEchoFix") ?? false,
-            // 音訊降噪 頻譜處理
-            enableNoiseFix:SharedDefaults.group?.bool(forKey: "enableNoiseFix") ?? false,
+
              // 音訊自動增益
             enableAGCFix:SharedDefaults.group?.bool(forKey: "enableAGCFix") ?? false
 
