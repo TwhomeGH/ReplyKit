@@ -660,8 +660,9 @@ final class RPConfig {
         ?? "rtmp://192.168.0.102/live",
             RTMPKey:SharedDefaults.group?.string(forKey: "rtmpKey")
         ?? "stream1?vhost=live2",
-            BitRate:SharedDefaults.group?.integer(forKey: "bitRate") ?? 6_000_000,
             h264level:SharedDefaults.group?.string(forKey: "h264level") ?? "AutoHigh",
+            BitRate:SharedDefaults.group?.integer(forKey: "bitRate") ?? 6_000_000,
+            
             ChangeBit:SharedDefaults.group?.bool(forKey: "ChangeBit") ?? false,
             isLowLatencyRateControlEnabled:SharedDefaults.group?.bool(forKey: "isLowLatencyRateControlEnabled") ?? true,
             useBic:SharedDefaults.group?.bool(forKey: "useBic") ?? false,
