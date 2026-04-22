@@ -103,6 +103,12 @@ final class RealTimeNoiseSuppressor {
     private var ringBuffer: [Float]
     private var writeIndex: Int = 0
 
+    private var vadThreshold: Float = 0.002
+    private var vadHangover: Int = 5
+    private var vadCounter: Int = 0
+    private var isSpeech: Bool = false
+
+
     init() {
         fftSetup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2))!
 
@@ -215,7 +221,15 @@ final class RealTimeNoiseSuppressor {
             var energy: Float = 0
             vDSP_measqv(mag, 1, &energy, vDSP_Length(mag.count))
 
-            isSpeech = energy > vadThreshold
+            if energy > vadThreshold {
+                vadCounter = vadHangover
+                isSpeech = true
+            } else {
+                vadCounter -= 1
+                if vadCounter <= 0 {
+                    isSpeech = false
+                }
+            }
 
             // noise update
             var a: Float = 0.98

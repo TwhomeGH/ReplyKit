@@ -1338,9 +1338,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         var audioSet = await rtmpStream.audioSettings
         audioSet.format = .opus
         
-        await rtmpStream.setAudioSettings(audioSet)
+        try? await rtmpStream.setAudioSettings(audioSet)
 
-      
+
         
 
         
