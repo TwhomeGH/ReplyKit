@@ -583,7 +583,7 @@ final class RPConfig {
                 self.state.AppVolumeAdd = AppVolumeAdd
             }
             if let MicVolumeAdd = MicVolumeAdd {
-                self.state.MicVolume = MicVolumeAdd
+                self.state.MicVolumeAdd = MicVolumeAdd
             }
 
 
@@ -693,10 +693,6 @@ final class RPConfig {
 
              // 音訊自動增益
             enableAGCFix:SharedDefaults.group?.bool(forKey: "enableAGCFix") ?? false
-
-
-
-
 
         )
 
