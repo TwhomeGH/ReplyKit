@@ -381,32 +381,9 @@ class SocketServer:ObservableObject {
     
 
     func debugRTMP() {
-        let payload: [String: Any] = [
-            "type": "RTMP",
-            "rtmpURL": userDefaults?.string(forKey: "rtmpURL") ?? "rtmp://192.168.0.102/live",
-            "rtmpKey": userDefaults?.string(forKey: "rtmpKey") ?? "test",
-            "BitRate": userDefaults?.integer(forKey: "bitRate") ?? 3_900_000,
-            "ChangeBit": userDefaults?.bool(forKey: "ChangeBit") ?? false,
-
-            "h264level": userDefaults?
-                .string(forKey: "h264level") ?? "AutoHigh",
-
-
-
-            "dstW": userDefaults?.integer(forKey: "dstW") ?? 0,
-            "dstH": userDefaults?.integer(forKey: "dstH") ?? 0,
-
-            "appVolume": userDefaults?.double(forKey: "appVolume") ?? 1.0,
-            "micVolume": userDefaults?.double(forKey: "micVolume") ?? 1.0,
-            "appVolumeAdd": userDefaults?
-                .double(forKey: "appAddVolume") ?? 1.0,
-            "micVolumeAdd": userDefaults?
-                .double(forKey: "micAddVoulme") ?? 1.0,
-
-
-
-        ]
-        queueSend(payload: payload)
+        let rtmpPayload: [String: Any] = GetRTMPConfig()
+        
+        queueSend(payload: rtmpPayload)
 
     }
 
