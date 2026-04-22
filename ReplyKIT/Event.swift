@@ -509,7 +509,7 @@ final class RPConfig {
                      isLowLatencyRateControlEnabled:Bool? = nil,
                      useBic:Bool? = nil,
                      Rotate : Int? = nil,
-                     RotateOriginal:Bool? =nil,
+                     RotateOriginal:Bool? = nil,
                      ADWidth:Int? = nil,
                      ADHeight:Int? = nil,
                      ODWidth : Int? = nil,
