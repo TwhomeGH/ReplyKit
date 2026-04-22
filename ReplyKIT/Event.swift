@@ -567,7 +567,7 @@ final class RPConfig {
                 self.state.ADHeight = ADHeight
             }
             if let ODWidth = ODWidth {
-                self.state.ODWidth = ODHeight
+                self.state.ODWidth = ODWidth
             }
             if let ODHeight = ODHeight {
                 self.state.ODHeight = ODHeight

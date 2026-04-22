@@ -18,11 +18,11 @@ final class VideoFrameProcessor {
 
     private let sendlog: (String) -> Void
 
-    var Rotate = RPConfig.shared.Rotate
+    var Rotate = RPConfig.shared.state.Rotate
 
     private func updateNoiseFixState() {
 
-        let current = RPConfig.shared.Rotate
+        let current = RPConfig.shared.state.Rotate
 
         guard current != Rotate else { return }
 
