@@ -702,7 +702,7 @@ class SocketClient : @unchecked Sendable {
                                         RotateOriginal:c.RotateOriginal,
                                         ADWidth:c.dstW,
                                         ADHeight:c.dstH,
-                                        ODwidth:c.odstW,
+                                        ODWidth:c.odstW,
                                         ODHeight:c.odstH,
                                         AppVolume:c.appVolume,
                                         MicVolume:c.micVolume,
