@@ -691,11 +691,12 @@ class SocketClient : @unchecked Sendable {
             RPConfig.shared.updateState(RTMPURL:c.rtmpURL,
                                                     RTMPKey:c.rtmpKey,
                                                     h264level:c.h264level,
+                                                    BufferCount:c.videoBuffer,
                                                     BitRate:c.BitRate,
                                                     ChangeBit:c.ChangeBit,
                                                     isLowLatencyRateControlEnabled:c.isLowLatencyRateControlEnabled,
                                                     useBic:c.useBic,
-                                                    BufferCount:c.videoBuffer,
+                                                    
                                                     Rotate:c.Rotate,
                                                     RotateOriginal:c.RotateOriginal,
                                                     ADWidth:c.dstW,
