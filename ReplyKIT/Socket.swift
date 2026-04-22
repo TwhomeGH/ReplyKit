@@ -689,28 +689,28 @@ class SocketClient : @unchecked Sendable {
 
 
             RPConfig.shared.updateState(RTMPURL:c.rtmpURL,
-                                                    RTMPKey:c.rtmpKey,
-                                                    h264level:c.h264level,
-                                                    BufferCount:c.videoBuffer,
-                                                    BitRate:c.BitRate,
-                                                    ChangeBit:c.ChangeBit,
-                                                    isLowLatencyRateControlEnabled:c.isLowLatencyRateControlEnabled,
-                                                    useBic:c.useBic,
-                                                    
-                                                    Rotate:c.Rotate,
-                                                    RotateOriginal:c.RotateOriginal,
-                                                    ADWidth:c.dstW,
-                                                    ADHeight:c.dstH,
-                                                    ODwidth:c.odstW,
-                                                    ODHeight:c.odstH,
-                                                    AppVolume:c.appVolume,
-                                                    MicVolume:c.micVolume,
-                                                    AppVolumeAdd:c.appVolumeAdd,
-                                                    MicVolumeAdd:c.micVolumeAdd,
-                                                    enableEchoFix:c.enableEchoFix,
-                                                    enableNoiseFix:c.enableNoiseFix,
-                                                    enableAGCFix:c.enableAGCFix
-                                                    )
+                                        RTMPKey:c.rtmpKey,
+                                        h264level:c.h264level,
+                                        BufferCount:c.videoBuffer,
+                                        BitRate:c.BitRate,
+                                        ChangeBit:c.ChangeBit,
+                                        isLowLatencyRateControlEnabled:c.isLowLatencyRateControlEnabled,
+                                        useBic:c.useBic,
+                                        
+                                        Rotate:c.Rotate,
+                                        RotateOriginal:c.RotateOriginal,
+                                        ADWidth:c.dstW,
+                                        ADHeight:c.dstH,
+                                        ODwidth:c.odstW,
+                                        ODHeight:c.odstH,
+                                        AppVolume:c.appVolume,
+                                        MicVolume:c.micVolume,
+                                        AppVolumeAdd:c.appVolumeAdd,
+                                        MicVolumeAdd:c.micVolumeAdd,
+                                        enableNoiseFix:c.enableNoiseFix,
+                                        enableEchoFix:c.enableEchoFix,
+                                        enableAGCFix:c.enableAGCFix
+                                        )
 
 
 
