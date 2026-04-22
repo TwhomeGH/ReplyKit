@@ -277,11 +277,11 @@ final class AudioProcessor : @unchecked Sendable {
 
 
         // 降噪處理
-        let noiseFix = RPConfig.shared.enableNoiseFix
+        let noiseFix = RPConfig.shared.state.enableNoiseFix
         // 回音處理
-        let EchoFix = RPConfig.shared.enableEchoFix
+        let EchoFix = RPConfig.shared.state.enableEchoFix
         // 自動增益
-        let AGCFix = RPConfig.shared.enableAGCFix
+        let AGCFix = RPConfig.shared.state.enableAGCFix
 
 
 
@@ -315,11 +315,11 @@ final class AudioProcessor : @unchecked Sendable {
 
 
         // 降噪處理
-        let noiseFix = RPConfig.shared.enableNoiseFix
+        let noiseFix = RPConfig.shared.state.enableNoiseFix
         // 回音處理
-        let EchoFix = RPConfig.shared.enableEchoFix
+        let EchoFix = RPConfig.shared.state.enableEchoFix
         // 自動增益
-        let AGCFix = RPConfig.shared.enableAGCFix
+        let AGCFix = RPConfig.shared.state.enableAGCFix
 
         self.audioEngine = AudioEngine(noiseFix:noiseFix,echoFix:EchoFix,agcFix:AGCFix,micGain:micAddVolume)
         

@@ -433,6 +433,8 @@ class SocketServer:ObservableObject {
     // 1️⃣ 定義 batch request 結構
     struct BatchRequest: Codable {
         let requests: [String]
+        let data: [String: String?]?
+
     }
 
 
@@ -555,6 +557,7 @@ class SocketServer:ObservableObject {
             "rtmpKey": userDefaults?.string(forKey: "rtmpKey") ?? "test",
             "BitRate": userDefaults?.integer(forKey: "bitRate") ?? 3_900_000,
             "ChangeBit": userDefaults?.bool(forKey: "ChangeBit") ?? false,
+            "isLowLatencyRateControlEnabled":userDefaults?.bool(forKey:"isLowLatencyRateControlEnabled") ?? true,
 
             "h264level": userDefaults?
                 .string(forKey: "h264level") ?? "AutoHigh",
@@ -837,7 +840,12 @@ class SocketServer:ObservableObject {
 
 
                 let requests = dict.requests
+
+                
                 sendlog(message: "liveAppBactch Req:\n\(requests)")
+
+                let data = dict.data
+                sendlog(message: "liveAppBactch Req:\n\(String(describing:data))")
                 
 
                 var responses: [[String: Any]] = []
@@ -852,6 +860,26 @@ class SocketServer:ObservableObject {
                     case "logConfig":
                         let logPayload: [String: Any] = GetLogConfig()
                         responses.append(logPayload)
+
+                    case "log":
+                        
+
+                        // 判斷 data 是否存在
+                        if let data = batch.data {
+                            // 遍歷所有 key/value
+                            for (key, value) in data {
+
+                                logTo("\(value)",title: key)
+                                
+                            }
+
+                        } else {
+
+                            logTo("data 為 nil")
+
+                        }
+
+
 
                     default:
                         break
@@ -939,7 +967,7 @@ class SocketServer:ObservableObject {
 
                 let title = dict.title
                 let message = dict.message
-         
+
                 logTo("\(message)",title: title)
                 
 

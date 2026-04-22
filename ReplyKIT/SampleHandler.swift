@@ -59,7 +59,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     var volumeNotifier : VolumeNotifier?
 
-    var isVideoRotationEnabled = true
 
 
 
@@ -164,8 +163,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
            
 
             Task {
-                appVolume = Float(RPConfig.shared.AppVolume)
-                micVolume = Float(RPConfig.shared.MicVolume)
+                appVolume = Float(RPConfig.shared.state.AppVolume)
+                micVolume = Float(RPConfig.shared.state.MicVolume)
 
                 sendlog(message:"Audio 音量更新 App:\(appVolume) Mic:\(micVolume)")
                 await updateAppAudioVolume(appVolume)
@@ -478,7 +477,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     }
                 }
 
-                RPConfig.shared.RotateOriginal = Rlog
+                RPConfig.shared.updateState(RotateOriginal:Rlog)
+
                 sendlog(message:"[RotateOriginal 變換]  \(Rlog)")
 
 
@@ -514,10 +514,14 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 var NewVW = DWidth
                 var NewVH = DHeight
 
-                if ADWidth > 0 || ADHeight > 0 {
+                if ODWidth > 0 || ODHeight > 0 {
+                    NewVW = ODWidth
+                    NewVH = ODHeight
+                } else if ADWidth > 0 || ADHeight > 0 {
                     NewVW = ADWidth
                     NewVH = ADHeight
                 }
+
 
                 let Rotate = RotationAngle(rawValue: UInt32(Rlog))
 
@@ -544,7 +548,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 try await rtmpStream.setVideoSettings(vset)
 
 
-                RPConfig.shared.Rotate = Rlog
+                RPConfig.shared.updateState(Rotate:Rlog)
+
                 sendlog(message:"[Rotate變換]  \(Rlog)")
 
 
@@ -958,11 +963,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         rtmpStream = RTMPStream(connection: rtmpConnection!)
         
         
-        ADWidth = RPConfig.shared.ADWidth
-        ADHeight = RPConfig.shared.ADHeight
+        ADWidth = RPConfig.shared.state.ADWidth
+        ADHeight = RPConfig.shared.state.ADHeight
 
-        ODWidth = RPConfig.shared.ODWidth
-        ODHeight = RPConfig.shared.ODHeight
+        ODWidth = RPConfig.shared.state.ODWidth
+        ODHeight = RPConfig.shared.state.ODHeight
 
         super.init()
 
@@ -1059,6 +1064,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     func updateVideoOrientation(from orientation: UIDeviceOrientation) async {
         // 轉成 AVFoundation 的方向
+
         guard let avOrientation = avOrientation(from: orientation) else { return }
 
         var videoSettings = await rtmpStream.videoSettings
@@ -1227,20 +1233,21 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     func setUserDefalutConfig(urlString:String = "rtmp://192.168.0.106/live" ,streamKey:String = "test")  {
 
 
-        isVideoRotationEnabled = SharedDefaults.group?.bool(forKey: "VideoRotate") ?? false
-
-
         // MARK: Video dimensions
-        ADWidth = RPConfig.shared.ADWidth
-        ADHeight = RPConfig.shared.ADHeight
+        ADWidth = RPConfig.shared.state.ADWidth
+        ADHeight = RPConfig.shared.state.ADHeight
 
         // MARK: Out Video 寬高
 
-        ODWidth = RPConfig.shared.ODWidth
-        ODHeight = RPConfig.shared.ODHeight
+        ODWidth = RPConfig.shared.state.ODWidth
+        ODHeight = RPConfig.shared.state.ODHeight
 
+        if ODWidth > 0 && ODHeight > 0 {
+            DWidth = ODWidth
+            DHeight = ODHeight
 
-        if ADWidth > 0 && ADHeight > 0 {
+        }
+        else if ADWidth > 0 && ADHeight > 0 {
             DWidth = ADWidth
             DHeight = ADHeight
         }
@@ -1248,15 +1255,14 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         // MARK: Volume
-        let newMicAddVolume = RPConfig.shared.MicVolumeAdd
-
-        let newAppAddVolume = RPConfig.shared.AppVolumeAdd
+        let newMicAddVolume = RPConfig.shared.state.MicVolumeAdd
+        let newAppAddVolume = RPConfig.shared.state.AppVolumeAdd
 
         micAddVolume=Float(newMicAddVolume)
         appAddVolume=Float(newAppAddVolume)
 
-        appVolume=Float(RPConfig.shared.AppVolume)
-        micVolume=Float(RPConfig.shared.MicVolume)
+        appVolume=Float(RPConfig.shared.state.AppVolume)
+        micVolume=Float(RPConfig.shared.state.MicVolume)
 
 
 
@@ -1295,7 +1301,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         
         await mediaMixer.setVideoMixerSettings(videoMixerSettings)
 
-        let BCount = max(RPConfig.shared.BufferCount,3)
+        let BCount = max(RPConfig.shared.state.BufferCount,3)
         // ReplayKit is sensitive to memory, so we limit the queue to a maximum of five items.
         await rtmpStream.setVideoInputBufferCounts(BCount)
 
@@ -1328,7 +1334,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         }
 
 
-        let Rlog=RPConfig.shared.ChangeBit
+        let Rlog=RPConfig.shared.state.ChangeBit
         
         await streamStataus?.isChangBit(Rlog)
 
@@ -1374,7 +1380,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     func initProcessors() {
 
-        bitrate = RPConfig.shared.BitRate
+        bitrate = RPConfig.shared.state.BitRate
 
         volumeNotifier = VolumeNotifier()
 
@@ -1509,8 +1515,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
                 // 🔹 從 UserDefaults 拿 RTMP 設定
-                rtmpURL = RPConfig.shared.RTMPURL
-                rtmpKey = RPConfig.shared.RTMPKey
+                rtmpURL = RPConfig.shared.state.RTMPURL
+                rtmpKey = RPConfig.shared.state.RTMPKey
 
 
                 self.setUserDefalutConfig(
@@ -1720,28 +1726,26 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                         key: "ReplyKitWidth",
                         value: height
                     )
+
+                SocketClient.shared
+                .sendSettings(
+                    key: "ReplyKitHeight",
+                    value: width
+                )
+
             } else {
 
                 if SharedW != height {
 
                     SharedDefaults.group?.set(height, forKey: "ReplyKitWidth")
                 }
-            }
-
-
-
-            if RPConfig.shared.enableSocketLog {
-                SocketClient.shared
-                    .sendSettings(
-                        key: "ReplyKitHeight",
-                        value: width
-                    )
-            } else {
 
                 if SharedH != width  {
                     SharedDefaults.group?.set(width, forKey: "ReplyKitHeight")
                 }
+
             }
+
 
 
 
@@ -1773,7 +1777,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         sendlog(message: "ReplayKit 畫面方向 : \(RPConfig.shared.Rotate)")
 
-        switch RPConfig.shared.Rotate {
+        switch RPConfig.shared.state.Rotate {
             case 0,180:
                 avfrom = .portrait
             case 90,270:
@@ -1813,7 +1817,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         let profilelvl: String
 
-        switch RPConfig.shared.h264level {
+        switch RPConfig.shared.state.h264level {
         case "Baseline":
             let res = h264ProfileLevel(
                 forWidth: width,
@@ -1869,6 +1873,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         
         videoSettings.videoSize = newSize
         videoSettings.expectedFrameRate = 60.0
+
+        videoSettings.isLowLatencyRateControlEnabled = RPConfig.shared.state.isLowLatencyRateControlEnabled
         videoSettings.maxKeyFrameIntervalDuration = 2
 
 

@@ -542,7 +542,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         ) ? srcW : srcH
 
 
-        if !RPConfig.shared.RotateOriginal && OutWW > 0 && OutHH > 0  {
+        if !RPConfig.shared.state.RotateOriginal && OutWW > 0 && OutHH > 0  {
             dstW = OutWW; dstH = OutHH
 
             logTo("GPU進行輸出寬高調整:\(OutWW)x\(OutHH)")

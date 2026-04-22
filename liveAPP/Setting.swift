@@ -535,6 +535,8 @@ struct LogSettingView:View {
 
     @AppStorage("ChangeBit",store:userDefaults) private var ChangeBit = true
 
+    @AppStorage("isLowLatencyRateControlEnabled",store:userDefaults)  private var isLowLatencyRateControlEnabled = true
+
     @AppStorage("enableNoiseFix",store:userDefaults) private var enableNoiseFix = false
     @AppStorage("enableEchoFix",store:userDefaults) private var enableEchoFix = false
     @AppStorage("enableAGCFix",store:userDefaults) private var enableAGCFix = false
@@ -584,6 +586,16 @@ struct LogSettingView:View {
                     .padding(.bottom, 5)
 
 
+
+
+            Toggle(isOn:$isLowLatencyRateControlEnabled){
+                                Text("啟用低延遲處理！")
+                            }
+
+                        Text("啟用後會對使用低延遲推流")                                                                                                     
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                        .padding(.bottom, 5)
 
             Toggle(isOn:$enableNoiseFix){
                     Text("啟用降噪功能！")

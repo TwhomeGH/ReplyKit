@@ -355,6 +355,48 @@ class SocketClient : @unchecked Sendable {
     }
 
 
+
+    // func requestRTMPKEYAndLog(timeout: TimeInterval = 5.0) async -> Bool {
+    //     do {
+    //         return try await withTimeout(timeout) {
+    //             try await self._requestRTMPKEYAndLog()
+    //         }
+    //     } catch TimeoutError.timedOut {
+    //         logger.debug("RTMPKEY timeout")
+    //         return false
+    //     } catch {
+    //         logger.debug("RTMPKEY error: \(error)")
+
+    //         return false
+    //     }
+    // }
+
+    // private func _requestRTMPKEYAndLog() async throws -> Bool {
+
+
+    //     return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Bool, Error>) in
+
+    //                 guard self.rtmpBatchContinuation == nil else {
+    //                     cont.resume(returning: false) // 已有 pending request，直接返回
+    //                     return
+    //                 }
+
+    //                 self.rtmpBatchContinuation = cont
+
+    //                 let payload: [String: Any] = [
+    //                     "type": "batch",
+    //                     "requests": ["requestRTMP", "logConfig"]
+
+    //                 ]
+    //                 self.sendPayload(payload)
+
+
+    //         }
+
+
+    // }
+
+
     // MARK: - 發送
 
     func requestRTMPKEY(timeout: TimeInterval = 5.5) async -> Bool {
@@ -575,6 +617,8 @@ class SocketClient : @unchecked Sendable {
 
         let BitRate: Int
         let ChangeBit: Bool
+        let isLowLatencyRateControlEnabled:Bool
+
         let h264level: String
         let videoBuffer: Int
 
@@ -626,27 +670,17 @@ class SocketClient : @unchecked Sendable {
 
             logRES.append("[Get]RTMP:\(c.rtmpURL):\(fixlogSafeKey(c.rtmpKey))")
             
-            RPConfig.shared.RTMPURL = c.rtmpURL
-            RPConfig.shared.RTMPKey = c.rtmpKey
 
-            logRES.append("[Get]Bit:\(c.BitRate):\(c.ChangeBit) useBic:\(c.useBic)")
 
-            RPConfig.shared.BitRate = c.BitRate
-            RPConfig.shared.ChangeBit = c.ChangeBit
+            logRES.append("[Get]Bit:\(c.BitRate):\(c.ChangeBit) 低延遲模式:\(c.isLowLatencyRateControlEnabled) useBic:\(c.useBic)")
 
-            RPConfig.shared.useBic = c.useBic
+
+           
 
             logRES.append("[Get]H264:\(c.h264level) : \(c.dstW)x\(c.dstH) \(c.videoBuffer) 方向:\(c.Rotate)")
 
-            RPConfig.shared.h264level = c.h264level
 
-            RPConfig.shared.BufferCount = c.videoBuffer
-
-            RPConfig.shared.ADWidth = c.dstW
-            RPConfig.shared.ADHeight = c.dstH
-
-            RPConfig.shared.ODWidth = c.odstW
-            RPConfig.shared.ODHeight = c.odstH
+           
 
             logRES.append(
                 "[Get]OutDraw:\(c.odstW)x\(c.odstH) RotateOriginal:\(c.RotateOriginal)"
@@ -654,9 +688,29 @@ class SocketClient : @unchecked Sendable {
 
 
 
+            RPConfig.shared.updateState(RTMPURL:c.rtmpURL,
+                                                    RTMPKey:c.rtmpKey,
+                                                    BitRate:c.BitRate,
+                                                    ChangeBit:c.ChangeBit,
+                                                    isLowLatencyRateControlEnabled:c.isLowLatencyRateControlEnabled,
+                                                    useBic:c.useBic,
+                                                    h264level:c.h264level,
+                                                    BufferCount:c.videoBuffer,
+                                                    Rotate:c.Rotate,
+                                                    RotateOriginal:c.RotateOriginal,
+                                                    ADWidth:c.dstW,
+                                                    ADHeight:c.dstH,
+                                                    ODwidth:c.odstW,
+                                                    ODHeight:c.odstH,
+                                                    AppVolume:c.appVolume,
+                                                    MicVolume:c.micVolume,
+                                                    AppVolumeAdd:c.appVolumeAdd,
+                                                    MicVolumeAdd:c.micVolumeAdd,
+                                                    enableEchoFix:c.enableEchoFix,
+                                                    enableNoiseFix:c.enableNoiseFix,
+                                                    enableAGCFix:c.enableAGCFix
+                                                    )
 
-            RPConfig.shared.Rotate = c.Rotate
-            RPConfig.shared.RotateOriginal = c.RotateOriginal
 
 
             logRES.append(
@@ -666,16 +720,6 @@ class SocketClient : @unchecked Sendable {
                 "[Get]Audio 降噪處理:\(c.enableNoiseFix) 回音處理:\(c.enableEchoFix) 自動增益:\(c.enableAGCFix) "
             )
 
-
-            RPConfig.shared.enableEchoFix = c.enableEchoFix
-            RPConfig.shared.enableNoiseFix = c.enableNoiseFix
-            RPConfig.shared.enableAGCFix = c.enableAGCFix
-
-            RPConfig.shared.AppVolume = c.appVolume
-            RPConfig.shared.MicVolume = c.micVolume
-
-            RPConfig.shared.AppVolumeAdd = c.appVolumeAdd
-            RPConfig.shared.MicVolumeAdd = c.micVolumeAdd
             
 
             self.logTo(logRES.joined(separator: "\n"))

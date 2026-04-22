@@ -450,72 +450,169 @@ final class LogManager {
 final class RPConfig {
     static let shared = RPConfig()
 
-    // RTMP 配置
-    var RTMPURL : String? {
-        didSet {
-            guard oldValue != RTMPURL else {
-                logger.debug("RTMPURL 一樣->\(oldValue as NSObject?)")
-                return
+
+    private struct State {
+        // RTMP 配置
+        var RTMPURL : String?
+        var RTMPKey : String?
+
+        var h264level : String = "AutoHight"
+        var BufferCount : Int = 3
+        var BitRate : Int = 6_000_000
+        var ChangeBit : Bool = false
+
+        var isLowLatencyRateControlEnabled : Bool = true
+
+        var useBic : Bool = false
+
+        var Rotate : Int = 90
+        var RotateOriginal : Bool = false
+
+        // 輸出寬高
+        var ADWidth : Int = 0
+        var ADHeight : Int = 0
+
+        var ODWidth : Int = 0
+        var ODHeight : Int = 0
+
+        // 音訊處理
+        var AppVolume : Double = 1.0
+        var MicVolume : Double = 1.0
+
+        var AppVolumeAdd : Double = 1.0
+        var MicVolumeAdd : Double = 1.0
+
+        // 降噪處理
+        var enableNoiseFix : Bool = false
+        
+        // 回音處理
+        var enableEchoFix : Bool = false 
+        // 自動增益
+        var enableAGCFix : Bool = false
+
+    }
+
+    var state = State()
+
+    private let stateQueue = DispatchQueue(label: "RPConfig.state.queue")
+
+    // MARK: - Public control API
+    // ======================================================
+    // 🎛 unified state update
+    // ======================================================
+    func updateState(RTMPURL: String? = nil,
+                     RTMPKey: String? = nil,
+                     h264level: String? = nil,
+                     BufferCount: Int? = nil,
+                     BitRate : Int? = nil,
+                     ChangeBit: Bool? = nil,
+                     isLowLatencyRateControlEnabled:Bool? = nil,
+                     useBic:Bool? = nil,
+                     Rotate : Int? = nil,
+                     RotateOriginal:Bool? =nil,
+                     ADWidth:Int? = nil,
+                     ADHeight:Int? = nil,
+                     ODWidth : Int? = nil,
+                     ODHeight : Int? = nil,
+                     AppVolume:Double? = nil,
+                     MicVolume:Double? = nil,
+                     AppVolumeAdd:Double? = nil,
+                     MicVolumeAdd:Double? = nil,
+                     enableNoiseFix:Bool? = nil,
+                     enableEchoFix:Bool? = nil,
+                     enableAGCFix:Bool? = nil 
+                     ) {
+
+        stateQueue.async {
+
+            if let RTMPURL = RTMPURL {
+                self.state.RTMPURL = RTMPURL
             }
-        }
-    }
-    var RTMPKey : String? {
-        didSet {
-            guard oldValue != RTMPKey else {
-                logger.debug("RTMPKey 一樣")
-                return
+
+            if let RTMPKey = RTMPKey {
+                self.state.RTMPKey = RTMPKey
             }
+
+            if let BufferCount = BufferCount {
+                self.state.BufferCount = BufferCount
+            }
+            if let BitRate = BitRate {
+                self.state.BitRate = BitRate
+            }
+
+            if let ChangeBit = ChangeBit {
+                self.state.ChangeBit = ChangeBit
+            }
+
+            if let isLowLatencyRateControlEnabled = isLowLatencyRateControlEnabled {
+                self.state.isLowLatencyRateControlEnabled = isLowLatencyRateControlEnabled
+            }
+
+            if let useBic = useBic {
+                self.state.useBic = useBic
+            }
+
+            if let Rotate = Rotate {
+                self.state.Rotate = Rotate
+            }
+
+            if let RotateOriginal = RotateOriginal {
+                self.state.RotateOriginal = RotateOriginal
+            }
+
+            if let ADWidth = ADWidth {
+                self.state.ADWidth = ADWidth
+            }
+            if let ADHeight = ADHeight {
+                self.state.ADHeight = ADHeight
+            }
+            if let ODWidth = ODWidth {
+                self.state.ODWidth = ODHeight
+            }
+            if let ODHeight = ODHeight {
+                self.state.ODHeight = ODHeight
+            }
+
+            if let AppVolume = AppVolume {
+                self.state.AppVolume = AppVolume
+            }
+            if let MicVolume = MicVolume {
+                self.state.MicVolume = MicVolume
+            }
+            if let AppVolumeAdd = AppVolumeAdd {
+                self.state.AppVolumeAdd = AppVolumeAdd
+            }
+            if let MicVolumeAdd = MicVolumeAdd {
+                self.state.MicVolume = MicVolumeAdd
+            }
+
+
+            if let enableNoiseFix = enableNoiseFix {
+                self.state.enableNoiseFix = enableNoiseFix 
+            }
+
+            if let enableEchoFix = enableEchoFix {
+                self.state.enableEchoFix = enableEchoFix 
+            }
+            
+            if let enableAGCFix = enableAGCFix {
+                self.state.enableAGCFix = enableAGCFix 
+            }
+            
+
+
+
         }
+
+
+        
     }
-
-    var h264level : String {
-        didSet {
-            guard oldValue != h264level else { return }
-        }
-    }
-
-    var BufferCount : Int
-
-    var BitRate : Int
-    
-    var ChangeBit : Bool
-
-    var useBic : Bool
-
-    var Rotate : Int
-    var RotateOriginal : Bool
-
-    // 音訊 
-
-    // 降噪
-    var enableNoiseFix : Bool
-    // 回音消除
-    var enableEchoFix : Bool
-
-    // 自動增益
-    var enableAGCFix: Bool
-
-
-    var AppVolumeAdd : Double
-    var MicVolumeAdd : Double
-
-    var AppVolume : Double
-    var MicVolume : Double
-
-    var ADWidth : Int
-    var ADHeight : Int
-
-    var ODWidth : Int
-    var ODHeight : Int
-
-
 
     // 日誌相關
     var enableTimeDebug:Bool
-
     var enableSocketLog: Bool = false
-
     var enableRotateLog: Bool = false
+
     var enableLog: Bool = false
     var logMode: Int = 1
     var onLogPage: Bool = false
@@ -553,59 +650,50 @@ final class RPConfig {
 
         onAudioPage=SharedDefaults.group?.bool(forKey: "onAudioPage") ?? false
 
-
+        
 
 
 
         // RTMP
-        RTMPURL = SharedDefaults.group?.string(forKey: "rtmpURL")
-        ?? "rtmp://192.168.0.102/live"
+        self.updateState(
+            RTMPURL:SharedDefaults.group?.string(forKey: "rtmpURL")
+        ?? "rtmp://192.168.0.102/live",
+            RTMPKey:SharedDefaults.group?.string(forKey: "rtmpKey")
+        ?? "stream1?vhost=live2",
+            BitRate:SharedDefaults.group?.integer(forKey: "bitRate") ?? 6_000_000,
+            ChangeBit:SharedDefaults.group?.bool(forKey: "ChangeBit") ?? false,
+            isLowLatencyRateControlEnabled:SharedDefaults.group?.bool(forKey: "isLowLatencyRateControlEnabled") ?? true,
+            useBic:SharedDefaults.group?.bool(forKey: "useBic") ?? false,
+            h264level:SharedDefaults.group?.string(forKey: "h264level") ?? "AutoHigh",
+            BufferCount:SharedDefaults.group?.integer(forKey: "BufferCount") ?? 3,
+            
+            // 音訊音量
+            AppVolume:SharedDefaults.group?.double(forKey: "appVolume") ?? 1.0,
+            MicVolume:SharedDefaults.group?.double(forKey: "micVolume") ?? 1.0,
 
-        RTMPKey = SharedDefaults.group?.string(forKey: "rtmpKey")
-        ?? "stream1?vhost=live2"
+            AppVolumeAdd:SharedDefaults.group?.double(forKey: "appAddVolume") ?? 1.0,
+            MicVolumeAdd:SharedDefaults.group?.double(forKey: "micAddVolume") ?? 1.0,
 
-        BitRate = SharedDefaults.group?.integer(forKey: "bitRate") ?? 3_900_000
+            // 音訊回音消除
+            enableEchoFix:SharedDefaults.group?.bool(forKey: "enableEchoFix") ?? false,
+            // 音訊降噪 頻譜處理
+            enableNoiseFix:SharedDefaults.group?.bool(forKey: "enableNoiseFix") ?? false,
+             // 音訊自動增益
+            enableAGCFix:SharedDefaults.group?.bool(forKey: "enableAGCFix") ?? false,
 
-        ChangeBit = SharedDefaults.group?.bool(forKey: "ChangeBit") ?? false
+            // Width 給GPU處理用的寬高
+            ADWidth:SharedDefaults.group?.integer(forKey: "dstW") ?? 0,
+            ADHeight:SharedDefaults.group?.integer(forKey: "dstH") ?? 0,
+            // 控制輸出畫布寬高
+            ODWidth:SharedDefaults.group?.integer(forKey: "odstW") ?? 0,
+            ODHeight:SharedDefaults.group?.integer(forKey: "odstH") ?? 0,
 
-        useBic = SharedDefaults.group?.bool(forKey: "useBic") ?? false
-
-        h264level = SharedDefaults.group?.string(forKey: "h264level") ?? "AutoHigh"
-
-
-        BufferCount =  SharedDefaults.group?.integer(forKey: "BufferCount") ?? 5
-
-        // 音訊回音消除
-        enableEchoFix = SharedDefaults.group?.bool(forKey: "enableEchoFix") ?? false
-
-        // 音訊降噪 頻譜處理
-        enableNoiseFix = SharedDefaults.group?.bool(forKey: "enableNoiseFix") ?? false
-
-        // 音訊自動增益
-        enableAGCFix = SharedDefaults.group?.bool(forKey: "enableAGCFix") ?? false
-
-
-        // AppVolume
-        AppVolumeAdd = SharedDefaults.group?.double(forKey: "appAddVolume") ?? 1.0
-        MicVolumeAdd = SharedDefaults.group?.double(forKey: "micAddVolume") ?? 1.0
-
-        AppVolume =  SharedDefaults.group?.double(forKey: "appVolume") ?? 1.0
-        MicVolume =  SharedDefaults.group?.double(forKey: "micVolume") ?? 1.0
-
-        // Width 給GPU處理用的寬高
-        ADWidth = SharedDefaults.group?.integer(forKey: "dstW") ?? 0
-        ADHeight = SharedDefaults.group?.integer(forKey: "dstH") ?? 0
-
-        // 控制輸出畫布寬高
-        ODWidth = SharedDefaults.group?.integer(forKey: "odstW") ?? 0
-        ODHeight = SharedDefaults.group?.integer(forKey: "odstH") ?? 0
+            // 方向處理
+            Rotate:SharedDefaults.group?.integer(forKey: "Rotate") ?? 90,
+            RotateOriginal:SharedDefaults.group?.bool(forKey: "RotateOriginal") ?? false
 
 
-        Rotate = SharedDefaults.group?.integer(forKey: "Rotate") ?? 90
-
-
-        RotateOriginal = SharedDefaults.group?.bool(forKey: "RotateOriginal") ?? false
-
+        )
 
 
     }
