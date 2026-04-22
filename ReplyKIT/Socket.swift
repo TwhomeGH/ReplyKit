@@ -688,7 +688,8 @@ class SocketClient : @unchecked Sendable {
 
 
 
-            RPConfig.shared.updateState(RTMPURL:c.rtmpURL,
+            RPConfig.shared.updateState(
+                                        RTMPURL:c.rtmpURL,
                                         RTMPKey:c.rtmpKey,
                                         h264level:c.h264level,
                                         BufferCount:c.videoBuffer,
