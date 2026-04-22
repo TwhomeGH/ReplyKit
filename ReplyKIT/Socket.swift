@@ -690,8 +690,8 @@ class SocketClient : @unchecked Sendable {
 
             RPConfig.shared.updateState(RTMPURL:c.rtmpURL,
                                                     RTMPKey:c.rtmpKey,
-                                                    BitRate:c.BitRate,
                                                     h264level:c.h264level,
+                                                    BitRate:c.BitRate,
                                                     ChangeBit:c.ChangeBit,
                                                     isLowLatencyRateControlEnabled:c.isLowLatencyRateControlEnabled,
                                                     useBic:c.useBic,

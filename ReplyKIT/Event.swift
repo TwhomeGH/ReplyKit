@@ -661,13 +661,14 @@ final class RPConfig {
             RTMPKey:SharedDefaults.group?.string(forKey: "rtmpKey")
         ?? "stream1?vhost=live2",
             h264level:SharedDefaults.group?.string(forKey: "h264level") ?? "AutoHigh",
+            BufferCount:SharedDefaults.group?.integer(forKey: "BufferCount") ?? 3,
             BitRate:SharedDefaults.group?.integer(forKey: "bitRate") ?? 6_000_000,
             
             ChangeBit:SharedDefaults.group?.bool(forKey: "ChangeBit") ?? false,
             isLowLatencyRateControlEnabled:SharedDefaults.group?.bool(forKey: "isLowLatencyRateControlEnabled") ?? true,
             useBic:SharedDefaults.group?.bool(forKey: "useBic") ?? false,
             
-            BufferCount:SharedDefaults.group?.integer(forKey: "BufferCount") ?? 3,
+            
             
             // 音訊音量
             AppVolume:SharedDefaults.group?.double(forKey: "appVolume") ?? 1.0,
