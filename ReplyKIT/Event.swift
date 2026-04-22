@@ -451,7 +451,7 @@ final class RPConfig {
     static let shared = RPConfig()
 
 
-    private struct State {
+    struct State {
         // RTMP 配置
         var RTMPURL : String?
         var RTMPKey : String?
