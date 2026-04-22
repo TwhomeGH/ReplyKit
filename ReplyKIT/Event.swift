@@ -672,6 +672,12 @@ final class RPConfig {
             Rotate:SharedDefaults.group?.integer(forKey: "Rotate") ?? 90,
             RotateOriginal:SharedDefaults.group?.bool(forKey: "RotateOriginal") ?? false,
 
+             // Width 給GPU處理用的寬高
+            ADWidth:SharedDefaults.group?.integer(forKey: "dstW") ?? 0,
+            ADHeight:SharedDefaults.group?.integer(forKey: "dstH") ?? 0,
+            // 控制輸出畫布寬高
+            ODWidth:SharedDefaults.group?.integer(forKey: "odstW") ?? 0,
+            ODHeight:SharedDefaults.group?.integer(forKey: "odstH") ?? 0,
             
             // 音訊音量
             AppVolume:SharedDefaults.group?.double(forKey: "appVolume") ?? 1.0,
@@ -685,14 +691,9 @@ final class RPConfig {
             // 音訊降噪 頻譜處理
             enableNoiseFix:SharedDefaults.group?.bool(forKey: "enableNoiseFix") ?? false,
              // 音訊自動增益
-            enableAGCFix:SharedDefaults.group?.bool(forKey: "enableAGCFix") ?? false,
+            enableAGCFix:SharedDefaults.group?.bool(forKey: "enableAGCFix") ?? false
 
-            // Width 給GPU處理用的寬高
-            ADWidth:SharedDefaults.group?.integer(forKey: "dstW") ?? 0,
-            ADHeight:SharedDefaults.group?.integer(forKey: "dstH") ?? 0,
-            // 控制輸出畫布寬高
-            ODWidth:SharedDefaults.group?.integer(forKey: "odstW") ?? 0,
-            ODHeight:SharedDefaults.group?.integer(forKey: "odstH") ?? 0
+
 
 
 
