@@ -865,7 +865,7 @@ class SocketServer:ObservableObject {
                         
 
                         // 判斷 data 是否存在
-                        if let data = batch.data {
+                        if let data = data {
                             // 遍歷所有 key/value
                             for (key, value) in data {
 
