@@ -219,26 +219,6 @@ func volumeToPercentage(_ volume: Double) -> Double {
 
 
 
-
-// MARK: MediaMixer 包裝器，提供安全的 appendSync 接口
-final class MediaMixerWrapper {
-
-    private let mixer: MediaMixer
-
-    init(mixer: MediaMixer) {
-        self.mixer = mixer
-    }
-
-    func appendSync(_ sampleBuffer: CMSampleBuffer, track: AudioTrackType) {
-
-        Task { [weak mixer] in
-            guard let mixer else { return }
-            await mixer.append(sampleBuffer, track: track.rawValue)
-        }
-    }
-}
-
-
 // MARK: 音頻線程
 
 final class AudioProcessor : @unchecked Sendable {
@@ -271,9 +251,7 @@ final class AudioProcessor : @unchecked Sendable {
 
 
     var rmsInterval: CFTimeInterval = 0.1
-    var mediaMixerWrapper: MediaMixerWrapper?
-
-
+    
 
     private func updateNoiseFixState() {
 
@@ -310,9 +288,6 @@ final class AudioProcessor : @unchecked Sendable {
         self.micVolume = micVolume
         self.onAudioPage = onAudioPage
         self.isActive = true
-
-
-        self.mediaMixerWrapper = MediaMixerWrapper(mixer: mediaMixer)
 
 
 
@@ -483,11 +458,11 @@ final class AudioProcessor : @unchecked Sendable {
                 // 音量計算還是可以同步做（很快）
                 processRMS(retimed, trackType: trackType)
 
-                // 3️⃣ 丟進 mediaMixer保護的 appendSync
-                if let mediaMixerWrapper = self.mediaMixerWrapper {
-                    mediaMixerWrapper.appendSync(retimed, track: trackType)
-                } else {
-                    sendlog(message: "MediaMixerWrapper 尚未初始化，無法 append 音頻。")
+                // 原封裝處理
+
+                Task {
+
+                    await mediaMixer.append(sampleBuffer, track: track.rawValue)
                 }
 
             } else {
@@ -511,11 +486,10 @@ final class AudioProcessor : @unchecked Sendable {
                 // 音量計算還是可以同步做（很快）
                 processRMS(retimed, trackType: trackType)
 
-                // 3️⃣ 丟進 mediaMixer保護的 appendSync
-                if let mediaMixerWrapper = self.mediaMixerWrapper {
-                    mediaMixerWrapper.appendSync(retimed, track: trackType)
-                } else {
-                    sendlog(message: "MediaMixerWrapper 尚未初始化，無法 append 音頻。")
+                // 原封裝處理 
+                Task {
+                    await mediaMixer.append(sampleBuffer, track: track.rawValue)
+
                 }
 
             }
