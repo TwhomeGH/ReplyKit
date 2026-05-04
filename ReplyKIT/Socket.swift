@@ -209,6 +209,8 @@ class SocketClient : @unchecked Sendable {
                 self.receive()
             case .failed(let error):
                 logTo("SocketClient failed: \(String(describing: error))")
+                con.cancel()
+                con = nil
                 isConnection = false
 
 
@@ -217,6 +219,7 @@ class SocketClient : @unchecked Sendable {
 
 
                 logTo("SocketClient cancelled")
+                con = nil
 
                 isConnection = false
                 self.retry()
