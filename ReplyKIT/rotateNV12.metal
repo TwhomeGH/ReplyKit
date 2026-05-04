@@ -157,7 +157,8 @@ kernel void rotateNV12_bilinear(
     // Only one thread writes each 2x2 chroma sample to avoid NV12 UV write races.
     if (((gid.x & 1u) == 0u) && ((gid.y & 1u) == 0u)) {
         uint2 uvPos = uint2(gid.x >> 1, gid.y >> 1);
-        float2 uvDst = float2(gid) + 1.0f;
+
+        float2 uvDst = float2(gid) + 0.5f;
         float2 uvSrc = mapDstToSrc(uvDst, W, H, outW, outH, params.angle);
 
         if (uvSrc.x < 0.0f || uvSrc.x > float(W - 1) ||
@@ -172,7 +173,7 @@ kernel void rotateNV12_bilinear(
             float2 uvCoord = clamp(
                 uvSrc * 0.5f,
                 float2(0.0f),
-                float2(float(W) * 0.5f - 1.0f, float(H) * 0.5f - 1.0f)
+                float2(float(W) * 0.5f, float(H) * 0.5f)
             );
 
             half2 uvVal = srcUV.sample(
@@ -241,7 +242,8 @@ kernel void rotateNV12_bicubic(
 
     if (((gid.x & 1u) == 0u) && ((gid.y & 1u) == 0u)) {
         uint2 uvPos = uint2(gid.x >> 1, gid.y >> 1);
-        float2 uvDst = float2(gid) + 1.0f;
+
+        float2 uvDst = float2(gid) + 0.5f;
         float2 uvSrc = mapDstToSrc(uvDst, W, H, outW, outH, params.angle);
 
         if (uvSrc.x < 0.0f || uvSrc.x > float(W - 1) ||
@@ -253,7 +255,7 @@ kernel void rotateNV12_bicubic(
             float2 uvCoord = clamp(
                 uvSrc * 0.5f,
                 float2(0.0f),
-                float2(float(W) * 0.5f - 1.0f, float(H) * 0.5f - 1.0f)
+                float2(float(W) * 0.5f, float(H) * 0.5f)
             );
 
             half2 uvVal = srcUV.sample(
