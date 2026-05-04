@@ -548,8 +548,10 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
             logTo("GPU進行輸出寬高調整:\(OutWW)x\(OutHH)")
 
-        } else if dstW > 0 && dstH > 0 {
-            logTo("GPU使用旋轉後寬高:\(dstW)x\(dstH)")
+        } else if dstWW > 0 && dstHH > 0 {
+            logTo("GPU使用旋轉後寬高:\(dstWW)x\(dstHH)")
+            dstW = dstWW
+            dstH = dstHH
             
         } else {
             logTo("GPU使用原始寬高:\(dstW)x\(dstH) -> \(srcW)x\(srcH)")
