@@ -14,6 +14,13 @@
 > 文檔可能沒有更新 所以實際包含功能會有所區別
 
 
+## 問題應對方案 
+
+如果你遇到一些奇怪的問題 可以先看Wiki頁\
+有些問題 已被發現記載在此
+
+[常見問題處理方式 - Common Problem Solutions](https://github.com/TwhomeGH/ReplyKit/wiki)
+
 ## 重新設計 音訊處理 新增了降噪功能&回音消除
 
 降噪處理增加 以及包含回音處理
