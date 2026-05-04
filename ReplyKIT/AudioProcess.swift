@@ -462,7 +462,7 @@ final class AudioProcessor : @unchecked Sendable {
 
                 Task {
 
-                    await mediaMixer.append(RSample, track: track.rawValue)
+                    await mediaMixer.append(RSample, track:  trackType.rawValue)
                 }
 
             } else {
@@ -475,8 +475,7 @@ final class AudioProcessor : @unchecked Sendable {
             
                 if let audioEngine = audioEngine {
 
-                    audioEngine.process(sampleBuffer,
-                                                                track: trackType)
+                    audioEngine.process(sampleBuffer,track: trackType)
 
                 }
 
@@ -488,7 +487,7 @@ final class AudioProcessor : @unchecked Sendable {
 
                 // 原封裝處理 
                 Task {
-                    await mediaMixer.append(sampleBuffer, track: track.rawValue)
+                    await mediaMixer.append(sampleBuffer, track:  trackType.rawValue)
 
                 }
 
