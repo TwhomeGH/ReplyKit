@@ -672,7 +672,7 @@ final class RPConfig {
         self.state = State(
             RTMPURL:SharedDefaults.group?.string(forKey: "rtmpURL") ?? "rtmp://192.168.0.102/live",
             RTMPKey:SharedDefaults.group?.string(forKey: "rtmpKey")  ?? "stream1?vhost=live2",
-             h264level:SharedDefaults.group?.string(forKey: "h264level") ?? "AutoHigh",
+            h264level:SharedDefaults.group?.string(forKey: "h264level") ?? "AutoHigh",
             BufferCount:SharedDefaults.group?.integer(forKey: "BufferCount") ?? 3,
             BitRate:SharedDefaults.group?.integer(forKey: "bitRate") ?? 6_000_000,
             

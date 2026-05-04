@@ -255,7 +255,7 @@ final class AudioProcessor : @unchecked Sendable {
 
     private func updateNoiseFixState() {
 
-
+        let micGain = RPConfig.shared.state.MicVolumeAdd 
         // 降噪處理
         let noiseFix = RPConfig.shared.state.enableNoiseFix
         // 回音處理
@@ -267,7 +267,7 @@ final class AudioProcessor : @unchecked Sendable {
 
         sendlog(message: "音訊配置: 降噪:\(noiseFix) 回音處理:\(EchoFix) 自動增益:\(AGCFix)")
         
-        audioEngine.updateAudioState(micGain:self.micAddVolume,echoFix:EchoFix,noiseFix:noiseFix,agcFix:AGCFix)
+        audioEngine.updateAudioState(micGain:micGain,echoFix:EchoFix,noiseFix:noiseFix,agcFix:AGCFix)
 
         
     }
