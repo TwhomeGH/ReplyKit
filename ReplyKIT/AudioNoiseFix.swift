@@ -415,7 +415,7 @@ final class AudioPreProcessor {
 
 
 
-    init(maxFrameSize: Int = 512,micGain:Float? = nil,noiseFix:Bool? = nil,echoFix:Bool? = nil, agcFix:Bool? = nil) {
+    init(maxFrameSize: Int = 512,micGain:Float? = nil,echoFix:Bool? = nil, noiseFix:Bool? = nil,agcFix:Bool? = nil) {
         self.micFloatBuffer = [Float](repeating: 0, count: maxFrameSize)
         self.tempFloatBuffer = [Float](repeating: 0, count: maxFrameSize)
 
