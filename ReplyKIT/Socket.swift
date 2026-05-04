@@ -189,11 +189,8 @@ class SocketClient : @unchecked Sendable {
 
     func start() {
 
-        guard let con = connection else {
-            return
-        }
 
-        con.stateUpdateHandler = { [weak self] state in
+        connection?.stateUpdateHandler = { [weak self] state in
             guard let self = self else { return }
             switch state {
             case .ready:
@@ -209,8 +206,8 @@ class SocketClient : @unchecked Sendable {
                 self.receive()
             case .failed(let error):
                 logTo("SocketClient failed: \(String(describing: error))")
-                con.cancel()
-                con = nil
+                connection?.cancel()
+                connection = nil
                 isConnection = false
 
 
@@ -219,7 +216,7 @@ class SocketClient : @unchecked Sendable {
 
 
                 logTo("SocketClient cancelled")
-                con = nil
+                connection = nil
 
                 isConnection = false
                 self.retry()
@@ -227,7 +224,8 @@ class SocketClient : @unchecked Sendable {
                 break
             }
         }
-        con.start(queue: queue)
+        
+        connection?.start(queue: queue)
     }
 
     private var isReconnecting = false
