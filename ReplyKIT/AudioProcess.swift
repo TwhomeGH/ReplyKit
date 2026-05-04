@@ -450,7 +450,7 @@ final class AudioProcessor : @unchecked Sendable {
 
             
 
-                var RSample = applyGain(sampleBuffer,trackType: trackType)
+                let RSample = applyGain(sampleBuffer,trackType: trackType)
                 
                 //時間戳校正
                 let retimed = retimeAudioBuffer(RSample, originalTime: oringinaltime)
@@ -462,7 +462,7 @@ final class AudioProcessor : @unchecked Sendable {
 
                 Task {
 
-                    await mediaMixer.append(RSample, track:  trackType.rawValue)
+                    await self.mediaMixer.append(RSample, track:  trackType.rawValue)
                 }
 
             } else {
@@ -487,7 +487,7 @@ final class AudioProcessor : @unchecked Sendable {
 
                 // 原封裝處理 
                 Task {
-                    await mediaMixer.append(sampleBuffer, track:  trackType.rawValue)
+                    await self.mediaMixer.append(sampleBuffer, track:  trackType.rawValue)
 
                 }
 
