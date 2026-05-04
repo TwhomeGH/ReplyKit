@@ -537,6 +537,9 @@ struct LogSettingView:View {
 
     @AppStorage("isLowLatencyRateControlEnabled",store:userDefaults)  private var isLowLatencyRateControlEnabled = true
 
+
+    @AppStorage("isOringinAudio",store:userDefaults)  private var isOringinAudio = true
+
     @AppStorage("enableNoiseFix",store:userDefaults) private var enableNoiseFix = false
     @AppStorage("enableEchoFix",store:userDefaults) private var enableEchoFix = false
     @AppStorage("enableAGCFix",store:userDefaults) private var enableAGCFix = false
@@ -586,6 +589,15 @@ struct LogSettingView:View {
                     .padding(.bottom, 5)
 
 
+
+            Toggle(isOn:$isOringinAudio){
+                                Text("啟用原味音訊處理！")
+                            }
+
+                        Text("啟用後忽視音訊處理 直接原封不動送進去")                                                                                                     
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                        .padding(.bottom, 5)
 
 
             Toggle(isOn:$isLowLatencyRateControlEnabled){

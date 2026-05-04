@@ -462,6 +462,7 @@ final class RPConfig {
         var ChangeBit : Bool = false
 
         var isLowLatencyRateControlEnabled : Bool = true
+        var isOringinAudio : Bool = true
 
         var useBic : Bool = false
 
@@ -492,9 +493,64 @@ final class RPConfig {
 
     }
 
-    var state = State()
+    var state: State
 
     private let stateQueue = DispatchQueue(label: "RPConfig.state.queue")
+
+
+
+    // MARK: - Public control API
+    // ======================================================
+    // 🎛 unified Audio state update
+    // ======================================================
+    func updateAudio(
+                    isOringinAudio:Bool? = nil,
+                    AppVolume:Double? = nil,
+                    MicVolume:Double? = nil,
+                    AppVolumeAdd:Double? = nil,
+                    MicVolumeAdd:Double? = nil,
+                    enableNoiseFix:Bool? = nil,
+                    enableEchoFix:Bool? = nil,
+                    enableAGCFix:Bool? = nil 
+                    ) {
+
+
+        stateQueue.async {
+
+            if let isOringinAudio = isOringinAudio {
+                self.state.isOringinAudio = isOringinAudio
+            }
+
+            if let AppVolume = AppVolume {
+                self.state.AppVolume = AppVolume
+            }
+            if let MicVolume = MicVolume {
+                self.state.MicVolume = MicVolume
+            }
+            
+            if let AppVolumeAdd = AppVolumeAdd {
+                self.state.AppVolumeAdd = AppVolumeAdd
+            }
+            if let MicVolumeAdd = MicVolumeAdd {
+                self.state.MicVolumeAdd = MicVolumeAdd
+            }
+
+
+            if let enableNoiseFix = enableNoiseFix {
+                self.state.enableNoiseFix = enableNoiseFix 
+            }
+
+            if let enableEchoFix = enableEchoFix {
+                self.state.enableEchoFix = enableEchoFix 
+            }
+            
+            if let enableAGCFix = enableAGCFix {
+                self.state.enableAGCFix = enableAGCFix 
+            }
+            
+        }
+
+    }
 
     // MARK: - Public control API
     // ======================================================
@@ -514,13 +570,6 @@ final class RPConfig {
                      ADHeight:Int? = nil,
                      ODWidth:Int? = nil,
                      ODHeight:Int? = nil,
-                     AppVolume:Double? = nil,
-                     MicVolume:Double? = nil,
-                     AppVolumeAdd:Double? = nil,
-                     MicVolumeAdd:Double? = nil,
-                     enableNoiseFix:Bool? = nil,
-                     enableEchoFix:Bool? = nil,
-                     enableAGCFix:Bool? = nil 
                      ) {
 
         stateQueue.async {
@@ -573,40 +622,10 @@ final class RPConfig {
                 self.state.ODHeight = ODHeight
             }
 
-            if let AppVolume = AppVolume {
-                self.state.AppVolume = AppVolume
-            }
-            if let MicVolume = MicVolume {
-                self.state.MicVolume = MicVolume
-            }
-            if let AppVolumeAdd = AppVolumeAdd {
-                self.state.AppVolumeAdd = AppVolumeAdd
-            }
-            if let MicVolumeAdd = MicVolumeAdd {
-                self.state.MicVolumeAdd = MicVolumeAdd
-            }
-
-
-            if let enableNoiseFix = enableNoiseFix {
-                self.state.enableNoiseFix = enableNoiseFix 
-            }
-
-            if let enableEchoFix = enableEchoFix {
-                self.state.enableEchoFix = enableEchoFix 
-            }
-            
-            if let enableAGCFix = enableAGCFix {
-                self.state.enableAGCFix = enableAGCFix 
-            }
-            
-
-
-
         }
-
-
         
     }
+
 
     // 日誌相關
     var enableTimeDebug:Bool
@@ -625,8 +644,6 @@ final class RPConfig {
     var maxInflightFrames: Int = 4
 
     private init() {
-
-
 
         logMode=SharedDefaults.group?.integer(forKey: "logMode")
         ?? 1
@@ -652,20 +669,16 @@ final class RPConfig {
 
         
 
-
-
-        // RTMP
-        self.updateState(
-            RTMPURL:SharedDefaults.group?.string(forKey: "rtmpURL")
-        ?? "rtmp://192.168.0.102/live",
-            RTMPKey:SharedDefaults.group?.string(forKey: "rtmpKey")
-        ?? "stream1?vhost=live2",
-            h264level:SharedDefaults.group?.string(forKey: "h264level") ?? "AutoHigh",
+        self.state = State(
+            RTMPURL:SharedDefaults.group?.string(forKey: "rtmpURL") ?? "rtmp://192.168.0.102/live",
+            RTMPKey:SharedDefaults.group?.string(forKey: "rtmpKey")  ?? "stream1?vhost=live2",
+             h264level:SharedDefaults.group?.string(forKey: "h264level") ?? "AutoHigh",
             BufferCount:SharedDefaults.group?.integer(forKey: "BufferCount") ?? 3,
             BitRate:SharedDefaults.group?.integer(forKey: "bitRate") ?? 6_000_000,
             
             ChangeBit:SharedDefaults.group?.bool(forKey: "ChangeBit") ?? false,
             isLowLatencyRateControlEnabled:SharedDefaults.group?.bool(forKey: "isLowLatencyRateControlEnabled") ?? true,
+            isOringinAudio:SharedDefaults.group?.bool(forKey: "isLowLatencyRateControlEnabled") ?? true,
             useBic:SharedDefaults.group?.bool(forKey: "useBic") ?? false,
             
              // 方向處理
@@ -693,7 +706,6 @@ final class RPConfig {
 
              // 音訊自動增益
             enableAGCFix:SharedDefaults.group?.bool(forKey: "enableAGCFix") ?? false
-
         )
 
 

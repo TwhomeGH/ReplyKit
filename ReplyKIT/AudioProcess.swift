@@ -253,6 +253,8 @@ final class AudioProcessor : @unchecked Sendable {
 
     var isActive = true
 
+    var UseOringin = true
+
     //音訊PTS校正用
     private var audioStartPTS: CMTime?
     private var currentPTS: CMTime = .zero
@@ -265,7 +267,7 @@ final class AudioProcessor : @unchecked Sendable {
     private var onAudioPage: Bool
     private var lastRMSUpdateTime: CFTimeInterval = 0
 
-    private let audioEngine: AudioEngine
+    private let audioEngine: AudioEngine?
 
 
     var rmsInterval: CFTimeInterval = 0.1
@@ -321,8 +323,22 @@ final class AudioProcessor : @unchecked Sendable {
         // 自動增益
         let AGCFix = RPConfig.shared.state.enableAGCFix
 
-        self.audioEngine = AudioEngine(noiseFix:noiseFix,echoFix:EchoFix,agcFix:AGCFix,micGain:micAddVolume)
-        
+
+        if RPConfig.shared.state.isOringinAudio {
+
+            self.UseOringin = true
+            sendlog(message: "AudioEngine停用 使用原本的音訊管線")
+            
+
+        }  else {
+
+            self.UseOringin = false
+            self.audioEngine = AudioEngine(noiseFix:noiseFix,echoFix:EchoFix,agcFix:AGCFix,micGain:micAddVolume)
+            sendlog(message: "AudioEngine啟用 使用專用音訊管線")
+
+            
+
+        }
 
 
 
@@ -389,33 +405,34 @@ final class AudioProcessor : @unchecked Sendable {
             }
         if let micAdd = micAdd { 
                 self.micAddVolume = micAdd 
-                self.audioEngine.updateAudioState(micGain:micAdd)
+                self.audioEngine?.updateAudioState(micGain:micAdd)
             
             }
 
         if let app = app { self.appVolume = app }
         if let mic = mic { self.micVolume = mic }
+        
     }
 
     func updatePage(status: Bool = false) {
         self.onAudioPage = status
     }
 
-    // MARK: 增益
-    // private func applyGain(
-    //     _ buffer: CMSampleBuffer,
-    //     trackType: AudioTrackType
-    // ) -> CMSampleBuffer {
+    // MARK: 舊增益管線
+    private func applyGain(
+        _ buffer: CMSampleBuffer,
+        trackType: AudioTrackType
+    ) -> CMSampleBuffer {
 
-    //     let gain = (trackType == .app) ? self.appAddVolume : self.micAddVolume
-    //     let safeGain = gain.isFinite ? gain : 1.0
+        let gain = (trackType == .app) ? self.appAddVolume : self.micAddVolume
+        let safeGain = gain.isFinite ? gain : 1.0
 
-    //     if safeGain > 1.0 {
-    //         return amplifySIMD(buffer, gain: safeGain)
-    //     }
+        if safeGain > 1.0 {
+            return amplifySIMD(buffer, gain: safeGain)
+        }
 
-    //     return buffer
-    // }
+        return buffer
+    }
 
 
     // MARK: 音量統計
@@ -450,29 +467,57 @@ final class AudioProcessor : @unchecked Sendable {
             guard let self = self, self.isActive else { return }
 
 
-            
+            if self.UseOringin {
 
-            // ======================================================
-            // 🎧 1️⃣ ZERO-COPY DSP ENTRY
-            // ======================================================
-            self.audioEngine.process(sampleBuffer,
-                                                            track: trackType)
+                // ======================================================
+                // 🎧 1️⃣ 原始管線
+                // ======================================================
 
             
-            
 
+                var RSample = applyGain(sampleBuffer)
+                
+                //時間戳校正
+                let retimed = retimeAudioBuffer(sampleBuffer, originalTime: oringinaltime)
+                
+                // 音量計算還是可以同步做（很快）
+                processRMS(retimed, trackType: trackType)
 
-            //時間戳校正
-            let retimed = retimeAudioBuffer(sampleBuffer, originalTime: oringinaltime)
-            
-            // 音量計算還是可以同步做（很快）
-            processRMS(retimed, trackType: trackType)
+                // 3️⃣ 丟進 mediaMixer保護的 appendSync
+                if let mediaMixerWrapper = self.mediaMixerWrapper {
+                    mediaMixerWrapper.appendSync(retimed, track: trackType)
+                } else {
+                    sendlog(message: "MediaMixerWrapper 尚未初始化，無法 append 音頻。")
+                }
 
-            // 3️⃣ 丟進 mediaMixer保護的 appendSync
-            if let mediaMixerWrapper = self.mediaMixerWrapper {
-                mediaMixerWrapper.appendSync(retimed, track: trackType)
             } else {
-                sendlog(message: "MediaMixerWrapper 尚未初始化，無法 append 音頻。")
+            
+
+                // ======================================================
+                // 🎧 1️⃣ ZERO-COPY DSP ENTRY
+                // ======================================================
+
+            
+                if let audioEngine = audioEngine {
+
+                    audioEngine.process(sampleBuffer,
+                                                                track: trackType)
+
+                }
+
+                //時間戳校正
+                let retimed = retimeAudioBuffer(sampleBuffer, originalTime: oringinaltime)
+                
+                // 音量計算還是可以同步做（很快）
+                processRMS(retimed, trackType: trackType)
+
+                // 3️⃣ 丟進 mediaMixer保護的 appendSync
+                if let mediaMixerWrapper = self.mediaMixerWrapper {
+                    mediaMixerWrapper.appendSync(retimed, track: trackType)
+                } else {
+                    sendlog(message: "MediaMixerWrapper 尚未初始化，無法 append 音頻。")
+                }
+
             }
 
         }

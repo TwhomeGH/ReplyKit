@@ -618,6 +618,7 @@ class SocketClient : @unchecked Sendable {
         let BitRate: Int
         let ChangeBit: Bool
         let isLowLatencyRateControlEnabled:Bool
+        let isOringinAudio:Bool?
 
         let h264level: String
         let videoBuffer: Int
@@ -697,13 +698,16 @@ class SocketClient : @unchecked Sendable {
                                         ChangeBit:c.ChangeBit,
                                         isLowLatencyRateControlEnabled:c.isLowLatencyRateControlEnabled,
                                         useBic:c.useBic,
-                                        
                                         Rotate:c.Rotate,
                                         RotateOriginal:c.RotateOriginal,
                                         ADWidth:c.dstW,
                                         ADHeight:c.dstH,
                                         ODWidth:c.odstW,
                                         ODHeight:c.odstH,
+                                        )
+            
+            RPConfig.shared.updateAudio(
+                                        isOringinAudio:c.isOringinAudio,
                                         AppVolume:c.appVolume,
                                         MicVolume:c.micVolume,
                                         AppVolumeAdd:c.appVolumeAdd,
@@ -711,9 +715,7 @@ class SocketClient : @unchecked Sendable {
                                         enableNoiseFix:c.enableNoiseFix,
                                         enableEchoFix:c.enableEchoFix,
                                         enableAGCFix:c.enableAGCFix
-                                        )
-
-
+            )
 
             logRES.append(
                 "[Get]Audio App:\(c.appVolume) Mic:\(c.micVolume) AppAdd:\(c.appVolumeAdd) MicAdd:\(c.micVolumeAdd)"
