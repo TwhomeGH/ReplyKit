@@ -143,6 +143,8 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     var OutWW: Int = 0
     var OutHH: Int = 0
 
+    var RotateOriginal = false
+
     var debug: Bool = false
     struct Params {
         var srcWidth: UInt32
@@ -348,7 +350,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     // MARK: Init
     init?(dstW: Int = 0, dstH: Int = 0,outW:Int=0, outH:Int=0, debug: Bool = false,
-            maxPoolSize: Int = 10 , useBic:QualityMode = .live ) {
+            maxPoolSize: Int = 10 , useBic:QualityMode = .live ,RotateOriginal:Bool = false ) {
 
         self.qualityMode = useBic
         self.dstWW = dstW
@@ -358,9 +360,8 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         self.debug = debug
         self.maxPoolSize = maxPoolSize
 
-        
-
-        hasMetalResources = false
+        self.RotateOriginal = RotateOriginal
+        self.hasMetalResources = false
 
 
         sendlog(
@@ -516,7 +517,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
         
 
-        defer {
+        //defer {
         
             //釋放釋放資源
             
@@ -524,7 +525,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             //Task { await gpuSemaphore.signal() }
 
 
-        }
+        //}
 
         timing = originalTime
 
@@ -542,7 +543,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         ) ? srcW : srcH
 
 
-        if !RPConfig.shared.state.RotateOriginal && OutWW > 0 && OutHH > 0  {
+        if !RotateOriginal && OutWW > 0 && OutHH > 0  {
             dstW = OutWW; dstH = OutHH
 
             logTo("GPU進行輸出寬高調整:\(OutWW)x\(OutHH)")

@@ -120,13 +120,16 @@ final class VideoFrameProcessor {
                 let mode: RPVideoRotatorNV12BatchQueueOptimized.QualityMode =
                     RPConfig.shared.state.useBic ? .quality : .live
 
+                let RotateOriginal = RPConfig.shared.state.RotateOriginal
+
                 rotator = RPVideoRotatorNV12BatchQueueOptimized(
                     dstW: dstRW,
                     dstH: dstRH,
                     outW: outW,
                     outH: outH,
                     debug: debug,
-                    useBic: mode
+                    useBic: mode,
+                    RotateOriginal:RotateOriginal
                 )
 
                 if rotator == nil {
