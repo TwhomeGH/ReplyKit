@@ -90,26 +90,29 @@ final class VideoFrameProcessor {
 
     func process(_ sampleBuffer: CMSampleBuffer,oringinaltime: CMSampleTimingInfo) {
 
-        let res = gpuSemaphore.wait(timeout: .now() + .milliseconds(5))
-
-        self.updateVideoFixState()
-        
-        if res == .timedOut {
-            if debug {
-                sendlog("GPU Semaphore wait timed out - skipping frame to avoid deadlock")
-            }
-            return
-        } else if res == .success {
-            if debug {
-            // Handle successful wait
-            sendlog("GPU Semaphore wait succeeded")
-
-            }
-        }
-        
         queue.async { [weak self] in
 
             guard let self = self, self.isActive else { return }
+
+
+
+
+            let res = gpuSemaphore.wait(timeout: .now() + .milliseconds(5))
+
+            self.updateVideoFixState()
+            
+            if res == .timedOut {
+                if debug {
+                    sendlog("GPU Semaphore wait timed out - skipping frame to avoid deadlock")
+                }
+                return
+            } else if res == .success {
+                if debug {
+                // Handle successful wait
+                sendlog("GPU Semaphore wait succeeded")
+
+                }
+            }
 
             if rotator == nil {
                 let dstRW = RPConfig.shared.state.ADWidth

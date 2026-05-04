@@ -308,7 +308,7 @@ final class AudioProcessor : @unchecked Sendable {
         }  else {
 
             self.UseOringin = false
-            self.audioEngine = AudioEngine(micGain:micAddVolume,noiseFix:noiseFix,echoFix:EchoFix,agcFix:AGCFix)
+            self.audioEngine = AudioEngine(micGain:micAddVolume,echoFix:EchoFix,noiseFix:noiseFix,agcFix:AGCFix)
             sendlog(message: "AudioEngine啟用 使用專用音訊管線")
 
             
