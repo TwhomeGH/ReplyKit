@@ -160,7 +160,7 @@ final class VideoFrameProcessor {
             guard let rotated = await rotator.rotateAsync(
                 sampleBuffer: sampleBuffer,
                 originalTime: oringinaltime,
-                angle: angle
+                angle: self.angle
             ) else {
                 print("GPU Fail!")
                 return
