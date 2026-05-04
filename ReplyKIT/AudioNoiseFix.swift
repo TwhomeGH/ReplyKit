@@ -313,7 +313,7 @@ final class AudioEngine {
 
     private let preProcessor: AudioPreProcessor
 
-    init(noiseFix: Bool? = nil,echoFix:Bool?=nil,agcFix:Bool? = nil,micGain:Float?=nil) {
+    init(micGain:Float?=nil,noiseFix: Bool? = nil,echoFix:Bool?=nil,agcFix:Bool? = nil) {
 
         self.preProcessor = AudioPreProcessor(micGain:micGain,echoFix:echoFix,noiseFix: noiseFix,agcFix:agcFix)
     }
@@ -415,7 +415,7 @@ final class AudioPreProcessor {
 
 
 
-    init(maxFrameSize: Int = 512,noiseFix:Bool? = nil,echoFix:Bool? = nil, agcFix:Bool? = nil,micGain:Float? = nil) {
+    init(maxFrameSize: Int = 512,micGain:Float? = nil,noiseFix:Bool? = nil,echoFix:Bool? = nil, agcFix:Bool? = nil) {
         self.micFloatBuffer = [Float](repeating: 0, count: maxFrameSize)
         self.tempFloatBuffer = [Float](repeating: 0, count: maxFrameSize)
 
