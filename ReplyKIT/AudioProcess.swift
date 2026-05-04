@@ -411,7 +411,7 @@ final class AudioProcessor : @unchecked Sendable {
 
         if let app = app { self.appVolume = app }
         if let mic = mic { self.micVolume = mic }
-        
+
     }
 
     func updatePage(status: Bool = false) {
@@ -475,7 +475,7 @@ final class AudioProcessor : @unchecked Sendable {
 
             
 
-                var RSample = applyGain(sampleBuffer)
+                var RSample = applyGain(sampleBuffer,trackType: trackType)
                 
                 //時間戳校正
                 let retimed = retimeAudioBuffer(sampleBuffer, originalTime: oringinaltime)
