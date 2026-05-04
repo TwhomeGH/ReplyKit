@@ -308,7 +308,7 @@ final class AudioProcessor : @unchecked Sendable {
         }  else {
 
             self.UseOringin = false
-            self.audioEngine = AudioEngine(noiseFix:noiseFix,echoFix:EchoFix,agcFix:AGCFix,micGain:micAddVolume)
+            self.audioEngine = AudioEngine(micGain:micAddVolume,noiseFix:noiseFix,echoFix:EchoFix,agcFix:AGCFix)
             sendlog(message: "AudioEngine啟用 使用專用音訊管線")
 
             
@@ -453,7 +453,7 @@ final class AudioProcessor : @unchecked Sendable {
                 var RSample = applyGain(sampleBuffer,trackType: trackType)
                 
                 //時間戳校正
-                let retimed = retimeAudioBuffer(sampleBuffer, originalTime: oringinaltime)
+                let retimed = retimeAudioBuffer(RSample, originalTime: oringinaltime)
                 
                 // 音量計算還是可以同步做（很快）
                 processRMS(retimed, trackType: trackType)
@@ -462,7 +462,7 @@ final class AudioProcessor : @unchecked Sendable {
 
                 Task {
 
-                    await mediaMixer.append(sampleBuffer, track: track.rawValue)
+                    await mediaMixer.append(RSample, track: track.rawValue)
                 }
 
             } else {
