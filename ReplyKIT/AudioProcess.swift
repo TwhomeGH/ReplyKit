@@ -247,7 +247,7 @@ final class AudioProcessor : @unchecked Sendable {
     private var onAudioPage: Bool
     private var lastRMSUpdateTime: CFTimeInterval = 0
 
-    private let audioEngine: AudioEngine? = nil
+    private var audioEngine: AudioEngine? = nil
 
 
     var rmsInterval: CFTimeInterval = 0.1
