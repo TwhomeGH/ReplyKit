@@ -715,10 +715,7 @@ class SocketServer:ObservableObject {
                 let user = dict.user
                 let msg = dict.message
 
-                guard !user.isEmpty, !msg.isEmpty else {
-                    logTo("解包失敗_StreamMessage")
-                    return
-                }
+
 
                 let img : String? = dict.img
                 let giftImg: String? = dict.giftImg
@@ -730,6 +727,12 @@ class SocketServer:ObservableObject {
                     userNum: userNum,
                     userList: userList
                 )
+
+
+                guard !user.isEmpty, !msg.isEmpty else {
+                    logTo("訊息是空的 不需要更新子母_StreamMessage")
+                    return
+                }
 
 
                 renderChatMessage(
