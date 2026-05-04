@@ -6,7 +6,7 @@ import CoreMedia
 
 final class VideoFrameProcessor {
     // 初始化 RotatorPool（在 SampleHandler 或初始化時）
-    var rotator: RPVideoRotatorNV12BatchQueueOptimized?
+    var rotator: RPVideoRotatorNV12BatchQueueOptimized? = nil
 
     private let mediaMixer: MediaMixer
 
@@ -18,9 +18,14 @@ final class VideoFrameProcessor {
 
     private let sendlog: (String) -> Void
 
+
+    var angle = RotationAngle(
+                rawValue: UInt32(RPConfig.shared.state.Rotate)
+            ) ?? .landscapeRight
+
     var Rotate = RPConfig.shared.state.Rotate
 
-    private func updateNoiseFixState() {
+    private func updateRotateFixState() {
 
         let current = RPConfig.shared.state.Rotate
 
@@ -36,39 +41,6 @@ final class VideoFrameProcessor {
         }
     }
 
-    var isActive = true
-
-    var hasPublished = false
-
-    var debug = RPConfig.shared.enableRotateLog
-
-
-    init(mediaMixer: MediaMixer,
-        sendlog: @escaping (String) -> Void) {
-        self.mediaMixer = mediaMixer
-
-        self.sendlog = sendlog
-        self.isActive = true
-        self.hasPublished = false
-
-        self.updateNoiseFixState()
-    }
-    func cleanup() {
-        isActive = false
-
-        // Task 目前無法強制取消，確保 isActive 檢查能立即返回
-        Task {
-            if (rotator != nil) {
-                await rotator?.cleanup()
-                rotator = nil
-            }
-
-        }
-    }
-    deinit {
-        cleanup()
-        sendlog("🧹 VideoFrameProcessor deinit — resources released")
-    }
 
     private func updateVideoFixState() {
 
@@ -87,32 +59,72 @@ final class VideoFrameProcessor {
 
     }
 
+    var isActive = true
+
+    var hasPublished = false
+
+    var debug = RPConfig.shared.enableRotateLog
+
+
+    init(mediaMixer: MediaMixer,
+        sendlog: @escaping (String) -> Void) {
+        self.mediaMixer = mediaMixer
+
+        self.sendlog = sendlog
+        self.isActive = true
+        self.hasPublished = false
+
+
+        self.angle = RotationAngle(
+                rawValue: UInt32(RPConfig.shared.state.Rotate)
+            ) ?? .landscapeRight
+
+        self.updateRotateFixState()
+        self.updateVideoFixState()
+    }
+    func cleanup() {
+        isActive = false
+
+        // Task 目前無法強制取消，確保 isActive 檢查能立即返回
+        Task {
+            if (rotator != nil) {
+                await rotator?.cleanup()
+                rotator = nil
+            }
+
+        }
+    }
+    deinit {
+        cleanup()
+        sendlog("🧹 VideoFrameProcessor deinit — resources released")
+    }
+
+    
+
 
     func process(_ sampleBuffer: CMSampleBuffer,oringinaltime: CMSampleTimingInfo) {
+        
+
+        let res = gpuSemaphore.wait(timeout: .now() + .milliseconds(5))
+
+        
+        if res == .timedOut {
+            if debug {
+                sendlog("GPU Semaphore wait timed out - skipping frame to avoid deadlock")
+            }
+            return
+        } else if res == .success {
+            if debug {
+            // Handle successful wait
+            sendlog("GPU Semaphore wait succeeded")
+
+            }
+        }
+
 
         queue.async { [weak self] in
 
             guard let self = self, self.isActive else { return }
-
-
-
-
-            let res = gpuSemaphore.wait(timeout: .now() + .milliseconds(5))
-
-            self.updateVideoFixState()
-            
-            if res == .timedOut {
-                if debug {
-                    sendlog("GPU Semaphore wait timed out - skipping frame to avoid deadlock")
-                }
-                return
-            } else if res == .success {
-                if debug {
-                // Handle successful wait
-                sendlog("GPU Semaphore wait succeeded")
-
-                }
-            }
 
             if rotator == nil {
                 let dstRW = RPConfig.shared.state.ADWidth
@@ -134,18 +146,11 @@ final class VideoFrameProcessor {
                     useBic: mode,
                     RotateOriginal:RotateOriginal
                 )
-
-                if rotator == nil {
-                    print("❌ Rotator init failed")
-                    return
-                }
             }
 
             guard let rotator else { return }
 
-            let angle = RotationAngle(
-                rawValue: UInt32(Rotate)
-            ) ?? .landscapeRight
+            
 
 
             Task {
