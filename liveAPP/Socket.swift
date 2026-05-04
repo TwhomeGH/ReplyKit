@@ -36,7 +36,7 @@ class SocketServer:ObservableObject {
 
     private let queue = DispatchQueue(
                                       label: "SocketServerQueue",
-                                      qos:.userInitiated
+                                      qos:.utility
                           )
 
     private var idleTimers: [ObjectIdentifier: DispatchSourceTimer] = [:]
@@ -173,34 +173,45 @@ class SocketServer:ObservableObject {
     }
 
     var isRunning: Bool {
-        guard listener != nil else {
+        guard let listener else {
             logTo("listener 已失效!")
             isStopping = true
             return false
         }
 
-        let res = listener?.state == .ready
-
-        if res {
+        switch listener.state {
+        case .ready:
             logTo("listener 有效!")
             isStopping = false
-        } else {
+            return true
 
-
-            for (_, conn) in connections {
-                conn.stateUpdateHandler = nil
-                conn.cancel()
-            }
-            
-            listener?.stateUpdateHandler = nil
-            listener?.cancel()
-
-            listener = nil
+        case .failed(let error):
+            logTo("listener 狀態 failed: \(error)")
+            listener.stateUpdateHandler = nil
+            listener.cancel()
+            self.listener = nil   // ✅ 強制釋放
             isStopping = true
+            return false
 
+        case .cancelled:
+            logTo("listener 狀態 cancelled")
+            listener.stateUpdateHandler = nil
+            listener.cancel()
+            self.listener = nil   // ✅ 強制釋放
+            isStopping = true
+            return false
+
+        default:
+            logTo("listener 狀態非 ready，清理中")
+            listener.stateUpdateHandler = nil
+            listener.cancel()
+            self.listener = nil   // ✅ 強制釋放
+            isStopping = true
+            return false
         }
-        return res  // 或對應你 socket 類型的檢查
     }
+
+
     
     // MARK: - start
     func start(port: UInt16 = 9322) {
@@ -229,10 +240,13 @@ class SocketServer:ObservableObject {
 
                 case .failed(let error):
                     self.logTo("Listener failed: \(error)")
+                    self.listener?.cancel()
+                    self.listener = nil   // ✅ 強制清掉
                     self.scheduleRestart()
 
                 case .cancelled:
                     self.logTo("Listener cancelled")
+                    self.listener = nil   // ✅ 強制清掉
 
                 default:
                     break
