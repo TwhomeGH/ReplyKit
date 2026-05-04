@@ -88,7 +88,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     private var lastVideoOrientation: AVCaptureVideoOrientation?
 
     var base:Int = 100_000
-    var multiplier:Int = 39
+    var multiplier:Int = 60
     // 100_000 * 30 = 3_000_000 bps
     var bitrate:Int? {
 
@@ -1341,10 +1341,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         await rtmpStream.setBitRateStrategy(streamStataus)
 
-        var audioSet = await rtmpStream.audioSettings
-        audioSet.format = .opus
+        //var audioSet = await rtmpStream.audioSettings
+        //audioSet.format = .opus
         
-        try? await rtmpStream.setAudioSettings(audioSet)
+        //try? await rtmpStream.setAudioSettings(audioSet)
 
 
         

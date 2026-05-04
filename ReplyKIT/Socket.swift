@@ -688,6 +688,9 @@ class SocketClient : @unchecked Sendable {
             )
 
 
+            self.logTo(logRES.joined(separator: "\n"))
+            logRES.removeAll()
+            
 
             RPConfig.shared.updateState(
                                         RTMPURL:c.rtmpURL,
