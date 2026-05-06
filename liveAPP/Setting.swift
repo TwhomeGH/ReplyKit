@@ -525,16 +525,9 @@ struct LogSettingView:View {
 
     @AppStorage("BitRateMode",store:userDefaults)  private var BitRateMode = 0
 
-    if #available(iOS 26.0, *) {
-        // iOS 26 以上才會執行的程式碼
-        let BitRateOptions = ["ABR 平均碼率 VBR的改進版", "CBR 固定碼率", "VBR 可變位元率 iOS26後"]
-        print("執行 iOS 26 功能 包含新加的VBR")
-    } else {
-        // 舊版 iOS 的替代方案
-        print("執行舊版功能 低於iOS26 不包含VBR")
 
-        let BitRateOptions = ["ABR 平均碼率 VBR的改進版", "CBR 固定碼率"]
-    }
+    let BitRateOptions = ["ABR 平均碼率 VBR的改進版", "CBR 固定碼率", "VBR 可變位元率 iOS26後才有"]
+    
 
     
 
