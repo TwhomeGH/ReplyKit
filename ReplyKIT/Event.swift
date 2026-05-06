@@ -561,7 +561,7 @@ final class RPConfig {
     func updateState(RTMPURL:String? = nil,
                      RTMPKey:String? = nil,
                      h264level:String? = nil,
-                     allowFrameReordering:Bool = nil,
+                     allowFrameReordering:Bool? = nil,
                      BitRateMode:Int? = 0,
                      BufferCount:Int? = nil,
                      BitRate:Int? = nil,
@@ -594,7 +594,7 @@ final class RPConfig {
             if let allowFrameReordering = allowFrameReordering {
                 self.state.allowFrameReordering = allowFrameReordering
             }
-            
+
             if let BitRateMode = BitRateMode {
                 self.state.BitRateMode = BitRateMode
             }
