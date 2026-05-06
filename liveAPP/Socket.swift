@@ -553,6 +553,8 @@ class SocketServer:ObservableObject {
 
             "h264level": userDefaults?
                 .string(forKey: "h264level") ?? "AutoHigh",
+            "BitRateMode": userDefaults?
+                .integer(forKey: "BitRateMode") ?? 0,
 
             "videoBuffer": userDefaults?
                 .integer(forKey: "BufferCount") ?? 5,

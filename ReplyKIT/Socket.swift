@@ -622,6 +622,8 @@ class SocketClient : @unchecked Sendable {
         let isOringinAudio:Bool?
 
         let h264level: String
+        let allowFrameReordering:Bool
+        let BitRateMode: Int
         let videoBuffer: Int
 
         let useBic : Bool
@@ -669,6 +671,8 @@ class SocketClient : @unchecked Sendable {
             var logRES: [String] = [
 
             ]
+            
+            self.logTo("[Get]RTMP BitRateMode:\(c.BitRateMode)")
 
             logRES.append("[Get]RTMP:\(c.rtmpURL):\(fixlogSafeKey(c.rtmpKey))")
             
@@ -677,12 +681,8 @@ class SocketClient : @unchecked Sendable {
             logRES.append("[Get]Bit:\(c.BitRate):\(c.ChangeBit) 低延遲模式:\(c.isLowLatencyRateControlEnabled) useBic:\(c.useBic)")
 
 
-           
-
             logRES.append("[Get]H264:\(c.h264level) : \(c.dstW)x\(c.dstH) \(c.videoBuffer) 方向:\(c.Rotate)")
 
-
-           
 
             logRES.append(
                 "[Get]OutDraw:\(c.odstW)x\(c.odstH) RotateOriginal:\(c.RotateOriginal)"
@@ -697,6 +697,8 @@ class SocketClient : @unchecked Sendable {
                                         RTMPURL:c.rtmpURL,
                                         RTMPKey:c.rtmpKey,
                                         h264level:c.h264level,
+                                        allowFrameReordering:c.allowFrameReordering,
+                                        BitRateMode:c.BitRateMode,
                                         BufferCount:c.videoBuffer,
                                         BitRate:c.BitRate,
                                         ChangeBit:c.ChangeBit,

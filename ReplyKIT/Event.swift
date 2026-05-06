@@ -457,6 +457,8 @@ final class RPConfig {
         var RTMPKey : String?
 
         var h264level : String = "AutoHight"
+        var allowFrameReordering:Bool = true
+        var BitRateMode: Int = 0
         var BufferCount : Int = 3
         var BitRate : Int = 6_000_000
         var ChangeBit : Bool = false
@@ -559,6 +561,8 @@ final class RPConfig {
     func updateState(RTMPURL:String? = nil,
                      RTMPKey:String? = nil,
                      h264level:String? = nil,
+                     allowFrameReordering:Bool = nil,
+                     BitRateMode:Int? = 0,
                      BufferCount:Int? = nil,
                      BitRate:Int? = nil,
                      ChangeBit:Bool? = nil,
@@ -582,16 +586,32 @@ final class RPConfig {
                 self.state.RTMPKey = RTMPKey
             }
 
+
+            if let h264level = h264level {
+                self.state.h264level = h264level
+            }
+
+            if let allowFrameReordering = allowFrameReordering {
+                self.state.allowFrameReordering = allowFrameReordering
+            }
+            
+            if let BitRateMode = BitRateMode {
+                self.state.BitRateMode = BitRateMode
+            }
+
             if let BufferCount = BufferCount {
                 self.state.BufferCount = BufferCount
             }
+
             if let BitRate = BitRate {
                 self.state.BitRate = BitRate
             }
+            
 
             if let ChangeBit = ChangeBit {
                 self.state.ChangeBit = ChangeBit
             }
+
 
             if let isLowLatencyRateControlEnabled = isLowLatencyRateControlEnabled {
                 self.state.isLowLatencyRateControlEnabled = isLowLatencyRateControlEnabled

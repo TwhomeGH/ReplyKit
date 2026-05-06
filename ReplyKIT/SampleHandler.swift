@@ -1873,6 +1873,35 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         
         videoSettings.videoSize = newSize
         videoSettings.expectedFrameRate = 60.0
+        
+
+        switch RPConfig.shared.state.BitRateMode {
+        case 0:
+            videoSettings.bitRateMode = .average
+        case 1:
+            videoSettings.bitRateMode = .constant
+        case 2: 
+
+            if #available(iOS 26.0, *) {
+                // iOS 26 以上才會執行的程式碼
+                print("執行 iOS 26 功能 VBR")
+                videoSettings.bitRateMode = .variable
+            } else {
+                // 舊版 iOS 的替代方案
+                print("執行舊版功能 使用ABR")
+                videoSettings.bitRateMode = .average
+            }
+
+
+        default:
+
+            videoSettings.bitRateMode = .average
+            
+        }
+
+
+        videoSettings.allowFrameReordering = RPConfig.shared.state.allowFrameReordering
+
 
         videoSettings.isLowLatencyRateControlEnabled = RPConfig.shared.state.isLowLatencyRateControlEnabled
         videoSettings.maxKeyFrameIntervalDuration = 2

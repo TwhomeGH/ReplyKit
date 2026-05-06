@@ -521,6 +521,22 @@ struct LogSettingView:View {
 
     @AppStorage("PIPChatLog",store:userDefaults) private var PIPChatLog = false
 
+    @AppStorage("allowFrameReordering",store:userDefaults) private var allowFrameReordering = true
+
+    @AppStorage("BitRateMode",store:userDefaults)  private var BitRateMode = 0
+
+    if #available(iOS 26.0, *) {
+        // iOS 26 以上才會執行的程式碼
+        let BitRateOptions = ["ABR 平均碼率 VBR的改進版", "CBR 固定碼率", "VBR 可變位元率 iOS26後"]
+        print("執行 iOS 26 功能 包含新加的VBR")
+    } else {
+        // 舊版 iOS 的替代方案
+        print("執行舊版功能 低於iOS26 不包含VBR")
+
+        let BitRateOptions = ["ABR 平均碼率 VBR的改進版", "CBR 固定碼率"]
+    }
+
+    
 
     @AppStorage("BacklogTime",store:userDefaults) private var logTime = false
 
@@ -555,6 +571,29 @@ struct LogSettingView:View {
             }.onChange(of:Enablelog) { newValue in
                 CFNotificationCenterPostNotification(cfCenter, CFNotificationName("Enablelog" as CFString), nil, nil, true)
             }
+
+
+            Toggle(isOn: $allowFrameReordering){
+                Text("允許畫面幀捕捉！ 或許可以改進畫面品質")
+            }.onChange(of:allowFrameReordering) { newValue in
+                sendlog(message:"允許 ReplayKit 捕捉完整畫面幀 \(newValue)")
+            }
+            
+            Text("啟用後 捕捉完整畫面幀 開啟逐幀錄製會增加 CPU/GPU 負擔，可能影響效能")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .padding(.bottom, 5)
+
+
+            Picker("請選擇一個位元率模式", selection: $BitRateMode) {
+                ForEach(0..<BitRateOptions.count, id: \.self) { index in
+                    Text(BitRateOptions[index]).tag(index)
+                }
+            }
+            .pickerStyle(.segmented) // 可改成 .menu 看起來像下拉選單
+
+            Text("目前選擇：\(BitRateOptions[selectedOption])")
+                .padding()
 
             Text("啟用日誌後, 會依用戶選擇App內顯示或外部服務器顯示 ，用於除錯或排查問題。")
                     .font(.footnote)
