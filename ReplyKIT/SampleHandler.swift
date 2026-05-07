@@ -1808,11 +1808,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         var videoSettings = await rtmpStream.videoSettings
 
+
+        
         if videoSettings.videoSize != newSize {
             sendlog(
                 message: "VideoSize:\(newSize) old:\(videoSettings.videoSize)"
             )
-            videoSettings.videoSize = newSize
         }
 
         let profilelvl: String
@@ -1878,8 +1879,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         switch RPConfig.shared.state.BitRateMode {
         case 0:
             videoSettings.bitRateMode = .average
+            break;
         case 1:
             videoSettings.bitRateMode = .constant
+            break;
         case 2: 
 
             if #available(iOS 26.0, *) {
@@ -1891,6 +1894,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 print("執行舊版功能 使用ABR")
                 videoSettings.bitRateMode = .average
             }
+            break;
 
 
         default:
