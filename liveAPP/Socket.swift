@@ -550,7 +550,7 @@ class SocketServer:ObservableObject {
             "ChangeBit": userDefaults?.bool(forKey: "ChangeBit") ?? false,
             "isLowLatencyRateControlEnabled":userDefaults?.bool(forKey:"isLowLatencyRateControlEnabled") ?? true,
             "isOringinAudio":userDefaults?.bool(forKey:"isOringinAudio") ?? true,
-
+            "allowFrameReordering": userDefaults?.bool(forKey:"allowFrameReordering") ?? true,
             "h264level": userDefaults?
                 .string(forKey: "h264level") ?? "AutoHigh",
             "BitRateMode": userDefaults?
