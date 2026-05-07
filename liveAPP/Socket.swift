@@ -865,11 +865,8 @@ class SocketServer:ObservableObject {
                         if let data = data {
                             // 遍歷所有 key/value
                             for (key, value) in data {
-
-                                logTo("\(String(descripting：value))",title: \(String(descripting：key)))
-                                
+                                logTo(String(describing: value), title: String(describing: key))
                             }
-
                         } else {
 
                             logTo("data 為 nil")
