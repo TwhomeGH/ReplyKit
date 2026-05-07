@@ -866,7 +866,7 @@ class SocketServer:ObservableObject {
                             // 遍歷所有 key/value
                             for (key, value) in data {
 
-                                logTo("\(value)",title: key)
+                                logTo("\(String(descripting：value))",title: key)
                                 
                             }
 

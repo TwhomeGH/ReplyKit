@@ -585,7 +585,7 @@ struct LogSettingView:View {
             }
             .pickerStyle(.segmented) // 可改成 .menu 看起來像下拉選單
 
-            Text("目前選擇：\(BitRateOptions[selectedOption])")
+            Text("目前選擇：\(BitRateOptions[BitRateMode])")
                 .padding()
 
             Text("啟用日誌後, 會依用戶選擇App內顯示或外部服務器顯示 ，用於除錯或排查問題。")
