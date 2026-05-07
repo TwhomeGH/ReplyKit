@@ -1246,12 +1246,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             DWidth = ODWidth
             DHeight = ODHeight
 
-        }
-        else if ADWidth > 0 && ADHeight > 0 {
+        } else if ADWidth > 0 && ADHeight > 0 {
             DWidth = ADWidth
             DHeight = ADHeight
         }
 
+
+        sendlog(message:"ADWH:\(ADWidth)x\(ADHeight) ODWH:\(ODWidth)x\(ODHeight)")
 
 
         // MARK: Volume
@@ -1280,7 +1281,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     }
 
 
-    func configureVideo() async {
+    func configureVideo_init() async {
         // Video settings
 
         
@@ -1354,7 +1355,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         await mediaMixer.startRunning()
 
 
-        didConfigureVideo = false
+
         didConfigureAudio = false
 
         configureOrientation()
@@ -1485,9 +1486,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         // User has requested to start the broadcast. Setup info from the UI extension can be suppdlied but optional.
 
 
-
-
-
         Task {
 
         //進行Socket初始化
@@ -1498,6 +1496,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         isBroadcasting = true
         isStopping = false
+
+        needVideoConfiguration = true
+        needAudioConfiguration = true
 
 
             //self.prepareCompressionSession()
@@ -1530,7 +1531,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 sendlog(message:"✅App:\(appVolume)  Mic:\(micVolume) AppAdd:\(appAddVolume) MicAdd:\(micAddVolume)")
 
 
-                await self.configureVideo()
+                await self.configureVideo_init()
                 await self.configureAudio()
                 await self.configureMediaMixer()
 
@@ -1593,9 +1594,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             //ExtensionMessagePort.shared.disconnectFromApp()
 
 
-            needVideoConfiguration = true
-            needAudioConfiguration = true
-
             removeObservers()
             isSessionReady = false
 
@@ -1636,7 +1634,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
     // MARK: 內部已配置處理
-    private var didConfigureVideo = true
     private var didConfigureAudio = true
 
 
@@ -1691,9 +1688,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     }
 
     func configureVideo(_ sampleBuffer: CMSampleBuffer) async {
-        // 如果已經初始化過，就不再重做
-        if didConfigureVideo { return }
-        didConfigureVideo = true  // 打上標記
+
 
         guard let formatDesc = sampleBuffer.formatDescription else { return }
         let dims = CMVideoFormatDescriptionGetDimensions(formatDesc)
@@ -1957,16 +1952,18 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             if sampleBuffer.dataReadiness == .ready {
 
-            if needVideoConfiguration && !didConfigureVideo {
-                needVideoConfiguration = false
-
+            if needVideoConfiguration {
+                
                 Task {
                     await self.configureVideo(sampleBuffer)
                 }
 
+                needVideoConfiguration = false
+
+
 
                 // ✅ 初始化時才抓一次方向
-#if os(iOS)
+                #if os(iOS)
                 if DeviceOrientationManager.shared.isEnabled {
 
                         let orientation = UIDevice.current.orientation

@@ -631,15 +631,21 @@ final class RPConfig {
 
             if let ADWidth = ADWidth {
                 self.state.ADWidth = ADWidth
+                sendlog(message:"原始寬度:\(ADWidth)")
+                
             }
             if let ADHeight = ADHeight {
                 self.state.ADHeight = ADHeight
+                sendlog(message:"原始高度:\(ADHeight)")
             }
             if let ODWidth = ODWidth {
                 self.state.ODWidth = ODWidth
+                sendlog(message:"輸出寬度:\(ODWidth)")
             }
             if let ODHeight = ODHeight {
                 self.state.ODHeight = ODHeight
+
+                sendlog(message:"輸出高度:\(ODWidth)")
             }
 
         }

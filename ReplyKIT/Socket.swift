@@ -672,7 +672,6 @@ class SocketClient : @unchecked Sendable {
 
             ]
             
-            self.logTo("[Get]RTMP BitRateMode:\(c.BitRateMode)")
 
             logRES.append("[Get]RTMP:\(c.rtmpURL):\(fixlogSafeKey(c.rtmpKey))")
             
