@@ -83,7 +83,8 @@ jobs:
           echo "Running a fast build on iOS Simulator to surface compile errors quickly"
           xcodebuild -scheme "$scheme" -"$filetype_parameter" "$file_to_build" \
             -sdk iphonesimulator -configuration Debug \
-            clean build CODE_SIGNING_ALLOWED=NO | xcpretty || true
+            clean build CODE_SIGNING_ALLOWED=NO 2>&1 | tee xcodebuild.log | xcpretty
+          
           EXIT_CODE=${PIPESTATUS[0]}
           echo "Fast build exit code: $EXIT_CODE"
 
