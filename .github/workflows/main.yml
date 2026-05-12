@@ -40,7 +40,8 @@ jobs:
 
       
       # 2️⃣ Detect default scheme
-      - name: Set default scheme
+      - name: Set Default Scheme 設定預設場景參數
+        id: scheme
         run: |
           scheme_list=$(xcodebuild -list -json 2>/dev/null || echo '{}')
           default=$(echo "$scheme_list" | ruby -e "
@@ -57,25 +58,50 @@ jobs:
           echo $default > default
           echo Using default scheme: $default
 
+          echo "scheme=$default" >> $GITHUB_OUTPUT
+      
+
+      - name: Filetype Parameter 檔案類型參數設定
+        id: filetype_parameter
+        run: |
+          if [ "`ls -A | grep -i \\.xcworkspace\$`" ]; then
+              echo "file_to_build=$(ls -A | grep -i \\.xcworkspace\$)" >> $GITHUB_OUTPUT
+              echo "filetype_parameter=workspace" >> $GITHUB_OUTPUT
+          else
+              echo "file_to_build=$(ls -A | grep -i \\.xcodeproj\$)" >> $GITHUB_OUTPUT
+              echo "filetype_parameter=project" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Fast compile 編譯檢查
+        env:
+          scheme: ${{ steps.scheme.outputs.scheme }}
+          filetype_parameter: ${{ steps.filetype_parameter.outputs.filetype_parameter }}
+          file_to_build: ${{ steps.filetype_parameter.outputs.file_to_build }}
+        run: |
+          set -o pipefail
+          echo "Running a fast build on iOS Simulator to surface compile errors quickly"
+          xcodebuild -scheme "$scheme" -"$filetype_parameter" "$file_to_build" \
+            -sdk iphonesimulator -configuration Debug \
+            clean build CODE_SIGNING_ALLOWED=NO | xcpretty || true
+          EXIT_CODE=${PIPESTATUS[0]}
+          echo "Fast build exit code: $EXIT_CODE"
+      
+
       # 3️⃣ Build & Archive (Unsigned)
-      - name: Build & Archive Unsigned
+      - name: Build & Archive Unsigned IPA 構建與打包未簽名的 IPA
+        env:
+          scheme: ${{ steps.scheme.outputs.scheme }}
+          filetype_parameter: ${{ steps.filetype_parameter.outputs.filetype_parameter }}
+          file_to_build: ${{ steps.filetype_parameter.outputs.file_to_build }}
+
         run: |
           mkdir -p build
-          scheme=$(cat default)
-          if [ "`ls -A | grep -i \\.xcworkspace\$`" ]; then
-              filetype="workspace"
-              file_to_build=`ls -A | grep -i \\.xcworkspace\$`
-          else
-              filetype="project"
-              file_to_build=`ls -A | grep -i \\.xcodeproj\$`
-          fi
-          file_to_build=$(echo $file_to_build | awk '{$1=$1;print}')
-
-          xcodebuild clean -$filetype "$file_to_build" -scheme "$scheme" -configuration Release
+          
+          xcodebuild clean -$filetype_parameter "$file_to_build" -scheme "$scheme" -configuration Release
           
     
           xcodebuild archive \
-            -$filetype "$file_to_build" \
+            -$filetype_parameter "$file_to_build" \
             -scheme "$scheme" \
             -configuration Release \
             -archivePath $PWD/build/liveApp.xcarchive \
@@ -84,7 +110,7 @@ jobs:
 
             
       # 4️⃣ Export Unsigned IPA using external plist
-      - name: Export Unsigned IPA
+      - name: Export Unsigned IPA 打包未簽名的 IPA
         run: |
         
           cd build
@@ -107,7 +133,7 @@ jobs:
           
           
 
-      - name: Upload Release with merged body
+      - name: Upload Release with merged body 上傳 Release 並合併內容
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ steps.get_tag.outputs.tag }}
@@ -175,7 +201,7 @@ jobs:
 
         
       # 5️⃣ Upload IPA & Archive to Release
-      - name: Upload Release
+      - name: Upload Release 上傳 Release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.get_tag.outputs.tag }}
