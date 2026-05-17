@@ -489,7 +489,7 @@ class SocketClient : @unchecked Sendable {
     func sendStreamEnd() {
         let payload: [String: Any] = [
             "type": "Ended",
-            "Message": "直播結束"
+            "Message": "StreamEnded"
         ]
 
         queue.async { [weak self] in

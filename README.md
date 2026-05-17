@@ -304,7 +304,7 @@
 ```
 
 
-  ### 欄位說明
+### 欄位說明
 
 
   | 欄位 | 類型 | 說明 |
@@ -323,6 +323,45 @@
   - `userNum` 與 `userList` 都是可選欄位，舊格式只傳 `isMain` 也能正常使用
   - 若 `userNum` 沒有傳入，PiP 不會額外顯示觀眾數標籤
   - `userList` 目前先保留給後續功能使用，現階段不會直接顯示在 PiP 畫面上
+
+---
+
+### 對子母畫面 發送直播開始/結束訊息
+
+直播開始 
+
+```json
+{
+    "type": "StreamStarting",
+}
+```
+
+
+  | 欄位 | 類型 | 說明 |
+  | -- | -- | -- |
+  | type | String | 接口消息類型 |
+
+---  
+
+直播結束
+
+```json
+{
+    "type": "Ended",
+    "Message":"StreamEnded"
+}
+```
+
+  | 欄位 | 類型 | 說明 |
+  | -- | -- | -- |
+  | type | String | 接口消息類型 Ended代表結束 |
+  | Message | String | 顯示在子母用的結束訊息 使用預設填 StreamEnded |
+
+
+
+
+
+
 
 3. 發送方式（Python 範例）
 

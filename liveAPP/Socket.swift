@@ -540,6 +540,25 @@ class SocketServer:ObservableObject {
     }
 
 
+    // MARK: - 直播狀態管理 開始直播
+    func StreamStarting() {
+
+        StreamStatusChanged(isLive: true)
+
+        LPConfig.shared.streamStartTime = Date()
+
+        LPConfig.shared.streamViewerCount = nil
+        LPConfig.shared.streamViewerList = []
+        
+    }
+
+    // MARK: - 直播狀態管理 直播開始/結束 狀態更新
+    func StreamStatusChanged(isLive: Bool, message: String? = nil) {
+        LPConfig.shared.StreamEnded = !isLive
+        LPConfig.shared.StreamEndMes = message ?? (isLive ? "直播中" : "直播已結束")
+        PIPService.shared.markOverlayDirty()
+    }
+
     func GetRTMPConfig() -> [String: Any]  {
 
         var payload: [String: Any] = [
@@ -638,14 +657,9 @@ class SocketServer:ObservableObject {
         }
 
 
-
-        LPConfig.shared.streamStartTime = Date()
-        LPConfig.shared.StreamEndMes = "直播中"
-        LPConfig.shared.StreamEnded = false
-        LPConfig.shared.streamViewerCount = nil
-        LPConfig.shared.streamViewerList = []
-
-
+        // 每次請求RTMP都重置直播狀態
+        StreamStarting()
+        
         var CPayloadKey = payload
 
         if let key = payload["rtmpKey"] as? String {
@@ -709,17 +723,23 @@ class SocketServer:ObservableObject {
             case "heartbeat":
                 sendlog(message: "收到Socket心跳維持連線")
 
+            case "StreamStarting":
+                sendlog(message: "直播開始")
+                StreamStarting()
+
             case "Ended":
                 let dict = try decoder.decode(StreamEnded.self,
                     from: data
                 )
                 let MES = dict.Message
 
-                sendlog(message: "Stream is Ended")
-                LPConfig.shared.StreamEnded = true
-                LPConfig.shared.StreamEndMes = MES
+                sendlog(message: "直播已結束: \(MES)")
 
-
+                if MES != "StreamEnded" {
+                    StreamStatusChanged(isLive: false, message: MES)
+                } else {
+                    StreamStatusChanged(isLive: false)
+                }
 
             case "StreamMessage":
 
