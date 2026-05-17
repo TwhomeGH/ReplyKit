@@ -1228,25 +1228,36 @@ final class PIPServiceMessages {
             // 可以塞下去 → 移除 pending 並 append
             pendingSegments.removeAll { $0.parentID == first.parentID }
 
-            for msg in groupMsgs {
-                if let avatarURL = msg.img {
+            // 第一個 segment → 載頭貼
+            if let firstData = groupSegments.first, let avatarURL = firstData.avatarURL {
+                if let firstMsg = groupMsgs.first {
                     Task {
                         await PiPImageCache.shared.loadImage(urlString: avatarURL) { image in
-                            msg.avatar?.contents = image?.cgImage
-                            msg.avatarImage = image?.size
+                            firstMsg.avatar?.contents = image?.cgImage
+                            firstMsg.avatarImage = image?.size
                         }
                     }
                 }
-                if let giftURL = msg.giftImg {
+            }
+
+            // 最後一個 segment → 載禮物
+            if let lastData = groupSegments.last, let giftURL = lastData.giftURL {
+                if let lastMsg = groupMsgs.last {
                     Task {
                         await PiPImageCache.shared.loadImage(urlString: giftURL) { image in
-                            msg.gift?.contents = image?.cgImage
-                            msg.giftImage = image?.size
+                            lastMsg.gift?.contents = image?.cgImage
+                            lastMsg.giftImage = image?.size
                         }
                     }
                 }
-                stackedMessages.append(msg)
             }
+
+
+            // 最後 append 整組
+            stackedMessages.append(contentsOf: groupMsgs)
+
+
+
         }
     }
 
