@@ -1229,7 +1229,7 @@ final class PIPServiceMessages {
             pendingSegments.removeAll { $0.parentID == first.parentID }
 
             for msg in groupMsgs {
-                if let avatarURL = msg.avatarURL {
+                if let avatarURL = msg.img {
                     Task {
                         await PiPImageCache.shared.loadImage(urlString: avatarURL) { image in
                             msg.avatar?.contents = image?.cgImage
@@ -1237,7 +1237,7 @@ final class PIPServiceMessages {
                         }
                     }
                 }
-                if let giftURL = msg.giftURL {
+                if let giftURL = msg.giftImg {
                     Task {
                         await PiPImageCache.shared.loadImage(urlString: giftURL) { image in
                             msg.gift?.contents = image?.cgImage
