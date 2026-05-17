@@ -1180,7 +1180,7 @@ final class PIPServiceMessages {
     }
 
     // MARK: - 從 pending 補到 visible（Chunk 修正版）
-    
+
     func populateVisibleMessagesIfNeeded() {
         while let first = pendingSegments.first {
             // 找出同一組 parentID 的所有 segment
@@ -1229,7 +1229,7 @@ final class PIPServiceMessages {
             pendingSegments.removeAll { $0.parentID == first.parentID }
 
             for msg in groupMsgs {
-                if let avatarURL = msg.data.avatarURL {
+                if let avatarURL = msg.avatarURL {
                     Task {
                         await PiPImageCache.shared.loadImage(urlString: avatarURL) { image in
                             msg.avatar?.contents = image?.cgImage
@@ -1237,7 +1237,7 @@ final class PIPServiceMessages {
                         }
                     }
                 }
-                if let giftURL = msg.data.giftURL {
+                if let giftURL = msg.giftURL {
                     Task {
                         await PiPImageCache.shared.loadImage(urlString: giftURL) { image in
                             msg.gift?.contents = image?.cgImage
