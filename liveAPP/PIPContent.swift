@@ -1160,165 +1160,95 @@ final class PIPServiceMessages {
     }
 
 
-    func canInsertMessage(_ newMsg: MessageLayerTuple) -> Bool {
 
-        // 1️⃣ 先拿目前已排好的最後一條 target 底部
+    // MARK: - Layout Decision 整組訊息放不下的判斷
+    func canInsertMessageGroup(_ group: [MessageLayerTuple]) -> Bool {
         let currentBottom = stackedMessages
             .filter { $0.alpha > 0 && !$0.isFadingOut }
             .map { $0.targetY + $0.height }
             .max() ?? topMargin
 
-        // 2️⃣ 新訊息「理論上」會接在這個位置
-        let newBottom = currentBottom + newMsg.height + newMsg.verticalSpacing
+        // 計算整組訊息的總高度
+        let groupHeight = group.reduce(0) { $0 + $1.height + $1.verticalSpacing }
 
-        // 3️⃣ 容許超出 30%
-        let maxConH =  containerHeight * 0.30
+        let newBottom = currentBottom + groupHeight
+
+        let maxConH = containerHeight * 0.30
         let limit = containerHeight + maxConH
 
-        let canInsert = newBottom <= limit
-
-        PIPChatLog(
-            """
-            CanInsert \(canInsert)
-            CurrentBottom:\(currentBottom)
-            NewBottom:\(newBottom)
-            Limit:\(limit)
-            容許超出30%:+\(maxConH)
-            """
-        )
-
-        return canInsert
+        return newBottom <= limit
     }
 
+    // MARK: - 從 pending 補到 visible（Chunk 修正版）
+    
     func populateVisibleMessagesIfNeeded() {
+        while let first = pendingSegments.first {
+            // 找出同一組 parentID 的所有 segment
+            let groupSegments = pendingSegments.filter { $0.parentID == first.parentID }
 
+            // 先建構整組訊息
+            var groupMsgs: [MessageLayerTuple] = []
+            for data in groupSegments {
+                guard let font = data.font,
+                    let avatarSize = data.avatarSizeLocal,
+                    let giftSize = data.giftSizeLocal else { return }
 
-        while let data = pendingSegments.first {
+                let msg = buildMessageTuple(
+                    type: data.type,
+                    user: data.user,
+                    message: data.message,
+                    img: nil,
+                    giftImg: nil,
+                    showAvatar: data.showAvatar,
+                    showName: data.showName,
+                    showMessage: data.showMessage,
+                    showGift: data.showGift,
+                    font: font,
+                    avatarSizeLocal: avatarSize,
+                    giftSizeLocal: giftSize,
+                    verticalSpacing: data.verticalSpacing,
+                    horizontalSpacing: data.horizontalSpacing,
+                    data: data
+                )
 
+                msg.parentMessageID = data.parentID
+                msg.segmentIndex = data.segmentIndex
+                groupMsgs.append(msg)
+            }
 
-            guard let font = data.font,
-                  let avatarSize = data.avatarSizeLocal,
-                  let giftSize = data.giftSizeLocal
-            else { return }
-
-            let msg = buildMessageTuple(
-                type: data.type,
-                user: data.user,
-                message: data.message,
-                img: nil, //先設 nil，用 URL 下載
-                giftImg: nil, //先設 nil，用 URL 下載
-                showAvatar: data.showAvatar, // 只有第一行顯示 avatar,
-                showName: data.showName,
-                showMessage:data.showMessage,   // 只有第一行顯示名字
-                showGift: data.showGift, // 最後一行顯示禮物
-                font: font,
-                avatarSizeLocal: avatarSize,
-                giftSizeLocal: giftSize,
-                verticalSpacing: data.verticalSpacing,
-                horizontalSpacing: data.horizontalSpacing, data: data
-                     )
-
-            msg.parentMessageID = data.parentID
-            msg.segmentIndex = data.segmentIndex
-
-
-            // 🔑 先確保目前 targetY 是最新
+            // 🔑 判斷整組能不能塞下去
             _ = relayoutTargetsOnly(updateTargetY: true)
-
-            guard canInsertMessage(msg) else {
-
+            guard canInsertMessageGroup(groupMsgs) else {
                 phase = .moving
                 lastMoveTriggerTime = CACurrentMediaTime()
-
-                PIPChatLog("放不下切換回Move狀態 重新Fade")
-                // 放不下就不要 build
+                PIPChatLog("整組放不下，切換回Move狀態重新Fade")
                 break
             }
 
-            pendingSegments.removeFirst()
+            // 可以塞下去 → 移除 pending 並 append
+            pendingSegments.removeAll { $0.parentID == first.parentID }
 
-
-
-            if let avatarURL = data.avatarURL {
-                Task {
-                    await PiPImageCache.shared
-                        .loadImage(urlString: avatarURL) { image in
+            for msg in groupMsgs {
+                if let avatarURL = msg.data.avatarURL {
+                    Task {
+                        await PiPImageCache.shared.loadImage(urlString: avatarURL) { image in
                             msg.avatar?.contents = image?.cgImage
                             msg.avatarImage = image?.size
                         }
+                    }
                 }
-            }
-            if let giftURL = data.giftURL {
-                Task {
-                    await PiPImageCache.shared
-                        .loadImage(urlString: giftURL) { image in
+                if let giftURL = msg.data.giftURL {
+                    Task {
+                        await PiPImageCache.shared.loadImage(urlString: giftURL) { image in
                             msg.gift?.contents = image?.cgImage
                             msg.giftImage = image?.size
                         }
+                    }
                 }
+                stackedMessages.append(msg)
             }
-
-            stackedMessages.append(msg)
-
         }
     }
-
-
-    // MARK: 之前固定於底部用的考慮棄用或提換成別的
-    //    private func layoutBottomMessage() {
-    //        guard let msg = bottomMessage else { return }
-    //
-    //        //let y = bottomPadding
-    //        let y = container.bounds.height - msg.height - bottomPadding
-    //        //let x = 80.0
-    //
-    //        PIPChatLog(
-    //            "Debug Bottom? \(String(describing: msg.message?.string)) \(String(describing: msg.message?.opacity))"
-    //        )
-    //        layout(msg: msg, y: y)
-    //    }
-
-    // MARK: 更新底部訊息
-
-    //    func updateBottomVisibility() {
-    //        guard let bottom = bottomMessage else { return }
-    //
-    //        let shouldHide = IshasOverFlow()
-    //
-    //        // 如果是 secondary，永遠顯示
-    //        let isSecondary = bottom.type == .secondary
-    //
-    //        let targetOpacity: Float = isSecondary ? 1.0 : (shouldHide ? 0.0 : 1.0)
-    //
-    //
-    //        if bottom.avatar?.opacity != targetOpacity {
-    //            bottom.avatar?.opacity = targetOpacity
-    //            bottom.name?.opacity = targetOpacity
-    //            bottom.message?.opacity = targetOpacity
-    //            bottom.gift?.opacity = targetOpacity
-    //        }
-    //    }
-
-    // MARK: 舊的替換底部文字
-
-    //    private func replaceBottomMessage(_ newMsg: MessageLayerTuple) {
-    //
-    //        // 移除舊的
-    //        if let old = bottomMessage {
-    //            old.avatar?.removeFromSuperlayer()
-    //            old.name?.removeFromSuperlayer()
-    //            old.message?.removeFromSuperlayer()
-    //            old.gift?.removeFromSuperlayer()
-    //        }
-    //
-    //        bottomMessage = newMsg
-    //
-    //        layoutBottomMessage()
-    //        updateBottomVisibility()
-    //        PIPService.shared.markDirty()
-    //
-    //    }
-
 
 
 
