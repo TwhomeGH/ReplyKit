@@ -218,19 +218,15 @@ final class GPUSettingsViewModel: ObservableObject {
 }
 
 
+
 struct GPURotateView: View {
     @ObservedObject var viewModel: GPUSettingsViewModel
-
-
     @AppStorage("useBic",store:userDefaults) private var useBic = false
-
-
-
 
 
     var body: some View {
         Form {
-            Section(header: Text("GPU旋轉處理 輸出設置")) {
+            Section(header: Text("輸出設置")) {
 
 
                 Picker(
@@ -513,45 +509,142 @@ struct GPURotateView: View {
     }
 }
 
-struct LogSettingView:View {
 
-    @AppStorage("onlogPage",store:userDefaults) private var onlogPage = false
-
-    @AppStorage("PIPLog",store:userDefaults) private var PIPLog = false
-
-    @AppStorage("PIPChatLog",store:userDefaults) private var PIPChatLog = false
-
-    @AppStorage("allowFrameReordering",store:userDefaults) private var allowFrameReordering = true
-
-    @AppStorage("BitRateMode",store:userDefaults)  private var BitRateMode = 0
-
-
-    let BitRateOptions = ["ABR 平均碼率 VBR的改進版", "CBR 固定碼率", "VBR 可變位元率 iOS26後才有"]
-    
-
-    
-
-    @AppStorage("BacklogTime",store:userDefaults) private var logTime = false
-
-    @AppStorage("Enablelog",store:userDefaults) private var Enablelog = false
-
-    @AppStorage("EnableRotatelog",store:userDefaults) private var EnableRotatelog = false
-
-    @AppStorage("EnableSocketlog",store:userDefaults) private var EnableSocketlog = false
-
-    @AppStorage("EnableTimeDebug",store:userDefaults) private var EnableTimeDebug = false
-
-
-    @AppStorage("ChangeBit",store:userDefaults) private var ChangeBit = true
-
-    @AppStorage("isLowLatencyRateControlEnabled",store:userDefaults)  private var isLowLatencyRateControlEnabled = true
-
+struct AudioSettingsView:View {
 
     @AppStorage("isOringinAudio",store:userDefaults)  private var isOringinAudio = true
 
     @AppStorage("enableNoiseFix",store:userDefaults) private var enableNoiseFix = false
     @AppStorage("enableEchoFix",store:userDefaults) private var enableEchoFix = false
     @AppStorage("enableAGCFix",store:userDefaults) private var enableAGCFix = false
+
+
+    var body: some View {
+        Form {
+            Section(header: Text("音訊設置")) {
+            
+                Toggle(isOn:$isOringinAudio){
+                                Text("啟用原味音訊處理！")
+                            }
+
+                Text("啟用後忽視音訊處理 直接原封不動送進去")                                                                                                     
+                .font(.footnote)
+                .foregroundColor(.secondary)
+                .padding(.bottom, 5)
+
+                Toggle(isOn:$enableNoiseFix){
+                    Text("啟用降噪功能！")
+                }
+
+                Text("啟用後會對音訊進行降噪處理，減少背景噪聲，提升語音清晰度 頻譜減法去除")                                                                                                     
+                .font(.footnote)
+                .foregroundColor(.secondary)
+                .padding(.bottom, 5)
+
+                Toggle(isOn:$enableEchoFix){
+                    Text("啟用回音消除功能！")
+                }
+
+                Text("啟用後會對音訊進行回音處理，減少應用音量重疊")                                                                                                     
+                .font(.footnote)
+                .foregroundColor(.secondary)
+                .padding(.bottom, 5)
+
+                Toggle(isOn:$enableAGCFix){
+                    Text("啟用自動音量調整功能！")
+                }
+
+                Text("啟用後會對音訊進行自動大小增益")                                                                                                     
+                .font(.footnote)
+                .foregroundColor(.secondary)
+                .padding(.bottom, 5)
+
+
+
+                Text("敬請期待！")
+
+
+            }
+        }.navigationTitle("音訊設置")
+    }
+    
+}
+
+// MARK: PIP日誌設置
+struct PIPSettingsView: View {
+    @AppStorage("PIPLog",store:userDefaults) private var PIPLog = false
+    @AppStorage("PIPChatLog",store:userDefaults) private var PIPChatLog = false
+    @AppStorage("PIPLayoutLog",store:userDefaults) private var PIPLayoutLog = false
+    @AppStorage("PIPFrameLog",store:userDefaults) private var PIPFrameLog = false
+
+
+    var body: some View {
+        Form {
+            Toggle(isOn: $PIPLog){
+                Text("啟用PIP子母窗口調試用日誌 ！")
+            }.onChange(of:PIPLog) { newValue in
+                logger.debug("PIPLog:\(newValue)")
+                LPConfig.shared.PIPLog = newValue
+            }
+
+            Text("啟用後顯示, 關於PIP畫面情況")
+                .font(.footnote)
+                .foregroundColor(.secondary)
+                .padding(.bottom, 5)
+
+            Toggle(isOn: $PIPChatLog){
+                Text("啟用PIP子母窗口 訊息處理 調試日誌 ！")
+            }.onChange(of:PIPChatLog) { newValue in
+                logger.debug("PIPChatLog:\(newValue)")
+                LPConfig.shared.PIPChatLog = newValue
+            }
+
+            Text("啟用後顯示, 關於PIP訊息處理動畫日誌")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .padding(.bottom, 5)
+
+
+            Toggle(isOn: $PIPLayoutLog){
+                Text("啟用PIP子母窗口 佈局調試日誌 ！")
+            }.onChange(of:PIPLayoutLog) { newValue in
+                logger.debug("PIPLayoutLog:\(newValue)")
+                sendlog(message: "PIPLayoutLog:\(newValue)")
+            }
+
+            Toggle(isOn: $PIPFrameLog){
+                Text("啟用PIP子母窗口 畫面幀調試日誌 ！")
+            }.onChange(of:PIPFrameLog) { newValue in
+                logger.debug("PIPFrameLog:\(newValue)")
+                sendlog(message: "PIPFrameLog:\(newValue)")
+            }
+
+
+        }
+        .navigationTitle("PIP日誌設置")
+    }
+    
+}
+
+
+struct LogSettingView:View {
+
+    @AppStorage("onlogPage",store:userDefaults) private var onlogPage = false
+    @AppStorage("allowFrameReordering",store:userDefaults) private var allowFrameReordering = true
+    @AppStorage("BitRateMode",store:userDefaults)  private var BitRateMode = 0
+
+    let BitRateOptions = ["ABR 平均碼率 VBR的改進版", "CBR 固定碼率", "VBR 可變位元率 iOS26後才有"]
+        
+    @AppStorage("BacklogTime",store:userDefaults) private var logTime = false
+
+    @AppStorage("Enablelog",store:userDefaults) private var Enablelog = false
+    @AppStorage("EnableRotatelog",store:userDefaults) private var EnableRotatelog = false
+    @AppStorage("EnableSocketlog",store:userDefaults) private var EnableSocketlog = false
+    @AppStorage("EnableTimeDebug",store:userDefaults) private var EnableTimeDebug = false
+
+    @AppStorage("ChangeBit",store:userDefaults) private var ChangeBit = true
+    @AppStorage("isLowLatencyRateControlEnabled",store:userDefaults)  private var isLowLatencyRateControlEnabled = true
+    
 
 
     @ObservedObject var socket = SocketServer.shared
@@ -620,18 +713,6 @@ struct LogSettingView:View {
                     .foregroundColor(.secondary)
                     .padding(.bottom, 5)
 
-
-
-            Toggle(isOn:$isOringinAudio){
-                                Text("啟用原味音訊處理！")
-                            }
-
-                        Text("啟用後忽視音訊處理 直接原封不動送進去")                                                                                                     
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
-                        .padding(.bottom, 5)
-
-
             Toggle(isOn:$isLowLatencyRateControlEnabled){
                                 Text("啟用低延遲處理！")
                             }
@@ -640,32 +721,6 @@ struct LogSettingView:View {
                         .font(.footnote)
                         .foregroundColor(.secondary)
                         .padding(.bottom, 5)
-
-            Toggle(isOn:$enableNoiseFix){
-                    Text("啟用降噪功能！")
-                }
-
-            Text("啟用後會對音訊進行降噪處理，減少背景噪聲，提升語音清晰度 頻譜減法去除")                                                                                                     
-            .font(.footnote)
-            .foregroundColor(.secondary)
-            .padding(.bottom, 5)
-            
-            Toggle(isOn:$enableEchoFix){
-                Text("啟用回音消除功能！")
-            }
-            Text("啟用後會對音訊進行回音處理，減少應用音量重疊")                                                                                                     
-            .font(.footnote)
-            .foregroundColor(.secondary)
-            .padding(.bottom, 5)
-
-            Toggle(isOn:$enableAGCFix){
-                Text("啟用自動音量調整功能！")
-            }
-            Text("啟用後會對音訊進行自動大小增益")                                                                                                     
-            .font(.footnote)
-            .foregroundColor(.secondary)
-            .padding(.bottom, 5)
-
 
             Toggle(isOn: $EnableRotatelog){
                 Text("啟用畫面旋轉調試日誌 ！")
@@ -721,34 +776,13 @@ struct LogSettingView:View {
                     .foregroundColor(.secondary)
                     .padding(.bottom, 5)
 
+        }
 
-            Toggle(isOn: $PIPLog){
-                Text("啟用PIP子母窗口調試用日誌 ！")
-            }.onChange(of:PIPLog) { newValue in
-                logger.debug("PIPLog:\(newValue)")
-                LPConfig.shared.PIPLog = newValue
-            }
-
-            Text("啟用後顯示, 關於PIP畫面情況")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-                    .padding(.bottom, 5)
-
-            Toggle(isOn: $PIPChatLog){
-                Text("啟用PIP子母窗口 訊息處理 調試日誌 ！")
-            }.onChange(of:PIPChatLog) { newValue in
-                logger.debug("PIPChatLog:\(newValue)")
-                LPConfig.shared.PIPChatLog = newValue
-            }
-
-            Text("啟用後顯示, 關於PIP訊息處理動畫日誌")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-                    .padding(.bottom, 5)
-
+        Section(header: Text("網路")) {
 
             Button("測試擴展通信傳遞"){
-                AppMessagePort.shared.send(toExtension: ["ping": "From_App"])
+                // 未來計畫棄用 已經用Socket轉送處理了
+                //AppMessagePort.shared.send(toExtension: ["ping": "From_App"])
 
                 socket.broadcast(type:"log",key: "test3", value: "OK Socket")
                 socket.broadcast(type: "testRTMP", key: "test3", value: "OK")
@@ -758,6 +792,7 @@ struct LogSettingView:View {
                 CFNotificationCenterPostNotification(cfCenter, CFNotificationName("SocketRetry" as CFString), nil, nil, true)
 
             }
+            
             Text("如果通信斷線了可以用這個重建")
                     .font(.footnote)
                     .foregroundColor(.secondary)
@@ -780,10 +815,6 @@ struct LogSettingView:View {
             }
 
 
-
-        }
-
-        Section(header: Text("網路")) {
             Toggle(isOn: $ChangeBit){
                 Text("停用自動碼率調整策略 ！")
             }

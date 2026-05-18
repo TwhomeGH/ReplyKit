@@ -67,10 +67,9 @@ final class LPConfig {
     var PIPChatFontMainSize: Double = 14.0
     var PIPChatFontSecondSize: Double = 10.0
 
-
     var PIPLog: Bool = false
     var PIPChatLog:Bool = false
-
+    
     var SocketLog:Bool = false
 
 

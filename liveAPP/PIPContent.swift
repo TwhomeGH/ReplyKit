@@ -431,8 +431,18 @@ final class LayerPool {
 final class PIPServiceMessages {
 
     private var insertionCounter: Int = 0
-    private let verboseFrameLog = false
-    private let verboseLayoutLog = false
+    var verboseFrameLog = false
+    var verboseLayoutLog = false
+
+    func updateLogSettings(verboseFrame: Bool? = nil, verboseLayout: Bool? = nil) {
+        
+        if let verboseFrame = verboseFrame {
+            self.verboseFrameLog = verboseFrame
+        }
+        if let verboseLayout = verboseLayout {
+            self.verboseLayoutLog = verboseLayout
+        }
+    }
 
     // MARK: 動畫狀態機
     enum AnimationPhase {
@@ -543,13 +553,19 @@ final class PIPServiceMessages {
     private var hasLaidOutOnce = false
 
 
-
     init(size: CGSize,scrollSpeed:CGFloat = 0.2) {
         container.frame = CGRect(origin: .zero, size: size)
         container.masksToBounds = true
 
         self.scrollSpeed = scrollSpeed
+
+        logTo("PIPServiceMessages initialized with container size: \(size)")
         
+        updateLogSettings(
+            verboseFrame: userDefaults.standard.bool(forKey: "PIPLayout"),
+            verboseLayout: userDefaults.standard.bool(forKey: "PIPFrameLog")
+        )
+
     }
 
 

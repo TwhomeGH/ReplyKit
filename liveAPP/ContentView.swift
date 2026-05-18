@@ -792,8 +792,16 @@ struct LogSettingsView: View {
                 
                 LogSettingView()
 
+                NavigationLink("音訊處理設置") {
+                    AudioSettingsView()
+                }
+
+                NavigationLink("PIP子母窗口設置") {
+                    PIPSettingsView()
+                }
+
                 NavigationLink("GPU旋轉處理設置") {
-                   GPURotateView(viewModel: gpuSettings)
+                    GPURotateView(viewModel: gpuSettings)
                 }
 
 
@@ -830,14 +838,13 @@ struct LogSettingsView: View {
                         format: .number
                     )
                         .frame(maxWidth: .infinity)
-                         .textFieldStyle(RoundedBorderTextFieldStyle())
-                         .keyboardType(.numberPad)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .keyboardType(.numberPad)
 
-                         .onChange(of: PIPFontMain) { newVal in
+                        .onChange(of: PIPFontMain) { newVal in
 
-                             logTo("主訊息文字與圖片大小 -> \(newVal) ")
-                             LPConfig.shared.PIPChatFontMainSize = newVal
-
+                            logTo("主訊息文字與圖片大小 -> \(newVal) ")
+                            LPConfig.shared.PIPChatFontMainSize = newVal
 
                         }
 
@@ -871,13 +878,13 @@ struct LogSettingsView: View {
                         format: .number
                     )
                         .frame(maxWidth: .infinity)
-                         .textFieldStyle(RoundedBorderTextFieldStyle())
-                         .keyboardType(.numberPad)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .keyboardType(.numberPad)
 
-                         .onChange(of: PIPFontSecond) { newVal in
+                        .onChange(of: PIPFontSecond) { newVal in
 
-                             logTo("次要訊息文字與圖片大小 -> \(newVal) ")
-                             LPConfig.shared.PIPChatFontSecondSize = newVal
+                            logTo("次要訊息文字與圖片大小 -> \(newVal) ")
+                            LPConfig.shared.PIPChatFontSecondSize = newVal
 
                         }
 
@@ -915,14 +922,14 @@ struct LogSettingsView: View {
                         value: $fadeAlpha,
                         format: .number
                     )
-                         .frame(maxWidth: .infinity)
-                         .textFieldStyle(RoundedBorderTextFieldStyle())
-                         .keyboardType(.numberPad)
+                        .frame(maxWidth: .infinity)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .keyboardType(.numberPad)
 
-                         .onChange(of: fadeAlpha) { newVal in
+                        .onChange(of: fadeAlpha) { newVal in
 
-                             logTo("FadeSpeedAlpha -> \(newVal) ")
-                             LPConfig.shared.FadeAlpha = newVal
+                            logTo("FadeSpeedAlpha -> \(newVal) ")
+                            LPConfig.shared.FadeAlpha = newVal
 
                         }
 
@@ -956,14 +963,14 @@ struct LogSettingsView: View {
                         format: .number
                     )
                         .frame(maxWidth: .infinity)
-                         .textFieldStyle(RoundedBorderTextFieldStyle())
-                         .keyboardType(.numberPad)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .keyboardType(.numberPad)
 
-                         .onChange(of: fadeTime) { newVal in
+                        .onChange(of: fadeTime) { newVal in
 
-                             logTo("FadeTime -> \(newVal) ")
-                             LPConfig.shared.MessageFadeTime = newVal
-                             PIPService.shared.fadeTime(newVal)
+                            logTo("FadeTime -> \(newVal) ")
+                            LPConfig.shared.MessageFadeTime = newVal
+                            PIPService.shared.fadeTime(newVal)
 
                         }
 
@@ -998,14 +1005,14 @@ struct LogSettingsView: View {
                         format: .number
                     )
                         .frame(maxWidth: .infinity)
-                         .textFieldStyle(RoundedBorderTextFieldStyle())
-                         .keyboardType(.numberPad)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .keyboardType(.numberPad)
 
-                         .onChange(of: scrollTime) { newVal in
+                        .onChange(of: scrollTime) { newVal in
 
-                             logTo("ScrollTime -> \(newVal) ")
-                             LPConfig.shared.ScrollTime = newVal
-                             PIPService.shared.scrollTime(newVal)
+                            logTo("ScrollTime -> \(newVal) ")
+                            LPConfig.shared.ScrollTime = newVal
+                            PIPService.shared.scrollTime(newVal)
 
                         }
 
@@ -1036,7 +1043,7 @@ struct LogSettingsView: View {
 
 
             }
-            .navigationTitle("設定日誌服務器")
+            .navigationTitle("主設定頁面")
             .onAppear {
                 tempEndpoint = logURL
             }
