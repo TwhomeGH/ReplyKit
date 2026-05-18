@@ -1157,24 +1157,6 @@ final class PIPServiceMessages {
 
 
 
-    // MARK: - Layout Decision 整組訊息放不下的判斷
-    func canInsertMessageGroup(_ group: [MessageLayerTuple]) -> Bool {
-        let currentBottom = stackedMessages
-            .filter { $0.alpha > 0 && !$0.isFadingOut }
-            .map { $0.targetY + $0.height }
-            .max() ?? topMargin
-
-        // 計算整組訊息的總高度
-        let groupHeight = group.reduce(0) { $0 + $1.height + $1.verticalSpacing }
-
-        let newBottom = currentBottom + groupHeight
-
-        let maxConH = containerHeight * 0.30
-        let limit = containerHeight + maxConH
-
-        return newBottom <= limit
-    }
-
     private func segmentHeight(_ data: MessageSegmentData) -> CGFloat {
         if data.showName && data.showMessage {
             return data.horizontalSpacing
@@ -1187,20 +1169,32 @@ final class PIPServiceMessages {
         return 0
     }
 
-    private func canInsertSegmentGroup(_ group: [MessageSegmentData]) -> Bool {
-        let currentBottom = stackedMessages
+    private var visibleInsertLimit: CGFloat {
+        containerHeight + containerHeight * 0.30
+    }
+
+    private func currentVisibleBottom() -> CGFloat {
+        stackedMessages
             .filter { $0.alpha > 0 && !$0.isFadingOut }
             .map { $0.targetY + $0.height }
             .max() ?? topMargin
+    }
 
-        let groupHeight = group.reduce(CGFloat(0)) {
-            $0 + segmentHeight($1) + $1.verticalSpacing
+    private func fittingPrefix(from group: [MessageSegmentData]) -> [MessageSegmentData] {
+        var bottom = currentVisibleBottom()
+        var result: [MessageSegmentData] = []
+
+        for data in group {
+            let nextBottom = bottom + segmentHeight(data) + data.verticalSpacing
+            if nextBottom <= visibleInsertLimit || result.isEmpty && stackedMessages.isEmpty {
+                result.append(data)
+                bottom = nextBottom
+            } else {
+                break
+            }
         }
 
-        let maxConH = containerHeight * 0.30
-        let limit = containerHeight + maxConH
-
-        return currentBottom + groupHeight <= limit
+        return result
     }
 
     // MARK: - 從 pending 補到 visible（Chunk 修正版）
@@ -1211,16 +1205,18 @@ final class PIPServiceMessages {
             let groupSegments = pendingSegments.filter { $0.parentID == first.parentID }
 
             _ = relayoutTargetsOnly(updateTargetY: true)
-            guard canInsertSegmentGroup(groupSegments) else {
+            let insertSegments = fittingPrefix(from: groupSegments)
+
+            guard !insertSegments.isEmpty else {
                 phase = .moving
                 lastMoveTriggerTime = CACurrentMediaTime()
-                PIPChatLog("整組放不下，切換回Move狀態重新Fade")
+                PIPChatLog("目前空間不足，等待舊訊息淡出後補上長訊息後段")
                 break
             }
 
             // 先建構整組訊息
             var groupMsgs: [MessageLayerTuple] = []
-            for data in groupSegments {
+            for data in insertSegments {
                 guard let font = data.font,
                     let avatarSize = data.avatarSizeLocal,
                     let giftSize = data.giftSizeLocal else { return }
@@ -1248,28 +1244,33 @@ final class PIPServiceMessages {
                 groupMsgs.append(msg)
             }
 
-            // 可以塞下去 → 移除 pending 並 append
-            pendingSegments.removeAll { $0.parentID == first.parentID }
+            // 可以塞下去 → 只移除已經補進畫面的前綴，超長訊息後段留在 pending
+            pendingSegments.removeAll { pending in
+                insertSegments.contains {
+                    $0.parentID == pending.parentID &&
+                    $0.segmentIndex == pending.segmentIndex
+                }
+            }
 
-            // 第一個 segment → 載頭貼
-            if let firstData = groupSegments.first, let avatarURL = firstData.avatarURL {
-                if let firstMsg = groupMsgs.first {
+            // 有頭貼的 segment → 載頭貼
+            for (data, msg) in zip(insertSegments, groupMsgs) where data.avatarURL != nil {
+                if let avatarURL = data.avatarURL {
                     Task {
                         await PiPImageCache.shared.loadImage(urlString: avatarURL) { image in
-                            firstMsg.avatar?.contents = image?.cgImage
-                            firstMsg.avatarImage = image?.size
+                            msg.avatar?.contents = image?.cgImage
+                            msg.avatarImage = image?.size
                         }
                     }
                 }
             }
 
-            // 最後一個 segment → 載禮物
-            if let lastData = groupSegments.last, let giftURL = lastData.giftURL {
-                if let lastMsg = groupMsgs.last {
+            // 有禮物的 segment → 載禮物；超長訊息的尾段補進來時一定會顯示
+            for (data, msg) in zip(insertSegments, groupMsgs) where data.giftURL != nil {
+                if let giftURL = data.giftURL {
                     Task {
                         await PiPImageCache.shared.loadImage(urlString: giftURL) { image in
-                            lastMsg.gift?.contents = image?.cgImage
-                            lastMsg.giftImage = image?.size
+                            msg.gift?.contents = image?.cgImage
+                            msg.giftImage = image?.size
                         }
                     }
                 }
