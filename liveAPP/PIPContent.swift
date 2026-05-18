@@ -562,8 +562,8 @@ final class PIPServiceMessages {
         logTo("PIPServiceMessages initialized with container size: \(size)")
         
         updateLogSettings(
-            verboseFrame: userDefaults.standard.bool(forKey: "PIPLayout"),
-            verboseLayout: userDefaults.standard.bool(forKey: "PIPFrameLog")
+            verboseFrame: userDefaults?.bool(forKey: "PIPLayout") ?? false,
+            verboseLayout: userDefaults?.bool(forKey: "PIPFrameLog") ?? false
         )
 
     }
