@@ -385,9 +385,14 @@ final class LayerPool {
     }
 
     func recycleTextLayer(_ layer: CATextLayer) {
+        layer.removeAllAnimations()
         layer.string = nil
         layer.opacity = 1
         layer.frame = .zero
+        layer.isHidden = false
+        layer.isWrapped = true
+        layer.truncationMode = .none
+        layer.alignmentMode = .left
         layer.removeFromSuperlayer()
         textLayers.append(layer)
     }
@@ -406,9 +411,14 @@ final class LayerPool {
     }
 
     func recycleImageLayer(_ layer: CALayer) {
+        layer.removeAllAnimations()
         layer.contents = nil
         layer.opacity = 1
         layer.frame = .zero
+        layer.cornerRadius = 0
+        layer.masksToBounds = false
+        layer.contentsGravity = .resize
+        layer.isHidden = false
         layer.removeFromSuperlayer()
         imageLayers.append(layer)
     }
@@ -465,6 +475,7 @@ final class PIPServiceMessages {
 
     // MARK: - Properties
     let container = CALayer()
+    private let layerPool = LayerPool()
 
     var stackedMessages: [MessageLayerTuple] = []   // 一般聊天
 
@@ -507,6 +518,17 @@ final class PIPServiceMessages {
 
     func canncel() {
         safeCanncel = true
+        displayLink?.invalidate()
+        displayLink = nil
+        phase = .idle
+        isAnimating = false
+        fadeCandidate = nil
+        pendingSegments.removeAll()
+        animatingMessages.removeAll()
+        animatingGroups.removeAll()
+        while let msg = stackedMessages.first {
+            removeMessage(msg)
+        }
         logTo("已取消使用")
 
     }
@@ -577,31 +599,20 @@ final class PIPServiceMessages {
 
         var yCursor = topMargin
 
-        // 先按 segmentIndex 排序，保證全局順序
-        let orderedMessages = relayoutMessages
-            .sorted { lhs, rhs in
-
-
-                if changeSY {
-                    if lhs.startY <= 0 {
-                        lhs.startY = rhs.startY + lhs.height
-                    }
-                    if rhs.startY <= 0 {
-                        rhs.startY = lhs.startY + rhs.height
-                    }
-                }
-
-
-
-                // 先按 parentMessageID 的出現順序
-                if lhs.parentMessageID == rhs.parentMessageID {
-                    return lhs.segmentIndex < rhs.segmentIndex
-                } else {
-
-                    return lhs.insertionIndex < rhs.insertionIndex
-
-                }
+        if changeSY {
+            for msg in relayoutMessages where msg.startY <= 0 {
+                msg.startY = containerHeight
             }
+        }
+
+        // 先按 parentMessageID 的出現順序；同組內再按 segmentIndex 排序。
+        let orderedMessages = relayoutMessages.sorted { lhs, rhs in
+            if lhs.parentMessageID == rhs.parentMessageID {
+                return lhs.segmentIndex < rhs.segmentIndex
+            }
+
+            return lhs.insertionIndex < rhs.insertionIndex
+        }
 
 
         for (index,msg) in orderedMessages.enumerated() {
@@ -908,7 +919,7 @@ final class PIPServiceMessages {
         var avatarLayer :CALayer?
 
         if showAvatar {
-            let layer = CALayer()
+            let layer = layerPool.getImageLayer()
             layer.contents = img?.cgImage
             layer.contentsGravity = .resizeAspectFill
             layer.frame = CGRect(
@@ -932,7 +943,7 @@ final class PIPServiceMessages {
         var nameLayer: CATextLayer?
 
         if showName {
-            let layer = CATextLayer()
+            let layer = layerPool.getTextLayer()
 
             layer.string = NSAttributedString(
                 string:user,
@@ -958,7 +969,7 @@ final class PIPServiceMessages {
 
         if showMessage {
 
-            let layer = CATextLayer()
+            let layer = layerPool.getTextLayer()
             layer.string = NSAttributedString(
                 string:message,
                 attributes: [
@@ -980,7 +991,7 @@ final class PIPServiceMessages {
         var giftLayer: CALayer?
 
         if showGift {
-            let layer = CALayer()
+            let layer = layerPool.getImageLayer()
             layer.contents = giftImg?.cgImage
             layer.contentsGravity = .resizeAspect
 
@@ -1026,11 +1037,6 @@ final class PIPServiceMessages {
 //            - horizontalSpacing * 2
 //            - avatarWidth
 
-        let maxMessageWidth = data.maxMessageWidth
-
-
-
-
         tuple.cachedNameSize = data.cachedMessageSize
 
         // ✅ 只用 cache，完全不算 CoreText
@@ -1038,16 +1044,6 @@ final class PIPServiceMessages {
         tuple.cachedGiftOffsetX = data.cachedGiftOffsetX
         tuple.cachedGiftOffsetY = data.cachedGiftOffsetY
 
-
-
-        let (msglast,_) = breakMessageIntoLines(
-            message,
-            font: font,
-            maxWidth: maxMessageWidth
-        )
-
-        // 計算最後一行文字寬度（用 constrained width 模擬）
-        tuple.lastLineText = msglast.last
 
 
         var textBlockHeight: CGFloat = 0
@@ -1179,12 +1175,48 @@ final class PIPServiceMessages {
         return newBottom <= limit
     }
 
+    private func segmentHeight(_ data: MessageSegmentData) -> CGFloat {
+        if data.showName && data.showMessage {
+            return data.horizontalSpacing
+        }
+
+        if data.showName || data.showMessage {
+            return data.cachedMessageSize.height
+        }
+
+        return 0
+    }
+
+    private func canInsertSegmentGroup(_ group: [MessageSegmentData]) -> Bool {
+        let currentBottom = stackedMessages
+            .filter { $0.alpha > 0 && !$0.isFadingOut }
+            .map { $0.targetY + $0.height }
+            .max() ?? topMargin
+
+        let groupHeight = group.reduce(CGFloat(0)) {
+            $0 + segmentHeight($1) + $1.verticalSpacing
+        }
+
+        let maxConH = containerHeight * 0.30
+        let limit = containerHeight + maxConH
+
+        return currentBottom + groupHeight <= limit
+    }
+
     // MARK: - 從 pending 補到 visible（Chunk 修正版）
 
     func populateVisibleMessagesIfNeeded() {
         while let first = pendingSegments.first {
             // 找出同一組 parentID 的所有 segment
             let groupSegments = pendingSegments.filter { $0.parentID == first.parentID }
+
+            _ = relayoutTargetsOnly(updateTargetY: true)
+            guard canInsertSegmentGroup(groupSegments) else {
+                phase = .moving
+                lastMoveTriggerTime = CACurrentMediaTime()
+                PIPChatLog("整組放不下，切換回Move狀態重新Fade")
+                break
+            }
 
             // 先建構整組訊息
             var groupMsgs: [MessageLayerTuple] = []
@@ -1214,15 +1246,6 @@ final class PIPServiceMessages {
                 msg.parentMessageID = data.parentID
                 msg.segmentIndex = data.segmentIndex
                 groupMsgs.append(msg)
-            }
-
-            // 🔑 判斷整組能不能塞下去
-            _ = relayoutTargetsOnly(updateTargetY: true)
-            guard canInsertMessageGroup(groupMsgs) else {
-                phase = .moving
-                lastMoveTriggerTime = CACurrentMediaTime()
-                PIPChatLog("整組放不下，切換回Move狀態重新Fade")
-                break
             }
 
             // 可以塞下去 → 移除 pending 並 append
@@ -1364,9 +1387,18 @@ final class PIPServiceMessages {
             return $0.insertionIndex < $1.insertionIndex
         }
 
-        animatingGroups = Dictionary(grouping: ordered, by: { $0.parentMessageID! })
+        let keyedMessages = ordered.compactMap { msg -> (UUID, MessageLayerTuple)? in
+            guard let parentID = msg.parentMessageID else { return nil }
+            return (parentID, msg)
+        }
+
+        animatingGroups = Dictionary(grouping: keyedMessages, by: { $0.0 })
             .values
-            .map { $0.sorted { $0.segmentIndex < $1.segmentIndex } }
+            .map { group in
+                group
+                    .map { $0.1 }
+                    .sorted { $0.segmentIndex < $1.segmentIndex }
+            }
 
         // 🔹 確保 animatingMessages 也包含所有還在移動的訊息
         for msg in movingMessages {
@@ -1559,15 +1591,22 @@ final class PIPServiceMessages {
 
     func removeMessage(_ msg:MessageLayerTuple){
 
-        msg.avatar?.removeAllAnimations()
-        msg.name?.removeAllAnimations()
-        msg.message?.removeAllAnimations()
-        msg.gift?.removeAllAnimations()
-
-        msg.avatar?.removeFromSuperlayer()
-        msg.name?.removeFromSuperlayer()
-        msg.message?.removeFromSuperlayer()
-        msg.gift?.removeFromSuperlayer()
+        if let avatar = msg.avatar {
+            layerPool.recycleImageLayer(avatar)
+            msg.avatar = nil
+        }
+        if let name = msg.name {
+            layerPool.recycleTextLayer(name)
+            msg.name = nil
+        }
+        if let message = msg.message {
+            layerPool.recycleTextLayer(message)
+            msg.message = nil
+        }
+        if let gift = msg.gift {
+            layerPool.recycleImageLayer(gift)
+            msg.gift = nil
+        }
 
         msg.isFadingOut = false
 
@@ -1650,21 +1689,22 @@ final class PIPServiceMessages {
         msg.isFadingOut = true
 
         if msg.alpha > 0 {
-            msg.alpha -= fadeStep
+            let nextAlpha = max(0, msg.alpha - fadeStep)
+            let layerOpacity = Float(nextAlpha)
+            msg.alpha = nextAlpha
 
             if let avatar = msg.avatar {
-                avatar.opacity -= Float(fadeStep)
+                avatar.opacity = layerOpacity
             }
             if let name = msg.name {
-                name.opacity -= Float(fadeStep)
+                name.opacity = layerOpacity
             }
             if let MSG = msg.message {
-                MSG.opacity -= Float(fadeStep)
+                MSG.opacity = layerOpacity
             }
             if let gift = msg.gift {
-                gift.opacity -= Float(fadeStep)
+                gift.opacity = layerOpacity
             }
-            if msg.alpha < 0 { msg.alpha = 0 }
 
         }
 
@@ -1674,6 +1714,10 @@ final class PIPServiceMessages {
 
     // MARK: - 每幀動畫
     @objc private func stepAnimationDisplayLink() {
+        guard !safeCanncel else {
+            stopDisplayLink()
+            return
+        }
 
         PIPChatLog(
             "Debug step is doing\nDL step | anim:\(animatingMessages.count) 待處理:\(pendingSegments.count) 容器數量:\(stackedMessages.count) - \(phase)"
