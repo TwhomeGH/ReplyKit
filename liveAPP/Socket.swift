@@ -779,6 +779,12 @@ class SocketServer:ObservableObject {
                     isMain: isMain
                 )
 
+                TTSService.shared.speakStreamMessage(
+                    user: user,
+                    message: msg,
+                    giftImg: giftImg
+                )
+
 
 
                 

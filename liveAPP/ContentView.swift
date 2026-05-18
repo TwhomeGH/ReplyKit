@@ -2579,6 +2579,7 @@ enum AppPage {
     case fps
     case audio
     case PIPChat
+    case tts
 
 }
 
@@ -2649,6 +2650,10 @@ struct ContentView: View {
 
             PIPView().tabItem { Label("聊天室", systemImage: "pip.enter") }
                 .tag(AppPage.PIPChat)
+
+            TTSSettingsView()
+                .tabItem { Label("TTS", systemImage: "speaker.wave.2") }
+                .tag(AppPage.tts)
 
         }
         // ✅ 當選到音量分頁時啟用監聽
