@@ -431,6 +431,8 @@ final class LayerPool {
 final class PIPServiceMessages {
 
     private var insertionCounter: Int = 0
+    private let verboseFrameLog = false
+    private let verboseLayoutLog = false
 
     // MARK: 動畫狀態機
     enum AnimationPhase {
@@ -622,9 +624,11 @@ final class PIPServiceMessages {
             }
 
 
-            PIPChatLog(
-                "index:\(index) Name:\(String(describing: msg.name?.string))\nMES:\(String(describing: msg.message?.string))\n\(msg.startY)->\(msg.targetY)\nUID:\(String(describing: msg.parentMessageID))"
-            )
+            if verboseLayoutLog {
+                PIPChatLog(
+                    "index:\(index) Name:\(String(describing: msg.name?.string))\nMES:\(String(describing: msg.message?.string))\n\(msg.startY)->\(msg.targetY)\nUID:\(String(describing: msg.parentMessageID))"
+                )
+            }
 
             if msg.name == nil {
                 yCursor += msg.height
@@ -1174,45 +1178,65 @@ final class PIPServiceMessages {
     }
 
     private func currentVisibleBottom() -> CGFloat {
-        stackedMessages
-            .filter { $0.alpha > 0 && !$0.isFadingOut }
-            .map { $0.targetY + $0.height }
-            .max() ?? topMargin
+        var bottom = topMargin
+
+        for msg in stackedMessages where msg.alpha > 0 && !msg.isFadingOut {
+            bottom = max(bottom, msg.targetY + msg.height)
+        }
+
+        return bottom
     }
 
-    private func fittingPrefix(from group: [MessageSegmentData]) -> [MessageSegmentData] {
-        var bottom = currentVisibleBottom()
-        var result: [MessageSegmentData] = []
+    private func contiguousPendingGroupEnd(parentID: UUID) -> Int {
+        var end = 0
+        while end < pendingSegments.count,
+              pendingSegments[end].parentID == parentID {
+            end += 1
+        }
 
-        for data in group {
+        return end
+    }
+
+    private func fittingPrefixCount(upTo groupEnd: Int, currentBottom: CGFloat) -> (count: Int, bottom: CGFloat) {
+        var bottom = currentBottom
+        var count = 0
+
+        for index in 0..<groupEnd {
+            let data = pendingSegments[index]
             let nextBottom = bottom + segmentHeight(data) + data.verticalSpacing
-            if nextBottom <= visibleInsertLimit || result.isEmpty && stackedMessages.isEmpty {
-                result.append(data)
+            if nextBottom <= visibleInsertLimit || count == 0 && stackedMessages.isEmpty {
+                count += 1
                 bottom = nextBottom
             } else {
                 break
             }
         }
 
-        return result
+        return (count, bottom)
     }
 
     // MARK: - 從 pending 補到 visible（Chunk 修正版）
 
     func populateVisibleMessagesIfNeeded() {
+        _ = relayoutTargetsOnly(updateTargetY: true)
+        var visibleBottom = currentVisibleBottom()
+
         while let first = pendingSegments.first {
-            // 找出同一組 parentID 的所有 segment
-            let groupSegments = pendingSegments.filter { $0.parentID == first.parentID }
+            let groupEnd = contiguousPendingGroupEnd(parentID: first.parentID)
+            let fitting = fittingPrefixCount(
+                upTo: groupEnd,
+                currentBottom: visibleBottom
+            )
 
-            _ = relayoutTargetsOnly(updateTargetY: true)
-            let insertSegments = fittingPrefix(from: groupSegments)
-
-            guard !insertSegments.isEmpty else {
+            guard fitting.count > 0 else {
                 phase = .moving
                 lastMoveTriggerTime = CACurrentMediaTime()
                 PIPChatLog("目前空間不足，等待舊訊息淡出後補上長訊息後段")
                 break
             }
+
+            let insertSegments = Array(pendingSegments.prefix(fitting.count))
+            visibleBottom = fitting.bottom
 
             // 先建構整組訊息
             var groupMsgs: [MessageLayerTuple] = []
@@ -1245,12 +1269,7 @@ final class PIPServiceMessages {
             }
 
             // 可以塞下去 → 只移除已經補進畫面的前綴，超長訊息後段留在 pending
-            pendingSegments.removeAll { pending in
-                insertSegments.contains {
-                    $0.parentID == pending.parentID &&
-                    $0.segmentIndex == pending.segmentIndex
-                }
-            }
+            pendingSegments.removeFirst(fitting.count)
 
             // 有頭貼的 segment → 載頭貼
             for (data, msg) in zip(insertSegments, groupMsgs) where data.avatarURL != nil {
@@ -1720,9 +1739,11 @@ final class PIPServiceMessages {
             return
         }
 
-        PIPChatLog(
-            "Debug step is doing\nDL step | anim:\(animatingMessages.count) 待處理:\(pendingSegments.count) 容器數量:\(stackedMessages.count) - \(phase)"
-        )
+        if verboseFrameLog {
+            PIPChatLog(
+                "Debug step is doing\nDL step | anim:\(animatingMessages.count) 待處理:\(pendingSegments.count) 容器數量:\(stackedMessages.count) - \(phase)"
+            )
+        }
 
         switch phase {
             case .moving:
