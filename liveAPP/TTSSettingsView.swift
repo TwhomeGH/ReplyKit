@@ -56,6 +56,8 @@ struct VoiceListView: View {
 struct TTSSettingsView: View {
 
     @State private var showVoiceList = false
+    @State private var middleNameDraft = ""
+    @State private var middleNameSaveTask: Task<Void, Never>?
 
     @AppStorage("TTSEnabled", store: userDefaults) private var ttsEnabled = false
     @AppStorage("TTSReadUserName", store: userDefaults) private var readUserName = true
@@ -82,7 +84,23 @@ struct TTSSettingsView: View {
             .sorted { $0.key < $1.key }
     }
 
-    
+    private func saveMiddleNameDraft() {
+        middleNameSaveTask?.cancel()
+        if readMiddleName != middleNameDraft {
+            readMiddleName = middleNameDraft
+        }
+    }
+
+    private func scheduleMiddleNameSave(_ value: String) {
+        middleNameSaveTask?.cancel()
+        middleNameSaveTask = Task { [value] in
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                userDefaults?.set(value, forKey: "TTSReadMiddleName")
+            }
+        }
+    }
 
 
     var body: some View {
@@ -108,9 +126,15 @@ struct TTSSettingsView: View {
                             Text("中間詞輸入框 ReadMiddleName")
                                 .font(.headline)
 
-                            TextField("請輸入你要在用戶與訊息之間的詞...", text: $readMiddleName)
+                            TextField("請輸入你要在用戶與訊息之間的詞...", text: $middleNameDraft)
                                 .textFieldStyle(RoundedBorderTextFieldStyle())
                                 .frame(maxWidth: .infinity)
+                                .onSubmit {
+                                    saveMiddleNameDraft()
+                                }
+                                .onChange(of: middleNameDraft) { newValue in
+                                    scheduleMiddleNameSave(newValue)
+                                }
 
                             Toggle(isOn: $interruptCurrent) {
                                 Text("新訊息打斷目前朗讀")
@@ -182,5 +206,11 @@ struct TTSSettingsView: View {
             .navigationTitle("TTS朗讀")
         }
         .navigationViewStyle(.stack)
+        .onAppear {
+            middleNameDraft = readMiddleName
+        }
+        .onDisappear {
+            saveMiddleNameDraft()
+        }
     }
 }
