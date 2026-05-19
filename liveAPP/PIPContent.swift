@@ -1989,6 +1989,11 @@ struct PIPView: View {
                             giftURL: imgG
                         )
 
+                    TTSService.shared.speakStreamMessage(
+                        user: manualUser,
+                        message: manualMessage
+                    )
+
 
 
                 }
@@ -2009,25 +2014,64 @@ struct PIPView: View {
                 PIPService.shared
                     .addMessage(user: user, msg: msg,imgURL: img,giftURL: gift)
 
+
+                TTSService.shared.speakStreamMessage(
+                    user: user,
+                    message: msg
+                )
+
             }
             Button("TestB") {
                 let imgA = "https://img.icons8.com/?size=100&id=12860&format=png&color=000000"
                 let imgG = "https://img.icons8.com/?size=100&id=y5xu7jml0MTU&format=png&color=000000"
-                PIPService.shared.addMessage(user: "小明2", msg: "Hello!", imgURL: imgA, giftURL: imgG)
+
+
+                let UNAME = "小明3"
+                let UMSG = "Hello!"
+
+                PIPService.shared.addMessage(user: UNAME, msg: UMSG, imgURL: imgA, giftURL: imgG)
+
+                TTSService.shared.speakStreamMessage(
+                    user: UNAME,
+                    message: UMSG
+                )
+
             }
 
             Button("Test次要訊息") {
                 let imgA = "https://img.icons8.com/?size=100&id=12860&format=png&color=000000"
                 let imgG = "https://img.icons8.com/?size=100&id=y5xu7jml0MTU&format=png&color=000000"
-                PIPService.shared.addMessage(user: "小明2", msg: "Hello!", imgURL: imgA, giftURL: imgG, isMain: false)
+
+                let UNAME = "小明2"
+                let UMSG = "Hello!"
+
+                PIPService.shared.addMessage(user: UNAME , msg: UMSG , imgURL: imgA, giftURL: imgG, isMain: false)
+
+                TTSService.shared.speakStreamMessage(
+                    user: UNAME,
+                    message: UMSG
+                )
+
             }
 
             Button("新增訊息") {
+
+                let UNAME = ""
+                let UMSG = "測試訊息圖片"
+                let GIFTURL = "https://img.icons8.com/?size=100&id=y5xu7jml0MTU&format=png&color=000000"
+                
                 PIPService.shared.addMessage(
-                    msg: "測試訊息圖片",
+                    msg: UMSG,
                     imgURL: "https://img.icons8.com/?size=100&id=12860&format=png&color=000000",
-                    giftURL: "https://img.icons8.com/?size=100&id=y5xu7jml0MTU&format=png&color=000000"
+                    giftURL: GIFTURL
                 )
+
+
+                TTSService.shared.speakStreamMessage(
+                    user: UNAME,
+                    message: UMSG
+                )
+
             }
 
             // 將 debugImageView 顯示在 SwiftUI

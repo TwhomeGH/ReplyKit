@@ -8,23 +8,61 @@
 import AVFoundation
 import SwiftUI
 
+
+
+struct VoiceListView: View {
+    private let languageOptions: [(String, String)] = {
+        AVSpeechSynthesisVoice.speechVoices().map { voice in
+            (voice.language, voice.name)
+        }
+    }()
+    
+    var body: some View {
+        NavigationView {
+            List(languageOptions, id: \.0) { option in
+                VStack(alignment: .leading) {
+                    Text("語言代碼: \(option.0)")
+                        .font(.subheadline)
+                    Text("語音名稱: \(option.1)")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                }
+            }
+            .navigationTitle("可用語音清單")
+        }
+    }
+}
+
+
 struct TTSSettingsView: View {
+
+    @State private var showVoiceList = false
+
     @AppStorage("TTSEnabled", store: userDefaults) private var ttsEnabled = false
     @AppStorage("TTSReadUserName", store: userDefaults) private var readUserName = true
-    @AppStorage("TTSReadGiftMessage", store: userDefaults) private var readGiftMessage = false
-    @AppStorage("TTSInterruptCurrent", store: userDefaults) private var interruptCurrent = true
+
+    @AppStorage("TTSInterruptCurrent", store: userDefaults) private var interruptCurrent = false
+
+    // 用戶名與訊息本身的中堅詞
+    @AppStorage("TTSReadMiddleName",store:userDefaults) private var readMiddleName = "說"
+
     @AppStorage("TTSLanguage", store: userDefaults) private var language = "zh-TW"
     @AppStorage("TTSRate", store: userDefaults) private var rate = Double(AVSpeechUtteranceDefaultSpeechRate)
     @AppStorage("TTSPitch", store: userDefaults) private var pitch = 1.0
     @AppStorage("TTSVolume", store: userDefaults) private var volume = 1.0
     @AppStorage("TTSMaxLength", store: userDefaults) private var maxLength = 120
 
-    private let languageOptions = [
-        ("zh-TW", "繁體中文"),
-        ("zh-CN", "簡體中文"),
-        ("ja-JP", "日文"),
-        ("en-US", "英文")
-    ]
+
+    // 取得所有可用語音
+    let allVoices = AVSpeechSynthesisVoice.speechVoices()
+
+    // 轉成 (language, name) tuple
+    let languageOptions = allVoices.map { voice in
+        (voice.language, voice.name)
+    }
+
+    
+
 
     var body: some View {
         NavigationView {
@@ -41,16 +79,29 @@ struct TTSSettingsView: View {
                     }
 
                     Toggle(isOn: $readUserName) {
-                        Text("朗讀使用者名稱")
+                        Text("朗讀使用者名稱 Read User Name")
                     }
 
-                    Toggle(isOn: $readGiftMessage) {
-                        Text("朗讀禮物提示")
-                    }
+                    Text("中間詞輸入框 ReadMiddleName")
+                        .font(.headline)
+
+                    TextField("請輸入你要在用戶與訊息之間的詞...", text: $readMiddleName)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .padding()
+                        .frame(maxWidth: .infinity)
+
 
                     Toggle(isOn: $interruptCurrent) {
                         Text("新訊息打斷目前朗讀")
                     }
+
+                    Button("列出可用語言清單") {
+                        showVoiceList = true
+                    }
+                    .sheet(isPresented: $showVoiceList) {
+                        VoiceListView()
+                    }
+
                 }
 
                 Section(header: Text("聲音")) {

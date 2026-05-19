@@ -529,7 +529,7 @@ class SocketServer:ObservableObject {
         }
 
         if let userList,
-           LPConfig.shared.streamViewerList != userList {
+            LPConfig.shared.streamViewerList != userList {
             LPConfig.shared.streamViewerList = userList
             didChange = true
         }
@@ -781,8 +781,7 @@ class SocketServer:ObservableObject {
 
                 TTSService.shared.speakStreamMessage(
                     user: user,
-                    message: msg,
-                    giftImg: giftImg
+                    message: msg
                 )
 
 

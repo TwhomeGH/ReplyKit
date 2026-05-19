@@ -20,23 +20,26 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
 
     func speakStreamMessage(
         user: String,
-        message: String,
-        giftImg: String?
+        message: String
     ) {
         guard userDefaults?.bool(forKey: "TTSEnabled") ?? false else { return }
 
         let trimmedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedMessage.isEmpty else { return }
 
-        let includeUser = userDefaults?.object(forKey: "TTSReadUserName") as? Bool ?? true
-        let readGift = userDefaults?.bool(forKey: "TTSReadGiftMessage") ?? false
+        let includeUser = userDefaults?.bool(forKey: "TTSReadUserName") ?? true
+
+
         let storedMaxLength = userDefaults?.integer(forKey: "TTSMaxLength") ?? 0
         let maxLength = storedMaxLength > 0 ? storedMaxLength : 120
 
-        var text = includeUser && !user.isEmpty ? "\(user) 說 \(trimmedMessage)" : trimmedMessage
-        if readGift, giftImg != nil {
-            text += "，送出禮物"
-        }
+        // 中間詞
+        let readMiddleName = userDefaults?.string(forKey:"TTSReadMiddleName") ?? ""
+
+        // TTS 郎讀內容
+        
+        var text = includeUser && !user.isEmpty ? "\(user) \(readMiddleName) \(trimmedMessage)" : trimmedMessage
+
 
         if text.count > maxLength {
             text = String(text.prefix(maxLength))
@@ -64,7 +67,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
         guard !text.isEmpty else { return }
 
         if userDefaults?.object(forKey: "TTSInterruptCurrent") as? Bool ?? true,
-           synthesizer.isSpeaking {
+            synthesizer.isSpeaking {
             synthesizer.stopSpeaking(at: .immediate)
         }
 
