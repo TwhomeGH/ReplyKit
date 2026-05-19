@@ -58,6 +58,9 @@ struct TTSSettingsView: View {
     @State private var showVoiceList = false
     @State private var middleNameDraft = ""
     @State private var middleNameSaveTask: Task<Void, Never>?
+    @State private var rateDraft = Double(AVSpeechUtteranceDefaultSpeechRate)
+    @State private var pitchDraft = 1.0
+    @State private var volumeDraft = 1.0
 
     @AppStorage("TTSEnabled", store: userDefaults) private var ttsEnabled = false
     @AppStorage("TTSReadUserName", store: userDefaults) private var readUserName = true
@@ -99,6 +102,18 @@ struct TTSSettingsView: View {
             await MainActor.run {
                 userDefaults?.set(value, forKey: "TTSReadMiddleName")
             }
+        }
+    }
+
+    private func saveVoiceControlDrafts() {
+        if rate != rateDraft {
+            rate = rateDraft
+        }
+        if pitch != pitchDraft {
+            pitch = pitchDraft
+        }
+        if volume != volumeDraft {
+            volume = volumeDraft
         }
     }
 
@@ -168,18 +183,45 @@ struct TTSSettingsView: View {
                             }
 
                             VStack(alignment: .leading) {
-                                Text("語速: \(String(format: "%.2f", rate))")
-                                Slider(value: $rate, in: 0.1...0.7, step: 0.01)
+                                Text("語速: \(String(format: "%.2f", rateDraft))")
+                                Slider(
+                                    value: $rateDraft,
+                                    in: 0.1...0.7,
+                                    step: 0.01,
+                                    onEditingChanged: { editing in
+                                        if !editing {
+                                            saveVoiceControlDrafts()
+                                        }
+                                    }
+                                )
                             }
 
                             VStack(alignment: .leading) {
-                                Text("音調: \(String(format: "%.1f", pitch))")
-                                Slider(value: $pitch, in: 0.5...2.0, step: 0.1)
+                                Text("音調: \(String(format: "%.1f", pitchDraft))")
+                                Slider(
+                                    value: $pitchDraft,
+                                    in: 0.5...2.0,
+                                    step: 0.1,
+                                    onEditingChanged: { editing in
+                                        if !editing {
+                                            saveVoiceControlDrafts()
+                                        }
+                                    }
+                                )
                             }
 
                             VStack(alignment: .leading) {
-                                Text("音量: \(Int(volume * 100))%")
-                                Slider(value: $volume, in: 0...1, step: 0.05)
+                                Text("音量: \(Int(volumeDraft * 100))%")
+                                Slider(
+                                    value: $volumeDraft,
+                                    in: 0...1,
+                                    step: 0.05,
+                                    onEditingChanged: { editing in
+                                        if !editing {
+                                            saveVoiceControlDrafts()
+                                        }
+                                    }
+                                )
                             }
                         }
                     }
@@ -208,9 +250,13 @@ struct TTSSettingsView: View {
         .navigationViewStyle(.stack)
         .onAppear {
             middleNameDraft = readMiddleName
+            rateDraft = rate
+            pitchDraft = pitch
+            volumeDraft = volume
         }
         .onDisappear {
             saveMiddleNameDraft()
+            saveVoiceControlDrafts()
         }
     }
 }
