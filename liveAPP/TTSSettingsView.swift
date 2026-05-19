@@ -53,12 +53,10 @@ struct TTSSettingsView: View {
     @AppStorage("TTSMaxLength", store: userDefaults) private var maxLength = 120
 
 
-    // 取得所有可用語音
-    let allVoices = AVSpeechSynthesisVoice.speechVoices()
-
-    // 轉成 (language, name) tuple
-    let languageOptions = allVoices.map { voice in
-        (voice.language, voice.name)
+    private var languageOptions: [(String, String)] {
+        AVSpeechSynthesisVoice.speechVoices().map { voice in
+            (voice.language, voice.name)
+        }
     }
 
     

@@ -8,6 +8,7 @@
 import AVFoundation
 import Foundation
 
+@MainActor
 final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
     static let shared = TTSService()
 
@@ -45,9 +46,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
             text = String(text.prefix(maxLength))
         }
 
-        DispatchQueue.main.async { [weak self] in
-            self?.speak(text)
-        }
+        speak(text)
     }
 
     func speakPreview() {
@@ -55,11 +54,8 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
     }
 
     func stop() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            if self.synthesizer.isSpeaking {
-                self.synthesizer.stopSpeaking(at: .immediate)
-            }
+        if synthesizer.isSpeaking {
+            synthesizer.stopSpeaking(at: .immediate)
         }
     }
 
