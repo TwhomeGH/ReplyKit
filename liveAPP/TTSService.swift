@@ -82,12 +82,18 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
 
         let storedLanguage = userDefaults?.string(forKey: "TTSLanguage") ?? ""
         let language = storedLanguage.isEmpty ? "zh-TW" : storedLanguage
+        let storedVoiceIdentifier = userDefaults?.string(forKey: "TTSVoiceIdentifier") ?? ""
         let storedRate = userDefaults?.double(forKey: "TTSRate") ?? 0
         let storedPitch = userDefaults?.double(forKey: "TTSPitch") ?? 0
         let storedVolume = userDefaults?.double(forKey: "TTSVolume") ?? 0
 
         let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = AVSpeechSynthesisVoice(language: language)
+        if !storedVoiceIdentifier.isEmpty,
+           let voice = AVSpeechSynthesisVoice(identifier: storedVoiceIdentifier) {
+            utterance.voice = voice
+        } else {
+            utterance.voice = AVSpeechSynthesisVoice(language: language)
+        }
         utterance.rate = Float(storedRate > 0 ? storedRate : Double(AVSpeechUtteranceDefaultSpeechRate))
         utterance.pitchMultiplier = Float(storedPitch > 0 ? storedPitch : 1.0)
         utterance.volume = Float(storedVolume > 0 ? storedVolume : 1.0)
