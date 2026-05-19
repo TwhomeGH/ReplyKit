@@ -61,6 +61,7 @@ struct TTSSettingsView: View {
     @State private var rateDraft = Double(AVSpeechUtteranceDefaultSpeechRate)
     @State private var pitchDraft = 1.0
     @State private var volumeDraft = 1.0
+    @State private var voiceOptions: [TTSVoiceOption] = []
 
     @AppStorage("TTSEnabled", store: userDefaults) private var ttsEnabled = false
     @AppStorage("TTSReadUserName", store: userDefaults) private var readUserName = true
@@ -77,10 +78,6 @@ struct TTSSettingsView: View {
     @AppStorage("TTSVolume", store: userDefaults) private var volume = 1.0
     @AppStorage("TTSMaxLength", store: userDefaults) private var maxLength = 120
 
-
-    private var voiceOptions: [TTSVoiceOption] {
-        TTSVoiceOption.available
-    }
 
     private var groupedVoiceOptions: [(key: String, value: [TTSVoiceOption])] {
         Dictionary(grouping: voiceOptions, by: \.language)
@@ -187,7 +184,6 @@ struct TTSSettingsView: View {
                                 Slider(
                                     value: $rateDraft,
                                     in: 0.1...0.7,
-                                    step: 0.01,
                                     onEditingChanged: { editing in
                                         if !editing {
                                             saveVoiceControlDrafts()
@@ -201,7 +197,6 @@ struct TTSSettingsView: View {
                                 Slider(
                                     value: $pitchDraft,
                                     in: 0.5...2.0,
-                                    step: 0.1,
                                     onEditingChanged: { editing in
                                         if !editing {
                                             saveVoiceControlDrafts()
@@ -215,7 +210,6 @@ struct TTSSettingsView: View {
                                 Slider(
                                     value: $volumeDraft,
                                     in: 0...1,
-                                    step: 0.05,
                                     onEditingChanged: { editing in
                                         if !editing {
                                             saveVoiceControlDrafts()
@@ -253,6 +247,9 @@ struct TTSSettingsView: View {
             rateDraft = rate
             pitchDraft = pitch
             volumeDraft = volume
+            if voiceOptions.isEmpty {
+                voiceOptions = TTSVoiceOption.available
+            }
         }
         .onDisappear {
             saveMiddleNameDraft()
