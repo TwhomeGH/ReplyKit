@@ -132,8 +132,11 @@ struct TTSSettingsView: View {
                                 Text("啟用聊天室TTS朗讀")
                             }
                             .onChange(of: ttsEnabled) { newValue in
-                                if !newValue {
+                                if newValue {
+                                    TTSService.shared.refreshAudioSessionForCurrentSetting()
+                                } else {
                                     TTSService.shared.stop()
+                                    TTSService.shared.stopPersistentAudio()
                                 }
                                 sendlog(message: "TTS朗讀開關: \(newValue)")
                             }
@@ -259,6 +262,7 @@ struct TTSSettingsView: View {
             rateDraft = rate
             pitchDraft = pitch
             volumeDraft = volume
+            TTSService.shared.refreshAudioSessionForCurrentSetting()
             if voiceOptions.isEmpty {
                 voiceOptions = TTSVoiceOption.available
             }

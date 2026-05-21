@@ -1139,7 +1139,9 @@ final class PIPService: NSObject, @unchecked Sendable {
         decayTimer?.cancel()
         decayTimer = nil
 
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        if !(userDefaults?.bool(forKey: "TTSEnabled") ?? false) {
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        }
     }
 
 
@@ -1355,7 +1357,9 @@ final class PIPTestService: NSObject {
 
 
 
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        if !(userDefaults?.bool(forKey: "TTSEnabled") ?? false) {
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        }
     }
 
     // MARK: - 渲染白畫面幀

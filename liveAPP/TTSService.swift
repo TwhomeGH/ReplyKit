@@ -13,10 +13,36 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
     static let shared = TTSService()
 
     private let synthesizer = AVSpeechSynthesizer()
+    #if os(iOS)
+    private let callAudioKeeper = TTSCallAudioKeeper()
+    private var audioSessionObservers: [NSObjectProtocol] = []
+    #endif
 
     private override init() {
         super.init()
         synthesizer.delegate = self
+        #if os(iOS)
+        audioSessionObservers.append(NotificationCenter.default.addObserver(
+            name: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            guard let self else { return }
+            Task { @MainActor in
+                self.handleAudioSessionInterruption(notification)
+            }
+        })
+        audioSessionObservers.append(NotificationCenter.default.addObserver(
+            name: AVAudioSession.mediaServicesWereResetNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            guard let self else { return }
+            Task { @MainActor in
+                self.handleMediaServicesReset(notification)
+            }
+        })
+        #endif
     }
 
     func speakStreamMessage(
@@ -26,7 +52,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
     ) {
         guard userDefaults?.bool(forKey: "TTSEnabled") ?? false else { return }
 
-        if userDefaults?.bool(forKey: "TTSReadMainOnly") ?? true && !isMain ?? true {
+        if (userDefaults?.bool(forKey: "TTSReadMainOnly") ?? true) && !isMain {
             sendlog(message:"跳過次要訊息")
             return
         }
@@ -56,7 +82,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
     }
 
     func speakPreview() {
-        speak("這是一段系統朗讀測試。")
+        speak("這是一段系統朗讀測試。", keepsCallAudioAlive: false)
     }
 
     func stop() {
@@ -65,7 +91,23 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
         }
     }
 
-    private func speak(_ text: String) {
+    func refreshAudioSessionForCurrentSetting() {
+        #if os(iOS)
+        if userDefaults?.bool(forKey: "TTSEnabled") ?? false {
+            callAudioKeeper.start()
+        } else {
+            callAudioKeeper.stop()
+        }
+        #endif
+    }
+
+    func stopPersistentAudio() {
+        #if os(iOS)
+        callAudioKeeper.stop()
+        #endif
+    }
+
+    private func speak(_ text: String, keepsCallAudioAlive: Bool = true) {
         guard !text.isEmpty else { return }
 
         if userDefaults?.object(forKey: "TTSInterruptCurrent") as? Bool ?? true,
@@ -74,15 +116,10 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
         }
 
         #if os(iOS)
-        do {
-            try AVAudioSession.sharedInstance().setCategory(
-                .playback,
-                mode: .spokenAudio,
-                options: [.duckOthers]
-            )
-            try AVAudioSession.sharedInstance().setActive(true)
-        } catch {
-            sendlog(message: "TTS音訊會話設定失敗: \(error.localizedDescription)")
+        if keepsCallAudioAlive {
+            callAudioKeeper.start()
+        } else {
+            callAudioKeeper.configureSessionOnly()
         }
         #endif
 
@@ -106,4 +143,115 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
 
         synthesizer.speak(utterance)
     }
+
+    #if os(iOS)
+    private func handleAudioSessionInterruption(_ notification: Notification) {
+        guard
+            let rawType = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+            let type = AVAudioSession.InterruptionType(rawValue: rawType),
+            type == .ended
+        else { return }
+
+        refreshAudioSessionForCurrentSetting()
+    }
+
+    private func handleMediaServicesReset(_ notification: Notification) {
+        refreshAudioSessionForCurrentSetting()
+    }
+    #endif
 }
+
+#if os(iOS)
+@MainActor
+private final class TTSCallAudioKeeper {
+    private let engine = AVAudioEngine()
+    private var sourceNode: AVAudioSourceNode?
+    private var isKeepingAlive = false
+
+    func configureSessionOnly() {
+        do {
+            try configureCallSession()
+        } catch {
+            sendlog(message: "TTS通話音訊會話設定失敗: \(error.localizedDescription)")
+        }
+    }
+
+    func start() {
+        configureSessionOnly()
+
+        if sourceNode == nil {
+            let format = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1)
+            guard let format else {
+                sendlog(message: "TTS通話音訊格式建立失敗")
+                return
+            }
+
+            var phase = 0.0
+            let amplitude = 0.00001
+            let theta = 2.0 * Double.pi * 18.0 / format.sampleRate
+            let node = AVAudioSourceNode { _, _, frameCount, audioBufferList -> OSStatus in
+                let buffers = UnsafeMutableAudioBufferListPointer(audioBufferList)
+                for frame in 0..<Int(frameCount) {
+                    let sample = Float(sin(phase) * amplitude)
+                    phase += theta
+                    if phase > 2.0 * Double.pi {
+                        phase -= 2.0 * Double.pi
+                    }
+
+                    for buffer in buffers {
+                        guard let data = buffer.mData else { continue }
+                        data.assumingMemoryBound(to: Float.self)[frame] = sample
+                    }
+                }
+                return noErr
+            }
+
+            engine.attach(node)
+            engine.connect(node, to: engine.mainMixerNode, format: format)
+            engine.mainMixerNode.outputVolume = 1.0
+            sourceNode = node
+        }
+
+        guard !engine.isRunning else {
+            isKeepingAlive = true
+            return
+        }
+
+        do {
+            engine.prepare()
+            try engine.start()
+            isKeepingAlive = true
+            sendlog(message: "TTS已啟用語音通話後台保活")
+        } catch {
+            isKeepingAlive = false
+            sendlog(message: "TTS通話音訊引擎啟動失敗: \(error.localizedDescription)")
+        }
+    }
+
+    func stop() {
+        guard isKeepingAlive || engine.isRunning else { return }
+
+        engine.stop()
+        isKeepingAlive = false
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        sendlog(message: "TTS已停止語音通話後台保活")
+    }
+
+    private func configureCallSession() throws {
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(
+            .playAndRecord,
+            mode: .voiceChat,
+            options: [
+                .allowBluetooth,
+                .allowBluetoothA2DP,
+                .defaultToSpeaker,
+                .mixWithOthers
+            ]
+        )
+        try session.setPreferredSampleRate(48_000)
+        try session.setPreferredIOBufferDuration(0.02)
+        try session.setActive(true)
+    }
+}
+#endif

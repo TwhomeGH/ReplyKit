@@ -764,6 +764,10 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
                 print("❌ 通知授權錯誤: \(error)")
             }
         }
+
+        Task { @MainActor in
+            TTSService.shared.refreshAudioSessionForCurrentSetting()
+        }
     }
 
 
@@ -780,10 +784,12 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
                         break
 
                     case .background:
+                        TTSService.shared.refreshAudioSessionForCurrentSetting()
                         break
 
                     case .active:
                         SocketServer.shared.start()
+                        TTSService.shared.refreshAudioSessionForCurrentSetting()
                         break
 
                     @unknown default:
