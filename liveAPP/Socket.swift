@@ -782,7 +782,8 @@ class SocketServer:ObservableObject {
                 Task { @MainActor in
                     TTSService.shared.speakStreamMessage(
                         user: user,
-                        message: msg
+                        message: msg,
+                        isMain:isMain
                     )
                 }
 

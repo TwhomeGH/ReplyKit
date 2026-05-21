@@ -21,9 +21,15 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
 
     func speakStreamMessage(
         user: String,
-        message: String
+        message: String,
+        isMain:Bool = true
     ) {
         guard userDefaults?.bool(forKey: "TTSEnabled") ?? false else { return }
+
+        if userDefaults?.bool(forKey: "TTSReadMainOnly") && !isMain ?? true {
+            sendlog(message:"跳過次要訊息")
+            return
+        }
 
         let trimmedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedMessage.isEmpty else { return }

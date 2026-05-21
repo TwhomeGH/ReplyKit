@@ -2049,7 +2049,8 @@ struct PIPView: View {
 
                 TTSService.shared.speakStreamMessage(
                     user: UNAME,
-                    message: UMSG
+                    message: UMSG,
+                    isMain:false
                 )
 
             }

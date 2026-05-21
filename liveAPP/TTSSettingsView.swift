@@ -64,9 +64,16 @@ struct TTSSettingsView: View {
     @State private var voiceOptions: [TTSVoiceOption] = []
 
     @AppStorage("TTSEnabled", store: userDefaults) private var ttsEnabled = false
+
+    // ReadMainOnly 只念主訊息
+    @AppStorage("TTSReadMainOnly",store:userDefaults) private var TTSReadMainOnly = true
+
     @AppStorage("TTSReadUserName", store: userDefaults) private var readUserName = true
 
     @AppStorage("TTSInterruptCurrent", store: userDefaults) private var interruptCurrent = false
+
+
+
 
     // 用戶名與訊息本身的中堅詞
     @AppStorage("TTSReadMiddleName",store:userDefaults) private var readMiddleName = "說"
@@ -130,6 +137,11 @@ struct TTSSettingsView: View {
                                 }
                                 sendlog(message: "TTS朗讀開關: \(newValue)")
                             }
+
+                            Toggle(isOn: $TTSReadMainOnly) {
+                                Text("只朗讀主訊息 OnlyMain MSG")
+                            }
+
 
                             Toggle(isOn: $readUserName) {
                                 Text("朗讀使用者名稱 Read User Name")
