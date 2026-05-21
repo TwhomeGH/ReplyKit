@@ -23,7 +23,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
         synthesizer.delegate = self
         #if os(iOS)
         audioSessionObservers.append(NotificationCenter.default.addObserver(
-            name: AVAudioSession.interruptionNotification,
+            forName: AVAudioSession.interruptionNotification,
             object: AVAudioSession.sharedInstance(),
             queue: .main
         ) { [weak self] notification in
@@ -33,7 +33,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
             }
         })
         audioSessionObservers.append(NotificationCenter.default.addObserver(
-            name: AVAudioSession.mediaServicesWereResetNotification,
+            forName: AVAudioSession.mediaServicesWereResetNotification,
             object: AVAudioSession.sharedInstance(),
             queue: .main
         ) { [weak self] notification in
@@ -243,7 +243,7 @@ private final class TTSCallAudioKeeper {
             .playAndRecord,
             mode: .voiceChat,
             options: [
-                .allowBluetooth,
+                .allowBluetoothHFP,
                 .allowBluetoothA2DP,
                 .defaultToSpeaker,
                 .mixWithOthers
