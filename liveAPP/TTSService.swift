@@ -52,6 +52,13 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
     ) {
         guard userDefaults?.bool(forKey: "TTSEnabled") ?? false else { return }
 
+        let minLen = userDefaults?.integer(forKey: "TTSMinLength") ?? 3
+
+        if message.count < minLen {
+            sendlog(message:"太短了跳過 少於\(minLen)個字")
+        }
+
+
         if (userDefaults?.bool(forKey: "TTSReadMainOnly") ?? true) && !isMain {
             sendlog(message:"跳過次要訊息")
             return

@@ -84,6 +84,12 @@ struct TTSSettingsView: View {
     @AppStorage("TTSPitch", store: userDefaults) private var pitch = 1.0
     @AppStorage("TTSVolume", store: userDefaults) private var volume = 1.0
     @AppStorage("TTSMaxLength", store: userDefaults) private var maxLength = 120
+    @AppStorage("TTSMinLength", store: userDefaults) private var minLength = 3
+
+    //@State private var Cache_MaxLength = 100
+    let options = Array(stride(from: 5, through: 500, by: 5))
+
+    let min_options = Array(stride(from: 3, through: 500, by: 1))
 
 
     private var groupedVoiceOptions: [(key: String, value: [TTSVoiceOption])] {
@@ -238,7 +244,25 @@ struct TTSSettingsView: View {
 
                     GroupBox("訊息限制") {
                         VStack(alignment: .leading, spacing: 12) {
-                            Stepper("最長朗讀字數: \(maxLength)", value: $maxLength, in: 20...500, step: 10)
+                            
+                            Text("目前選擇最大字數：\(maxLength)")
+
+                            Picker("最長朗讀字數", selection: $maxLength) {
+                                ForEach(options, id: \.self) { value in
+                                    Text("\(value)").tag(value)
+                                }
+                            }
+                            .pickerStyle(.wheel) // 滾輪選單
+                            
+                            Text("語音播報要求最小字數：\(minLength)")
+
+                            Picker("最小朗讀字數", selection: $minLength) {
+                                ForEach(min_options, id: \.self) { value in
+                                    Text("\(value)").tag(value)
+                                }
+                            }
+                            .pickerStyle(.wheel) // 滾輪選單
+
 
                             Button("測試朗讀") {
                                 TTSService.shared.speakPreview()
