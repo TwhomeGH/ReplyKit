@@ -26,7 +26,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
     ) {
         guard userDefaults?.bool(forKey: "TTSEnabled") ?? false else { return }
 
-        if userDefaults?.bool(forKey: "TTSReadMainOnly") && !isMain ?? true {
+        if userDefaults?.bool(forKey: "TTSReadMainOnly") ?? true && !isMain ?? true {
             sendlog(message:"跳過次要訊息")
             return
         }
