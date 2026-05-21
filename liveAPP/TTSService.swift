@@ -56,6 +56,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
 
         if message.count < minLen {
             sendlog(message:"太短了跳過 少於\(minLen)個字")
+            return;
         }
 
 

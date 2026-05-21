@@ -252,6 +252,7 @@ struct TTSSettingsView: View {
                                     Text("\(value)").tag(value)
                                 }
                             }
+                            .fixedSize()
                             .pickerStyle(.wheel) // 滾輪選單
                             
                             Text("語音播報要求最小字數：\(minLength)")
@@ -261,6 +262,7 @@ struct TTSSettingsView: View {
                                     Text("\(value)").tag(value)
                                 }
                             }
+                            .fixedSize()
                             .pickerStyle(.wheel) // 滾輪選單
 
 
