@@ -91,6 +91,7 @@ struct FilterSettingsView: View {
     @State private var newReplaceWord = ""
     @State private var newReplacement = "B"
     @Environment(\.editMode) private var editMode
+    @Environment(\.horizontalSizeClass) private var sizeClass
     
     var processedText: String {
         filter.processMessage(inputText)
@@ -98,138 +99,158 @@ struct FilterSettingsView: View {
     
     var body: some View {
         NavigationView {
-            HStack {
-                // 左邊：新增區塊
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("朗讀過濾設定")
-                        .font(.headline)
-                    
-                    TextField("輸入訊息測試", text: $inputText)
-                        .textFieldStyle(.roundedBorder)
-                    
-                    if !processedText.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("處理後訊息：")
-                                .font(.subheadline)
-                                .foregroundColor(.gray)
-                            Text(processedText)
-                                .padding()
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color(.secondarySystemBackground))
-                                .cornerRadius(8)
-                        }
-                    }
-                    
-                    Divider()
-                    
-                    Toggle("移除 URL", isOn: $filter.removeURLs)
-                    
-                    // Block Keywords 新增
-                    VStack(alignment: .leading) {
-                        Text("排除關鍵字")
-                        HStack {
-                            TextField("新增排除字", text: $newBlockWord)
-                                .textFieldStyle(.roundedBorder)
-                            Button("加入") {
-                                if !newBlockWord.isEmpty {
-                                    filter.blockKeywords.append(newBlockWord)
-                                    newBlockWord = ""
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Replace Keywords 新增
-                    VStack(alignment: .leading) {
-                        Text("替換關鍵字")
-                        HStack {
-                            TextField("原字", text: $newReplaceWord)
-                                .textFieldStyle(.roundedBorder)
-                            TextField("替換字", text: $newReplacement)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 60)
-                            Button("加入") {
-                                if !newReplaceWord.isEmpty {
-                                    filter.replaceKeywords[newReplaceWord] = newReplacement
-                                    newReplaceWord = ""
-                                    newReplacement = "B"
-                                }
-                            }
-                        }
-                    }
-                    
-                    Spacer()
-                }
-                .padding()
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-                
-                Divider()
-                
-                // 右邊：ScrollView 顯示已加列表
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("已加入的排除字")
-                            .font(.headline)
-                        ForEach(filter.blockKeywords.indices, id: \.self) { index in
-                            if editMode?.wrappedValue.isEditing == true {
-                                TextField("編輯字", text: $filter.blockKeywords[index])
-                                    .textFieldStyle(.roundedBorder)
-                            } else {
-                                Text(filter.blockKeywords[index])
-                            }
-                        }
-                        .onDelete { indexSet in
-                            filter.blockKeywords.remove(atOffsets: indexSet)
-                        }
+            Group {
+                if sizeClass == .regular {
+                    // iPad / 寬螢幕 → 左右分欄
+                    HStack(spacing: 0) {
+                        inputSection
+                            .frame(maxWidth: .infinity)
+                            .padding()
                         
                         Divider()
                         
-                        Text("已加入的替換字")
-                            .font(.headline)
-                        ForEach(filter.replaceKeywords.keys.sorted(), id: \.self) { key in
-                            if editMode?.wrappedValue.isEditing == true {
-                                HStack {
-                                    TextField("原字", text: Binding(
-                                        get: { key },
-                                        set: { newKey in
-                                            let value = filter.replaceKeywords[key] ?? ""
-                                            filter.replaceKeywords.removeValue(forKey: key)
-                                            filter.replaceKeywords[newKey] = value
-                                        }
-                                    ))
-                                    Spacer()
-                                    TextField("替換字", text: Binding(
-                                        get: { filter.replaceKeywords[key] ?? "" },
-                                        set: { newValue in
-                                            filter.replaceKeywords[key] = newValue
-                                        }
-                                    ))
-                                    .foregroundColor(.blue)
-                                }
-                            } else {
-                                HStack {
-                                    Text(key)
-                                    Spacer()
-                                    Text("→ \(filter.replaceKeywords[key] ?? "")")
-                                        .foregroundColor(.blue)
-                                }
-                            }
-                        }
-                        .onDelete { indexSet in
-                            let keys = filter.replaceKeywords.keys.sorted()
-                            for index in indexSet {
-                                let key = keys[index]
-                                filter.replaceKeywords.removeValue(forKey: key)
-                            }
-                        }
+                        listSection
+                            .frame(maxWidth: .infinity)
+                            .padding()
                     }
-                    .padding()
+                } else {
+                    // iPhone / 窄螢幕 → 上下排版
+                    VStack(spacing: 0) {
+                        inputSection
+                            .padding()
+                        
+                        Divider()
+                        
+                        listSection
+                            .padding()
+                    }
                 }
-                .frame(maxWidth: .infinity)
             }
             .navigationTitle("過濾器設定")
             .toolbar {
                 EditButton()
+            }
+        }
+    }
+    
+    // 左邊：輸入區
+    private var inputSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("朗讀過濾設定")
+                .font(.headline)
+            
+            TextField("輸入訊息測試", text: $inputText)
+                .textFieldStyle(.roundedBorder)
+            
+            if !processedText.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("處理後訊息：")
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
+                    Text(processedText)
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(8)
+                }
+            }
+            
+            Divider()
+            
+            Toggle("移除 URL", isOn: $filter.removeURLs)
+            
+            VStack(alignment: .leading) {
+                Text("排除關鍵字")
+                HStack {
+                    TextField("新增排除字", text: $newBlockWord)
+                        .textFieldStyle(.roundedBorder)
+                    Button("加入") {
+                        if !newBlockWord.isEmpty {
+                            filter.blockKeywords.append(newBlockWord)
+                            newBlockWord = ""
+                        }
+                    }
+                }
+            }
+            
+            VStack(alignment: .leading) {
+                Text("替換關鍵字")
+                HStack {
+                    TextField("原字", text: $newReplaceWord)
+                        .textFieldStyle(.roundedBorder)
+                    TextField("替換字", text: $newReplacement)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 60)
+                    Button("加入") {
+                        if !newReplaceWord.isEmpty {
+                            filter.replaceKeywords[newReplaceWord] = newReplacement
+                            newReplaceWord = ""
+                            newReplacement = "B"
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // 右邊：列表區
+    private var listSection: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("已加入的排除字")
+                    .font(.headline)
+                ForEach(filter.blockKeywords.indices, id: \.self) { index in
+                    if editMode?.wrappedValue.isEditing == true {
+                        TextField("編輯字", text: $filter.blockKeywords[index])
+                            .textFieldStyle(.roundedBorder)
+                    } else {
+                        Text(filter.blockKeywords[index])
+                    }
+                }
+                .onDelete { indexSet in
+                    filter.blockKeywords.remove(atOffsets: indexSet)
+                }
+                
+                Divider()
+                
+                Text("已加入的替換字")
+                    .font(.headline)
+                ForEach(filter.replaceKeywords.keys.sorted(), id: \.self) { key in
+                    if editMode?.wrappedValue.isEditing == true {
+                        HStack {
+                            TextField("原字", text: Binding(
+                                get: { key },
+                                set: { newKey in
+                                    let value = filter.replaceKeywords[key] ?? ""
+                                    filter.replaceKeywords.removeValue(forKey: key)
+                                    filter.replaceKeywords[newKey] = value
+                                }
+                            ))
+                            Spacer()
+                            TextField("替換字", text: Binding(
+                                get: { filter.replaceKeywords[key] ?? "" },
+                                set: { newValue in
+                                    filter.replaceKeywords[key] = newValue
+                                }
+                            ))
+                            .foregroundColor(.blue)
+                        }
+                    } else {
+                        HStack {
+                            Text(key)
+                            Spacer()
+                            Text("→ \(filter.replaceKeywords[key] ?? "")")
+                                .foregroundColor(.blue)
+                        }
+                    }
+                }
+                .onDelete { indexSet in
+                    let keys = filter.replaceKeywords.keys.sorted()
+                    for index in indexSet {
+                        let key = keys[index]
+                        filter.replaceKeywords.removeValue(forKey: key)
+                    }
+                }
             }
         }
     }
@@ -510,12 +531,13 @@ struct TTSSettingsView: View {
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
 
-                            NavigationLink("TTS過濾詞管理") {
-                                FilterSettingsView()
-                            }
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
+
+                    NavigationLink("TTS過濾詞管理") {
+                        FilterSettingsView()
+                    }
                 }
                 .padding()
                 .frame(maxWidth: .infinity, alignment: .leading)
