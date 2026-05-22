@@ -194,58 +194,51 @@ struct FilterSettingsView: View {
     
     // 右邊：列表區
     private var listSection: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("已加入的排除字")
-                    .font(.headline)
-                ForEach(filter.blockKeywords.indices, id: \.self) { index in
+    List {
+        Section(header: Text("已加入的排除字").font(.headline)) {
+            ForEach(filter.blockKeywords.indices, id: \.self) { index in
+                if editMode?.wrappedValue.isEditing == true {
+                    TextField("編輯字", text: $filter.blockKeywords[index])
+                        .textFieldStyle(.roundedBorder)
+                } else {
+                    Text(filter.blockKeywords[index])
+                }
+            }
+            .onDelete { indexSet in
+                filter.blockKeywords.remove(atOffsets: indexSet)
+            }
+        }
+        
+        Section(header: Text("已加入的替換字").font(.headline)) {
+            ForEach(filter.replaceKeywords.keys.sorted(), id: \.self) { key in
+                HStack {
+                    Text(key) // 原字顯示，不直接編輯
+                    Spacer()
                     if editMode?.wrappedValue.isEditing == true {
-                        TextField("編輯字", text: $filter.blockKeywords[index])
-                            .textFieldStyle(.roundedBorder)
+                        TextField("替換字", text: Binding(
+                            get: { filter.replaceKeywords[key] ?? "" },
+                            set: { newValue in
+                                filter.replaceKeywords[key] = newValue
+                            }
+                        ))
+                        .foregroundColor(.blue)
                     } else {
-                        Text(filter.blockKeywords[index])
-                    }
-                }
-                .onDelete { indexSet in
-                    filter.blockKeywords.remove(atOffsets: indexSet)
-                }
-                
-                Divider()
-                
-                Text("已加入的替換字")
-                    .font(.headline)
-                ForEach(filter.replaceKeywords.keys.sorted(), id: \.self) { key in
-                    if editMode?.wrappedValue.isEditing == true {
-                        HStack {
-                            Text(key) // 原字顯示，不直接編輯，避免跳鍵盤
-                            Spacer()
-                            TextField("替換字", text: Binding(
-                                get: { filter.replaceKeywords[key] ?? "" },
-                                set: { newValue in
-                                    filter.replaceKeywords[key] = newValue
-                                }
-                            ))
+                        Text("→ \(filter.replaceKeywords[key] ?? "")")
                             .foregroundColor(.blue)
-                        }
-                    } else {
-                        HStack {
-                            Text(key)
-                            Spacer()
-                            Text("→ \(filter.replaceKeywords[key] ?? "")")
-                                .foregroundColor(.blue)
-                        }
                     }
                 }
-                .onDelete { indexSet in
-                    let keys = filter.replaceKeywords.keys.sorted()
-                    for index in indexSet {
-                        let key = keys[index]
-                        filter.replaceKeywords.removeValue(forKey: key)
-                    }
+            }
+            .onDelete { indexSet in
+                let keys = filter.replaceKeywords.keys.sorted()
+                for index in indexSet {
+                    let key = keys[index]
+                    filter.replaceKeywords.removeValue(forKey: key)
                 }
             }
         }
     }
+}
+
 }
 
 
