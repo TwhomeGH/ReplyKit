@@ -245,24 +245,27 @@ struct TTSSettingsView: View {
                     GroupBox("訊息限制") {
                         VStack(alignment: .leading, spacing: 12) {
                             
-                            Text("目前選擇最大字數：\(maxLength)")
-
-                            Picker("最長朗讀字數", selection: $maxLength) {
-                                ForEach(options, id: \.self) { value in
-                                    Text("\(value)").tag(value)
-                                }
+                            HStack {
+                                Text("目前選擇最大字數：")
+                                    Picker("", selection: $maxLength) {
+                                        ForEach(options, id: \.self) { value in
+                                            Text("\(value)").tag(value)
+                                        }
+                                    }
+                                    .pickerStyle(.menu) // 滾輪選單
                             }
-                            .pickerStyle(.menu) // 滾輪選單
-                            
-                            Text("語音播報要求最小字數：\(minLength)")
 
-                            Picker("最小朗讀字數", selection: $minLength) {
-                                ForEach(min_options, id: \.self) { value in
-                                    Text("\(value)").tag(value)
+                            HStack {
+                                Text("語音播報要求最小字數：")
+
+                                Picker("", selection: $minLength) {
+                                    ForEach(min_options, id: \.self) { value in
+                                        Text("\(value)").tag(value)
+                                    }
                                 }
-                            }
-                            .pickerStyle(.menu) // 滾輪選單
+                                .pickerStyle(.menu) // 滾輪選單
 
+                            }
 
                             Button("測試朗讀") {
                                 TTSService.shared.speakPreview()
