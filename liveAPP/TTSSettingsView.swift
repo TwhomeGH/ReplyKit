@@ -89,7 +89,7 @@ struct TTSSettingsView: View {
     //@State private var Cache_MaxLength = 100
     let options = Array(stride(from: 5, through: 500, by: 5))
 
-    let min_options = Array(stride(from: 3, through: 500, by: 1))
+    let min_options = Array(stride(from:1, through: 500, by: 1))
 
 
     private var groupedVoiceOptions: [(key: String, value: [TTSVoiceOption])] {
@@ -252,8 +252,7 @@ struct TTSSettingsView: View {
                                     Text("\(value)").tag(value)
                                 }
                             }
-                            .fixedSize()
-                            .pickerStyle(.wheel) // 滾輪選單
+                            .pickerStyle(.menu) // 滾輪選單
                             
                             Text("語音播報要求最小字數：\(minLength)")
 
@@ -262,8 +261,7 @@ struct TTSSettingsView: View {
                                     Text("\(value)").tag(value)
                                 }
                             }
-                            .fixedSize()
-                            .pickerStyle(.wheel) // 滾輪選單
+                            .pickerStyle(.menu) // 滾輪選單
 
 
                             Button("測試朗讀") {
