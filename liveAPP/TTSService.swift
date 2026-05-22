@@ -257,7 +257,7 @@ private final class TTSCallAudioKeeper {
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(
             .playAndRecord,
-            mode: .voiceChat,
+            mode: .default,
             options: [
                 .allowBluetoothHFP,
                 .allowBluetoothA2DP

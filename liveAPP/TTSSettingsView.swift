@@ -146,7 +146,7 @@ struct FilterSettingsView: View {
                                 filter.blockKeywords.remove(atOffsets: indexSet)
                             }
                         }
-                        .frame(minHeight: 120) // 保持基本高度
+                        .frame(maxWidth: .infinity) // 保持基本高度
                     }
                     
                     // Replace Keywords
@@ -157,7 +157,7 @@ struct FilterSettingsView: View {
                                 .textFieldStyle(.roundedBorder)
                             TextField("替換字", text: $newReplacement)
                                 .textFieldStyle(.roundedBorder)
-                                .frame(width: 60)
+
                             Button("加入") {
                                 if !newReplaceWord.isEmpty {
                                     filter.replaceKeywords[newReplaceWord] = newReplacement
@@ -183,7 +183,7 @@ struct FilterSettingsView: View {
                                 }
                             }
                         }
-                        .frame(minHeight: 120)
+                        .frame(maxWidth: .infinity)
                     }
                 }
                 .padding()
