@@ -90,6 +90,7 @@ struct FilterSettingsView: View {
     @State private var newBlockWord = ""
     @State private var newReplaceWord = ""
     @State private var newReplacement = "B"
+    @Environment(\.editMode) private var editMode   // 監聽編輯模式
     
     var processedText: String {
         filter.processMessage(inputText)
@@ -97,16 +98,14 @@ struct FilterSettingsView: View {
     
     var body: some View {
         NavigationView {
-            ScrollView { // 可滾動
+            ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("朗讀過濾設定")
                         .font(.headline)
                     
-                    // 測試輸入訊息（即時更新）
                     TextField("輸入訊息測試", text: $inputText)
                         .textFieldStyle(.roundedBorder)
                     
-                    // 即時顯示處理後訊息
                     if !processedText.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("處理後訊息：")
@@ -122,7 +121,6 @@ struct FilterSettingsView: View {
                     
                     Divider()
                     
-                    // URL 選項
                     Toggle("移除 URL", isOn: $filter.removeURLs)
                     
                     // Block Keywords
@@ -139,14 +137,18 @@ struct FilterSettingsView: View {
                             }
                         }
                         List {
-                            ForEach(filter.blockKeywords, id: \.self) { word in
-                                Text(word)
+                            ForEach(filter.blockKeywords.indices, id: \.self) { index in
+                                if editMode?.wrappedValue.isEditing == true {
+                                    TextField("編輯字", text: $filter.blockKeywords[index])
+                                } else {
+                                    Text(filter.blockKeywords[index])
+                                }
                             }
                             .onDelete { indexSet in
                                 filter.blockKeywords.remove(atOffsets: indexSet)
                             }
                         }
-                        .frame(maxWidth: .infinity) // 保持基本高度
+                        .frame(minHeight: 120)
                     }
                     
                     // Replace Keywords
@@ -157,7 +159,7 @@ struct FilterSettingsView: View {
                                 .textFieldStyle(.roundedBorder)
                             TextField("替換字", text: $newReplacement)
                                 .textFieldStyle(.roundedBorder)
-
+                                .frame(width: 60)
                             Button("加入") {
                                 if !newReplaceWord.isEmpty {
                                     filter.replaceKeywords[newReplaceWord] = newReplacement
@@ -167,12 +169,33 @@ struct FilterSettingsView: View {
                             }
                         }
                         List {
-                            ForEach(filter.replaceKeywords.keys.sorted(), id: \.self) { word in
-                                HStack {
-                                    Text(word)
-                                    Spacer()
-                                    Text("→ \(filter.replaceKeywords[word] ?? "")")
+                            ForEach(filter.replaceKeywords.keys.sorted(), id: \.self) { key in
+                                if editMode?.wrappedValue.isEditing == true {
+                                    HStack {
+                                        TextField("原字", text: Binding(
+                                            get: { key },
+                                            set: { newKey in
+                                                let value = filter.replaceKeywords[key] ?? ""
+                                                filter.replaceKeywords.removeValue(forKey: key)
+                                                filter.replaceKeywords[newKey] = value
+                                            }
+                                        ))
+                                        Spacer()
+                                        TextField("替換字", text: Binding(
+                                            get: { filter.replaceKeywords[key] ?? "" },
+                                            set: { newValue in
+                                                filter.replaceKeywords[key] = newValue
+                                            }
+                                        ))
                                         .foregroundColor(.blue)
+                                    }
+                                } else {
+                                    HStack {
+                                        Text(key)
+                                        Spacer()
+                                        Text("→ \(filter.replaceKeywords[key] ?? "")")
+                                            .foregroundColor(.blue)
+                                    }
                                 }
                             }
                             .onDelete { indexSet in
@@ -183,18 +206,16 @@ struct FilterSettingsView: View {
                                 }
                             }
                         }
-                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 120)
                     }
                 }
                 .padding()
-                .frame(maxWidth: .infinity) // 撐滿寬度
             }
             .navigationTitle("過濾器設定")
             .toolbar {
-                EditButton() // 啟用編輯模式，支援批量刪除
+                EditButton() // 切換編輯模式
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity) // 撐滿整個視窗
     }
 }
 
