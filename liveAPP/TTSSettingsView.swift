@@ -98,7 +98,6 @@ struct FilterSettingsView: View {
     }
     
     var body: some View {
-        NavigationView {
             Group {
                 if sizeClass == .regular {
                     // iPad / 寬螢幕 → 左右分欄
@@ -130,7 +129,7 @@ struct FilterSettingsView: View {
             .toolbar {
                 EditButton()
             }
-        }
+        
     }
     
     // 左邊：輸入區
