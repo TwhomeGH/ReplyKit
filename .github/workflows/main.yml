@@ -71,6 +71,14 @@ jobs:
               echo "file_to_build=$(ls -A | grep -i \\.xcodeproj\$)" >> $GITHUB_OUTPUT
               echo "filetype_parameter=project" >> $GITHUB_OUTPUT
           fi
+      
+
+      # 2️⃣ Clean caches
+      - name: Clean DerivedData and SwiftPM cache
+        run: |
+          rm -rf ~/Library/Developer/Xcode/DerivedData/*
+          rm -rf ~/Library/Caches/org.swift.swiftpm/*
+          rm -rf .build
 
       - name: Fast compile 編譯檢查
         id: fast_build
@@ -99,12 +107,7 @@ jobs:
           fi
       
       
-      # 2️⃣ Clean caches
-      - name: Clean DerivedData and SwiftPM cache
-        run: |
-          rm -rf ~/Library/Developer/Xcode/DerivedData/*
-          rm -rf ~/Library/Caches/org.swift.swiftpm/*
-          rm -rf .build
+      
 
 
       # 3️⃣ Build & Archive (Unsigned)
