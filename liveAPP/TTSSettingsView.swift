@@ -217,14 +217,7 @@ struct FilterSettingsView: View {
                 ForEach(filter.replaceKeywords.keys.sorted(), id: \.self) { key in
                     if editMode?.wrappedValue.isEditing == true {
                         HStack {
-                            TextField("原字", text: Binding(
-                                get: { key },
-                                set: { newKey in
-                                    let value = filter.replaceKeywords[key] ?? ""
-                                    filter.replaceKeywords.removeValue(forKey: key)
-                                    filter.replaceKeywords[newKey] = value
-                                }
-                            ))
+                            Text(key) // 原字顯示，不直接編輯，避免跳鍵盤
                             Spacer()
                             TextField("替換字", text: Binding(
                                 get: { filter.replaceKeywords[key] ?? "" },
