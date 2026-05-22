@@ -98,6 +98,14 @@ jobs:
             echo "::notice::Fast build succeeded"
           fi
       
+      
+      # 2️⃣ Clean caches
+      - name: Clean DerivedData and SwiftPM cache
+        run: |
+          rm -rf ~/Library/Developer/Xcode/DerivedData/*
+          rm -rf ~/Library/Caches/org.swift.swiftpm/*
+          rm -rf .build
+
 
       # 3️⃣ Build & Archive (Unsigned)
       - name: Build & Archive Unsigned IPA 構建與打包未簽名的 IPA
