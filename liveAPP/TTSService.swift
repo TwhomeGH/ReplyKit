@@ -45,7 +45,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
         #endif
     }
 
-    @StateObject private var filter = SpeechFilterManager.shared
+    private var filter = SpeechFilterManager.shared
     
 
     func speakStreamMessage(
@@ -73,7 +73,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
         }
 
         let trimmedMessage = RES_MSG.trimmingCharacters(in: .whitespacesAndNewlines)
-        
+
         guard !trimmedMessage.isEmpty else { return }
 
         let includeUser = userDefaults?.bool(forKey: "TTSReadUserName") ?? true
