@@ -270,10 +270,12 @@ struct TTSSettingsView: View {
                             Button("測試朗讀") {
                                 TTSService.shared.speakPreview()
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
 
                             Button("停止朗讀") {
                                 TTSService.shared.stop()
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
