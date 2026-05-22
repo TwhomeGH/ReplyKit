@@ -112,6 +112,7 @@ struct FilterSettingsView: View {
                             .frame(maxWidth: .infinity)
                             .padding()
                     }
+                    .navigationTitle("過濾器設定")
                 } else {
                     // iPhone / 窄螢幕 → 上下排版
                     VStack(spacing: 0) {
@@ -123,9 +124,9 @@ struct FilterSettingsView: View {
                         listSection
                             .padding()
                     }
+                    .navigationTitle("過濾器設定")
                 }
             }
-            .navigationTitle("過濾器設定")
             .toolbar {
                 EditButton()
             }
