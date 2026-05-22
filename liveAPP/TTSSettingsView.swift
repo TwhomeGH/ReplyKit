@@ -7,6 +7,196 @@
 
 import AVFoundation
 import SwiftUI
+import Foundation
+import Combine
+
+// MARK: TTS過濾管理器
+class SpeechFilterManager: ObservableObject {
+    static let shared = SpeechFilterManager()   // 全局共用單例
+    
+    @Published var blockKeywords: [String] = [] {
+        didSet { saveToUserDefaults() }
+    }
+    @Published var replaceKeywords: [String: String] = [:] {
+        didSet { saveToUserDefaults() }
+    }
+    @Published var removeURLs: Bool = true {
+        didSet { saveToUserDefaults() }
+    }
+    
+    private let defaultsKey = "SpeechFilterSettings"
+    
+    private init() {   // 私有化 init，避免外部建立新實例
+        loadFromUserDefaults()
+    }
+    
+    /// 處理訊息：刪除 URL、刪除或替換關鍵字
+    func processMessage(_ message: String) -> String {
+        var result = message
+        
+        // 1. 移除 URL
+        if removeURLs {
+            let urlPattern = #"https?:\/\/[^\s]+"#
+            result = result.replacingOccurrences(of: urlPattern,
+                                                 with: "",
+                                                 options: .regularExpression)
+        }
+        
+        // 2. 移除 blockKeywords
+        for word in blockKeywords {
+            result = result.replacingOccurrences(of: word, with: "")
+        }
+        
+        // 3. 替換 replaceKeywords
+        for (word, replacement) in replaceKeywords {
+            result = result.replacingOccurrences(of: word, with: replacement)
+        }
+        
+        return result
+    }
+    
+    /// 儲存到 UserDefaults
+    private func saveToUserDefaults() {
+        let dict: [String: Any] = [
+            "blockKeywords": blockKeywords,
+            "replaceKeywords": replaceKeywords,
+            "removeURLs": removeURLs
+        ]
+        UserDefaults.standard.set(dict, forKey: defaultsKey)
+    }
+    
+    /// 從 UserDefaults 載入
+    private func loadFromUserDefaults() {
+        guard let dict = UserDefaults.standard.dictionary(forKey: defaultsKey) else { return }
+        
+        if let block = dict["blockKeywords"] as? [String] {
+            blockKeywords = block
+        }
+        if let replace = dict["replaceKeywords"] as? [String: String] {
+            replaceKeywords = replace
+        }
+        if let remove = dict["removeURLs"] as? Bool {
+            removeURLs = remove
+        }
+    }
+}
+
+
+// MARK: TTS過濾頁
+struct FilterSettingsView: View {
+    @StateObject private var filter = SpeechFilterManager.shared
+    
+    @State private var inputText = ""
+    @State private var newBlockWord = ""
+    @State private var newReplaceWord = ""
+    @State private var newReplacement = "B"
+    
+    var processedText: String {
+        filter.processMessage(inputText)
+    }
+    
+    var body: some View {
+        NavigationView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("朗讀過濾設定")
+                    .font(.headline)
+                
+                // 測試輸入訊息（即時更新）
+                TextField("輸入訊息測試", text: $inputText)
+                    .textFieldStyle(.roundedBorder)
+                
+                // 即時顯示處理後訊息
+                if !processedText.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("處理後訊息：")
+                            .font(.subheadline)
+                            .foregroundColor(.gray)
+                        Text(processedText)
+                            .padding()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color(.secondarySystemBackground))
+                            .cornerRadius(8)
+                    }
+                }
+                
+                Divider()
+                
+                // URL 選項
+                Toggle("移除 URL", isOn: $filter.removeURLs)
+                
+                // Block Keywords
+                VStack(alignment: .leading) {
+                    Text("排除關鍵字")
+                    HStack {
+                        TextField("新增排除字", text: $newBlockWord)
+                            .textFieldStyle(.roundedBorder)
+                        Button("加入") {
+                            if !newBlockWord.isEmpty {
+                                filter.blockKeywords.append(newBlockWord)
+                                newBlockWord = ""
+                            }
+                        }
+                    }
+                    List {
+                        ForEach(filter.blockKeywords, id: \.self) { word in
+                            Text(word)
+                        }
+                        .onDelete { indexSet in
+                            filter.blockKeywords.remove(atOffsets: indexSet)
+                        }
+                    }
+                    .frame(height: 120)
+                }
+                
+                // Replace Keywords
+                VStack(alignment: .leading) {
+                    Text("替換關鍵字")
+                    HStack {
+                        TextField("原字", text: $newReplaceWord)
+                            .textFieldStyle(.roundedBorder)
+                        TextField("替換字", text: $newReplacement)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 60)
+                        Button("加入") {
+                            if !newReplaceWord.isEmpty {
+                                filter.replaceKeywords[newReplaceWord] = newReplacement
+                                newReplaceWord = ""
+                                newReplacement = "B"
+                            }
+                        }
+                    }
+                    List {
+                        ForEach(filter.replaceKeywords.keys.sorted(), id: \.self) { word in
+                            HStack {
+                                Text(word)
+                                Spacer()
+                                Text("→ \(filter.replaceKeywords[word] ?? "")")
+                                    .foregroundColor(.blue)
+                            }
+                        }
+                        .onDelete { indexSet in
+                            let keys = filter.replaceKeywords.keys.sorted()
+                            for index in indexSet {
+                                let key = keys[index]
+                                filter.replaceKeywords.removeValue(forKey: key)
+                            }
+                        }
+                    }
+                    .frame(height: 120)
+                }
+            }
+            .padding()
+            .navigationTitle("過濾器設定")
+            .toolbar {
+                EditButton() // 啟用編輯模式，支援批量刪除
+            }
+        }
+    }
+}
+
+
+
+
 
 
 struct TTSVoiceOption: Identifiable {
@@ -276,6 +466,10 @@ struct TTSSettingsView: View {
                                 TTSService.shared.stop()
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
+
+                            NavigationLink("TTS過濾詞管理") {
+                                FilterSettingsView()
+                            }
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)

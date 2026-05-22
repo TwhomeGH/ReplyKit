@@ -45,6 +45,9 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
         #endif
     }
 
+    @StateObject private var filter = SpeechFilterManager.shared
+    
+
     func speakStreamMessage(
         user: String,
         message: String,
@@ -54,7 +57,11 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
 
         let minLen = userDefaults?.integer(forKey: "TTSMinLength") ?? 3
 
-        if message.count < minLen {
+
+        let RES_MSG = filter.processMessage(message)
+
+
+        if RES_MSG.count < minLen {
             sendlog(message:"太短了跳過 少於\(minLen)個字")
             return;
         }
@@ -65,7 +72,8 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
             return
         }
 
-        let trimmedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedMessage = RES_MSG.trimmingCharacters(in: .whitespacesAndNewlines)
+        
         guard !trimmedMessage.isEmpty else { return }
 
         let includeUser = userDefaults?.bool(forKey: "TTSReadUserName") ?? true
