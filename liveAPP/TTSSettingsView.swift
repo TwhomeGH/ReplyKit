@@ -530,13 +530,14 @@ struct TTSSettingsView: View {
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
 
+                            NavigationLink("TTS過濾詞管理") {
+                                FilterSettingsView()
+                            }
+
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                    NavigationLink("TTS過濾詞管理") {
-                        FilterSettingsView()
-                    }
                 }
                 .padding()
                 .frame(maxWidth: .infinity, alignment: .leading)
