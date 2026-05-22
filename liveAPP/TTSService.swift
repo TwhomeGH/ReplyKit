@@ -260,9 +260,7 @@ private final class TTSCallAudioKeeper {
             mode: .voiceChat,
             options: [
                 .allowBluetoothHFP,
-                .allowBluetoothA2DP,
-                .defaultToSpeaker,
-                .mixWithOthers
+                .allowBluetoothA2DP
             ]
         )
         try session.setPreferredSampleRate(48_000)
