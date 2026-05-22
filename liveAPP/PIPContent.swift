@@ -1519,6 +1519,9 @@ final class PIPServiceMessages {
 
         PIPChatLog("MovingOK")
 
+        populateVisibleMessagesIfNeeded()
+        layoutTargetsAndStartAnimation()
+
 
         let moving = stackedMessages.filter {
             abs($0.startY - $0.targetY) < snapThreshold
@@ -1598,7 +1601,7 @@ final class PIPServiceMessages {
 
         if let msg = fadeCandidate {
             
-                  startFadeAnimation(for: msg)
+                startFadeAnimation(for: msg)
             
         }
 
@@ -1655,7 +1658,8 @@ final class PIPServiceMessages {
         animatingMessages.removeAll { $0 ===  msg }
         animatingMessages.removeAll { $0.alpha <= 0 }
 
-
+        populateVisibleMessagesIfNeeded()
+        layoutTargetsAndStartAnimation()
 
     }
 
