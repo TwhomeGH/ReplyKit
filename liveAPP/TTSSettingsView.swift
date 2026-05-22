@@ -97,102 +97,107 @@ struct FilterSettingsView: View {
     
     var body: some View {
         NavigationView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("朗讀過濾設定")
-                    .font(.headline)
-                
-                // 測試輸入訊息（即時更新）
-                TextField("輸入訊息測試", text: $inputText)
-                    .textFieldStyle(.roundedBorder)
-                
-                // 即時顯示處理後訊息
-                if !processedText.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("處理後訊息：")
-                            .font(.subheadline)
-                            .foregroundColor(.gray)
-                        Text(processedText)
-                            .padding()
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color(.secondarySystemBackground))
-                            .cornerRadius(8)
+            ScrollView { // 可滾動
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("朗讀過濾設定")
+                        .font(.headline)
+                    
+                    // 測試輸入訊息（即時更新）
+                    TextField("輸入訊息測試", text: $inputText)
+                        .textFieldStyle(.roundedBorder)
+                    
+                    // 即時顯示處理後訊息
+                    if !processedText.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("處理後訊息：")
+                                .font(.subheadline)
+                                .foregroundColor(.gray)
+                            Text(processedText)
+                                .padding()
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color(.secondarySystemBackground))
+                                .cornerRadius(8)
+                        }
                     }
-                }
-                
-                Divider()
-                
-                // URL 選項
-                Toggle("移除 URL", isOn: $filter.removeURLs)
-                
-                // Block Keywords
-                VStack(alignment: .leading) {
-                    Text("排除關鍵字")
-                    HStack {
-                        TextField("新增排除字", text: $newBlockWord)
-                            .textFieldStyle(.roundedBorder)
-                        Button("加入") {
-                            if !newBlockWord.isEmpty {
-                                filter.blockKeywords.append(newBlockWord)
-                                newBlockWord = ""
+                    
+                    Divider()
+                    
+                    // URL 選項
+                    Toggle("移除 URL", isOn: $filter.removeURLs)
+                    
+                    // Block Keywords
+                    VStack(alignment: .leading) {
+                        Text("排除關鍵字")
+                        HStack {
+                            TextField("新增排除字", text: $newBlockWord)
+                                .textFieldStyle(.roundedBorder)
+                            Button("加入") {
+                                if !newBlockWord.isEmpty {
+                                    filter.blockKeywords.append(newBlockWord)
+                                    newBlockWord = ""
+                                }
                             }
                         }
-                    }
-                    List {
-                        ForEach(filter.blockKeywords, id: \.self) { word in
-                            Text(word)
-                        }
-                        .onDelete { indexSet in
-                            filter.blockKeywords.remove(atOffsets: indexSet)
-                        }
-                    }
-                    .frame(height: 120)
-                }
-                
-                // Replace Keywords
-                VStack(alignment: .leading) {
-                    Text("替換關鍵字")
-                    HStack {
-                        TextField("原字", text: $newReplaceWord)
-                            .textFieldStyle(.roundedBorder)
-                        TextField("替換字", text: $newReplacement)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 60)
-                        Button("加入") {
-                            if !newReplaceWord.isEmpty {
-                                filter.replaceKeywords[newReplaceWord] = newReplacement
-                                newReplaceWord = ""
-                                newReplacement = "B"
-                            }
-                        }
-                    }
-                    List {
-                        ForEach(filter.replaceKeywords.keys.sorted(), id: \.self) { word in
-                            HStack {
+                        List {
+                            ForEach(filter.blockKeywords, id: \.self) { word in
                                 Text(word)
-                                Spacer()
-                                Text("→ \(filter.replaceKeywords[word] ?? "")")
-                                    .foregroundColor(.blue)
+                            }
+                            .onDelete { indexSet in
+                                filter.blockKeywords.remove(atOffsets: indexSet)
                             }
                         }
-                        .onDelete { indexSet in
-                            let keys = filter.replaceKeywords.keys.sorted()
-                            for index in indexSet {
-                                let key = keys[index]
-                                filter.replaceKeywords.removeValue(forKey: key)
-                            }
-                        }
+                        .frame(minHeight: 120) // 保持基本高度
                     }
-                    .frame(height: 120)
+                    
+                    // Replace Keywords
+                    VStack(alignment: .leading) {
+                        Text("替換關鍵字")
+                        HStack {
+                            TextField("原字", text: $newReplaceWord)
+                                .textFieldStyle(.roundedBorder)
+                            TextField("替換字", text: $newReplacement)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 60)
+                            Button("加入") {
+                                if !newReplaceWord.isEmpty {
+                                    filter.replaceKeywords[newReplaceWord] = newReplacement
+                                    newReplaceWord = ""
+                                    newReplacement = "B"
+                                }
+                            }
+                        }
+                        List {
+                            ForEach(filter.replaceKeywords.keys.sorted(), id: \.self) { word in
+                                HStack {
+                                    Text(word)
+                                    Spacer()
+                                    Text("→ \(filter.replaceKeywords[word] ?? "")")
+                                        .foregroundColor(.blue)
+                                }
+                            }
+                            .onDelete { indexSet in
+                                let keys = filter.replaceKeywords.keys.sorted()
+                                for index in indexSet {
+                                    let key = keys[index]
+                                    filter.replaceKeywords.removeValue(forKey: key)
+                                }
+                            }
+                        }
+                        .frame(minHeight: 120)
+                    }
                 }
+                .padding()
+                .frame(maxWidth: .infinity) // 撐滿寬度
             }
-            .padding()
             .navigationTitle("過濾器設定")
             .toolbar {
                 EditButton() // 啟用編輯模式，支援批量刪除
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity) // 撐滿整個視窗
     }
 }
+
 
 
 
