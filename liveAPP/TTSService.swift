@@ -90,7 +90,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
     private override init() {
 
         // 要先在super之前初始化 self
-        updateDefault()
+        self.updateDefault()
 
 
         super.init()
