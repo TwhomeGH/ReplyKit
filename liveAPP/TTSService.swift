@@ -88,9 +88,14 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
     }
 
     private override init() {
+
+        // 要先在super之前初始化 self
+        updateDefault()
+
+
         super.init()
         
-        updateDefault()
+        
 
         synthesizer.delegate = self
         #if os(iOS)
@@ -185,7 +190,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
 
     func refreshAudioSessionForCurrentSetting() {
         #if os(iOS)
-        if  isEnabled ?? false {
+        if  isEnabled {
             callAudioKeeper.start()
         } else {
             callAudioKeeper.stop()
