@@ -89,8 +89,27 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
 
     private override init() {
 
-        // 要先在super之前初始化 self
-        self.updateDefault()
+        // 部分初始化不能分離 應保留部分在此位置
+        isEnabled = userDefaults?.bool(forKey: "TTSEnabled") ?? false
+        minLen = userDefaults?.integer(forKey: "TTSMinLength") ?? 3
+        readMainOnly = userDefaults?.bool(forKey: "TTSReadMainOnly") ?? true
+
+        includeUser = userDefaults?.bool(forKey: "TTSReadUserName") ?? true
+
+        maxLen = userDefaults?.integer(forKey: "TTSMaxLength") ?? 0
+
+        readMiddleName = userDefaults?.string(forKey:"TTSReadMiddleName") ?? ""
+
+        InterruptCurrent = userDefaults?.bool(forKey: "TTSInterruptCurrent") ?? true
+
+        storedLanguage = userDefaults?.string(forKey: "TTSLanguage") ?? ""
+
+        language = storedLanguage.isEmpty ? "zh-TW" : storedLanguage
+
+        storedVoiceIdentifier = userDefaults?.string(forKey: "TTSVoiceIdentifier") ?? ""
+        storedRate = userDefaults?.double(forKey: "TTSRate") ?? 0
+        storedPitch = userDefaults?.double(forKey: "TTSPitch") ?? 0
+        storedVolume = userDefaults?.double(forKey: "TTSVolume") ?? 0
 
 
         super.init()
