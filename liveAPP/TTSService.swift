@@ -68,7 +68,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
         sendlog(message:"已同步TTS設定")
 
     }
-    func updateState(isEnabled:Bool? = nil) {
+    func updateState(isEnabled:Bool? = nil,minLen:Int? = nil,readMainOnly:Bool? = nil) {
 
         if let isEnabled = isEnabled {
             isEnabled = isEnabled
