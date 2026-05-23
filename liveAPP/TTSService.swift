@@ -68,18 +68,18 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
         sendlog(message:"已同步TTS設定")
 
     }
-    func updateState(isEnabled:Bool? = nil,minLen:Int? = nil,readMainOnly:Bool? = nil) {
+    func updateState(isON:Bool? = nil,min_Len:Int? = nil,MainOnly:Bool? = nil) {
 
-        if let isEnabled = isEnabled {
-            isEnabled = isEnabled
+        if let isON = isON {
+            self.isEnabled = isON
         }
 
-        if let minLen = minLen {
-            minLen = minLen
+        if let min_Len = min_Len {
+            self.minLen = min_Len
         }
 
-        if let readMainOnly = readMainOnly {
-            readMainOnly =  readMainOnly
+        if let MainOnly = MainOnly {
+            self.readMainOnly = MainOnly
         }
 
         // 待補齊其他設置 先預留用updateDefault一次更新
@@ -123,7 +123,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
         }
         audioSessionObservers.removeAll()
 
-        sendlog("TTS釋放 清理觀察器使用")
+        sendlog(message:"TTS釋放 清理觀察器使用")
     }
 
 
