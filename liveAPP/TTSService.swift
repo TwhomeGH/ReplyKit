@@ -18,8 +18,80 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
     private var audioSessionObservers: [NSObjectProtocol] = []
     #endif
 
+    var isEnabled:Bool
+    var minLen:Int = 3
+    var readMainOnly:Bool = true
+    var includeUser:Bool = true
+    var maxLen:Int = 0
+
+    var readMiddleName:String = ""
+
+    //打斷
+    var InterruptCurrent:Bool = true
+
+    // 主語音配置
+    var storedLanguage:String = ""
+    var language:String = "zh-TW" 
+
+    var storedVoiceIdentifier:String = ""
+    var storedRate:Double =  0
+    var storedPitch:Double =  0
+    var storedVolume:Double =  0
+    
+
+
+    private var filter = SpeechFilterManager.shared
+
+    func updateDefault() {
+
+        isEnabled = userDefaults?.bool(forKey: "TTSEnabled") ?? false
+        minLen = userDefaults?.integer(forKey: "TTSMinLength") ?? 3
+        readMainOnly = userDefaults?.bool(forKey: "TTSReadMainOnly") ?? true
+
+        includeUser = userDefaults?.bool(forKey: "TTSReadUserName") ?? true
+
+        maxLen = userDefaults?.integer(forKey: "TTSMaxLength") ?? 0
+
+        readMiddleName = userDefaults?.string(forKey:"TTSReadMiddleName") ?? ""
+
+        InterruptCurrent = userDefaults?.bool(forKey: "TTSInterruptCurrent") ?? true
+
+        storedLanguage = userDefaults?.string(forKey: "TTSLanguage") ?? ""
+
+        language = storedLanguage.isEmpty ? "zh-TW" : storedLanguage
+
+        storedVoiceIdentifier = userDefaults?.string(forKey: "TTSVoiceIdentifier") ?? ""
+        storedRate = userDefaults?.double(forKey: "TTSRate") ?? 0
+        storedPitch = userDefaults?.double(forKey: "TTSPitch") ?? 0
+        storedVolume = userDefaults?.double(forKey: "TTSVolume") ?? 0
+
+        sendlog(message:"已同步TTS設定")
+
+    }
+    func updateState(isEnabled:Bool? = nil) {
+
+        if let isEnabled = isEnabled {
+            isEnabled = isEnabled
+        }
+
+        if let minLen = minLen {
+            minLen = minLen
+        }
+
+        if let readMainOnly = readMainOnly {
+            readMainOnly =  readMainOnly
+        }
+
+        // 待補齊其他設置 先預留用updateDefault一次更新
+
+
+    }
+
     private override init() {
         super.init()
+        
+        updateDefault()
+
         synthesizer.delegate = self
         #if os(iOS)
         audioSessionObservers.append(NotificationCenter.default.addObserver(
@@ -45,7 +117,17 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
         #endif
     }
 
-    private var filter = SpeechFilterManager.shared
+    deinit {
+        for observer in audioSessionObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        audioSessionObservers.removeAll()
+
+        sendlog("TTS釋放 清理觀察器使用")
+    }
+
+
+    
     
 
     func speakStreamMessage(
@@ -53,11 +135,9 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
         message: String,
         isMain:Bool = true
     ) {
-        guard userDefaults?.bool(forKey: "TTSEnabled") ?? false else { return }
+        guard isEnabled else { return }
 
-        let minLen = userDefaults?.integer(forKey: "TTSMinLength") ?? 3
-
-
+        
         let RES_MSG = filter.processMessage(message)
 
 
@@ -67,7 +147,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
         }
 
 
-        if (userDefaults?.bool(forKey: "TTSReadMainOnly") ?? true) && !isMain {
+        if readMainOnly && !isMain {
             sendlog(message:"跳過次要訊息")
             return
         }
@@ -76,15 +156,11 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
 
         guard !trimmedMessage.isEmpty else { return }
 
-        let includeUser = userDefaults?.bool(forKey: "TTSReadUserName") ?? true
-
-
-        let storedMaxLength = userDefaults?.integer(forKey: "TTSMaxLength") ?? 0
+        
+        let storedMaxLength = maxLen
         let maxLength = storedMaxLength > 0 ? storedMaxLength : 120
 
-        // 中間詞
-        let readMiddleName = userDefaults?.string(forKey:"TTSReadMiddleName") ?? ""
-
+        
         // TTS 郎讀內容
         
         var text = includeUser && !user.isEmpty ? "\(user) \(readMiddleName) \(trimmedMessage)" : trimmedMessage
@@ -109,7 +185,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
 
     func refreshAudioSessionForCurrentSetting() {
         #if os(iOS)
-        if userDefaults?.bool(forKey: "TTSEnabled") ?? false {
+        if  isEnabled ?? false {
             callAudioKeeper.start()
         } else {
             callAudioKeeper.stop()
@@ -126,7 +202,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
     private func speak(_ text: String, keepsCallAudioAlive: Bool = true) {
         guard !text.isEmpty else { return }
 
-        if userDefaults?.object(forKey: "TTSInterruptCurrent") as? Bool ?? true,
+        if InterruptCurrent ,
             synthesizer.isSpeaking {
             synthesizer.stopSpeaking(at: .immediate)
         }
@@ -139,12 +215,6 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
         }
         #endif
 
-        let storedLanguage = userDefaults?.string(forKey: "TTSLanguage") ?? ""
-        let language = storedLanguage.isEmpty ? "zh-TW" : storedLanguage
-        let storedVoiceIdentifier = userDefaults?.string(forKey: "TTSVoiceIdentifier") ?? ""
-        let storedRate = userDefaults?.double(forKey: "TTSRate") ?? 0
-        let storedPitch = userDefaults?.double(forKey: "TTSPitch") ?? 0
-        let storedVolume = userDefaults?.double(forKey: "TTSVolume") ?? 0
 
         let utterance = AVSpeechUtterance(string: text)
         if !storedVoiceIdentifier.isEmpty,

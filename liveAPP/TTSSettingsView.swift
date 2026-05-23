@@ -545,6 +545,8 @@ struct TTSSettingsView: View {
         .onDisappear {
             saveMiddleNameDraft()
             saveVoiceControlDrafts()
+
+            TTSService.shared.updateDefault()
         }
     }
 }

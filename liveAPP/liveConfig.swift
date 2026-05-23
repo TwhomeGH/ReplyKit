@@ -40,6 +40,9 @@ final class SharedResources {
 final class LPConfig {
     static let shared = LPConfig()
 
+    // TTS相關
+    
+
     // 日誌相關
     var enableLog: Bool = false
     var logMode: Int = 1
