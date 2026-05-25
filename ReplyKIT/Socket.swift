@@ -851,6 +851,8 @@ class SocketClient : @unchecked Sendable {
 
                 }
 
+                break
+
             case "BatchEnded":
                 self.logTo("Batch Get All Req")
 
@@ -864,6 +866,8 @@ class SocketClient : @unchecked Sendable {
                 updateONLogFixState()
                 
                 cont.resume(returning: true)
+
+                break
 
 
 
@@ -904,6 +908,8 @@ class SocketClient : @unchecked Sendable {
 
 
                 }
+
+                break
 
 
 
@@ -964,6 +970,8 @@ class SocketClient : @unchecked Sendable {
                     }
                 }
 
+                break
+
 
             case "RTMP":
                 if let env = try? decoder.decode(RTMPConfig.self, from: data) {
@@ -985,6 +993,8 @@ class SocketClient : @unchecked Sendable {
                     
                 }
 
+                break
+
 
 
             case "log":
@@ -994,10 +1004,14 @@ class SocketClient : @unchecked Sendable {
                     logTo("[Socket] log decode failed")
                 }
 
+                break
+
 
 
             default:
                 logTo("[Socket] Unknown type: \(base.type)")
+
+                break
             }
 
         } catch {

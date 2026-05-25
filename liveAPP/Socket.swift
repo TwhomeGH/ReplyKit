@@ -724,9 +724,13 @@ class SocketServer:ObservableObject {
             case "heartbeat":
                 sendlog(message: "收到Socket心跳維持連線")
 
+                break
+
             case "StreamStarting":
                 sendlog(message: "直播開始")
                 StreamStarting()
+
+                break
 
             case "Ended":
                 let dict = try decoder.decode(StreamEnded.self,
@@ -741,6 +745,8 @@ class SocketServer:ObservableObject {
                 } else {
                     StreamStatusChanged(isLive: false)
                 }
+
+                break
 
             case "StreamMessage":
 
@@ -787,6 +793,8 @@ class SocketServer:ObservableObject {
                         isMain:isMain
                     )
                 }
+
+                break
 
 
 
@@ -852,6 +860,8 @@ class SocketServer:ObservableObject {
 
                 sendTo(connection, payload: payload) // ← 只回應發送請求的 client
 
+                break
+
 
             case "batch":
 
@@ -883,9 +893,12 @@ class SocketServer:ObservableObject {
 
                         responses.append(rtmpPayload)
 
+                        break
+
                     case "logConfig":
                         let logPayload: [String: Any] = GetLogConfig()
                         responses.append(logPayload)
+                        break
 
                     case "log":
                         
@@ -901,6 +914,8 @@ class SocketServer:ObservableObject {
                             logTo("data 為 nil")
 
                         }
+
+                        break
 
 
 
@@ -940,6 +955,7 @@ class SocketServer:ObservableObject {
                     }
                 }
 
+                break
 
 
 
@@ -949,6 +965,7 @@ class SocketServer:ObservableObject {
                 let payload: [String: Any] = GetLogConfig()
 
                 sendTo(connection, payload: payload) // ← 只回應發送請求的 client
+                break
 
 
 
@@ -957,13 +974,16 @@ class SocketServer:ObservableObject {
                 let payload: [String: Any] = GetRTMPConfig()
 
                 sendTo(connection, payload: payload) // ← 只回應發送請求的 client
+                break
 
 
 
             case "requestSettings":
                 logTo("棄用Sync UserDefaults to client 該項目不使用")
+                break
 
 
+            
             case "settings":
 
                 // 假設你解析 JSON 得到 resultValue
@@ -981,6 +1001,8 @@ class SocketServer:ObservableObject {
                     userDefaults?.set(valueAny, forKey: key) // 用原值存 UserDefaults
                     
                 }
+
+                break
                 
             case "log":
                 // 假設你解析 JSON 得到 resultValue
@@ -992,10 +1014,13 @@ class SocketServer:ObservableObject {
                 let message = dict.message
 
                 receiveSocketLog(title: title, message: message)
+
+                break
                 
 
             default:
                 logTo("Unknown message type: \(base.type)")
+                break
 
             }
             
