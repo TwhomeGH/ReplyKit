@@ -153,7 +153,6 @@ final class VolumeNotifier {
     }
 
     deinit {
-        SocketClient.shared.sendAudioLive(appVol:pendingAppVolume,micVol:pendingMicVolume,persist:true)
         
         cleanup()
         sendlog(message:"Audio實時更新清理")
