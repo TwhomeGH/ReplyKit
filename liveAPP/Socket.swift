@@ -48,9 +48,7 @@ class SocketServer:ObservableObject {
             timer.cancel()
         }
 
-        logTo("Idle Reset! [\(id)]")
-
-        let timer = DispatchSource.makeTimerSource(queue: .main)
+        let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now() + 60) // 60 秒沒動靜就踢
         timer.setEventHandler { [weak self] in
             self?.logTo("[\(id)] Idle timeout, closing connection")
@@ -174,7 +172,6 @@ class SocketServer:ObservableObject {
 
     var isRunning: Bool {
         guard let listener else {
-            logTo("listener 已失效!")
             isStopping = true
             return false
         }
@@ -225,6 +222,7 @@ class SocketServer:ObservableObject {
 
         do {
             listener = try NWListener(using: .tcp, on: NWEndpoint.Port(rawValue: port)!)
+            isStopping = false
             listener?.newConnectionHandler = { [weak self] connection in
                 self?.handleNewConnection(connection)
             }
@@ -236,7 +234,7 @@ class SocketServer:ObservableObject {
                 switch state {
                 case .ready:
                     self.logTo("Listener ready")
-
+                    self.isStopping = false
 
                 case .failed(let error):
                     self.logTo("Listener failed: \(error)")
@@ -334,8 +332,6 @@ class SocketServer:ObservableObject {
 
         guard connections[id] != nil else { return } // 連線已被移除，直接 return
 
-        logTo("Connections alive: \(connections.count)")
-
         connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
             guard let self = self else { return }
 
@@ -343,8 +339,10 @@ class SocketServer:ObservableObject {
                 var buffer = self.receiveBuffers[id] ?? Data()
 
 
-                resetIdleTimer(for: connection)
-                logTo("🔹 liveAPP Received \(data.count) bytes: \(String(decoding: data, as: UTF8.self))")
+                self.resetIdleTimer(for: connection)
+                if LPConfig.shared.SocketLog {
+                    logger.debug("Socket received \(data.count) bytes")
+                }
 
                 buffer.append(data)
 
@@ -674,29 +672,32 @@ class SocketServer:ObservableObject {
     }
 
     func GetLogConfig() -> [String: Any]  {
+        let logMode = userDefaults?.integer(forKey: "logMode") ?? 1
+        let logURL = userDefaults?
+            .string(
+                forKey: "logURL"
+            ) ?? "http://192.168.0.242:3000/post"
+        let onlogPage = userDefaults?.bool(forKey: "onlogPage") ?? false
+        let onAudioPage = userDefaults?.bool(forKey: "onAudioPage") ?? false
+        let enableLog = userDefaults?.bool(forKey: "Enablelog") ?? false
+        let enableSocketLog = userDefaults?.bool(forKey: "EnableSocketlog") ?? false
+        let enableTimeDebug = userDefaults?.bool(forKey: "EnableTimeDebug") ?? false
+
+        LPConfig.shared.logMode = logMode
+        LPConfig.shared.logURL = logURL
+        LPConfig.shared.onLogPage = onlogPage
+        LPConfig.shared.enableLog = enableLog
+        LPConfig.shared.SocketLog = enableSocketLog
+
         let payload: [String: Any] = [
             "type": "logConfig",
-            "logMode": userDefaults?.integer(forKey: "logMode")
-            ?? 1,
-
-            "logURL": userDefaults?
-                .string(
-                    forKey: "logURL"
-                ) ?? "http://192.168.0.242:3000/post",
-
-
-
-            "onlogPage":userDefaults?.bool(forKey: "onlogPage")
-            ?? false,
-            "onAudioPage":userDefaults?.bool(forKey: "onAudioPage") ?? false,
-
-            "enableLog":userDefaults?.bool(forKey: "Enablelog")
-            ?? false,
-
-            "enableSocketLog":userDefaults?.bool(forKey: "EnableSocketlog")
-            ?? false,
-            "enableTimeDebug":userDefaults?.bool(forKey: "EnableTimeDebug")
-            ?? false,
+            "logMode": logMode,
+            "logURL": logURL,
+            "onlogPage": onlogPage,
+            "onAudioPage": onAudioPage,
+            "enableLog": enableLog,
+            "enableSocketLog": enableSocketLog,
+            "enableTimeDebug": enableTimeDebug,
 
 
 
@@ -990,7 +991,7 @@ class SocketServer:ObservableObject {
                 let title = dict.title
                 let message = dict.message
 
-                logTo("\(message)",title: title)
+                receiveSocketLog(title: title, message: message)
                 
 
             default:
@@ -1136,14 +1137,6 @@ class SocketServer:ObservableObject {
         idleTimers[id]?.cancel()
         idleTimers[id] = nil
 
-        let previousCount = connections.count
-
-        if previousCount > 0 && connections.isEmpty {
-            startActivityIdleTimer()
-            self.logTo("已經沒有連線 啟動活動idleTimer")
-        }
-
-
         connection.stateUpdateHandler = nil
         connection.cancel()
 
@@ -1151,6 +1144,11 @@ class SocketServer:ObservableObject {
         receiveBuffers[id] = nil
         sendQueues[id] = nil
         sendingFlags[id] = nil
+
+        if connections.isEmpty {
+            startActivityIdleTimer()
+            self.logTo("已經沒有連線 啟動活動idleTimer")
+        }
 
         
 

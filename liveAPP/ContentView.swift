@@ -1213,7 +1213,7 @@ struct LogTextView: UIViewRepresentable {
             guard !newMessages.isEmpty else { return }
 
             // 過濾掉已經 append 過的
-            let uniqueMessages = newMessages.filter { !appendedUUIDs.contains($0.id) }
+            let uniqueMessages = newMessages.filter { appendedUUIDs.insert($0.id).inserted }
             guard !uniqueMessages.isEmpty else { return }
 
             // 緩存到 queue
@@ -1232,29 +1232,18 @@ struct LogTextView: UIViewRepresentable {
                     guard let self = self, let tv = self.textView else { return }
 
 
-                    // 加入純訊息（不含編號）
-                     for msg in self.appendQueue {
-                         self.messageLines.append(msg.message)
-                     }
+                    let pendingMessages = self.appendQueue
+                    self.appendQueue.removeAll()
 
-
-
-                    // 重建 tv.text
-                    var newText = ""
-
-                    for (index, line) in self.messageLines.enumerated() {
-                        newText += "\(index + 1): \(line)\n"
+                    var appendedText = ""
+                    for msg in pendingMessages {
+                        self.messageLines.append(msg.message)
+                        appendedText += "\(self.messageLines.count): \(msg.message)\n"
                     }
 
-                    // 加上提示行
-
-                    if self.messageLines.count >= maxLines {
-
-                        let overflow = self.messageLines.count - self.maxLines
-                        self.messageLines.removeFirst(overflow + (self.maxLines/2))
-
-                        self.messageLines.append("目前最多保留:\(self.maxLines)行日誌\n")
-
+                    guard !appendedText.isEmpty else {
+                        self.appendWorkItem = nil
+                        return
                     }
 
                     CATransaction.begin()
@@ -1271,16 +1260,33 @@ struct LogTextView: UIViewRepresentable {
                         }
                     }
 
-                    // 更新 UITextView
-                    tv.text = newText
+                    if self.messageLines.count >= self.maxLines {
+                        let trimCount = max(1, self.messageLines.count - self.maxLines + (self.maxLines / 2))
+                        self.messageLines.removeFirst(min(trimCount, self.messageLines.count))
+
+                        var rebuiltText = ""
+                        rebuiltText.reserveCapacity(tv.textStorage.length)
+                        for (index, line) in self.messageLines.enumerated() {
+                            rebuiltText += "\(index + 1): \(line)\n"
+                        }
+                        rebuiltText += "目前最多保留:\(self.maxLines)行日誌\n"
+                        tv.text = rebuiltText
+                    } else {
+                        var attributes: [NSAttributedString.Key: Any] = [:]
+                        if let font = tv.font {
+                            attributes[.font] = font
+                        }
+                        if let textColor = tv.textColor {
+                            attributes[.foregroundColor] = textColor
+                        }
+                        tv.textStorage.append(NSAttributedString(string: appendedText, attributes: attributes))
+                    }
                     tv.layoutIfNeeded()
 
                     CATransaction.commit()
 
                     self.currentLineCount = self.messageLines.count
 
-                    // 清空 appendQueue
-                    self.appendQueue.removeAll()
                     self.appendWorkItem = nil
 
                     

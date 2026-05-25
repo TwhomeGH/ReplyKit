@@ -61,6 +61,7 @@ func formattedTime() -> String {
 // MARK: RemoteLogger
 final class RemoteLogger {
     private var buffer: [[String: Any]] = []
+    private var isFlushing = false
 
 
     private let queue = DispatchQueue(label: "com.liveapp.remoteLogger", qos: .utility)
@@ -123,9 +124,11 @@ final class RemoteLogger {
 
     func flush() {
         queue.async { [weak self] in
-            guard let self = self, !self.buffer.isEmpty, let url = self.logURL else { return }
+            guard let self = self, !self.buffer.isEmpty, let url = self.logURL, !self.isFlushing else { return }
 
             let logsToSend = self.buffer
+            self.buffer.removeAll()
+            self.isFlushing = true
 
             let payload: [String: Any] = [
                 "logs": logsToSend
@@ -146,14 +149,15 @@ final class RemoteLogger {
             URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
                 guard let self = self else { return }
 
-                if let error = error {
-                    print("❌ Remote log failed:", error)
-                    // 不清理 buffer
-                } else {
-                    // 成功發送才清理
-                    self.queue.async {
-                        self.buffer.removeAll()
+                self.queue.async {
+                    self.isFlushing = false
 
+                    if let error = error {
+                        print("❌ Remote log failed:", error)
+                        self.buffer.insert(contentsOf: logsToSend, at: 0)
+                        if self.buffer.count > self.maxLogCount {
+                            self.buffer.removeFirst(self.buffer.count - self.maxLogCount)
+                        }
                     }
                 }
             }.resume()
@@ -353,23 +357,10 @@ final class LogManager {
 
             //統一這裡處理發送Socket轉送
             if RPConfig.shared.enableSocketLog {
-                 
-            // let maxChunkSize = 2048
-            //var currentIndex = bufferCopy.startIndex
-            SocketClient.shared.sendLog(title:"UseESocket",message: bufferCopy)
-                
-           // while currentIndex < bufferCopy.endIndex {
-            //        let endIndex = bufferCopy.index(currentIndex, offsetBy: maxChunkSize, limitedBy: bufferCopy.endIndex) ?? bufferCopy.endIndex
-         //           let chunk = String(bufferCopy[currentIndex..<endIndex])
-         //           SocketClient.shared.sendLog(message: chunk)
-         //           currentIndex = endIndex
-           //     }    
+                SocketClient.shared.sendLog(title:"UseESocket",message: bufferCopy)
 
             } else {
 
-                
-            SocketClient.shared.sendLog(title:"ESocketNotWork",message: bufferCopy)
-            
             let containerURL: URL
 
         

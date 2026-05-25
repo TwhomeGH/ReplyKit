@@ -532,7 +532,7 @@ class SocketClient : @unchecked Sendable {
 
     func logTo(_ message:String,flush:Bool = false){
 
-        logger.debug("SocketDebug:\(message, privacy: .public)")
+        logger.debug("SocketDebug:\(message.count, privacy: .public) chars")
 
         sendlog(title:"ReplyKit_Socket",message: message,flush: flush)
     }
@@ -804,7 +804,9 @@ class SocketClient : @unchecked Sendable {
 
             do {
                 let json = try JSONSerialization.jsonObject(with: lineData)
-                logger.debug("Revice Raw:\n\(json as! NSObject, privacy: .public)")
+                if RPConfig.shared.enableSocketLog {
+                    logger.debug("Receive JSON packet \(lineData.count, privacy: .public) bytes")
+                }
 
                 if let array = json as? [[String: Any]] {
                     // 批量 JSON
@@ -1042,7 +1044,9 @@ class SocketClient : @unchecked Sendable {
             guard self.connection === currentConnection else { return }
 
             if let data = data {
-                logTo("🔹 Received \(data.count) bytes: \(String(decoding: data, as: UTF8.self))")
+                if RPConfig.shared.enableSocketLog {
+                    logger.debug("Socket received \(data.count, privacy: .public) bytes")
+                }
 
                 self.receiveBuffer.append(data)
 

@@ -47,35 +47,61 @@ final class LogBuffer {
 
     private let queue = DispatchQueue(label: "log.buffer.queue")
     private var buffer: [String] = []
+    private var flushWorkItem: DispatchWorkItem?
+    private let flushDelay: TimeInterval = 0.05
+    private let batchLimit = 100
 
     var onNewLog: (([String]) -> Void)?
 
     func push(_ msg: String) {
         queue.async {
             self.buffer.append(msg)
-            let logs = self.drain(max: 50)
-            if !logs.isEmpty {
-                DispatchQueue.main.async {
-                    self.onNewLog?(logs)
-                }
-            }
+            self.scheduleFlushLocked()
 
         }
     }
 
-    func drain(max: Int) -> [String] {
+    func push(_ messages: [String]) {
+        guard !messages.isEmpty else { return }
 
-        let count = min(max, buffer.count)
-        let result = Array(buffer.prefix(count))
+        queue.async {
+            self.buffer.append(contentsOf: messages)
+            self.scheduleFlushLocked()
+        }
+    }
 
+    private func scheduleFlushLocked() {
+        guard flushWorkItem == nil else { return }
+
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.flushLocked()
+        }
+        flushWorkItem = workItem
+        queue.asyncAfter(deadline: .now() + flushDelay, execute: workItem)
+    }
+
+    private func flushLocked() {
+        flushWorkItem = nil
+        guard !buffer.isEmpty else { return }
+
+        let count = min(batchLimit, buffer.count)
+        let logs = Array(buffer.prefix(count))
         buffer.removeFirst(count)
 
-        return result
+        DispatchQueue.main.async {
+            self.onNewLog?(logs)
+        }
+
+        if !buffer.isEmpty {
+            scheduleFlushLocked()
+        }
 
     }
 
     func clear() {
         queue.async {
+            self.flushWorkItem?.cancel()
+            self.flushWorkItem = nil
             self.buffer.removeAll()
         }
     }
@@ -300,9 +326,7 @@ final class LogReceiver {
 
             self.buffer.removeAll()
 
-            for line in linesToSend {
-                LogBuffer.shared.push(line)
-            }
+            LogBuffer.shared.push(linesToSend)
 
         // ✅ 批次更新 offset，降低 UserDefaults I/O
             UserDefaults.standard.set(Int(lastReadOffset), forKey: "lastReadOffset")
@@ -523,6 +547,26 @@ func sendlog(title:String = "liveApp",message: String) {
 
 
 
+}
+
+func receiveSocketLog(title: String = "UseESocket", message: String) {
+    guard LPConfig.shared.enableLog || LPConfig.shared.SocketLog else { return }
+
+    let timeString = formatTime()
+    let lines = message
+        .split(separator: "\n", omittingEmptySubsequences: true)
+        .map { "\(timeString): \(title):\($0)" }
+
+    if lines.isEmpty {
+        LogBuffer.shared.push("\(timeString): \(title):\(message)")
+    } else {
+        LogBuffer.shared.push(lines)
+    }
+
+    if LPConfig.shared.logMode == 0 || LPConfig.shared.logMode == 2 {
+        RemoteLogSender.shared.start()
+        RemoteLogBuffer.shared.push(title: title, message: message)
+    }
 }
 
 
