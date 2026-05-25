@@ -224,6 +224,8 @@ final class LiveVolumeModel: ObservableObject {
 
     private init() {
 #if os(iOS)
+
+        if !LPConfig.shared.SocketLog {
         CFNotificationCenterAddObserver(cfCenter,
                                         UnsafeRawPointer(Unmanaged.passUnretained(self).toOpaque()),
                                         { _, observer, name, _,_  in
@@ -236,6 +238,9 @@ final class LiveVolumeModel: ObservableObject {
                                         "LiveVolumeUpdated" as CFString,
                                         nil,
                                         .deliverImmediately)
+
+        }
+        
 #else
 
         if !LPConfig.shared.SocketLog {
