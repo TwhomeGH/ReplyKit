@@ -261,14 +261,18 @@ final class LiveVolumeModel: ObservableObject {
     }
 
     // 🔹 新增一個全局更新函數
-    func updateVolumes(mic: Float? = nil, app: Float? = nil) {
+    func updateVolumes(mic: Float? = nil, app: Float? = nil, persist: Bool = false) {
         if let mic = mic {
             self.micVolumeLive = mic
+            if persist {
             setUserDefault(mic, forKey: "micVolumeLive")
+            }
         }
         if let app = app {
             self.appVolumeLive = app
+            if persist {
             setUserDefault(app, forKey: "appVolumeLive")
+            }
         }
 
         // 發送通知，讓其他地方也能收到更新

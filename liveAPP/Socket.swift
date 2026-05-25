@@ -448,6 +448,7 @@ class SocketServer:ObservableObject {
     struct AudioLive:Codable {
         let appVol:Float
         let micVol:Float
+        let persist:Bool = false
     }
 
 
@@ -998,8 +999,9 @@ class SocketServer:ObservableObject {
 
                 let AppVol = dict.appVol
                 let MicVol = dict.micVol
+                let persist = dict.persist
 
-                LiveVolumeModel.shared.updateVolumes(mic: MicVol, app: AppVol)
+                LiveVolumeModel.shared.updateVolumes(mic: MicVol, app: AppVol,persist:persist)
 
 
             case "settings":

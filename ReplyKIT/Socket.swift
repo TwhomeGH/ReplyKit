@@ -509,11 +509,12 @@ class SocketClient : @unchecked Sendable {
     }
 
     // MARK: 負責發送當前音訊指標
-    func sendAudioLive(appVol:Float = 1.0, micVol:Float = 1.0) {
+    func sendAudioLive(appVol:Float = 1.0, micVol:Float = 1.0,persist:Bool = false) {
         let payload: [String: Any] = [
             "type": "audioLive",
             "appVol": appVol,
-            "micVol": micVol
+            "micVol": micVol,
+            "persist":persist
         ]
         sendPayload(payload)
     }
