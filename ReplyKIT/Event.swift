@@ -148,19 +148,16 @@ final class RemoteLogger {
 
             URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
                 guard let self = self else { return }
+                defer { self.isFlushing = false }
 
                 self.queue.async {
-                    self.isFlushing = false
-
+                    
                     if let error = error {
                         print("❌ Remote log failed:", error)
-                        self.buffer.insert(contentsOf: logsToSend, at: 0)
-                        if self.buffer.count > self.maxLogCount {
-                            self.buffer.removeFirst(self.buffer.count - self.maxLogCount)
-                        }
+                        
                     } else {
                         self.buffer.removeAll()
-                        
+
                     }
                 }
             }.resume()
