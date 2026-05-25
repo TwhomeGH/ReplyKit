@@ -451,7 +451,7 @@ final class AudioProcessor : @unchecked Sendable {
                 // 原封裝處理
 
                 Task {
-                    guard let self = self, self.isActive else { return }                
+                
                     
                     await self.mediaMixer.append(RSample, track: trackType.rawValue)
                 }
@@ -477,8 +477,7 @@ final class AudioProcessor : @unchecked Sendable {
                 processRMS(retimed, trackType: trackType)
 
                 // 原封裝處理 
-                Task { 
-                    guard let self = self, self.isActive else { return }                
+                Task {           
                     
                     await self.mediaMixer.append(sampleBuffer, track:  trackType.rawValue)
 

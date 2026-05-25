@@ -126,6 +126,11 @@ final class RemoteLogger {
         queue.async { [weak self] in
             guard let self = self, !self.buffer.isEmpty, let url = self.logURL, !self.isFlushing else { return }
 
+
+            defer {
+                self.buffer.removeAll()
+            }
+            
             let logsToSend = self.buffer
             
             self.isFlushing = true
