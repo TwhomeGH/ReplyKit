@@ -225,7 +225,7 @@ final class AudioProcessor : @unchecked Sendable {
             self.mixer = mixer
         }
 
-        func append(_ buffer: CMSampleBuffer, track: Int) async {
+        func append(_ buffer: CMSampleBuffer, track: UInt8) async {
             await mixer.append(buffer, track: track)
         }
     }
