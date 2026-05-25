@@ -446,9 +446,9 @@ class SocketServer:ObservableObject {
     }
 
     struct AudioLive:Codable {
-        let appVol:Float
-        let micVol:Float
-        let persist:Bool = false
+        var appVol:Float
+        var micVol:Float
+        var persist:Bool = false
     }
 
 

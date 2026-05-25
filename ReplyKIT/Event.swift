@@ -150,7 +150,7 @@ final class RemoteLogger {
                 guard let self = self else { return }
                 defer { self.isFlushing = false }
 
-                if let error = error {
+                if error {
                     self.queue.sync {
                         self.isFlushing = false
                         self.buffer.insert(contentsOf: logsToSend, at: 0)
