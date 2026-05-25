@@ -217,21 +217,6 @@ func volumeToPercentage(_ volume: Double) -> Double {
 
 final class AudioProcessor : @unchecked Sendable {
 
-    private var mediaMixerActor:MediaMixerActor
-
-    actor MediaMixerActor {
-        private let mixer: MediaMixer
-
-        init(mixer: MediaMixer) {
-            self.mixer = mixer
-        }
-
-        func append(_ buffer: CMSampleBuffer, track: UInt8) async {
-            await mixer.append(buffer, track: track)
-        }
-    }
-
-
     // MARK: Buffer
     
     private let mediaMixer: MediaMixer
@@ -297,9 +282,6 @@ final class AudioProcessor : @unchecked Sendable {
         self.micVolume = micVolume
         self.onAudioPage = onAudioPage
         self.isActive = true
-
-
-        self.mediaMixerActor = MediaMixerActor(mixer: mediaMixer)
 
         // 降噪處理
         let noiseFix = RPConfig.shared.state.enableNoiseFix
@@ -468,10 +450,10 @@ final class AudioProcessor : @unchecked Sendable {
 
                 // 原封裝處理
 
-                Task { [weak self] in
+                Task {
                     guard let self = self, self.isActive else { return }                
                     
-                    await self.mediaMixerActor.append(RSample, track: trackType.rawValue)
+                    await self.mediaMixer.append(RSample, track: trackType.rawValue)
                 }
 
             } else {
@@ -495,10 +477,10 @@ final class AudioProcessor : @unchecked Sendable {
                 processRMS(retimed, trackType: trackType)
 
                 // 原封裝處理 
-                Task { [weak self] in
+                Task { 
                     guard let self = self, self.isActive else { return }                
                     
-                    await self.mediaMixerActor.append(sampleBuffer, track:  trackType.rawValue)
+                    await self.mediaMixer.append(sampleBuffer, track:  trackType.rawValue)
 
                 }
                 
