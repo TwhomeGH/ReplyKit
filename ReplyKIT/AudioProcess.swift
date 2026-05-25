@@ -331,7 +331,6 @@ final class AudioProcessor : @unchecked Sendable {
     func cleanup() {
         
         self.isActive = false
-        audioEngine = nil
 
         sendlog(message: "🧹 AudioProcessor deinit — resources released")
     
