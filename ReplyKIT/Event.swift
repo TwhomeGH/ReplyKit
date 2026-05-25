@@ -150,16 +150,17 @@ final class RemoteLogger {
                 guard let self = self else { return }
                 defer { self.isFlushing = false }
 
-                self.queue.async {
-                    
-                    if let error = error {
-                        print("❌ Remote log failed:", error)
-                        
-                    } else {
-                        self.buffer.removeAll()
-
+                if let error = error {
+                    self.queue.sync {
+                        self.isFlushing = false
+                        self.buffer.insert(contentsOf: logsToSend, at: 0)
+                    }
+                } else {
+                    self.queue.sync {
+                        self.isFlushing = false
                     }
                 }
+
             }.resume()
         }
     }
