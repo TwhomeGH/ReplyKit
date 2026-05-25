@@ -264,11 +264,11 @@ final class LiveVolumeModel: ObservableObject {
     func updateVolumes(mic: Float? = nil, app: Float? = nil) {
         if let mic = mic {
             self.micVolumeLive = mic
-            setUserDefault(value: mic, forKey: "micVolumeLive")
+            setUserDefault(mic, forKey: "micVolumeLive")
         }
         if let app = app {
             self.appVolumeLive = app
-            setUserDefault(value: app, forKey: "appVolumeLive")
+            setUserDefault(app, forKey: "appVolumeLive")
         }
 
         // 發送通知，讓其他地方也能收到更新
