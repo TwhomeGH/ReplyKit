@@ -231,8 +231,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         case "micAdd":
 
-            
-
             Task {
 
                 var newVolume = SharedDefaults.group?.double(forKey: "micAddVolume") ?? 1.0
@@ -264,7 +262,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             }
 
-            
+            break
 
         case "appAdd":
 
@@ -302,7 +300,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             }
 
-            
+            break 
 
 
         case "micVolumeChanged":
@@ -341,6 +339,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 await updateMicAudioVolume(micVolume)
             }
+
+            break
 
         case "appVolumeChanged":
 
@@ -383,14 +383,20 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             }
 
+            break
+
         case "orientationChanged":
 
             print("棄用組件方法")
+
+            break
             
 
         case "SocketRetry":
             SocketClient.shared.retry()
             sendlog(message: "重連Socket!")
+
+            break
 
 
 
@@ -420,6 +426,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             }
 
+            break
+
 
 
         case "DebugTime":
@@ -448,6 +456,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 sendlog(message:"[旋轉日誌時間軸檢查] VideoTime \(Rlog)")
 
             }
+
+            break
 
 
 
@@ -484,7 +494,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             }
 
-
+            break
 
 
 
@@ -555,7 +565,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             }
 
-
+            break
 
 
         case "SocketLog":
@@ -584,12 +594,14 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             }
 
-
+            break
 
 
         case "ChangeBit":
-            var Rlog=SharedDefaults.group?.bool(forKey: "ChangeBit") ?? false
+            
             Task {
+
+                var Rlog=SharedDefaults.group?.bool(forKey: "ChangeBit") ?? false
 
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "ChangeBit", type: "Bool") {
@@ -614,15 +626,15 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             }
 
+            break
 
 
 
 
         case "bitRateChange":
 
-            var Rlog = SharedDefaults.group?.integer(forKey: "bitRate") ?? 3_900_000
-
             Task {
+                var Rlog = SharedDefaults.group?.integer(forKey: "bitRate") ?? 3_900_000
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "bitRate", type: "Int") {
 
@@ -645,14 +657,18 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             }
 
+            break
+
 
 
         case "logURL":
-            var logM=SharedDefaults.group?.string(
-                forKey: "logURL"
-            ) ?? "http://192.168.0.242/post"
 
             Task {
+
+                var logM=SharedDefaults.group?.string(
+                    forKey: "logURL"
+                ) ?? "http://192.168.0.242/post"
+
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "logURL", type: "String") {
 
@@ -674,12 +690,15 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             }
 
+            break
+
 
 
         case "logMode":
-            var logM=SharedDefaults.group?.integer(forKey: "logMode") ?? 0
-
+            
             Task {
+
+                var logM=SharedDefaults.group?.integer(forKey: "logMode") ?? 0
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "logMode", type: "Int") {
 
@@ -702,6 +721,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 RPConfig.shared.applyLogMode()
 
             }
+
+            break
 
 
 
@@ -762,6 +783,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             }
 
+            break
+
 
 
         case "VideoSet":
@@ -785,6 +808,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
             }
+
+            break
 
         case "OutW":
             var dstRW=SharedDefaults.group?.integer(forKey: "dstW") ?? 0
@@ -819,7 +844,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 sendlog(message: "OutW:\(dstRW)")
 
             }
-
+            
+            break
 
 
 
@@ -856,6 +882,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             }
 
+            break
+
 
 
 
@@ -886,6 +914,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             }
 
+
+            break
 
             
 
@@ -934,6 +964,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             }
 
+            break
 
 
 
@@ -943,10 +974,15 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             // TODO: 這裡不應該調用系統用函數
             //self.broadcastPaused()
             sendlog(message: "你暫停直播畫面！")
+
+            break
+
         case "ResumeStream":
             // TODO: 這裡不應該調用系統用函數
             //self.broadcastResumed()
             sendlog(message: "你恢復了直播畫面！")
+
+            break
 
 
             
