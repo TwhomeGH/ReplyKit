@@ -891,9 +891,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "onAudioPage":
-            var APage=SharedDefaults.group?.bool(forKey: "onAudioPage") ?? false
-
+            
             Task {
+                var APage=SharedDefaults.group?.bool(forKey: "onAudioPage") ?? false
+
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "onAudioPage", type: "Bool") {
 
