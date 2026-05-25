@@ -173,16 +173,8 @@ final class VolumeNotifier {
 
 
                 if RPConfig.shared.enableSocketLog {
-                    SocketClient.shared
-                        .sendSettings(
-                            key: "appVolumeLive",
-                            value: pendingAppVolume
-                        )
-                    SocketClient.shared
-                        .sendSettings(
-                            key: "micVolumeLive",
-                            value: pendingMicVolume
-                        )
+                    SocketClient.shared.sendAudioLive(appVol:pendingAppVolume,micVol:pendingMicVolume)
+                    
 
                 } else {
                     SharedDefaults.group?.set(pendingAppVolume, forKey: "appVolumeLive")

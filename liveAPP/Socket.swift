@@ -445,6 +445,12 @@ class SocketServer:ObservableObject {
         let ValueType:String
     }
 
+    struct AudioLive:Codable {
+        let appVol:Float
+        let micVol:Float
+    }
+
+
     enum JSONValue: Codable {
         case string(String)
         case int(Int)
@@ -983,7 +989,19 @@ class SocketServer:ObservableObject {
                 break
 
 
-            
+            case "audioLive":
+                // 假設你解析 JSON 得到 resultValue
+                let dict = try decoder.decode(
+                    AudioLive.self,
+                    from: data
+                )
+
+                let AppVol = dict.appVol
+                let MicVol = dict.micVol
+
+                LiveVolumeModel.shared.updateVolumes(mic: MicVol, app: AppVol)
+
+
             case "settings":
 
                 // 假設你解析 JSON 得到 resultValue

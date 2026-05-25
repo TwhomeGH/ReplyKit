@@ -215,16 +215,15 @@ struct BroadcastButton: UIViewRepresentable {
 
 
 
-class LiveVolumeModel: ObservableObject {
+// MARK: 全局實時音訊模塊
+final class LiveVolumeModel: ObservableObject {
+    static let shared = LiveVolumeModel()   // 全局共用單例
 
     @Published var micVolumeLive: Float = 0.0
     @Published var appVolumeLive: Float = 0.0
 
-    init() {
+    private init() {
 #if os(iOS)
-        // 註冊 Darwin Notification
-
-
         CFNotificationCenterAddObserver(cfCenter,
                                         UnsafeRawPointer(Unmanaged.passUnretained(self).toOpaque()),
                                         { _, observer, name, _,_  in
@@ -237,34 +236,54 @@ class LiveVolumeModel: ObservableObject {
                                         "LiveVolumeUpdated" as CFString,
                                         nil,
                                         .deliverImmediately)
-
 #else
         NotificationCenter.default.addObserver(
             forName: Notification.Name("LiveVolumeUpdated"),
             object: nil,
             queue: .main
-        ) { _ in
-
-
+        ) { [weak self] _ in
+            guard let self = self else { return }
             DispatchQueue.main.async {
                 self.micVolumeLive = getUserDefault(forKey: "micVolumeLive") ?? 0.0
                 self.appVolumeLive = getUserDefault(forKey: "appVolumeLive") ?? 0.0
             }
-
         }
 #endif
     }
 
-
     deinit {
 #if os(iOS)
-        CFNotificationCenterRemoveEveryObserver(cfCenter, UnsafeRawPointer(Unmanaged.passUnretained(self).toOpaque()))
-
+        CFNotificationCenterRemoveEveryObserver(cfCenter,
+            UnsafeRawPointer(Unmanaged.passUnretained(self).toOpaque()))
 #else
         NotificationCenter.default.removeObserver(self)
 #endif
     }
+
+    // 🔹 新增一個全局更新函數
+    func updateVolumes(mic: Float? = nil, app: Float? = nil) {
+        if let mic = mic {
+            self.micVolumeLive = mic
+            setUserDefault(value: mic, forKey: "micVolumeLive")
+        }
+        if let app = app {
+            self.appVolumeLive = app
+            setUserDefault(value: app, forKey: "appVolumeLive")
+        }
+
+        // 發送通知，讓其他地方也能收到更新
+#if os(iOS)
+        CFNotificationCenterPostNotification(cfCenter,
+                                             CFNotificationName("LiveVolumeUpdated" as CFString),
+                                             nil,
+                                             nil,
+                                             true)
+#else
+        NotificationCenter.default.post(name: Notification.Name("LiveVolumeUpdated"), object: nil)
+#endif
+    }
 }
+
 
 
 // MARK: UI 百分比 (0~1) → 真實音量 (0~1)，曲線控制低音量更細膩
@@ -307,7 +326,7 @@ struct SafeProgressBar: View {
 struct LiveVolumeView: View {
 
 
-    @StateObject var model = LiveVolumeModel()
+    @StateObject var model = LiveVolumeModel.shared
 
     @AppStorage("appVolume",store: userDefaults)  var appVolume: Double = 1.0
     @AppStorage("micVolume",store: userDefaults)  var micVolume: Double = 1.0
