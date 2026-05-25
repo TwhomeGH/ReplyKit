@@ -1003,6 +1003,8 @@ class SocketServer:ObservableObject {
 
                 LiveVolumeModel.shared.updateVolumes(mic: MicVol, app: AppVol,persist:persist)
 
+                break
+
 
             case "settings":
 
