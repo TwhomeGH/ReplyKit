@@ -127,7 +127,7 @@ final class RemoteLogger {
             guard let self = self, !self.buffer.isEmpty, let url = self.logURL, !self.isFlushing else { return }
 
             let logsToSend = self.buffer
-            self.buffer.removeAll()
+            
             self.isFlushing = true
 
             let payload: [String: Any] = [
@@ -158,6 +158,9 @@ final class RemoteLogger {
                         if self.buffer.count > self.maxLogCount {
                             self.buffer.removeFirst(self.buffer.count - self.maxLogCount)
                         }
+                    } else {
+                        self.buffer.removeAll()
+                        
                     }
                 }
             }.resume()
