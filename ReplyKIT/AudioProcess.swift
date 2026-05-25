@@ -180,13 +180,15 @@ final class VolumeNotifier {
                     SharedDefaults.group?.set(pendingAppVolume, forKey: "appVolumeLive")
                     SharedDefaults.group?.set(pendingMicVolume, forKey: "micVolumeLive")
 
-                }
-
-                CFNotificationCenterPostNotification(
+                    CFNotificationCenterPostNotification(
                     CFNotificationCenterGetDarwinNotifyCenter(),
                     CFNotificationName("LiveVolumeUpdated" as CFString),
                     nil, nil, true
-                )
+                    )
+
+                }
+
+                
             }
         }
     }

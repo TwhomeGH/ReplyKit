@@ -237,16 +237,20 @@ final class LiveVolumeModel: ObservableObject {
                                         nil,
                                         .deliverImmediately)
 #else
-        NotificationCenter.default.addObserver(
-            forName: Notification.Name("LiveVolumeUpdated"),
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            guard let self = self else { return }
-            DispatchQueue.main.async {
-                self.micVolumeLive = getUserDefault(forKey: "micVolumeLive") ?? 0.0
-                self.appVolumeLive = getUserDefault(forKey: "appVolumeLive") ?? 0.0
+
+        if !LPConfig.shared.SocketLog {
+            NotificationCenter.default.addObserver(
+                forName: Notification.Name("LiveVolumeUpdated"),
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                guard let self = self else { return }
+                DispatchQueue.main.async {
+                    self.micVolumeLive = getUserDefault(forKey: "micVolumeLive") ?? 0.0
+                    self.appVolumeLive = getUserDefault(forKey: "appVolumeLive") ?? 0.0
+                }
             }
+
         }
 #endif
     }
