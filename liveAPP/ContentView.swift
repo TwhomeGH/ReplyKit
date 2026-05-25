@@ -334,7 +334,7 @@ struct SafeProgressBar: View {
 struct LiveVolumeView: View {
 
 
-    @State var model = LiveVolumeModel.shared
+    @StateObject var model = LiveVolumeModel.shared
 
     @AppStorage("appVolume",store: userDefaults)  var appVolume: Double = 1.0
     @AppStorage("micVolume",store: userDefaults)  var micVolume: Double = 1.0
