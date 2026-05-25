@@ -312,19 +312,10 @@ final class AudioProcessor : @unchecked Sendable {
 
     }
 
-
-
-    private var tasks = [Task<Void, Never>]()
-
-
     func cleanup() {
         
         self.isActive = false
         audioEngine = nil
-
-        // 取消所有 pending Task
-        tasks.forEach { $0.cancel() }
-        tasks.removeAll()
 
         sendlog(message: "🧹 AudioProcessor deinit — resources released")
     
@@ -461,12 +452,9 @@ final class AudioProcessor : @unchecked Sendable {
 
                 // 原封裝處理
 
-                let task = Task { [weak self] in
-                    guard let self = self, self.isActive else { return }
-                    await self.mediaMixer.append(RSample, track: trackType.rawValue)
-                }
-                self.tasks.append(task)
-
+                
+                await self.mediaMixer.append(RSample, track: trackType.rawValue)
+                
 
             } else {
             
@@ -489,14 +477,10 @@ final class AudioProcessor : @unchecked Sendable {
                 processRMS(retimed, trackType: trackType)
 
                 // 原封裝處理 
-                let task = Task { [weak self] in
-                    guard let self = self, self.isActive else { return }
 
-                    await self.mediaMixer.append(sampleBuffer, track:  trackType.rawValue)
+                await self.mediaMixer.append(sampleBuffer, track:  trackType.rawValue)
 
-                }
-
-                self.tasks.append(task)
+                
 
             }
 
