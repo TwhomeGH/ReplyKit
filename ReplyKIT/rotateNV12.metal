@@ -30,6 +30,18 @@ half2 catmullRom1D_uv(half2 p0, half2 p1, half2 p2, half2 p3, half t) {
                    (-p0 + 3.0h * p1 - 3.0h * p2 + p3) * t3);
 }
 
+constexpr sampler linearClampSampler(
+    coord::normalized,
+    address::clamp_to_edge,
+    filter::linear
+);
+
+constexpr sampler nearestClampSampler(
+    coord::normalized,
+    address::clamp_to_edge,
+    filter::nearest
+);
+
 // --- True 16-tap Catmull-Rom bicubic for Y plane ---
 half bicubicSampleY_16tap(
     texture2d<half, access::sample> tex,
@@ -42,21 +54,24 @@ half bicubicSampleY_16tap(
     float2 texSizeF = float2(texSize);
 
     half4 rows[4];
-    for (int row = 0; row < 4; row++) {
-        int y = clamp(ip.y + row - 1, 0, int(texSize.y) - 1);
-
-        half4 cols;
-        for (int col = 0; col < 4; col++) {
-            int x = clamp(ip.x + col - 1, 0, int(texSize.x) - 1);
+    for (int r = 0; r < 4; r++) {
+        int y = clamp(ip.y + r - 1, 0, int(texSize.y) - 1);
+        half4 col;
+        for (int c = 0; c < 4; c++) {
+            int x = clamp(ip.x + c - 1, 0, int(texSize.x) - 1);
             float2 norm = (float2(x, y) + 0.5f) / texSizeF;
-            cols[col] = tex.sample(nearestClampSampler, norm).x;
+            col[c] = tex.sample(nearestClampSampler, norm).x;
         }
-
-        rows[row] = catmullRom1D(cols, half(f.x));
+        rows[r] = col;
     }
 
-    half4 rowsVec = half4(rows[0], rows[1], rows[2], rows[3]);
-    return catmullRom1D(rowsVec, half(f.y));
+    half4 temp = half4(
+        catmullRom1D(rows[0], half(f.x)),
+        catmullRom1D(rows[1], half(f.x)),
+        catmullRom1D(rows[2], half(f.x)),
+        catmullRom1D(rows[3], half(f.x))
+    );
+    return catmullRom1D(temp, half(f.y));
 }
 
 // --- True 16-tap Catmull-Rom bicubic for UV plane ---
@@ -71,17 +86,15 @@ half2 bicubicSampleUV_16tap(
     float2 texSizeF = float2(texSize);
 
     half2 rows[4];
-    for (int row = 0; row < 4; row++) {
-        int y = clamp(ip.y + row - 1, 0, int(texSize.y) - 1);
-
-        half2 cols[4];
-        for (int col = 0; col < 4; col++) {
-            int x = clamp(ip.x + col - 1, 0, int(texSize.x) - 1);
+    for (int r = 0; r < 4; r++) {
+        int y = clamp(ip.y + r - 1, 0, int(texSize.y) - 1);
+        half2 col[4];
+        for (int c = 0; c < 4; c++) {
+            int x = clamp(ip.x + c - 1, 0, int(texSize.x) - 1);
             float2 norm = (float2(x, y) + 0.5f) / texSizeF;
-            cols[col] = tex.sample(nearestClampSampler, norm).rg;
+            col[c] = tex.sample(nearestClampSampler, norm).rg;
         }
-
-        rows[row] = catmullRom1D_uv(cols[0], cols[1], cols[2], cols[3], half(f.x));
+        rows[r] = catmullRom1D_uv(col[0], col[1], col[2], col[3], half(f.x));
     }
 
     return catmullRom1D_uv(rows[0], rows[1], rows[2], rows[3], half(f.y));
@@ -130,24 +143,6 @@ inline float2 mapDstToSrc(
     // Rotate around image center instead of the top-left corner.
     return R * (p - rotCenter) + srcCenter;
 }
-
-
-
-
-constexpr sampler linearClampSampler(
-    coord::normalized,
-    address::clamp_to_edge,
-    filter::linear
-);
-
-constexpr sampler nearestClampSampler(
-    coord::normalized,
-    address::clamp_to_edge,
-    filter::nearest
-);
-
-
-
 
 // A 線性方法
 kernel void rotateNV12_bilinear(
