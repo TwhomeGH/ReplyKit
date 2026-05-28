@@ -104,30 +104,24 @@ final class VideoFrameProcessor {
         Task { [weak self] in
             guard let self = self, self.isActive else { return }
 
-            let rotator: RPVideoRotatorNV12BatchQueueOptimized
-            if let existing = self.rotator {
-                rotator = existing
-            } else {
-                guard let created = queue.sync(execute: { () -> RPVideoRotatorNV12BatchQueueOptimized? in
-                    if let r = self.rotator { return r }
-                    let dstRW = RPConfig.shared.state.ADWidth
-                    let dstRH = RPConfig.shared.state.ADHeight
-                    let outW = RPConfig.shared.state.ODWidth
-                    let outH = RPConfig.shared.state.ODHeight
-                    let mode: RPVideoRotatorNV12BatchQueueOptimized.QualityMode =
-                        RPConfig.shared.state.useBic ? .quality : .live
-                    let RotateOriginal = RPConfig.shared.state.RotateOriginal
-                    let r = RPVideoRotatorNV12BatchQueueOptimized(
-                        dstW: dstRW, dstH: dstRH,
-                        outW: outW, outH: outH,
-                        debug: self.debug,
-                        useBic: mode,
-                        RotateOriginal: RotateOriginal
-                    )
-                    self.rotator = r
-                    return r
-                }) else { return }
-                rotator = created
+            let rotator: RPVideoRotatorNV12BatchQueueOptimized = queue.sync {
+                if let r = self.rotator { return r }
+                let dstRW = RPConfig.shared.state.ADWidth
+                let dstRH = RPConfig.shared.state.ADHeight
+                let outW = RPConfig.shared.state.ODWidth
+                let outH = RPConfig.shared.state.ODHeight
+                let mode: RPVideoRotatorNV12BatchQueueOptimized.QualityMode =
+                    RPConfig.shared.state.useBic ? .quality : .live
+                let RotateOriginal = RPConfig.shared.state.RotateOriginal
+                let r = RPVideoRotatorNV12BatchQueueOptimized(
+                    dstW: dstRW, dstH: dstRH,
+                    outW: outW, outH: outH,
+                    debug: self.debug,
+                    useBic: mode,
+                    RotateOriginal: RotateOriginal
+                )
+                self.rotator = r
+                return r
             }
 
             guard let rotated = await rotator.rotateAsync(

@@ -102,6 +102,7 @@ final class RealTimeNoiseSuppressor {
     private var tmp1: [Float]
     private var tmp2: [Float]
     private var outBuffer: [Float]
+    private var overlapBuffer: [Float]
 
     private var ringBuffer: [Float]
     private var writeIndex: Int = 0
@@ -133,6 +134,7 @@ final class RealTimeNoiseSuppressor {
         tmp1 = [Float](repeating: 0, count: fftSize/2)
         tmp2 = [Float](repeating: 0, count: fftSize/2)
         outBuffer = [Float](repeating: 0, count: fftSize)
+        overlapBuffer = [Float](repeating: 0, count: hopSize)
 
         vDSP_hann_window(&window,
                          vDSP_Length(fftSize),
@@ -293,10 +295,20 @@ final class RealTimeNoiseSuppressor {
                     &outBuffer, 1,
                     vDSP_Length(fftSize))
 
-            // 👉 直接寫回（無 overlap buffer）
-            memcpy(ptr,
-                outBuffer,
-                count * MemoryLayout<Float>.size)
+            // 👉 overlap-add：前 half 與上一幀的 tail 相加
+            vDSP_vadd(outBuffer, 1,
+                    overlapBuffer, 1,
+                    ptr, 1,
+                    vDSP_Length(hopSize))
+
+            // 保存後 half 給下一幀
+            outBuffer.withUnsafeBufferPointer { srcBuf in
+                guard let src = srcBuf.baseAddress else { return }
+                overlapBuffer.withUnsafeMutableBufferPointer { dstBuf in
+                    guard let dst = dstBuf.baseAddress else { return }
+                    memcpy(dst, src + hopSize, hopSize * MemoryLayout<Float>.size)
+                }
+            }
         }}
     }
 }
@@ -358,6 +370,7 @@ final class AudioPreProcessor {
     private var state = State()
 
     private let stateQueue = DispatchQueue(label: "audio.state.queue")
+    private let processLock = NSLock()
 
 
     // MARK: - Public control API
@@ -489,6 +502,9 @@ final class AudioPreProcessor {
     // ======================================================
     func process(_ sampleBuffer: CMSampleBuffer,
                 track: AudioTrackType) {
+
+        processLock.lock()
+        defer { processLock.unlock() }
 
         guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else {
             return

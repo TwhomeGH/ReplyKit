@@ -158,11 +158,9 @@ kernel void rotateNV12_bilinear(
     if (((gid.x & 1u) == 0u) && ((gid.y & 1u) == 0u)) {
         uint2 uvPos = uint2(gid.x >> 1, gid.y >> 1);
 
-        float2 uvDst = float2(gid) + 0.5f;
-        float2 uvSrc = mapDstToSrc(uvDst, W, H, outW, outH, params.angle);
-
-        if (uvSrc.x < 0.0f || uvSrc.x > float(W - 1) ||
-            uvSrc.y < 0.0f || uvSrc.y > float(H - 1)) {
+        // Use src (Y plane coord) for bounds check, uvSrc = src * 0.5 for UV sampling
+        if (src.x < 0.0f || src.x > float(W - 1) ||
+            src.y < 0.0f || src.y > float(H - 1)) {
 
             dstUV.write(
                 half4(0.5, 0.5, 0.0, 1.0),
@@ -170,15 +168,12 @@ kernel void rotateNV12_bilinear(
             );
 
         } else {
-            float2 uvCoord = clamp(
-                uvSrc * 0.5f,
-                float2(0.0f),
-                float2(float(W) * 0.5f, float(H) * 0.5f)
-            );
+            float2 uvSrc = src * 0.5f;
+            float2 uvNorm = (clamp(uvSrc, 0.0f, float2(float(W) * 0.5f - 1.0f, float(H) * 0.5f - 1.0f)) + 0.5f) / float2(float(W) * 0.5f, float(H) * 0.5f);
 
             half2 uvVal = srcUV.sample(
                 linearClampSampler,
-                (uvCoord + 0.5f) / float2(float(W) * 0.5f, float(H) * 0.5f)
+                uvNorm
             ).rg;
 
             dstUV.write(
@@ -243,24 +238,19 @@ kernel void rotateNV12_bicubic(
     if (((gid.x & 1u) == 0u) && ((gid.y & 1u) == 0u)) {
         uint2 uvPos = uint2(gid.x >> 1, gid.y >> 1);
 
-        float2 uvDst = float2(gid) + 0.5f;
-        float2 uvSrc = mapDstToSrc(uvDst, W, H, outW, outH, params.angle);
-
-        if (uvSrc.x < 0.0f || uvSrc.x > float(W - 1) ||
-            uvSrc.y < 0.0f || uvSrc.y > float(H - 1)) {
+        // Use src (Y plane coord) for bounds check, uvSrc = src * 0.5 for UV sampling
+        if (src.x < 0.0f || src.x > float(W - 1) ||
+            src.y < 0.0f || src.y > float(H - 1)) {
 
             dstUV.write(half4(0.5, 0.5, 0.0, 1.0), uvPos);
 
         } else {
-            float2 uvCoord = clamp(
-                uvSrc * 0.5f,
-                float2(0.0f),
-                float2(float(W) * 0.5f, float(H) * 0.5f)
-            );
+            float2 uvSrc = src * 0.5f;
+            float2 uvNorm = (clamp(uvSrc, 0.0f, float2(float(W) * 0.5f - 1.0f, float(H) * 0.5f - 1.0f)) + 0.5f) / float2(float(W) * 0.5f, float(H) * 0.5f);
 
             half2 uvVal = srcUV.sample(
                 linearClampSampler,
-                (uvCoord + 0.5f) / float2(float(W) * 0.5f, float(H) * 0.5f)
+                uvNorm
             ).rg;
 
             dstUV.write(
