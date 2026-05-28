@@ -1573,7 +1573,7 @@ final class PIPServiceMessages {
             isWaitFade = false
 
             phase = .fading
-            PIPService.shared.markDirty()
+            
 
             fadeCandidate = findFadeCandidate()
             lastFadeTriggerTime = now

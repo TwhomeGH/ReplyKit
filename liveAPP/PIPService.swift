@@ -147,7 +147,9 @@ final class PIPService: NSObject, @unchecked Sendable {
 
     // MARK: - Render
     func renderIfNeeded() -> CVPixelBuffer?  {
-        renderUIViewToPixelBuffer(size: OframeSize)
+        Task { @MainActor in
+            renderUIViewToPixelBuffer(size: OframeSize)
+        }
     }
 
 
