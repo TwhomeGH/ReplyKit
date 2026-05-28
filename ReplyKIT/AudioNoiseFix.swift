@@ -437,9 +437,6 @@ final class AudioPreProcessor {
 
     func processApp(_ ptr: UnsafeMutablePointer<Float>, count: Int) {
 
-        // ✔ 只做 conversion（reuse buffer，不 alloc）
-        ensureCapacity(count)
-
         for i in 0..<count {
             tempFloatBuffer[i] = ptr[i]
         }
@@ -457,8 +454,6 @@ final class AudioPreProcessor {
     // 🎤 Mic main pipeline
     // ======================================================
     func processMic(_ ptr: UnsafeMutablePointer<Float>, count: Int) {
-
-        ensureCapacity(count)
 
         // ==================================================
         // 1️⃣ copy normalized Float (already [-1, 1] from process())
