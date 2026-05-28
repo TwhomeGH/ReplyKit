@@ -96,6 +96,9 @@ class SocketClient : @unchecked Sendable {
 
     private let queue = DispatchQueue(label: "SocketClientQueue")
 
+    // 側載模式緩衝日誌：connection 尚未就緒時先暫存，ready 後自動發送
+    private var pendingLogs: [(title: String, message: String)] = []
+
     // 心跳相關 專用 Queue 和 Timer
     private let queueHeart = DispatchQueue(label: "SocketClientQueueHeartbeat")
 
@@ -198,6 +201,7 @@ class SocketClient : @unchecked Sendable {
                 isConnection = true
 
                 startHearbeat()
+                flushPendingLogs()
                 sendLog(message:"Socket連接成功 擴展端通信")
                 
 
@@ -530,7 +534,8 @@ class SocketClient : @unchecked Sendable {
 
     func sendLog(title: String = "ReplyKitE_Sokcet", message: String) {
         guard connection != nil else {
-            logger.debug("Socket可能沒上線!")
+            // 側載模式：connection 尚未就緒，先暫存，ready 後自動發送
+            pendingLogs.append((title, message))
             return
         }
         let payload: [String: Any] = [
@@ -539,6 +544,19 @@ class SocketClient : @unchecked Sendable {
             "message": message
         ]
         sendPayload(payload)
+    }
+
+    private func flushPendingLogs() {
+        let logs = pendingLogs
+        pendingLogs.removeAll()
+        for log in logs {
+            let payload: [String: Any] = [
+                "type": "log",
+                "title": log.title,
+                "message": log.message
+            ]
+            sendPayload(payload)
+        }
     }
 
     func logTo(_ message:String,flush:Bool = false){
@@ -723,6 +741,13 @@ class SocketClient : @unchecked Sendable {
             )
             logRES.append(
                 "[Get]Audio 降噪處理:\(c.enableNoiseFix) 回音處理:\(c.enableEchoFix) 自動增益:\(c.enableAGCFix) "
+            )
+
+            // 通知 SampleHandler 重新套用視訊設定
+            CFNotificationCenterPostNotification(
+                CFNotificationCenterGetDarwinNotifyCenter(),
+                CFNotificationName("VideoReconfig" as CFString),
+                nil, nil, true
             )
 
             

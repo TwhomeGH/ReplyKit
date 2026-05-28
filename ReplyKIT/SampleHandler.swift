@@ -503,6 +503,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
 
+        case "VideoReconfig":
+            sendlog(message: "[VideoReconfig] 重置視訊設定")
+            needVideoConfiguration = true
+            break
+
+
 
         case "Rotate":
 

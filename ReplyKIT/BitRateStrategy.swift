@@ -192,11 +192,9 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
             // 緩降
             // 判斷是否連續多次低於阈值才降碼率
             
-            if avgOutBpsHistory.filter({ $0 < Double(VBitRate) * 0.5 }).count >= 10 {
+            if avgOutBpsHistory.filter({ $0 < Double(VBitRate) * 0.75 }).count >= 7 {
 
-                let target = Int(Double(VBitRate) * stepDown)
-
-                let res = max(minBitrate, target)  // ✅ 強制 minBitrate
+                let res = max(minBitrate, Int(Double(VBitRate) * 0.9))  // ✅ 降 10%
 
 
 
@@ -239,8 +237,8 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
             // 計算新 bitrate，但不低於 minBitrate
             let res = max(
                 minBitrate,
-                Int(smoothBps * 0.97)
-            ) // 例如降到 97% 的平均出流量
+                Int(smoothBps * 0.85)
+            ) // 例如降到 85% 的平均出流量
 
             sendlog(message: "📉 Bitrate 網路不穩，調整至: \(newBitV.bitRate / 1000) Kbps")
 

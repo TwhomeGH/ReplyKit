@@ -24,7 +24,8 @@ class Eventlisten {
         "DebugRotate","DebugTime","OutW","OutH","VideoSet",
         "PauseStream","ResumeStream",
         "ChangeBit","SocketRetry",
-        "SocketLog","Rotate","RotateOriginal"
+        "SocketLog","Rotate","RotateOriginal",
+        "VideoReconfig"
 
     ]
 

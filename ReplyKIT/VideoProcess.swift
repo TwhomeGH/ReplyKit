@@ -16,6 +16,8 @@ final class VideoFrameProcessor {
 
     private let sendlog: (String) -> Void
 
+    private var lastRotatorKey: (useBic: Bool, dstW: Int, dstH: Int, outW: Int, outH: Int, RotateOriginal: Bool)?
+
 
     var angle = RotationAngle(
                 rawValue: UInt32(RPConfig.shared.state.Rotate)
@@ -105,6 +107,22 @@ final class VideoFrameProcessor {
             guard let self = self, self.isActive else { return }
 
             guard let rotator = queue.sync(execute: { () -> RPVideoRotatorNV12BatchQueueOptimized? in
+                let key = (
+                    useBic: RPConfig.shared.state.useBic,
+                    dstW: RPConfig.shared.state.ADWidth,
+                    dstH: RPConfig.shared.state.ADHeight,
+                    outW: RPConfig.shared.state.ODWidth,
+                    outH: RPConfig.shared.state.ODHeight,
+                    RotateOriginal: RPConfig.shared.state.RotateOriginal
+                )
+                if let r = self.rotator, let last = self.lastRotatorKey, last != key {
+                    let old = r
+                    Task { await old.cleanup() }
+                    self.rotator = nil
+                    sendlog("[Rotator] config changed, recreating")
+                }
+                self.lastRotatorKey = key
+
                 if let r = self.rotator { return r }
                 let dstRW = RPConfig.shared.state.ADWidth
                 let dstRH = RPConfig.shared.state.ADHeight
