@@ -707,15 +707,16 @@ final class PIPService: NSObject, @unchecked Sendable {
             )
         }
 
-        // 重連狀態 badge
+        // 重連狀態 badge（放在時間背景下方，避免重疊）
         if LPConfig.shared.isReconnecting {
             let reconnIcon = UIImage(systemName: "antenna.radiowaves.left.and.right")
+            let reconnectBadgeY = bgRect.maxY + 8
             badgeX = timeTextPoint.x + elapsedTextSize.width + 8
             _ = drawBadge(
                 in: cg,
                 text: LPConfig.shared.reconnectStatus,
                 font: elapsedLabelFont,
-                origin: CGPoint(x: badgeX, y: badgeY + elapsedLabelFont.lineHeight + 6),
+                origin: CGPoint(x: badgeX, y: reconnectBadgeY),
                 textColor: .white,
                 bgColor: #colorLiteral(red: 1, green: 0.6, blue: 0, alpha: 1),
                 icon: reconnIcon,
