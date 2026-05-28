@@ -66,6 +66,12 @@ final class LPConfig {
 
     var streamStartTime: Date?
 
+    // MARK: 重連狀態
+    var isReconnecting = false
+    var reconnectAttempt = 0
+    var reconnectMaxAttempts = 5
+    var reconnectStatus: String = ""
+
 
     var PIPChatFontMainSize: Double = 14.0
     var PIPChatFontSecondSize: Double = 10.0

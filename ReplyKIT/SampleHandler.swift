@@ -144,6 +144,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     private var lastConfiguredSize: CGSize? = nil
 
+    // MARK: 重連狀態
+    private var isReconnecting = false
+    private var reconnectAttempts = 0
+    private let maxReconnectAttempts = 5
+    private var reconnectionTask: Task<Void, Never>?
 
 
     private func reloadVolumes(type:Int = -1,volume:Float = 1.0) {
@@ -1368,7 +1373,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         await streamStataus?.refreshStatusTimestamp()
 
         await streamStataus?.setOnDisconnect { [weak self] in
-            self?.stopBroadcastWithError("RTMP 斷線")
+            Task { @MainActor in
+                self?.attemptReconnect()
+            }
         }
 
 
@@ -1502,19 +1509,119 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             }
 
         }  catch RTMPConnection.Error.requestFailed(let response) {
-            self.stopBroadcastWithError("RTMP 服務器連線失敗 \(response)")
+            sendlog(message: "RTMP 服務器連線失敗 \(response)，嘗試重連")
+            attemptReconnect()
 
-        }  catch RTMPStream.Error.requestFailed(let response) {
-            self.stopBroadcastWithError("RTMP 推流失敗 \(response)")
+    }  catch RTMPStream.Error.requestFailed(let response) {
+            sendlog(message: "RTMP 推流失敗 \(response)，嘗試重連")
+            attemptReconnect()
 
         } catch {
-        self.stopBroadcastWithError("RTMP 其他錯誤 \(error)")
+            sendlog(message: "RTMP 其他錯誤 \(error)，嘗試重連")
+            attemptReconnect()
 
     }
 
 
     }
 
+    // MARK: 重連機制
+    func attemptReconnect() {
+        guard !isStopping, !isReconnecting else { return }
+
+        reconnectAttempts += 1
+        guard reconnectAttempts <= maxReconnectAttempts else {
+            sendlog(message: "❌ RTMP 重連次數已達上限，停止推流")
+            notifyReconnectStatus(.exhausted)
+            stopBroadcastWithError("RTMP 重連失敗")
+            return
+        }
+
+        isReconnecting = true
+
+        // 指數退避: 1s, 2s, 4s, 8s, 16s
+        let delay = min(pow(2.0, Double(reconnectAttempts - 1)), 16.0)
+
+        sendlog(message: "🔄 RTMP 斷線，第 \(reconnectAttempts)/\(maxReconnectAttempts) 次重連 (\(Int(delay))s 後)...")
+        notifyReconnectStatus(.attempting)
+
+        // 暫停斷線監控
+        disconnectMonitorTask?.cancel()
+        disconnectMonitorTask = nil
+
+        reconnectionTask = Task { [weak self] in
+            guard let self = self else { return }
+
+            // 關閉舊連線
+            await mediaMixer.removeOutput(rtmpStream)
+            _ = try? await rtmpStream.close()
+            _ = try? await rtmpConnection?.close()
+
+            // 等待退避時間
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard !self.isStopping else { return }
+
+            // 建立新連線
+            let newConnection = RTMPConnection()
+            let newStream = RTMPStream(connection: newConnection)
+            let BCount = max(RPConfig.shared.state.BufferCount, 3)
+            await newStream.setVideoInputBufferCounts(BCount)
+
+            // 重置 video settings 強制重新套用
+            self.lastConfiguredSize = nil
+
+            do {
+                guard let url = self.rtmpURL, let key = self.rtmpKey else {
+                    sendlog(message: "❌ RTMP 重連失敗：URL 或 Key 為 nil")
+                    self.isReconnecting = false
+                    self.attemptReconnect()
+                    return
+                }
+
+                _ = try await newConnection.connect(url)
+                _ = try await newStream.publish(key)
+
+                // 成功 — 替換參考
+                self.rtmpConnection = newConnection
+                self.rtmpStream = newStream
+
+                await self.streamStataus?.refreshStatusTimestamp()
+                await newStream.setBitRateStrategy(self.streamStataus)
+                await self.mediaMixer.addOutput(newStream)
+
+                // 恢復斷線監控
+                self.startDisconnectMonitor()
+
+                self.isReconnecting = false
+                self.reconnectAttempts = 0
+
+                sendlog(message: "✅ RTMP 重連成功！")
+                self.notifyReconnectStatus(.success)
+            } catch {
+                sendlog(message: "❌ RTMP 重連失敗: \(error)")
+                self.isReconnecting = false
+                self.notifyReconnectStatus(.failed)
+                self.attemptReconnect()
+            }
+        }
+    }
+
+    func notifyReconnectStatus(_ status: ReconnectStatus) {
+        let payload: [String: Any] = [
+            "type": "reconnectStatus",
+            "status": status.rawValue,
+            "attempt": reconnectAttempts,
+            "maxAttempts": maxReconnectAttempts
+        ]
+        SocketClient.shared.sendPayload(payload)
+    }
+
+    enum ReconnectStatus: String {
+        case attempting
+        case success
+        case failed
+        case exhausted
+    }
 
     // MARK: 直播開始
     override func broadcastStarted(
@@ -1627,6 +1734,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             // 停止斷線監控 Task
             disconnectMonitorTask?.cancel()
             disconnectMonitorTask = nil
+
+            // 取消重連 Task
+            reconnectionTask?.cancel()
+            reconnectionTask = nil
+            isReconnecting = false
+            reconnectAttempts = 0
 
             //ExtensionMessagePort.shared.disconnectFromApp()
 

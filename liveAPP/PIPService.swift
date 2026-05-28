@@ -707,6 +707,23 @@ final class PIPService: NSObject, @unchecked Sendable {
             )
         }
 
+        // 重連狀態 badge
+        if LPConfig.shared.isReconnecting {
+            let reconnIcon = UIImage(systemName: "antenna.radiowaves.left.and.right")
+            badgeX = timeTextPoint.x + elapsedTextSize.width + 8
+            _ = drawBadge(
+                in: cg,
+                text: LPConfig.shared.reconnectStatus,
+                font: elapsedLabelFont,
+                origin: CGPoint(x: badgeX, y: badgeY + elapsedLabelFont.lineHeight + 6),
+                textColor: .white,
+                bgColor: #colorLiteral(red: 1, green: 0.6, blue: 0, alpha: 1),
+                icon: reconnIcon,
+                iconTintColor: .white,
+                padding: UIEdgeInsets(top: 2, left: 8, bottom: 2, right: 8)
+            )
+        }
+
         fullLine.draw(at: textPoint)
 
 

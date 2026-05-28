@@ -597,22 +597,9 @@ class SocketClient : @unchecked Sendable {
         }))
     }
 
-    // MARK: No CallBack Payload
-    private func sendPayload(_ payload: [String: Any]) {
-        guard let con = connection else {
-            logger.debug("Socket可能沒上線!")
-
-            return
-        }
-        guard var data = try? JSONSerialization.data(withJSONObject: payload, options: []) else { return }
-        data.append(0x0A) // '\n'
-        
-        con.send(content: data, completion: .contentProcessed({ error in
-            if let error = error {
-                self.logTo("Socket Send error: \(error.localizedDescription)")
-                // 遇到 send error 可選擇重試或清理
-            }
-        }))
+    // MARK: 公開供外部發送自定義訊息
+    func sendPayload(_ payload: [String: Any]) {
+        sendPayload(payload, completion: nil)
     }
 
 

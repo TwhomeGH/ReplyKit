@@ -1042,6 +1042,33 @@ class SocketServer:ObservableObject {
                 break
                 
 
+            case "reconnectStatus":
+                if let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let status = dict["status"] as? String,
+                   let attempt = dict["attempt"] as? Int,
+                   let maxAttempts = dict["maxAttempts"] as? Int {
+                    LPConfig.shared.reconnectAttempt = attempt
+                    LPConfig.shared.reconnectMaxAttempts = maxAttempts
+                    switch status {
+                    case "attempting":
+                        LPConfig.shared.isReconnecting = true
+                        LPConfig.shared.reconnectStatus = "🔄 \(attempt)/\(maxAttempts)"
+                    case "success":
+                        LPConfig.shared.isReconnecting = false
+                        LPConfig.shared.reconnectStatus = ""
+                    case "failed":
+                        LPConfig.shared.isReconnecting = true
+                        LPConfig.shared.reconnectStatus = "❌ \(attempt)/\(maxAttempts)"
+                    case "exhausted":
+                        LPConfig.shared.isReconnecting = false
+                        LPConfig.shared.reconnectStatus = ""
+                    default:
+                        break
+                    }
+                    PIPService.shared.markOverlayDirty()
+                }
+                break
+
             default:
                 logTo("Unknown message type: \(base.type)")
                 break
