@@ -120,7 +120,9 @@ final class VideoFrameProcessor {
                     useBic: mode,
                     RotateOriginal: RotateOriginal
                 ) else {
-                    sendlog("GPU Rotator init failed")
+                    // Swift 6.0語法須明確self使用
+                    
+                    self.sendlog("GPU Rotator init failed")
                     return nil
                 }
                 self.rotator = r
