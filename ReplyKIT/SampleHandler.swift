@@ -2054,6 +2054,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         videoSettings.isLowLatencyRateControlEnabled = RPConfig.shared.state.isLowLatencyRateControlEnabled
         videoSettings.maxKeyFrameIntervalDuration = 2
+        videoSettings.bitRate = RPConfig.shared.state.BitRate
 
 
         if lastConfiguredSize != newSize {

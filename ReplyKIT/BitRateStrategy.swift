@@ -89,8 +89,8 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
         self.mamimumVideoBitRate = value
     }
 
-    func bitToKbps(_ bit:Int = 4_000_000) -> Int{
-        return Int(Double(bit * 8 ) / 1000.0)
+    private func bytesToKbps(_ bytes: Int) -> Int {
+        return Int(Double(bytes * 8) / 1000.0)
     }
 
     // 新增：檢查超時，超過 threshold 就呼叫 onDisconnect
@@ -148,12 +148,12 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
                "VideoBit:\(VBitRate/1000) Kbps",
                //"IN:\(bitToMbps(currentInt)) Kbps",
                "AVG: \((avgOutBps ?? 0)/1000) Kbps",
-               "OUT:\(bitToKbps(currentOut)) Kbps",
+               "OUT:\(bytesToKbps(currentOut)) Kbps",
 
 
                //"CQB:\(report.currentQueueBytesOut)",
                //"\nTotal IN:\(bitToMbps(totalInt)) Kbps",
-               "總計OUT:\(bitToKbps(totalOut)) Kbps"
+               "總計OUT:\(bytesToKbps(totalOut)) Kbps"
 
             ]
             // 根據即時統計值判斷

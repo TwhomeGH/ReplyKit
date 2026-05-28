@@ -2530,7 +2530,7 @@ struct homeView:View{
                     HStack {
                         Text("1000 kbps")
                         Spacer()
-                        Text("200000 kbps")
+                        Text("20000 kbps")
                     }
                 }
                 .padding()
