@@ -240,7 +240,7 @@ final class LiveVolumeModel: ObservableObject {
                                         .deliverImmediately)
 
         }
-        
+
 #else
 
         if !LPConfig.shared.SocketLog {
@@ -2657,7 +2657,6 @@ struct ContentView: View {
 
     @AppStorage("onAudioPage",store:userDefaults) private var onAudioPage = false
 
-   
 
 
 
@@ -2711,7 +2710,7 @@ struct ContentView: View {
                 CFNotificationCenterPostNotification(cfCenter, CFNotificationName("onlogPage" as CFString), nil, nil, true)
 
 
-            }else {
+            } else {
 
 
                 if !logTime {
@@ -2726,6 +2725,7 @@ struct ContentView: View {
 
 
             }
+
             if newValue == .audio {
 
                 onAudioPage=true
@@ -2734,6 +2734,7 @@ struct ContentView: View {
                 CFNotificationCenterPostNotification(cfCenter,
                                                      CFNotificationName("onAudioPage" as CFString),
                                                      nil, nil, true)
+
             } else {
 
 
@@ -2744,6 +2745,7 @@ struct ContentView: View {
                 CFNotificationCenterPostNotification(cfCenter,
                                                      CFNotificationName("onAudioPage" as CFString),
                                                      nil, nil, true)
+
                 }
 
 
@@ -2783,6 +2785,7 @@ struct ContentView: View {
                     }
                 }
 
+
             case .background:
 
 
@@ -2809,6 +2812,7 @@ struct ContentView: View {
 
 
                 }
+
                 if onAudioPage == true {
                     onAudioPage=false
 

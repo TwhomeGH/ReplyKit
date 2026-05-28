@@ -763,6 +763,27 @@ struct liveAPPApp: App {
 
         UserDefaults.standard.set(0, forKey: "lastReadLineCount")
 
+        // MARK: - 記憶體壓力監聽
+        #if os(iOS)
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            sendlog(message: "⚠️ 收到 Memory Warning，釋放快取")
+
+            // 清 log buffer
+            self.logModel.clearLogs()
+
+            // 清 PiP 快取
+            PIPService.shared.handleMemoryWarning()
+
+            // 通知 SocketServer 釋放閒置 buffer
+            SocketServer.shared.releaseMemory()
+        }
+        #endif
+
 
 
 
@@ -817,6 +838,9 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
 
     @Environment(\.scenePhase) private var scenePhase
 
+    // MARK: - Background Task
+    @State private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
+
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -824,17 +848,43 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
                 .onChange(of: scenePhase) { phase in
                     switch phase {
                     case .inactive:
-                        // 即將進背景
                         break
 
                     case .background:
+                        sendlog(message: "App 進入背景，保持 SocketServer 運作中")
                         TTSService.shared.refreshAudioSessionForCurrentSetting()
-                        break
+
+                        // 通知 PIPService 進入背景
+                        PIPService.shared.appDidEnterBackground()
+
+                        // 註冊 background task 保護 SocketServer
+                        #if os(iOS)
+                        if backgroundTaskID == .invalid {
+                            backgroundTaskID = UIApplication.shared.beginBackgroundTask {
+                                sendlog(message: "Background task 即將到期")
+                                UIApplication.shared.endBackgroundTask(self.backgroundTaskID)
+                                self.backgroundTaskID = .invalid
+                            }
+                            sendlog(message: "Background task 已註冊，ID: \(backgroundTaskID)")
+                        }
+                        #endif
 
                     case .active:
+                        sendlog(message: "App 回到前景")
                         SocketServer.shared.start()
                         TTSService.shared.refreshAudioSessionForCurrentSetting()
-                        break
+
+                        // 通知 PIPService 回到前景
+                        PIPService.shared.appWillEnterForeground()
+
+                        // 結束 background task
+                        #if os(iOS)
+                        if backgroundTaskID != .invalid {
+                            UIApplication.shared.endBackgroundTask(backgroundTaskID)
+                            backgroundTaskID = .invalid
+                            sendlog(message: "Background task 已結束")
+                        }
+                        #endif
 
                     @unknown default:
                         break

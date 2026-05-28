@@ -530,10 +530,7 @@ final class PIPServiceMessages {
 
     func canncel() {
         safeCanncel = true
-        displayLink?.invalidate()
-        displayLink = nil
         phase = .idle
-        isAnimating = false
         fadeCandidate = nil
         pendingSegments.removeAll()
         animatingMessages.removeAll()
@@ -547,10 +544,12 @@ final class PIPServiceMessages {
 
 
 
-    // Animation
-    private var isAnimating = false
-    private var displayLink: CADisplayLink?
+    // Animation（由外部 render timer 驅動）
     private var hasLaidOutOnce = false
+    /// 詢問外部：是否還有動畫正在進行
+    var isAnimating: Bool {
+        phase != .idle
+    }
 
 
     init(size: CGSize,scrollSpeed:CGFloat = 0.2) {
@@ -1165,7 +1164,7 @@ final class PIPServiceMessages {
     }
 
 
-    private var pendingSegments: [MessageSegmentData] = []
+    var pendingSegments: [MessageSegmentData] = []
 
     func currentBottomTargetY() -> CGFloat {
         stackedMessages
@@ -1347,7 +1346,7 @@ final class PIPServiceMessages {
 
     let snapThreshold: CGFloat = 0.2
 
-    // MARK: - Layout + Animation 修正版（可直接替換）
+    // MARK: - Layout + Animation（由外部 render timer 驅動）
     func layoutTargetsAndStartAnimation() {
 
         // 🔑 一定要先算 targetY（否則動畫會拉到 0）
@@ -1363,20 +1362,11 @@ final class PIPServiceMessages {
             msg.initialStartY = msg.startY
         }
 
-
         collectMovingMessages()
 
-        PIPService.shared.markDirty()
+        // 通知外部提高 FPS
+        PIPService.shared.requestAnimationFPS()
         PIPService.shared.isAnimatingMessages = true
-
-
-        // 啟動 displayLink
-        if displayLink == nil {
-            displayLink = CADisplayLink(target: self, selector: #selector(stepAnimationDisplayLink))
-            displayLink?.add(to: .main, forMode: .common)
-            isAnimating = true
-        }
-
 
     }
 
@@ -1535,6 +1525,9 @@ final class PIPServiceMessages {
             prepareFade()
         } else {
             phase = pendingSegments.isEmpty ? .idle : .pending
+            if phase == .idle {
+                stopAnimation()
+            }
         }
     }
 
@@ -1664,34 +1657,23 @@ final class PIPServiceMessages {
     }
 
 
-    private func stopDisplayLink() {
+    private func stopAnimation() {
 
-
-
-        displayLink?.invalidate()
-        displayLink = nil
         phase = .idle
-
-        isAnimating = false
-
-
-
 
         Task { @MainActor in
             PIPService.shared.isAnimatingMessages = false
-            PIPService.shared.startDecayAfterAnimation()
         }
 
     }
-
-
+    
     var isWaitFade = false
     func waitFade() {
         
         guard !isWaitFade else { return }
 
         isWaitFade = true
-        PIPService.shared.waitFade()
+        PIPService.shared.requestAnimationFPS()
 
     }
 
@@ -1752,38 +1734,42 @@ final class PIPServiceMessages {
     }
 
 
-    // MARK: - 每幀動畫
-    @objc private func stepAnimationDisplayLink() {
+    // MARK: - 由 PIPService render timer 每幀呼叫一次
+    /// 回傳 true 表示動畫還在進行中
+    func tickAnimation() -> Bool {
         guard !safeCanncel else {
-            stopDisplayLink()
-            return
+            stopAnimation()
+            return false
         }
 
         if verboseFrameLog {
             PIPChatLog(
-                "Debug step is doing\nDL step | anim:\(animatingMessages.count) 待處理:\(pendingSegments.count) 容器數量:\(stackedMessages.count) - \(phase)"
+                "tick | anim:\(animatingMessages.count) 待處理:\(pendingSegments.count) 容器數量:\(stackedMessages.count) - \(phase)"
             )
         }
 
         switch phase {
-            case .moving:
-                animateMoveIfNeeded()
+        case .moving:
+            animateMoveIfNeeded()
+            return isAnimating
 
-
-            case .fading:
+        case .fading:
             stepFade()
+            return isAnimating
 
-            case .idle:
-                stopDisplayLink()
-            case .waitFading:
-                waitFade()
-                prepareFade()
+        case .idle:
+            stopAnimation()
+            return false
 
-            case .pending:
-                reloadPending()
-            }
+        case .waitFading:
+            waitFade()
+            prepareFade()
+            return isAnimating
 
-
+        case .pending:
+            reloadPending()
+            return isAnimating
+        }
     }
 
 

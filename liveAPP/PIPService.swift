@@ -88,8 +88,24 @@ actor PIPRenderPipeline {
 final class PIPService: NSObject, @unchecked Sendable {
     static let shared = PIPService()
 
-    private override init() {
+    private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
+    private var isInBackground = false
 
+    private override init() {
+        super.init()
+        #if os(iOS)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleMemoryWarning),
+            name: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil
+        )
+        #endif
+    }
+
+    @objc func handleMemoryWarning() {
+        PIPLogTo("收到 Memory Warning，釋放 PiP 快取")
+        pixelBufferPool = nil
     }
 
     var lastFPS = 1.0
@@ -129,16 +145,10 @@ final class PIPService: NSObject, @unchecked Sendable {
     }
 
 
-    private var gpuRenderer: MessageGPURenderer?
-
-    // MARK: GPU Render
+    // MARK: - Render
     func renderIfNeeded() -> CVPixelBuffer?  {
-
-
-        let pixelBuffer: CVPixelBuffer? = timeOverlayImage(size:frameSize)
-
-
-        return pixelBuffer
+        // 直接 CVPixelBuffer 渲染，跳過 UIGraphicsImageRenderer + CIImage round-trip
+        renderUIViewToPixelBuffer(size: OframeSize)
     }
 
 
@@ -275,125 +285,65 @@ final class PIPService: NSObject, @unchecked Sendable {
 
     private let pipStartThreshold: Int64 = 1
 
-    // MARK: - Adaptive FPS
+    // MARK: - 穩定 FPS 管理
     private var currentFPS: Double = 1
 
-    private let defaultFPS: Double = 1       // 平常 FPS
-    private let decayRate: Double = 0.70     // 每次渲染衰減比例 (越小越快降
+    private let animationFPS: Double = 30     // 動畫中（移動/淡出）
+    private let activeFPS: Double = 15        // 有活動但沒動畫
+    private let idleFPS: Double = 1           // 閒置
 
     private var lastRenderTime = CACurrentMediaTime()
 
-
-    var isMark = false
-
-    private var decayDeadline: DispatchTime?
-    private let decayDelay: TimeInterval = 3.0
-
-    private var decayTimer: DispatchSourceTimer?
-
-    @MainActor
-    func startDecayAfterAnimation() {
-        startDecayTimer()
+    /// 要求提高 FPS（由 PIPServiceMessages 在動畫開始時呼叫）
+    func requestAnimationFPS() {
+        let newFPS = messagesLayer?.isAnimating == true ? animationFPS : activeFPS
+        guard abs(currentFPS - newFPS) > 0.1 else { return }
+        currentFPS = newFPS
+        renderTimer?.schedule(deadline: .now(), repeating: 1.0 / currentFPS)
+        PIPLogTo("🎬 animation fps -> \(currentFPS)")
+        lastFPS = currentFPS
     }
 
+    /// overlay 需要重繪時呼叫（例如直播狀態改變）
+    func markOverlayDirty() {
+        currentFPS = max(currentFPS, activeFPS)
+        renderTimer?.schedule(deadline: .now(), repeating: 1.0 / currentFPS)
+    }
 
-    // 自動調降FPS
-    private func startDecayTimer() {
-        if decayTimer == nil {
-            decayTimer = DispatchSource.makeTimerSource(queue: renderQueue)
-            decayTimer?.schedule(
-                deadline: .now() + 0.2,
-                repeating: 1.0,
-                leeway: .milliseconds(100)
-            )
-            decayTimer?.setEventHandler { [weak self] in
-                guard let self = self else { return }
-
-                // 檢查是否到期
-                if let deadline = self.decayDeadline, .now() >= deadline {
-
-                    if self.currentFPS > self.defaultFPS {
-                        self.currentFPS = max(self.defaultFPS, self.currentFPS * self.decayRate)
-
-                        // 後續動態改 FPS，例如改成 30 FPS
-                        renderTimer?
-                            .schedule(
-                                deadline: .now(),
-                                repeating: 1 / self.currentFPS
-                            )
-                        
-                        PIPLogTo("📉 decay fps -> \(self.currentFPS)")
-                        lastFPS = currentFPS
-                        
-                    }
-
-                }
-
+    /// 閒置時降低 FPS
+    func decayFPSIfNeeded() {
+        guard let messagesLayer = messagesLayer else {
+            if currentFPS != idleFPS {
+                currentFPS = idleFPS
+                renderTimer?.schedule(deadline: .now(), repeating: 1.0 / idleFPS)
             }
-            decayTimer?.resume()
+            return
+        }
+
+        let targetFPS: Double
+        if messagesLayer.isAnimating {
+            targetFPS = animationFPS
+        } else if !messagesLayer.pendingSegments.isEmpty {
+            targetFPS = activeFPS
+        } else {
+            targetFPS = idleFPS
+        }
+
+        if abs(currentFPS - targetFPS) > 0.1 {
+            currentFPS = targetFPS
+            renderTimer?.schedule(deadline: .now(), repeating: 1.0 / currentFPS)
+            if lastFPS != currentFPS {
+                PIPLogTo("📉 fps -> \(currentFPS)")
+                lastFPS = currentFPS
+            }
         }
     }
-
 
     func fadeTime(_ time:Double){
         messagesLayer?.fadeInterval = time
     }
     func scrollTime(_ time:Double){
         messagesLayer?.scrollSpeed = time
-    }
-
-    func markDirty() {
-
-        isMark = true
-        currentFPS = 60      // 事件觸發時暫時提升 FPS
-
-        // 後續動態改 FPS，例如改成 60 FPS
-        renderTimer?.schedule(deadline: .now(), repeating: 1/60)
-
-        decayDeadline = .now() + decayDelay
-
-    }
-
-    func markOverlayDirty() {
-        isMark = true
-        cachedOverlayImage = nil
-        currentFPS = max(currentFPS, 8)
-        renderTimer?.schedule(deadline: .now(), repeating: 1 / max(currentFPS, 1))
-        decayDeadline = .now() + decayDelay
-    }
-
-    func waitFade() {
-
-        PIPLogTo("PIP 等待Fade中")
-        isMark = true
-        currentFPS = 2      // 事件觸發時暫時提升 FPS
-
-        // 後續動態改 FPS，例如改成 60 FPS
-        renderTimer?.schedule(deadline: .now(), repeating: 1/2)
-
-        decayDeadline = .now() + decayDelay
-
-    }
-
-
-
-
-    func decyDead() {
-        decayDeadline = .now() + decayDelay
-    }
-
-
-
-    // MARK: 動態調整
-    private func adjustFPS() {
-
-        if !isMark {
-
-            // 平滑衰減
-            currentFPS = max(defaultFPS, currentFPS * decayRate)
-        }
-
-        PIPLogTo("📉 adaptive fps -> \(currentFPS)")
     }
 
 
@@ -488,10 +438,6 @@ final class PIPService: NSObject, @unchecked Sendable {
 
     }
 
-
-    // Metal
-    private let metalDevice = MTLCreateSystemDefaultDevice()!
-    private var ciContext:CIContext?
 
 
 
@@ -772,70 +718,7 @@ final class PIPService: NSObject, @unchecked Sendable {
     }
 
 
-    private var cachedOverlayImage: CGImage?
-    private var lastTimeText: String = ""
-    private var lastOverlaySignature: String = ""
 
-    private func overlaySignature() -> String {
-        let status = LPConfig.shared.StreamEndMes
-        let viewerCount = LPConfig.shared.streamViewerCount.map(String.init) ?? ""
-        let ended = LPConfig.shared.StreamEnded ? "1" : "0"
-        return "\(status)|\(viewerCount)|\(ended)"
-    }
-
-
-    private func overlayImage(size: CGSize) -> CGImage? {
-        let nowText = currentTimeString()
-        let overlaySig = overlaySignature()
-
-        if nowText == lastTimeText,
-           overlaySig == lastOverlaySignature,
-           let cached = cachedOverlayImage,
-           !isMark {
-            return cached
-        }
-
-        lastTimeText = nowText
-        lastOverlaySignature = overlaySig
-
-        let renderer = UIGraphicsImageRenderer(size: size)
-        let img = renderer.image { ctx in
-            drawTimeOverlay(in: ctx.cgContext, size: frameSize)
-        }
-
-        cachedOverlayImage = img.cgImage
-        isMark = false
-        return img.cgImage
-    }
-
-    private func timeOverlayImage(size: CGSize) -> CVPixelBuffer? {
-        let renderer = UIGraphicsImageRenderer(size: size)
-
-        let composed = renderer.image { ctx in
-            let cg = ctx.cgContext
-
-            // 訊息 layer 每幀都要重畫，不能跟 overlay 一起吃 cache
-            if let layer = messagesLayer?.container {
-                layer.render(in: cg)
-            }
-
-
-
-            if let overlay = overlayImage(size: size) {
-                cg.draw(overlay, in: CGRect(origin: .zero, size: size))
-            }
-
-            
-
-        }
-
-        guard let cgImage = composed.cgImage else { return nil }
-
-        return gpuRenderer?.render(
-            time: CIImage(cgImage: cgImage),
-            containerSize: frameSize
-        )
-    }
 
 
 
@@ -876,15 +759,15 @@ final class PIPService: NSObject, @unchecked Sendable {
         ) else { return nil }
 
 
+        let scale = UIScreen.main.scale
+
+        context.saveGState()
         context.translateBy(x: 0, y: size.height)
-        context.scaleBy(x: 1, y: -1)
-
-
-        // ✅ 這裡用 layer.render 而不是 drawHierarchy
-        //view.layer.render(in: context)
+        context.scaleBy(x: scale, y: -scale)
         messagesLayer?.container.render(in: context)
-        // 疊上時間
-        drawTimeOverlay(in: context, size: size)
+        context.restoreGState()
+
+        drawTimeOverlay(in: context, size: frameSize)
 
 
         return pb
@@ -916,13 +799,7 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         self.renderPipeline = PIPRenderPipeline(service: self)
 
-        ciContext = CIContext(mtlDevice: metalDevice)
-
-        //setupPixelBufferPool(size: pixelSize)
-
-        if let ciContext = ciContext {
-            gpuRenderer = MessageGPURenderer(size: OframeSize, ciText: ciContext)
-        }
+        setupPixelBufferPool(size: pixelSize)
 
         self.frameCount = 0
 
@@ -992,34 +869,36 @@ final class PIPService: NSObject, @unchecked Sendable {
 
     }
 
-    // MARK: - Attach displayLayer
+    // MARK: - Attach displayLayer（不限 foreground scene）
     private func attachToForegroundWindow(completion: @escaping () -> Void) {
 
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
 
-            guard let windowScene = UIApplication.shared.connectedScenes
-                .compactMap({ $0 as? UIWindowScene })
-                .first(where: { $0.activationState == .foregroundActive }) else {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    self.attachToForegroundWindow(completion: completion)
-                }
+            guard let layer = self.displayLayer else {
+                completion()
                 return
             }
 
-            guard let layer = self.displayLayer else { return }
+            // 如果已附加就直接完成
+            if layer.superlayer != nil {
+                completion()
+                return
+            }
 
-            if layer.superlayer == nil, let containerLayer = windowScene.windows.first?.rootViewController?.view.layer ?? windowScene.windows.first?.layer {
+            // 找任何一個 connected scene（不限 foregroundActive）
+            let scenes = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene })
+            if let windowScene = scenes.first,
+               let containerLayer = windowScene.windows.first?.rootViewController?.view.layer ?? windowScene.windows.first?.layer {
 
                 containerLayer.addSublayer(layer)
 
                 let displayFrame = CGRect(
                     origin: .zero,
                     size: self.frameSize
-                ) // size = 300x200 或你 startPiP 的尺寸
+                )
 
                 layer.frame = displayFrame
-
 
                 // ControlTimebase
                 if layer.controlTimebase == nil {
@@ -1032,12 +911,24 @@ final class PIPService: NSObject, @unchecked Sendable {
                     }
                 }
 
-                
-
                 layer.flushAndRemoveImage()
+                completion()
+            } else {
+                // 沒有任何 scene（極罕見），等 0.5 秒再試
+                PIPLogTo("⚠️ 沒有可用的 windowScene，延後重試")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    self.attachToForegroundWindow(completion: completion)
+                }
             }
+        }
+    }
 
-            completion()
+    /// 當 app 回前景時重新 attach displayLayer（防止被 iOS 移除）
+    func reAttachDisplayLayerIfNeeded() {
+        guard let layer = displayLayer, layer.superlayer == nil else { return }
+        PIPLogTo("displayLayer 遺失，重新 attach")
+        attachToForegroundWindow {
+            PIPLogTo("displayLayer 重新 attach 完成")
         }
     }
 
@@ -1123,21 +1014,11 @@ final class PIPService: NSObject, @unchecked Sendable {
         basePTS = nil
 
 
-        gpuRenderer = nil
-
-        // Clear GPU Resource
-        ciContext = nil
         pixelBufferPool = nil
-        cachedOverlayImage = nil
-        lastOverlaySignature = ""
-        lastTimeText = ""
 
         cleanupMessageslayer()
 
-        //cleanupMessagesContainer()
-
-        decayTimer?.cancel()
-        decayTimer = nil
+        endBackgroundTask()
 
         if !(userDefaults?.bool(forKey: "TTSEnabled") ?? false) {
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
@@ -1151,16 +1032,85 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         guard let displayLayer = displayLayer else { return false }
 
-        // 取得當前時間
-        let now = CACurrentMediaTime()
-
-
-        lastRenderTime = now
-
-        if lastFPS != currentFPS {
-            PIPLogTo("NowPIP FPS:\(currentFPS)")
-            lastFPS = currentFPS
+        // PiP active 時註冊 background task 保護 render 執行緒
+        if didStartPiP && isInBackground {
+            beginBackgroundTaskIfNeeded()
         }
+
+        // 1️⃣ 驅動動畫（取代舊的 CADisplayLink）
+        if messagesLayer?.tickAnimation() == true {
+            // 動畫還在進行中，確保高 FPS
+            requestAnimationFPS()
+        }
+
+        // 2️⃣ 生成 PixelBuffer
+        var pixelBuffer: CVPixelBuffer?
+
+        pixelBuffer = renderIfNeeded()
+
+        guard let pixelBuffer = pixelBuffer else {
+            decayFPSIfNeeded()
+            return false
+        }
+
+        if self.basePTS == nil { self.basePTS = CACurrentMediaTime() }
+
+        guard let sampleBuffer = createSampleBuffer(from: pixelBuffer) else {
+            decayFPSIfNeeded()
+            return false
+        }
+
+        // 3️⃣ enqueue
+        if displayLayer.isReadyForMoreMediaData {
+
+            displayLayer.enqueue(sampleBuffer)
+            self.frameCount += 1
+
+            // 啟動 PiP
+            if !self.didStartPiP && self.frameCount >= self.pipStartThreshold {
+                self.safeTryStartPiP()
+            }
+        }
+
+        lastRenderTime = CACurrentMediaTime()
+
+        // 4️⃣ 渲染完成後調整 FPS
+        decayFPSIfNeeded()
+
+        return true
+    }
+
+    // MARK: - Background Task
+    func beginBackgroundTaskIfNeeded() {
+        guard backgroundTaskID == .invalid else { return }
+        backgroundTaskID = UIApplication.shared.beginBackgroundTask { [weak self] in
+            PIPLogTo("PiP background task 即將到期")
+            self?.endBackgroundTask()
+        }
+        PIPLogTo("PiP background task 已註冊")
+    }
+
+    func endBackgroundTask() {
+        guard backgroundTaskID != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(backgroundTaskID)
+        backgroundTaskID = .invalid
+        PIPLogTo("PiP background task 已結束")
+    }
+
+    func appDidEnterBackground() {
+        isInBackground = true
+        if didStartPiP {
+            beginBackgroundTaskIfNeeded()
+            PIPLogTo("PiP active 進入背景，已註冊 background task")
+        }
+    }
+
+    func appWillEnterForeground() {
+        isInBackground = false
+        endBackgroundTask()
+        reAttachDisplayLayerIfNeeded()
+        PIPLogTo("回到前景，已釋放 background task")
+    }
 
 
 

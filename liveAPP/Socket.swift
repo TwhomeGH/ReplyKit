@@ -1213,6 +1213,36 @@ class SocketServer:ObservableObject {
         stopInternal()
     }
 
+    // MARK: - Suspend / Resume
+    func suspend() {
+        logTo("SocketServer 暫停（釋放連線但保留 listener）")
+        for (_, conn) in connections {
+            conn.stateUpdateHandler = nil
+            conn.cancel()
+        }
+        connections.removeAll()
+        receiveBuffers.removeAll()
+        sendQueues.removeAll()
+        sendingFlags.removeAll()
+    }
+
+    func resume() {
+        logTo("SocketServer 恢復（重新監聽）")
+        if listener == nil {
+            start()
+        }
+    }
+
+    /// 收到 Memory Warning 時釋放 buffer
+    func releaseMemory() {
+        logTo("SocketServer 釋放 buffer")
+        receiveBuffers.removeAll()
+        sendQueues.removeAll()
+        sendingFlags.removeAll()
+        idleTimers.values.forEach { $0.cancel() }
+        idleTimers.removeAll()
+    }
+
 
     func stopInternal() {
 

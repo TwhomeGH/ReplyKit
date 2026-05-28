@@ -63,6 +63,27 @@
 所以兩者皆補上了PTS修正
 
 
+## 最新 PiP 背景存活與渲染效能優化
+
+本次針對 PiP 子母畫面在背景被系統終止、動畫與渲染效能進行全面改善：
+
+### 背景存活修復
+- **PIPService**: 放寬 `attachToForegroundWindow` 綁定條件，接受任何已連接的 Scene
+- **PIPService**: 新增 `handleMemoryWarning()`、background task 生命週期、app 前景/背景切換時自動重連 displayLayer
+- **liveAPPApp.swift**: scenePhase `.background` 時註冊 `beginBackgroundTask`，`init()` 時監聽 Memory Warning 通知
+- **Socket.swift**: 新增 `suspend()` / `resume()` / `releaseMemory()`，背景時釋放緩衝區、前景恢復運作
+
+### 動畫迴圈重構
+- 移除 `CADisplayLink`，改由 PIPService render timer 統一驅動，消除雙 loop 不同步
+- 以 `tickAnimation()` 狀態機取代舊的 step 方法，動畫進行中持續回呼
+- 穩定 FPS 策略：動畫中 30fps、有訊息/活動 15fps、閒置 1fps，取代舊的跳 60→衰減機制，消除 FPS 震盪
+
+### Render Pipeline 最佳化
+- 跳過 `UIGraphicsImageRenderer` → `CGImage` → `CIImage` → `CIContext.render()` 的兩次 round-trip
+- 改為 `CVPixelBufferPool` + 直接 `CGContext(data:)` 將 CALayer tree 渲染到 pixel buffer 記憶體
+- 移除不再使用的 GPU renderer、Metal device、CIContext 等 dead code
+
+
 ## AltStore 測試
 
 以下示例版本是 **3.9.4**
