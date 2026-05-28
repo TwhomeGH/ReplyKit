@@ -769,8 +769,8 @@ struct liveAPPApp: App {
             forName: UIApplication.didReceiveMemoryWarningNotification,
             object: nil,
             queue: .main
-        ) { [self] _ in
-            guard let self else { return }
+        ) { _ in
+        
             sendlog(message: "⚠️ 收到 Memory Warning，釋放快取")
 
             // 清 log buffer
