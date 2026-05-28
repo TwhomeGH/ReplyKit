@@ -769,12 +769,12 @@ struct liveAPPApp: App {
             forName: UIApplication.didReceiveMemoryWarningNotification,
             object: nil,
             queue: .main
-        ) { _ in
-        
+        ) { [self] _ in
+
             sendlog(message: "⚠️ 收到 Memory Warning，釋放快取")
 
             // 清 log buffer
-            self.logModel.clearLogs()
+            logModel.clearLogs()
 
             // 清 PiP 快取
             PIPService.shared.handleMemoryWarning()
