@@ -104,7 +104,7 @@ final class VideoFrameProcessor {
         Task { [weak self] in
             guard let self = self, self.isActive else { return }
 
-            let rotator: RPVideoRotatorNV12BatchQueueOptimized = queue.sync {
+            guard let rotator = queue.sync(execute: { () -> RPVideoRotatorNV12BatchQueueOptimized? in
                 if let r = self.rotator { return r }
                 let dstRW = RPConfig.shared.state.ADWidth
                 let dstRH = RPConfig.shared.state.ADHeight
@@ -113,16 +113,19 @@ final class VideoFrameProcessor {
                 let mode: RPVideoRotatorNV12BatchQueueOptimized.QualityMode =
                     RPConfig.shared.state.useBic ? .quality : .live
                 let RotateOriginal = RPConfig.shared.state.RotateOriginal
-                let r = RPVideoRotatorNV12BatchQueueOptimized(
+                guard let r = RPVideoRotatorNV12BatchQueueOptimized(
                     dstW: dstRW, dstH: dstRH,
                     outW: outW, outH: outH,
                     debug: self.debug,
                     useBic: mode,
                     RotateOriginal: RotateOriginal
-                )
+                ) else {
+                    sendlog("GPU Rotator init failed")
+                    return nil
+                }
                 self.rotator = r
                 return r
-            }
+            }) else { return }
 
             guard let rotated = await rotator.rotateAsync(
                 sampleBuffer: sampleBuffer,
