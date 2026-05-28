@@ -99,6 +99,9 @@ final class RealTimeNoiseSuppressor {
     private var snr: [Float]
 
     private var noiseEstimate: [Float]
+    private var tmp1: [Float]
+    private var tmp2: [Float]
+    private var outBuffer: [Float]
 
     private var ringBuffer: [Float]
     private var writeIndex: Int = 0
@@ -127,6 +130,9 @@ final class RealTimeNoiseSuppressor {
         snr  = [Float](repeating: 0, count: fftSize/2)
 
         noiseEstimate = [Float](repeating: 1e-3, count: fftSize/2)
+        tmp1 = [Float](repeating: 0, count: fftSize/2)
+        tmp2 = [Float](repeating: 0, count: fftSize/2)
+        outBuffer = [Float](repeating: 0, count: fftSize)
 
         vDSP_hann_window(&window,
                          vDSP_Length(fftSize),
@@ -187,9 +193,6 @@ final class RealTimeNoiseSuppressor {
         // ======================================================
         // 4️⃣ FFT
         // ======================================================
-        var real = [Float](repeating: 0, count: fftSize/2)
-        var imag = [Float](repeating: 0, count: fftSize/2)
-
         real.withUnsafeMutableBufferPointer { rPtr in
         imag.withUnsafeMutableBufferPointer { iPtr in
 
@@ -212,11 +215,10 @@ final class RealTimeNoiseSuppressor {
             // ======================================================
             // magnitude
             // ======================================================
-            var mag = [Float](repeating: 0, count: fftSize/2)
             vDSP_zvmags(&split, 1, &mag, 1, vDSP_Length(fftSize/2))
 
             // ======================================================
-            // VAD + noise model（保留你原本邏輯）
+            // VAD + noise model
             // ======================================================
             var energy: Float = 0
             vDSP_measqv(mag, 1, &energy, vDSP_Length(mag.count))
@@ -235,9 +237,6 @@ final class RealTimeNoiseSuppressor {
             var a: Float = 0.98
             var b: Float = 0.02
 
-            var tmp1 = [Float](repeating: 0, count: mag.count)
-            var tmp2 = [Float](repeating: 0, count: mag.count)
-
             vDSP_vsmul(noiseEstimate, 1, &a, &tmp1, 1, vDSP_Length(mag.count))
             vDSP_vsmul(mag, 1, &b, &tmp2, 1, vDSP_Length(mag.count))
             vDSP_vadd(tmp1, 1, tmp2, 1, &noiseEstimate, 1, vDSP_Length(mag.count))
@@ -245,14 +244,10 @@ final class RealTimeNoiseSuppressor {
             // ======================================================
             // gain compute
             // ======================================================
-            var snr = [Float](repeating: 0, count: mag.count)
-
             vDSP_vdiv(noiseEstimate, 1,
                     mag, 1,
                     &snr, 1,
                     vDSP_Length(mag.count))
-
-            var gain = [Float](repeating: 0, count: mag.count)
 
             var one: Float = 1.0
             vDSP_vsadd(snr, 1, &one, &gain, 1, vDSP_Length(mag.count))
@@ -282,9 +277,7 @@ final class RealTimeNoiseSuppressor {
             // ======================================================
             // output (直接寫回 ptr)
             // ======================================================
-            var out = [Float](repeating: 0, count: fftSize)
-
-            out.withUnsafeMutableBufferPointer { oPtr in
+            outBuffer.withUnsafeMutableBufferPointer { oPtr in
                 oPtr.baseAddress!.withMemoryRebound(to: DSPComplex.self,
                                                     capacity: fftSize/2) {
                     vDSP_ztoc(&split, 1,
@@ -295,14 +288,14 @@ final class RealTimeNoiseSuppressor {
 
             var scale: Float = 1.0 / Float(fftSize)
 
-            vDSP_vsmul(out, 1,
+            vDSP_vsmul(outBuffer, 1,
                     &scale,
-                    &out, 1,
+                    &outBuffer, 1,
                     vDSP_Length(fftSize))
 
             // 👉 直接寫回（無 overlap buffer）
             memcpy(ptr,
-                out,
+                outBuffer,
                 count * MemoryLayout<Float>.size)
         }}
     }
@@ -404,6 +397,7 @@ final class AudioPreProcessor {
     // ======================================================
     private var micFloatBuffer: [Float]
     private var tempFloatBuffer: [Float]
+    private var processFloatBuffer: [Float]
 
     private let agc = AGCProcessor()
     private let echo = EchoCanceller(size: 1024)
@@ -418,6 +412,7 @@ final class AudioPreProcessor {
     init(maxFrameSize: Int = 512,micGain:Float? = nil,echoFix:Bool? = nil, noiseFix:Bool? = nil,agcFix:Bool? = nil) {
         self.micFloatBuffer = [Float](repeating: 0, count: maxFrameSize)
         self.tempFloatBuffer = [Float](repeating: 0, count: maxFrameSize)
+        self.processFloatBuffer = [Float](repeating: 0, count: maxFrameSize)
 
         self.updateState(micGain:micGain,echoFix:echoFix,noiseFix:noiseFix,agcFix:agcFix) 
 
@@ -433,7 +428,7 @@ final class AudioPreProcessor {
         ensureCapacity(count)
 
         for i in 0..<count {
-            tempFloatBuffer[i] = Float(ptr[i]) / 32768.0
+            tempFloatBuffer[i] = ptr[i]
         }
 
         tempFloatBuffer.withUnsafeBufferPointer { ptr in
@@ -453,10 +448,10 @@ final class AudioPreProcessor {
         ensureCapacity(count)
 
         // ==================================================
-        // 1️⃣ Int16 → Float (reuse buffer)
+        // 1️⃣ copy normalized Float (already [-1, 1] from process())
         // ==================================================
         for i in 0..<count {
-            micFloatBuffer[i] = Float(ptr[i]) / 32768.0
+            micFloatBuffer[i] = ptr[i]
         }
 
         // ==================================================
@@ -523,24 +518,24 @@ final class AudioPreProcessor {
             .bindMemory(to: Int16.self, capacity: sampleCount)
 
         // ======================================================
-        // 🎧 Float buffer（必要轉換）
+        // 🎧 Float buffer（重用預分配 buffer）
         // ======================================================
-        var floatBuffer = [Float](repeating: 0, count: sampleCount)
+        ensureCapacity(sampleCount)
 
         vDSP_vflt16(int16Ptr, 1,
-                    &floatBuffer, 1,
+                    &processFloatBuffer, 1,
                     vDSP_Length(sampleCount))
 
         var scale: Float = 1.0 / 32768.0
-        vDSP_vsmul(floatBuffer, 1,
+        vDSP_vsmul(processFloatBuffer, 1,
                 &scale,
-                &floatBuffer, 1,
+                &processFloatBuffer, 1,
                 vDSP_Length(sampleCount))
 
         // ======================================================
         // 🎧 分流（真正 DSP 在這）
         // ======================================================
-        floatBuffer.withUnsafeMutableBufferPointer { buf in
+        processFloatBuffer.withUnsafeMutableBufferPointer { buf in
             guard let base = buf.baseAddress else { return }
 
             switch track {
@@ -558,12 +553,12 @@ final class AudioPreProcessor {
         // ======================================================
         var invScale: Float = 32768.0
 
-        vDSP_vsmul(floatBuffer, 1,
+        vDSP_vsmul(processFloatBuffer, 1,
                 &invScale,
-                &floatBuffer, 1,
+                &processFloatBuffer, 1,
                 vDSP_Length(sampleCount))
 
-        vDSP_vfix16(floatBuffer, 1,
+        vDSP_vfix16(processFloatBuffer, 1,
                     int16Ptr, 1,
                     vDSP_Length(sampleCount))
     }
@@ -594,6 +589,10 @@ final class AudioPreProcessor {
 
         if tempFloatBuffer.count < count {
             tempFloatBuffer = [Float](repeating: 0, count: count)
+        }
+
+        if processFloatBuffer.count < count {
+            processFloatBuffer = [Float](repeating: 0, count: count)
         }
     }
 

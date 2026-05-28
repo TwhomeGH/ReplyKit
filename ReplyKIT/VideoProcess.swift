@@ -14,8 +14,6 @@ final class VideoFrameProcessor {
         label: "video.processor.queue"
     )
 
-    private let gpuSemaphore = DispatchSemaphore(value: 5)
-
     private let sendlog: (String) -> Void
 
 
@@ -102,78 +100,44 @@ final class VideoFrameProcessor {
     
 
 
-    func process(_ sampleBuffer: CMSampleBuffer,oringinaltime: CMSampleTimingInfo) {
-        
-
-        let res = gpuSemaphore.wait(timeout: .now() + .milliseconds(5))
-
-        
-        if res == .timedOut {
-            if debug {
-                sendlog("GPU Semaphore wait timed out - skipping frame to avoid deadlock")
-            }
-            return
-        } else if res == .success {
-            if debug {
-            // Handle successful wait
-            sendlog("GPU Semaphore wait succeeded")
-
-            }
-        }
-
-
-        queue.async { [weak self] in
-
+    func process(_ sampleBuffer: CMSampleBuffer, oringinaltime: CMSampleTimingInfo) {
+        Task { [weak self] in
             guard let self = self, self.isActive else { return }
 
-            if rotator == nil {
-                let dstRW = RPConfig.shared.state.ADWidth
-                let dstRH = RPConfig.shared.state.ADHeight
-                let outW = RPConfig.shared.state.ODWidth
-                let outH = RPConfig.shared.state.ODHeight
-
-                let mode: RPVideoRotatorNV12BatchQueueOptimized.QualityMode =
-                    RPConfig.shared.state.useBic ? .quality : .live
-
-                let RotateOriginal = RPConfig.shared.state.RotateOriginal
-
-                rotator = RPVideoRotatorNV12BatchQueueOptimized(
-                    dstW: dstRW,
-                    dstH: dstRH,
-                    outW: outW,
-                    outH: outH,
-                    debug: debug,
-                    useBic: mode,
-                    RotateOriginal:RotateOriginal
-                )
+            let rotator: RPVideoRotatorNV12BatchQueueOptimized
+            if let existing = self.rotator {
+                rotator = existing
+            } else {
+                guard let created = queue.sync(execute: { () -> RPVideoRotatorNV12BatchQueueOptimized? in
+                    if let r = self.rotator { return r }
+                    let dstRW = RPConfig.shared.state.ADWidth
+                    let dstRH = RPConfig.shared.state.ADHeight
+                    let outW = RPConfig.shared.state.ODWidth
+                    let outH = RPConfig.shared.state.ODHeight
+                    let mode: RPVideoRotatorNV12BatchQueueOptimized.QualityMode =
+                        RPConfig.shared.state.useBic ? .quality : .live
+                    let RotateOriginal = RPConfig.shared.state.RotateOriginal
+                    let r = RPVideoRotatorNV12BatchQueueOptimized(
+                        dstW: dstRW, dstH: dstRH,
+                        outW: outW, outH: outH,
+                        debug: self.debug,
+                        useBic: mode,
+                        RotateOriginal: RotateOriginal
+                    )
+                    self.rotator = r
+                    return r
+                }) else { return }
+                rotator = created
             }
-
-            guard let rotator else { return }
-
-            
-
-
-            Task {
-
-                defer { self.gpuSemaphore.signal() }
 
             guard let rotated = await rotator.rotateAsync(
                 sampleBuffer: sampleBuffer,
                 originalTime: oringinaltime,
                 angle: self.angle
-            ) else {
-                print("GPU Fail!")
-                return
-            }
+            ) else { return }
 
-            
-                await self.mediaMixer.append(rotated)
-            }
+            await self.mediaMixer.append(rotated)
         }
-
-
-    
-
     }
 
 

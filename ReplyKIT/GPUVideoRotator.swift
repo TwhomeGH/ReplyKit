@@ -598,9 +598,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                 guard !didResume else { return }
                 didResume = true
 
-                CVPixelBufferLockBaseAddress(frameC.outPB, [])
-                CVPixelBufferUnlockBaseAddress(frameC.outPB, [])
-
                 frameC.inY = nil
                 frameC.inUV = nil
 
@@ -661,16 +658,6 @@ private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
         logTo("CVPixelBufferCreate failed with status: \(status)")
         return nil
     }
-
-    CVPixelBufferLockBaseAddress(pixelBuffer, [])
-
-    // 初始化 Y/UV 平面為黑畫面（Y=0, UV=128）
-    memset(CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0), 0,
-           CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0) *
-           CVPixelBufferGetHeightOfPlane(pixelBuffer, 0))
-    memset(CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 1), 128,
-           CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 1) *
-           CVPixelBufferGetHeightOfPlane(pixelBuffer, 1))
 
     guard let yTex = makeTexture(from: pixelBuffer, planeIndex: 0),
           let uvTex = makeTexture(from: pixelBuffer, planeIndex: 1) else {
@@ -830,7 +817,7 @@ private func fallbackSampleBuffer(
         encoder.setTexture(dstY, index: 2)
         encoder.setTexture(dstUV, index: 3)
 
-        let tgWidth = min(compute.threadExecutionWidth, 16)
+        let tgWidth = min(compute.threadExecutionWidth, 32)
         let tgHeight = max(1, compute.maxTotalThreadsPerThreadgroup / tgWidth)
 
 

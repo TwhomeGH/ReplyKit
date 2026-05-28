@@ -221,9 +221,6 @@ final class AudioProcessor : @unchecked Sendable {
     
     private let mediaMixer: MediaMixer
     private var volumeNotifier: VolumeNotifier
-    private let queue = DispatchQueue(
-        label: "audio.processor.queue"
-    )
 
     var isActive = true
 
@@ -425,67 +422,29 @@ final class AudioProcessor : @unchecked Sendable {
     }
 
 
-    func enqueue(_ sampleBuffer: CMSampleBuffer, trackType: AudioTrackType,oringinaltime: CMSampleTimingInfo) {
-
-        
-        queue.async { [weak self] in
+    func enqueue(_ sampleBuffer: CMSampleBuffer, trackType: AudioTrackType, oringinaltime: CMSampleTimingInfo) {
+        Task { [weak self] in
             guard let self = self, self.isActive else { return }
-
 
             if self.UseOringin {
 
-                // ======================================================
-                // 🎧 1️⃣ 原始管線
-                // ======================================================
-
-            
-
-                let RSample = applyGain(sampleBuffer,trackType: trackType)
-                
-                //時間戳校正
+                let RSample = applyGain(sampleBuffer, trackType: trackType)
                 let retimed = retimeAudioBuffer(RSample, originalTime: oringinaltime)
-                
-                // 音量計算還是可以同步做（很快）
                 processRMS(retimed, trackType: trackType)
 
-                // 原封裝處理
-
-                Task {
-                
-                    
-                    await self.mediaMixer.append(RSample, track: trackType.rawValue)
-                }
+                await self.mediaMixer.append(RSample, track: trackType.rawValue)
 
             } else {
-            
 
-                // ======================================================
-                // 🎧 1️⃣ ZERO-COPY DSP ENTRY
-                // ======================================================
-
-            
-                if let audioEngine = audioEngine , self.isActive {
-
-                    audioEngine.process(sampleBuffer,track: trackType)
-
+                if let audioEngine = audioEngine, self.isActive {
+                    audioEngine.process(sampleBuffer, track: trackType)
                 }
 
-                //時間戳校正
                 let retimed = retimeAudioBuffer(sampleBuffer, originalTime: oringinaltime)
-                
-                // 音量計算還是可以同步做（很快）
                 processRMS(retimed, trackType: trackType)
 
-                // 原封裝處理 
-                Task {           
-                    
-                    await self.mediaMixer.append(sampleBuffer, track:  trackType.rawValue)
-
-                }
-                
-
+                await self.mediaMixer.append(sampleBuffer, track: trackType.rawValue)
             }
-
         }
     }
 
