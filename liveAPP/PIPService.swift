@@ -767,7 +767,10 @@ final class PIPService: NSObject, @unchecked Sendable {
         messagesLayer?.container.render(in: context)
         context.restoreGState()
 
+        context.saveGState()
+        context.scaleBy(x: scale, y: scale)
         drawTimeOverlay(in: context, size: frameSize)
+        context.restoreGState()
 
 
         return pb
