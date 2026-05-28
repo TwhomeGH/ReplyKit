@@ -147,7 +147,6 @@ final class PIPService: NSObject, @unchecked Sendable {
 
     // MARK: - Render
     func renderIfNeeded() -> CVPixelBuffer?  {
-        // 直接 CVPixelBuffer 渲染，跳過 UIGraphicsImageRenderer + CIImage round-trip
         renderUIViewToPixelBuffer(size: OframeSize)
     }
 
@@ -1114,42 +1113,9 @@ final class PIPService: NSObject, @unchecked Sendable {
 
 
 
-        // 生成 PixelBuffer
-        var pixelBuffer: CVPixelBuffer?
-
-        pixelBuffer = renderIfNeeded()
-
-        guard let pixelBuffer = pixelBuffer else { return false }
-
-        if self.basePTS == nil { self.basePTS = CACurrentMediaTime() }
-
-        guard let sampleBuffer = createSampleBuffer(from: pixelBuffer) else {
-            return false
-        }
-
-
-        // 3️⃣ 主線程 enqueue
-
-        if displayLayer.isReadyForMoreMediaData {
-
-            displayLayer.enqueue(sampleBuffer)
-            self.frameCount += 1
-
-
-            
-
-            // 啟動 PiP
-            if !self.didStartPiP && self.frameCount >= self.pipStartThreshold {
-                self.safeTryStartPiP()
-            }
-
-        }
 
 
 
-        return true
-
-    }
 
 }
 
