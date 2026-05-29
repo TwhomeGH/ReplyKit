@@ -128,9 +128,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         tsDebugger.enabled = on
     }
 
-    private var device: MTLDevice?
-    private var queue: MTLCommandQueue?
-
     private var pipelineBilinear: MTLComputePipelineState?
     private var pipelineBicubic: MTLComputePipelineState?
 
@@ -335,7 +332,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         CVMetalTextureCacheFlush(cache, 0)
     }
     textureCache = nil
-    queue = nil
 
     pipelineBilinear = nil
     pipelineBicubic = nil
@@ -381,29 +377,15 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
         hasMetalResources = true
 
-        // 1️⃣ 初始化 MTLDevice + CommandQueue
-        if queue == nil {
-            guard let dev = MTLCreateSystemDefaultDevice(),
-                  let q = dev.makeCommandQueue() else { return false }
-            device = dev
-            queue = q
-        }
+        let ctx = MetalContext.shared
 
-        // 2️⃣ 初始化 TextureCache
+        // 1️⃣ TextureCache（共用 MetalContext）
         if textureCache == nil {
-            guard let dev = device,
-                  CVMetalTextureCacheCreate(
-                    nil,
-                    nil,
-                    dev,
-                    nil,
-                    &textureCache
-                  ) == kCVReturnSuccess,
-                  textureCache != nil else { return false }
+            textureCache = ctx.ensureTextureCache()
+            if textureCache == nil { return false }
         }
 
-        // 3️⃣ 初始化「兩條」 ComputePipeline
-        // ❗只要任一條還沒建，就建一次
+        // 2️⃣ 初始化「兩條」 ComputePipeline
         if pipelineBilinear == nil || pipelineBicubic == nil {
             if !buildComputePipeline() { return false }
         }
@@ -415,19 +397,18 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     private func buildComputePipeline() -> Bool {
         do {
-            guard let dev = device,
-                    let lib = dev.makeDefaultLibrary() else { return false }
+            let lib = MetalContext.shared.library
 
             // --- Pipeline A：直播（bilinear）---
             if pipelineBilinear == nil {
                 guard let fn = lib.makeFunction(name: "rotateNV12_bilinear") else { return false }
-                pipelineBilinear = try dev.makeComputePipelineState(function: fn)
+                pipelineBilinear = try MetalContext.shared.device.makeComputePipelineState(function: fn)
             }
 
             // --- Pipeline B：高品質（bicubic）---
             if pipelineBicubic == nil {
                 guard let fn = lib.makeFunction(name: "rotateNV12_bicubic") else { return false }
-                pipelineBicubic = try dev.makeComputePipelineState(function: fn)
+                pipelineBicubic = try MetalContext.shared.device.makeComputePipelineState(function: fn)
             }
 
             return true
@@ -566,7 +547,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
         guard let ycvTexIn = makeTexture(from: inBuffer, planeIndex: 0),
             let uvcvTexIn = makeTexture(from: inBuffer, planeIndex: 1),
-            let cmd = queue?.makeCommandBuffer() else {
+            let cmd = MetalContext.shared.queue.makeCommandBuffer() else {
 
             recycleOutput(outSet)
 

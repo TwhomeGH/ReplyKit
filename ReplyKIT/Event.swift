@@ -489,6 +489,8 @@ final class RPConfig {
         var enableEchoFix : Bool = false 
         // 自動增益
         var enableAGCFix : Bool = false
+        // Metal 加速降噪
+        var enableMetalAudio : Bool = false
 
     }
 
@@ -510,7 +512,8 @@ final class RPConfig {
                     MicVolumeAdd:Double? = nil,
                     enableNoiseFix:Bool? = nil,
                     enableEchoFix:Bool? = nil,
-                    enableAGCFix:Bool? = nil 
+                    enableAGCFix:Bool? = nil,
+                    enableMetalAudio:Bool? = nil 
                     ) {
 
 
@@ -545,6 +548,10 @@ final class RPConfig {
             
             if let enableAGCFix = enableAGCFix {
                 self.state.enableAGCFix = enableAGCFix 
+            }
+
+            if let enableMetalAudio = enableMetalAudio {
+                self.state.enableMetalAudio = enableMetalAudio
             }
             
         }

@@ -657,6 +657,7 @@ class SocketClient : @unchecked Sendable {
         let enableEchoFix: Bool
         let enableNoiseFix: Bool
         let enableAGCFix: Bool
+        let enableMetalAudio: Bool
 
         let appVolume: Double
         let micVolume: Double
@@ -733,14 +734,15 @@ class SocketClient : @unchecked Sendable {
                                         MicVolumeAdd:c.micVolumeAdd,
                                         enableNoiseFix:c.enableNoiseFix,
                                         enableEchoFix:c.enableEchoFix,
-                                        enableAGCFix:c.enableAGCFix
+                                        enableAGCFix:c.enableAGCFix,
+                                        enableMetalAudio:c.enableMetalAudio
             )
 
             logRES.append(
                 "[Get]Audio App:\(c.appVolume) Mic:\(c.micVolume) AppAdd:\(c.appVolumeAdd) MicAdd:\(c.micVolumeAdd)"
             )
             logRES.append(
-                "[Get]Audio 降噪處理:\(c.enableNoiseFix) 回音處理:\(c.enableEchoFix) 自動增益:\(c.enableAGCFix) "
+                "[Get]Audio 降噪處理:\(c.enableNoiseFix) 回音處理:\(c.enableEchoFix) 自動增益:\(c.enableAGCFix) Metal:\(c.enableMetalAudio) "
             )
 
             // 通知 SampleHandler 重新套用視訊設定

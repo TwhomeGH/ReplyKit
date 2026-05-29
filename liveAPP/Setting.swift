@@ -517,6 +517,7 @@ struct AudioSettingsView:View {
     @AppStorage("enableNoiseFix",store:userDefaults) private var enableNoiseFix = false
     @AppStorage("enableEchoFix",store:userDefaults) private var enableEchoFix = false
     @AppStorage("enableAGCFix",store:userDefaults) private var enableAGCFix = false
+    @AppStorage("enableMetalAudio",store:userDefaults) private var enableMetalAudio = false
 
 
     var body: some View {
@@ -559,6 +560,14 @@ struct AudioSettingsView:View {
                 .foregroundColor(.secondary)
                 .padding(.bottom, 5)
 
+                Toggle(isOn:$enableMetalAudio){
+                    Text("啟用 Metal 加速降噪！")
+                }
+
+                Text("使用 GPU 加速降噪處理，降低 CPU 使用率，僅在啟用降噪時生效")                                                                                                     
+                .font(.footnote)
+                .foregroundColor(.secondary)
+                .padding(.bottom, 5)
 
 
                 Text("敬請期待！")

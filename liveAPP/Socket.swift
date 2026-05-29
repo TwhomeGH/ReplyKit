@@ -602,6 +602,7 @@ class SocketServer:ObservableObject {
             "enableEchoFix" : userDefaults?.bool(forKey: "enableEchoFix") ?? false,
             "enableNoiseFix": userDefaults?.bool(forKey: "enableNoiseFix") ?? false,
             "enableAGCFix" : userDefaults?.bool(forKey: "enableAGCFix") ?? false,
+            "enableMetalAudio": userDefaults?.bool(forKey: "enableMetalAudio") ?? false,
             
 
 

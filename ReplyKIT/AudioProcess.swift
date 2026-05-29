@@ -253,12 +253,14 @@ final class AudioProcessor : @unchecked Sendable {
         let EchoFix = RPConfig.shared.state.enableEchoFix
         // 自動增益
         let AGCFix = RPConfig.shared.state.enableAGCFix
+        // Metal 音訊
+        let metalAudio = RPConfig.shared.state.enableMetalAudio
 
 
 
-        sendlog(message: "音訊配置: 降噪:\(noiseFix) 回音處理:\(EchoFix) 自動增益:\(AGCFix)")
+        sendlog(message: "音訊配置: 降噪:\(noiseFix) 回音處理:\(EchoFix) 自動增益:\(AGCFix) Metal:\(metalAudio)")
         
-        audioEngine?.updateAudioState(micGain:Float(micGain),echoFix:EchoFix,noiseFix:noiseFix,agcFix:AGCFix)
+        audioEngine?.updateAudioState(micGain:Float(micGain),echoFix:EchoFix,noiseFix:noiseFix,agcFix:AGCFix,metalAudio:metalAudio)
 
         
     }
@@ -286,6 +288,8 @@ final class AudioProcessor : @unchecked Sendable {
         let EchoFix = RPConfig.shared.state.enableEchoFix
         // 自動增益
         let AGCFix = RPConfig.shared.state.enableAGCFix
+        // Metal 音訊
+        let metalAudio = RPConfig.shared.state.enableMetalAudio
 
 
         if RPConfig.shared.state.isOringinAudio {
@@ -297,8 +301,8 @@ final class AudioProcessor : @unchecked Sendable {
         }  else {
 
             self.UseOringin = false
-            self.audioEngine = AudioEngine(micGain:micAddVolume,echoFix:EchoFix,noiseFix:noiseFix,agcFix:AGCFix)
-            sendlog(message: "AudioEngine啟用 使用專用音訊管線")
+            self.audioEngine = AudioEngine(micGain:micAddVolume,echoFix:EchoFix,noiseFix:noiseFix,agcFix:AGCFix,metalAudio:metalAudio)
+            sendlog(message: "AudioEngine啟用 使用專用音訊管線 Metal:\(metalAudio)")
 
             
 

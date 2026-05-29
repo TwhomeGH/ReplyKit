@@ -1,36 +1,50 @@
 #include <metal_stdlib>
 using namespace metal;
 
+struct NoiseSuppressParams {
+    float noiseAlpha;       // noise estimate smoothing (0.98)
+    float noiseBeta;        // noise update weight (0.02)
+    float vadThreshold;     // VAD energy threshold
+    float minGain;          // minimum gain floor
+    uint frameSize;         // number of bins
+};
+
 kernel void noiseSuppress(
-    device const float *mag        [[ buffer(0) ]],
-    device float *noise            [[ buffer(1) ]],
-    device float *gain             [[ buffer(2) ]],
-    device uchar *vad              [[ buffer(3) ]],
-    uint id [[ thread_position_in_grid ]]
+    device const float *magnitude   [[ buffer(0) ]],
+    device float *noiseEstimate     [[ buffer(1) ]],
+    device float *gain              [[ buffer(2) ]],
+    device float *real              [[ buffer(3) ]],
+    device float *imag              [[ buffer(4) ]],
+    constant NoiseSuppressParams& params [[ buffer(5) ]],
+    uint id                         [[ thread_position_in_grid ]]
 ) {
-    float m = mag[id];
-    float n = noise[id];
+    if (id >= params.frameSize) return;
 
-    // -------------------------
-    // 🧠 noise tracking
-    // -------------------------
-    noise[id] = n * 0.98 + m * 0.02;
+    float mag = magnitude[id];
+    float noise = noiseEstimate[id];
 
-    // -------------------------
-    // 🧠 SNR + Wiener
-    // -------------------------
-    float snr = m / (noise[id] + 1e-6);
-    float g = snr / (1.0 + snr);
+    // noise tracking (smooth update)
+    noise = noise * params.noiseAlpha + mag * params.noiseBeta;
+    noiseEstimate[id] = noise;
 
-    // -------------------------
-    // 🧠 VAD (energy gate)
-    // -------------------------
-    uchar speech = (m > 0.0001) ? 1 : 0;
-    vad[id] = speech;
+    // SNR
+    float snr = mag / (noise + 1e-10f);
 
-    if (speech == 0) {
-        g *= 0.1;
+    // Wiener filter gain
+    float g = snr / (1.0f + snr);
+
+    // VAD: energy gate on magnitude
+    bool speech = (mag > params.vadThreshold);
+    if (!speech) {
+        g *= 0.1f;
     }
 
+    // floor
+    g = max(g, params.minGain);
+
     gain[id] = g;
+
+    // apply gain to real & imag
+    real[id] = real[id] * g;
+    imag[id] = imag[id] * g;
 }

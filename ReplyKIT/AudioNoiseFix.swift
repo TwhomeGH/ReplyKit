@@ -318,9 +318,9 @@ final class AudioEngine {
 
     private let preProcessor: AudioPreProcessor
 
-    init(micGain:Float?=nil,echoFix:Bool?=nil,noiseFix: Bool? = nil,agcFix:Bool? = nil) {
+    init(micGain:Float?=nil,echoFix:Bool?=nil,noiseFix: Bool? = nil,agcFix:Bool? = nil,metalAudio:Bool? = nil) {
 
-        self.preProcessor = AudioPreProcessor(micGain:micGain,echoFix:echoFix,noiseFix: noiseFix,agcFix:agcFix)
+        self.preProcessor = AudioPreProcessor(micGain:micGain,echoFix:echoFix,noiseFix: noiseFix,agcFix:agcFix,metalAudio:metalAudio)
     }
 
    // ======================================================
@@ -329,13 +329,15 @@ final class AudioEngine {
     func updateAudioState(micGain: Float? = nil,
                           echoFix: Bool? = nil,
                           noiseFix: Bool? = nil,
-                          agcFix:Bool? = nil) {
+                          agcFix:Bool? = nil,
+                          metalAudio: Bool? = nil) {
 
         preProcessor.updateState(
             micGain: micGain,
             echoFix: echoFix,
             noiseFix: noiseFix,
-            agcFix: agcFix
+            agcFix: agcFix,
+            metalAudio: metalAudio
         )
     }
 
@@ -365,6 +367,7 @@ final class AudioPreProcessor {
         var echoFix: Bool = false
         var noiseFixEnabled: Bool = false
         var agcFixEnabled: Bool = false
+        var metalAudioEnabled: Bool = false
     }
 
     private var state = State()
@@ -380,7 +383,8 @@ final class AudioPreProcessor {
     func updateState(micGain: Float? = nil,
                      echoFix: Bool? = nil,
                      noiseFix: Bool? = nil,
-                     agcFix: Bool? = nil) {
+                     agcFix: Bool? = nil,
+                     metalAudio: Bool? = nil) {
 
         stateQueue.async {
 
@@ -397,6 +401,9 @@ final class AudioPreProcessor {
         }
         if let agcFix = agcFix {
             self.state.agcFixEnabled = agcFix
+        }
+        if let metalAudio = metalAudio {
+            self.state.metalAudioEnabled = metalAudio
         }
 
 
@@ -415,6 +422,7 @@ final class AudioPreProcessor {
     private let agc = AGCProcessor()
     private let echo = EchoCanceller(size: 1024)
     private let ns = RealTimeNoiseSuppressor()
+    private var metalNS: MetalRealTimeNoiseSuppressor?
     
 
 
@@ -422,12 +430,14 @@ final class AudioPreProcessor {
 
 
 
-    init(maxFrameSize: Int = 512,micGain:Float? = nil,echoFix:Bool? = nil, noiseFix:Bool? = nil,agcFix:Bool? = nil) {
+    init(maxFrameSize: Int = 512,micGain:Float? = nil,echoFix:Bool? = nil, noiseFix:Bool? = nil,agcFix:Bool? = nil,metalAudio:Bool? = nil) {
         self.micFloatBuffer = [Float](repeating: 0, count: maxFrameSize)
         self.tempFloatBuffer = [Float](repeating: 0, count: maxFrameSize)
         self.processFloatBuffer = [Float](repeating: 0, count: maxFrameSize)
 
-        self.updateState(micGain:micGain,echoFix:echoFix,noiseFix:noiseFix,agcFix:agcFix) 
+        self.updateState(micGain:micGain,echoFix:echoFix,noiseFix:noiseFix,agcFix:agcFix,metalAudio:metalAudio) 
+
+        self.metalNS = MetalRealTimeNoiseSuppressor()
 
     }
 
@@ -475,8 +485,11 @@ final class AudioPreProcessor {
         // ==================================================
 
         if state.noiseFixEnabled {
-        ns.process(&micFloatBuffer, count: count)
-
+            if state.metalAudioEnabled, let metalNS = metalNS {
+                metalNS.process(&micFloatBuffer, count: count)
+            } else {
+                ns.process(&micFloatBuffer, count: count)
+            }
         }
 
         // ==================================================
