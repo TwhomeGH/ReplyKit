@@ -119,7 +119,7 @@ final class VideoFrameProcessor {
                     let old = r
                     Task { await old.cleanup() }
                     self.rotator = nil
-                    sendlog("[Rotator] config changed, recreating")
+                    self.sendlog("[Rotator] config changed, recreating")
                 }
                 self.lastRotatorKey = key
 
