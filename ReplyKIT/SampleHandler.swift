@@ -2088,17 +2088,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         // 這裡的 sampleBuffer 是 ReplayKit 給的原始幀數據，還沒有經過我們的處理器修改
-        //let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-        
-
-
-        let now = CMClockGetTime(CMClockGetHostTimeClock())
+        let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
 
         let duration = CMSampleBufferGetDuration(sampleBuffer)
 
         let timing = CMSampleTimingInfo(
             duration: duration,
-            presentationTimeStamp: now,
+            presentationTimeStamp: timestamp,
             decodeTimeStamp: CMTime.invalid
         )
 
