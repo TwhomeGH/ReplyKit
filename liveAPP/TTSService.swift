@@ -46,9 +46,9 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
 
         isEnabled = userDefaults?.bool(forKey: "TTSEnabled") ?? false
         minLen = userDefaults?.integer(forKey: "TTSMinLength") ?? 3
-        readMainOnly = userDefaults?.bool(forKey: "TTSReadMainOnly") ?? true
+        readMainOnly = (userDefaults?.object(forKey: "TTSReadMainOnly") as? Bool) ?? true
 
-        includeUser = userDefaults?.bool(forKey: "TTSReadUserName") ?? true
+        includeUser = (userDefaults?.object(forKey: "TTSReadUserName") as? Bool) ?? true
 
         maxLen = userDefaults?.integer(forKey: "TTSMaxLength") ?? 0
 
@@ -92,9 +92,9 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
         // 部分初始化不能分離 應保留部分在此位置
         isEnabled = userDefaults?.bool(forKey: "TTSEnabled") ?? false
         minLen = userDefaults?.integer(forKey: "TTSMinLength") ?? 3
-        readMainOnly = userDefaults?.bool(forKey: "TTSReadMainOnly") ?? true
+        readMainOnly = (userDefaults?.object(forKey: "TTSReadMainOnly") as? Bool) ?? true
 
-        includeUser = userDefaults?.bool(forKey: "TTSReadUserName") ?? true
+        includeUser = (userDefaults?.object(forKey: "TTSReadUserName") as? Bool) ?? true
 
         maxLen = userDefaults?.integer(forKey: "TTSMaxLength") ?? 0
 
