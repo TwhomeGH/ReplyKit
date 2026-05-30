@@ -23,6 +23,9 @@ class SpeechFilterManager: ObservableObject {
     @Published var removeURLs: Bool = true {
         didSet { saveToUserDefaults() }
     }
+    @Published var removeEmoji: Bool = true {
+        didSet { saveToUserDefaults() }
+    }
     
     private let defaultsKey = "SpeechFilterSettings"
     
@@ -30,7 +33,7 @@ class SpeechFilterManager: ObservableObject {
         loadFromUserDefaults()
     }
     
-    /// 處理訊息：刪除 URL、刪除或替換關鍵字
+    /// 處理訊息：刪除 URL、表情符號、刪除或替換關鍵字
     func processMessage(_ message: String) -> String {
         var result = message
         
@@ -42,12 +45,17 @@ class SpeechFilterManager: ObservableObject {
                                                  options: .regularExpression)
         }
         
-        // 2. 移除 blockKeywords
+        // 2. 移除表情符號
+        if removeEmoji {
+            result = String(result.unicodeScalars.filter { !$0.properties.isEmoji })
+        }
+        
+        // 3. 移除 blockKeywords
         for word in blockKeywords {
             result = result.replacingOccurrences(of: word, with: "")
         }
         
-        // 3. 替換 replaceKeywords
+        // 4. 替換 replaceKeywords
         for (word, replacement) in replaceKeywords {
             result = result.replacingOccurrences(of: word, with: replacement)
         }
@@ -60,7 +68,8 @@ class SpeechFilterManager: ObservableObject {
         let dict: [String: Any] = [
             "blockKeywords": blockKeywords,
             "replaceKeywords": replaceKeywords,
-            "removeURLs": removeURLs
+            "removeURLs": removeURLs,
+            "removeEmoji": removeEmoji
         ]
         UserDefaults.standard.set(dict, forKey: defaultsKey)
     }
@@ -77,6 +86,9 @@ class SpeechFilterManager: ObservableObject {
         }
         if let remove = dict["removeURLs"] as? Bool {
             removeURLs = remove
+        }
+        if let emoji = dict["removeEmoji"] as? Bool {
+            removeEmoji = emoji
         }
     }
 }
@@ -158,6 +170,8 @@ struct FilterSettingsView: View {
             Divider()
             
             Toggle("移除 URL", isOn: $filter.removeURLs)
+            
+            Toggle("移除表情符號 Emoji", isOn: $filter.removeEmoji)
             
             VStack(alignment: .leading) {
                 Text("排除關鍵字")
