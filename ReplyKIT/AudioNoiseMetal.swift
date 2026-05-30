@@ -12,8 +12,37 @@ struct NoiseSuppressParams {
     var frameSize: UInt32 = 0
 }
 
+// MARK: - GPU 延遲追蹤器
+final class GPULatencyTracker {
+    private var history: [Double] = []
+    private let maxSize = 30
+    private var _isOverloaded = false
+
+    var isOverloaded: Bool { _isOverloaded }
+
+    func record(_ seconds: Double) {
+        let ms = seconds * 1000
+        history.append(ms)
+        if history.count > maxSize {
+            history.removeFirst()
+        }
+        let avg = history.reduce(0, +) / Double(history.count)
+        if avg > 8.0 {
+            _isOverloaded = true
+        } else if avg < 3.0 {
+            _isOverloaded = false
+        }
+    }
+
+    func reset() {
+        history.removeAll()
+        _isOverloaded = false
+    }
+}
+
 // MARK: - Metal 加速降噪處理器
 // Hybrid: vDSP FFT/IFFT + Metal per-bin noise estimation & Wiener gain
+// GPU timeout 時自動 fallback 到 CPU Wiener gain（Scheme A+B+C）
 
 final class MetalRealTimeNoiseSuppressor {
 
@@ -60,6 +89,8 @@ final class MetalRealTimeNoiseSuppressor {
     private let realBuffer: MTLBuffer
     private let imagBuffer: MTLBuffer
     private let paramsBuffer: MTLBuffer
+
+    private let gpuTimeoutMs: Double = 8.0
 
     init?() {
         fftSetup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2))!
@@ -125,8 +156,10 @@ final class MetalRealTimeNoiseSuppressor {
 
     @inline(__always)
     private func pushToRingBuffer(_ input: UnsafePointer<Float>, count: Int) {
-        for i in 0..<count {
-            ringBuffer[writeIndex] = input[i]
+        let safeCount = min(count, fftSize)
+        let offset = count > fftSize ? count - fftSize : 0
+        for i in 0..<safeCount {
+            ringBuffer[writeIndex] = input[offset + i]
             writeIndex += 1
             if writeIndex >= fftSize {
                 writeIndex = 0
@@ -143,7 +176,7 @@ final class MetalRealTimeNoiseSuppressor {
         }
     }
 
-    func process(_ ptr: UnsafeMutablePointer<Float>, count: Int) {
+    func process(_ ptr: UnsafeMutablePointer<Float>, count: Int, forceCPU: Bool = false) {
         // 1. push into ring buffer
         pushToRingBuffer(ptr, count: count)
 
@@ -179,8 +212,17 @@ final class MetalRealTimeNoiseSuppressor {
             // 5. magnitude
             vDSP_zvmags(&split, 1, &mag, 1, vDSP_Length(fftSize/2))
 
-            // 6. GPU per-bin noise suppression
-            runMetalKernel(split: &split)
+            if forceCPU {
+                // Scheme C: CPU fallback gain model (Wiener)
+                fallbackCPUNoiseModel(split: &split)
+            } else {
+                // 6. GPU per-bin noise suppression with timeout
+                let gpuOK = runMetalKernelWithTimeout(split: &split)
+                if !gpuOK {
+                    // GPU timeout → 原地 CPU Wiener gain fallback
+                    fallbackCPUNoiseModel(split: &split)
+                }
+            }
 
             // 7. IFFT
             vDSP_fft_zrip(fftSetup,
@@ -220,17 +262,50 @@ final class MetalRealTimeNoiseSuppressor {
         }}
     }
 
-    private func runMetalKernel(split: inout DSPSplitComplex) {
+    // MARK: - CPU fallback noise model (Scheme C)
+    private func fallbackCPUNoiseModel(split: inout DSPSplitComplex) {
         let binCount = fftSize / 2
 
-        // copy CPU → GPU buffers
+        var energy: Float = 0
+        vDSP_measqv(mag, 1, &energy, vDSP_Length(binCount))
+
+        if energy > vadThreshold {
+            vadCounter = vadHangover
+            isSpeech = true
+        } else {
+            vadCounter -= 1
+            if vadCounter <= 0 {
+                isSpeech = false
+            }
+        }
+
+        var a: Float = 0.98
+        var b: Float = 0.02
+        vDSP_vsmul(noiseEstimate, 1, &a, &tmp1, 1, vDSP_Length(binCount))
+        vDSP_vsmul(mag, 1, &b, &tmp2, 1, vDSP_Length(binCount))
+        vDSP_vadd(tmp1, 1, tmp2, 1, &noiseEstimate, 1, vDSP_Length(binCount))
+
+        var snr = self.gain
+        vDSP_vdiv(noiseEstimate, 1, mag, 1, &snr, 1, vDSP_Length(binCount))
+
+        var one: Float = 1.0
+        vDSP_vsadd(snr, 1, &one, &gain, 1, vDSP_Length(binCount))
+
+        vDSP_vmul(split.realp, 1, gain, 1, split.realp, 1, vDSP_Length(binCount))
+        vDSP_vmul(split.imagp, 1, gain, 1, split.imagp, 1, vDSP_Length(binCount))
+    }
+
+    // MARK: - Async GPU kernel with timeout (Scheme A + C)
+    private func runMetalKernelWithTimeout(split: inout DSPSplitComplex) -> Bool {
+        let binCount = fftSize / 2
+
         memcpy(magBuffer.contents(), mag, binCount * MemoryLayout<Float>.size)
         memcpy(noiseBuffer.contents(), noiseEstimate, binCount * MemoryLayout<Float>.size)
         memcpy(realBuffer.contents(), split.realp, binCount * MemoryLayout<Float>.size)
         memcpy(imagBuffer.contents(), split.imagp, binCount * MemoryLayout<Float>.size)
 
         guard let cmd = metalQueue.makeCommandBuffer(),
-              let enc = cmd.makeComputeCommandEncoder() else { return }
+              let enc = cmd.makeComputeCommandEncoder() else { return false }
 
         enc.setComputePipelineState(metalPipeline)
         enc.setBuffer(magBuffer, offset: 0, index: 0)
@@ -246,13 +321,23 @@ final class MetalRealTimeNoiseSuppressor {
         enc.dispatchThreads(threads, threadsPerThreadgroup: tg)
         enc.endEncoding()
 
+        let sema = DispatchSemaphore(value: 0)
+        cmd.addCompletedHandler { _ in
+            sema.signal()
+        }
         cmd.commit()
-        cmd.waitUntilCompleted()
 
-        // copy GPU → CPU (noise estimate + gain + real + imag)
+        let timeout = DispatchTime.now() + .milliseconds(Int(gpuTimeoutMs))
+        let waitResult = sema.wait(timeout: timeout)
+
+        guard waitResult == .success else {
+            return false
+        }
+
         memcpy(&noiseEstimate, noiseBuffer.contents(), binCount * MemoryLayout<Float>.size)
         memcpy(&gain, gainBuffer.contents(), binCount * MemoryLayout<Float>.size)
         memcpy(split.realp, realBuffer.contents(), binCount * MemoryLayout<Float>.size)
         memcpy(split.imagp, imagBuffer.contents(), binCount * MemoryLayout<Float>.size)
+        return true
     }
 }

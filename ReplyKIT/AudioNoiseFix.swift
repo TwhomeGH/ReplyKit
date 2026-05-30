@@ -423,12 +423,8 @@ final class AudioPreProcessor {
     private let echo = EchoCanceller(size: 1024)
     private let ns = RealTimeNoiseSuppressor()
     private var metalNS: MetalRealTimeNoiseSuppressor?
-    
 
-
-    
-
-
+    private let gpuLatency = GPULatencyTracker()
 
     init(maxFrameSize: Int = 512,micGain:Float? = nil,echoFix:Bool? = nil, noiseFix:Bool? = nil,agcFix:Bool? = nil,metalAudio:Bool? = nil) {
         self.micFloatBuffer = [Float](repeating: 0, count: maxFrameSize)
@@ -485,8 +481,15 @@ final class AudioPreProcessor {
         // ==================================================
 
         if state.noiseFixEnabled {
-            if state.metalAudioEnabled, let metalNS = metalNS {
-                metalNS.process(&micFloatBuffer, count: count)
+            let useMetal = state.metalAudioEnabled
+                        && metalNS != nil
+                        && !gpuLatency.isOverloaded
+            if useMetal {
+                let start = CACurrentMediaTime()
+                metalNS!.process(&micFloatBuffer, count: count, forceCPU: false)
+                gpuLatency.record(CACurrentMediaTime() - start)
+            } else if state.metalAudioEnabled, let metalNS = metalNS {
+                metalNS.process(&micFloatBuffer, count: count, forceCPU: true)
             } else {
                 ns.process(&micFloatBuffer, count: count)
             }

@@ -222,7 +222,12 @@ final class AudioProcessor : @unchecked Sendable {
     private let mediaMixer: MediaMixer
     private var volumeNotifier: VolumeNotifier
 
-    var isActive = true
+    private let _isActiveLock = os_unfair_lock()
+    private var _isActive = true
+    var isActive: Bool {
+        get { os_unfair_lock_lock(&_isActiveLock); defer { os_unfair_lock_unlock(&_isActiveLock) }; return _isActive }
+        set { os_unfair_lock_lock(&_isActiveLock); _isActive = newValue; os_unfair_lock_unlock(&_isActiveLock) }
+    }
 
     var UseOringin = true
 

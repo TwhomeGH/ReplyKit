@@ -735,7 +735,9 @@ final class RPConfig {
             enableEchoFix:SharedDefaults.group?.bool(forKey: "enableEchoFix") ?? false,
 
              // 音訊自動增益
-            enableAGCFix:SharedDefaults.group?.bool(forKey: "enableAGCFix") ?? false
+            enableAGCFix:SharedDefaults.group?.bool(forKey: "enableAGCFix") ?? false,
+            // Metal 音訊降噪
+            enableMetalAudio:SharedDefaults.group?.bool(forKey: "enableMetalAudio") ?? false
         )
 
 
