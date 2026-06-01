@@ -956,9 +956,9 @@ class SocketClient : @unchecked Sendable {
                         return rawValue
                     }()
 
-                    
 
-                    logger.debug("UPSet key=\(key) SafeVal:\(safeValue)")
+
+                    logger.debug("UPSet key=\(key, privacy: .public) SafeVal:\(safeValue, privacy: .public)")
                     
                     logTo("UPGet -> \(key) \(String(describing: safeValue))")
 
