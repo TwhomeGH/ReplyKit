@@ -917,12 +917,14 @@ class SocketClient : @unchecked Sendable {
         }
     }
 
+    let decoder = JSONDecoder()
+
     private func handleSingleJSONOnQueue(data: Data, type: String) {
         self.isProcessingRemoteUpdate = true
         defer { self.isProcessingRemoteUpdate = false }
 
             
-            let decoder = JSONDecoder()
+            
 
             switch type {
 

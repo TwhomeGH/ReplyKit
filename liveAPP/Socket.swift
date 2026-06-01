@@ -736,13 +736,15 @@ class SocketServer:ObservableObject {
         attributes: .concurrent
     )
 
+    let decoder = JSONDecoder()
+
     private func handleReceivedData(_ data: Data, from connection: NWConnection) {
         SocketServer.parsingQueue.async { [weak self] in
             guard let self = self else { return }
 
             let base: TypePayload
             do {
-                base = try JSONDecoder().decode(TypePayload.self, from: data)
+                base = try decoder.decode(TypePayload.self, from: data)
             } catch {
                 self.queue.async {
                     self.removeConnection(connection)
@@ -757,9 +759,11 @@ class SocketServer:ObservableObject {
         }
     }
 
+
+
     private func handleDecodedPayload(data: Data, type: String, connection: NWConnection) {
         do {
-            let decoder = JSONDecoder()
+            
 
             switch type {
 
