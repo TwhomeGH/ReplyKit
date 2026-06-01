@@ -737,8 +737,7 @@ class SocketServer:ObservableObject {
     )
 
     private func handleReceivedData(_ data: Data, from connection: NWConnection) {
-        let id = ObjectIdentifier(connection)
-
+        
         SocketServer.parsingQueue.async { [weak self] in
             guard let self = self else { return }
 
