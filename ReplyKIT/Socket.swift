@@ -921,7 +921,7 @@ class SocketClient : @unchecked Sendable {
         self.isProcessingRemoteUpdate = true
         defer { self.isProcessingRemoteUpdate = false }
 
-        do {
+            
             let decoder = JSONDecoder()
 
             switch type {
@@ -1026,9 +1026,7 @@ class SocketClient : @unchecked Sendable {
                 logTo("[Socket] Unknown type: \(type)")
             }
 
-        } catch {
-            logTo("[Socket]Decode failed ❌ \(error)")
-        }
+        
     }
     
 
