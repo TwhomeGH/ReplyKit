@@ -1356,6 +1356,31 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         sendlog(message: "Video Buffer -> \(BCount)")
 
+        // 在 frame 到來前先用 socket 配置設定 video size
+        let dstW: Int
+        let dstH: Int
+        if RPConfig.shared.state.ODWidth > 0 && RPConfig.shared.state.ODHeight > 0 {
+            dstW = RPConfig.shared.state.ODWidth
+            dstH = RPConfig.shared.state.ODHeight
+        } else if RPConfig.shared.state.ADWidth > 0 && RPConfig.shared.state.ADHeight > 0 {
+            dstW = RPConfig.shared.state.ADWidth
+            dstH = RPConfig.shared.state.ADHeight
+        } else {
+            dstW = 0; dstH = 0
+        }
+
+        if dstW > 0 && dstH > 0 {
+            var videoSettings = await rtmpStream.videoSettings
+            let rotate = RPConfig.shared.state.Rotate
+            if rotate == 0 || rotate == 180 {
+                videoSettings.videoSize = CGSize(width: CGFloat(dstH), height: CGFloat(dstW))
+                sendlog(message: "預設影片尺寸(直向): \(dstH)x\(dstW)")
+            } else {
+                videoSettings.videoSize = CGSize(width: CGFloat(dstW), height: CGFloat(dstH))
+                sendlog(message: "預設影片尺寸(橫向): \(dstW)x\(dstH)")
+            }
+            await rtmpStream.setVideoSettings(videoSettings)
+        }
 
     }
     func configureAudio() async {
