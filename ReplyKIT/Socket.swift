@@ -735,95 +735,66 @@ class SocketClient : @unchecked Sendable {
 
 
     private func applyRTMP(_ c: RTMPConfig) {
+        var logRES: [String] = []
 
-        queue.async {
+        logRES.append("[Get]RTMP:\(c.rtmpURL):\(fixlogSafeKey(c.rtmpKey))")
 
-            var logRES: [String] = [
+        logRES.append("[Get]Bit:\(c.BitRate):\(c.ChangeBit) 低延遲模式:\(c.isLowLatencyRateControlEnabled) useBic:\(c.useBic)")
 
-            ]
-            
+        logRES.append("[Get]H264:\(c.h264level) : \(c.dstW)x\(c.dstH) \(c.videoBuffer) 方向:\(c.Rotate)")
 
-            logRES.append("[Get]RTMP:\(c.rtmpURL):\(fixlogSafeKey(c.rtmpKey))")
-            
+        logRES.append("[Get]OutDraw:\(c.odstW)x\(c.odstH) RotateOriginal:\(c.RotateOriginal)")
 
+        RPConfig.shared.updateState(
+            RTMPURL: c.rtmpURL,
+            RTMPKey: c.rtmpKey,
+            h264level: c.h264level,
+            allowFrameReordering: c.allowFrameReordering,
+            BitRateMode: c.BitRateMode,
+            BufferCount: c.videoBuffer,
+            BitRate: c.BitRate,
+            ChangeBit: c.ChangeBit,
+            isLowLatencyRateControlEnabled: c.isLowLatencyRateControlEnabled,
+            useBic: c.useBic,
+            Rotate: c.Rotate,
+            RotateOriginal: c.RotateOriginal,
+            ADWidth: c.dstW,
+            ADHeight: c.dstH,
+            ODWidth: c.odstW,
+            ODHeight: c.odstH
+        )
 
-            logRES.append("[Get]Bit:\(c.BitRate):\(c.ChangeBit) 低延遲模式:\(c.isLowLatencyRateControlEnabled) useBic:\(c.useBic)")
+        RPConfig.shared.updateAudio(
+            isOringinAudio: c.isOringinAudio,
+            AppVolume: c.appVolume,
+            MicVolume: c.micVolume,
+            AppVolumeAdd: c.appVolumeAdd,
+            MicVolumeAdd: c.micVolumeAdd,
+            enableNoiseFix: c.enableNoiseFix,
+            enableEchoFix: c.enableEchoFix,
+            enableAGCFix: c.enableAGCFix,
+            enableMetalAudio: c.enableMetalAudio
+        )
 
+        logRES.append("[Get]Audio App:\(c.appVolume) Mic:\(c.micVolume) AppAdd:\(c.appVolumeAdd) MicAdd:\(c.micVolumeAdd)")
+        logRES.append("[Get]Audio 降噪處理:\(c.enableNoiseFix) 回音處理:\(c.enableEchoFix) 自動增益:\(c.enableAGCFix) Metal:\(c.enableMetalAudio) ")
 
-            logRES.append("[Get]H264:\(c.h264level) : \(c.dstW)x\(c.dstH) \(c.videoBuffer) 方向:\(c.Rotate)")
+        CFNotificationCenterPostNotification(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            CFNotificationName("VideoReconfig" as CFString),
+            nil, nil, true
+        )
 
+        self.logTo(logRES.joined(separator: "\n"))
 
-            logRES.append(
-                "[Get]OutDraw:\(c.odstW)x\(c.odstH) RotateOriginal:\(c.RotateOriginal)"
-            )
-
-
-            
-
-            RPConfig.shared.updateState(
-                                        RTMPURL:c.rtmpURL,
-                                        RTMPKey:c.rtmpKey,
-                                        h264level:c.h264level,
-                                        allowFrameReordering:c.allowFrameReordering,
-                                        BitRateMode:c.BitRateMode,
-                                        BufferCount:c.videoBuffer,
-                                        BitRate:c.BitRate,
-                                        ChangeBit:c.ChangeBit,
-                                        isLowLatencyRateControlEnabled:c.isLowLatencyRateControlEnabled,
-                                        useBic:c.useBic,
-                                        Rotate:c.Rotate,
-                                        RotateOriginal:c.RotateOriginal,
-                                        ADWidth:c.dstW,
-                                        ADHeight:c.dstH,
-                                        ODWidth:c.odstW,
-                                        ODHeight:c.odstH,
-                                        )
-            
-            RPConfig.shared.updateAudio(
-                                        isOringinAudio:c.isOringinAudio,
-                                        AppVolume:c.appVolume,
-                                        MicVolume:c.micVolume,
-                                        AppVolumeAdd:c.appVolumeAdd,
-                                        MicVolumeAdd:c.micVolumeAdd,
-                                        enableNoiseFix:c.enableNoiseFix,
-                                        enableEchoFix:c.enableEchoFix,
-                                        enableAGCFix:c.enableAGCFix,
-                                        enableMetalAudio:c.enableMetalAudio
-            )
-
-            logRES.append(
-                "[Get]Audio App:\(c.appVolume) Mic:\(c.micVolume) AppAdd:\(c.appVolumeAdd) MicAdd:\(c.micVolumeAdd)"
-            )
-            logRES.append(
-                "[Get]Audio 降噪處理:\(c.enableNoiseFix) 回音處理:\(c.enableEchoFix) 自動增益:\(c.enableAGCFix) Metal:\(c.enableMetalAudio) "
-            )
-
-            // 通知 SampleHandler 重新套用視訊設定
-            CFNotificationCenterPostNotification(
-                CFNotificationCenterGetDarwinNotifyCenter(),
-                CFNotificationName("VideoReconfig" as CFString),
-                nil, nil, true
-            )
-
-            
-
-            self.logTo(logRES.joined(separator: "\n"))
-
-            if !self.isProcessingBatch {
-                // 單請求才 resume rtmpContinuation
-
-                guard let cont = self.rtmpContinuation else {
-                    self.logTo("[RTMP] no pending continuation, ignore")
-                    return
-                }
-
-                self.rtmpContinuation = nil
-                cont.resume(returning: true)
+        if !self.isProcessingBatch {
+            guard let cont = self.rtmpContinuation else {
+                self.logTo("[RTMP] no pending continuation, ignore")
+                return
             }
-
+            self.rtmpContinuation = nil
+            cont.resume(returning: true)
         }
-
-
     }
 
     private var receiveBuffer = Data()
