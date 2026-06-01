@@ -1748,7 +1748,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     }
                     let currentSize = finalVideoSettings.videoSize
                     sendlog(message: "RTMP Publish 前 videoSize: \(Int(currentSize.width))x\(Int(currentSize.height))")
-                    await rtmpStream.setVideoSettings(finalVideoSettings)
+                    try await rtmpStream.setVideoSettings(finalVideoSettings)
                 }
 
                 await self.startRTMP(url: self.rtmpURL , key: self.rtmpKey)
