@@ -1654,8 +1654,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             //self.prepareCompressionSession()
             //ExtensionMessagePort.shared.connectToApp()
 
-            // 同時發出兩個請求
-            let result = await SocketClient.shared.requestRTMPKEYAndLog()
+            // 同時發出兩個請求 (最多重試 3 次)
+            var result = await SocketClient.shared.requestRTMPKEYAndLog()
+            for _ in 0..<2 where !result {
+                sendlog(message: "Socket 請求失敗，1 秒後重試...")
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                result = await SocketClient.shared.requestRTMPKEYAndLog()
+            }
 
             logger.debug("Final result -> RTMP & LogConfig: \(result)")
 
@@ -1663,6 +1668,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 message:"Final result -> RTMP & LogConfig: \(result)",
             )
 
+            guard result else {
+                let msg = "Socket 請求失敗，無法取得推流設定"
+                sendlog(message: msg)
+                stopBroadcastWithError(msg)
+                return
+            }
 
 
                 // 🔹 從 UserDefaults 拿 RTMP 設定
