@@ -958,9 +958,9 @@ class SocketClient : @unchecked Sendable {
 
 
 
+
                     
-                    
-                    logTo("UPGet -> \(key) \(String(describing: safeValue))")
+                    logTo("UPGet -> \(String(describing:key)) \(String(describing: safeValue))")
 
 
                     Task {
