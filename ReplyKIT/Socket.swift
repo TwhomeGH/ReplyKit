@@ -951,14 +951,14 @@ class SocketClient : @unchecked Sendable {
                 if let resultValue = try? decoder.decode([String: JSONValue].self, from: data),
                    let key = resultValue["key"]?.rawValue as? String,
                    let rawValue = resultValue["value"]?.rawValue {
-                    let safeValue: Any? = {
+                   let safeValue: Any? = {
                         if rawValue is NSNull { return nil }
                         return rawValue
-                    }()
+                   }()
 
 
 
-                    logger.debug("UPSet key=\(key, privacy: .public) SafeVal:\(safeValue, privacy: .public)")
+                    
                     
                     logTo("UPGet -> \(key) \(String(describing: safeValue))")
 
