@@ -1647,6 +1647,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         isBroadcasting = true
         isStopping = false
 
+        // 先關閉，等 socket 配置套用後再開啟
+        needVideoConfiguration = false
         needAudioConfiguration = true
 
 
