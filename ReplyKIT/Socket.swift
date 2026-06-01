@@ -903,34 +903,38 @@ class SocketClient : @unchecked Sendable {
         SocketClient.parsingQueue.async { [weak self] in
             guard let self = self else { return }
 
-        do {
+            let base: TypePayload
+            do {
+                base = try JSONDecoder().decode(TypePayload.self, from: data)
+            } catch {
+                self.logTo("[Socket]Decode failed ❌ \(error)")
+                return
+            }
 
+            self.queue.async { [data] in
+                self.handleSingleJSONOnQueue(data: data, type: base.type)
+            }
+        }
+    }
+
+    private func handleSingleJSONOnQueue(data: Data, type: String) {
+        self.isProcessingRemoteUpdate = true
+        defer { self.isProcessingRemoteUpdate = false }
+
+        do {
             let decoder = JSONDecoder()
 
-            // 先只 decode type
-            let base = try decoder.decode(TypePayload.self, from: data)
-
-            self.isProcessingRemoteUpdate = true
-            defer { self.isProcessingRemoteUpdate = false }
-
-            switch base.type {
+            switch type {
 
             case "testRTMP":
-
                 Task { @MainActor in
-
                     let rtmp = await self.requestRTMPKEY()
                     let log  = await self.requestLogConfig()
-
                     self.logTo("RTMP: \(rtmp) LogConfig: \(log)")
-
                 }
-
-                break
 
             case "BatchEnded":
                 self.logTo("Batch Get All Req")
-
                 guard let cont = self.rtmpBatchContinuation else {
                     self.logTo("[rtmpBatch] no pending continuation, ignore")
                     return
@@ -939,138 +943,71 @@ class SocketClient : @unchecked Sendable {
                 self.isProcessingBatch = true
                 updateLogFixState()
                 updateONLogFixState()
-                
                 cont.resume(returning: true)
-
-                break
-
-
-
 
             case "UPSet":
                 logger.debug("DATA:\(data, privacy: .public)")
                 logTo("UPSet結果得到了！\n\(data)")
-                // 假設你解析 JSON 得到 resultValue
-                if let resultValue = try? decoder.decode(
-                    [String: JSONValue].self,
-                    from: data
-                ),
+                if let resultValue = try? decoder.decode([String: JSONValue].self, from: data),
                    let key = resultValue["key"]?.rawValue as? String,
                    let rawValue = resultValue["value"]?.rawValue {
-
-                    // 將 Optional 或 NSNull 處理成 nil
-                     let safeValue: Any? = {
-                         if rawValue is NSNull { return nil }
-                         return rawValue
-                     }()
-
-
-                    logger
-                        .debug(
-                            "UPSet key=\(key, privacy: .public) type=\(type(of: rawValue), privacy: .public) value=\(String(describing:rawValue), privacy: .public) SafeVal:\(String(describing:rawValue),privacy: .public)"
-                        )
-
-                    logTo(
-                        "UPGet -> \(String(describing: safeValue)) \(String(describing: safeValue))"
-                    )
-
+                    let safeValue: Any? = {
+                        if rawValue is NSNull { return nil }
+                        return rawValue
+                    }()
+                    logger.debug("UPSet key=\(key, privacy: .public) type=\(type(of: rawValue), privacy: .public) value=\(String(describing:rawValue), privacy: .public) SafeVal:\(String(describing:rawValue),privacy: .public)")
+                    logTo("UPGet -> \(String(describing: safeValue)) \(String(describing: safeValue))")
                     Task {
                         if let cont = await self.continuationStore.take(for: key) {
                             cont.resume(returning: safeValue)
                         }
                     }
-
-
-
                 }
 
-                break
-
-
-
             case "logConfig":
-
-                queue.async {
-
-
-                    if let env = try? decoder.decode(LogConfig.self, from: data) {
-
-                        RPConfig.shared.logMode = env.logMode
-                        RPConfig.shared.logURL = env.logURL
-
-                        RPConfig.shared.onLogPage = env.onlogPage
-                        RPConfig.shared.onAudioPage = env.onAudioPage
-                        RPConfig.shared.enableLog = env.enableLog
-                        RPConfig.shared.enableSocketLog = env.enableSocketLog
-                        RPConfig.shared.enableTimeDebug = env.enableTimeDebug
-
-                        RPConfig.shared.applyLogMode()
-
-                        self.logTo(
-                            "[Get]logMode:\(env.logMode) logURL:\(env.logURL) SocketLog:\(env.enableSocketLog) TimeDebug:\(env.enableTimeDebug)"
-                        )
-                        self.logTo(
-                            "[Get]onLog:\(env.onlogPage) onAudio:\(env.onAudioPage) EnableLog:\(env.enableLog)"
-                        )
-
-
-
-                        if !self.isProcessingBatch {
-                            // 單請求才 resume rtmpContinuation
-
-                            guard let cont = self.logContinuation else {
-                                self.logTo("[LogConfig] no pending continuation, ignore")
-                                return
-                            }
-
-                            self.logContinuation = nil
-                            cont.resume(returning: true)
-
-                        }
-
-
-                    } else {
-
-                        self.logTo("[Socket] logConfig decode failed")
-
-
+                if let env = try? decoder.decode(LogConfig.self, from: data) {
+                    RPConfig.shared.logMode = env.logMode
+                    RPConfig.shared.logURL = env.logURL
+                    RPConfig.shared.onLogPage = env.onlogPage
+                    RPConfig.shared.onAudioPage = env.onAudioPage
+                    RPConfig.shared.enableLog = env.enableLog
+                    RPConfig.shared.enableSocketLog = env.enableSocketLog
+                    RPConfig.shared.enableTimeDebug = env.enableTimeDebug
+                    RPConfig.shared.applyLogMode()
+                    self.logTo("[Get]logMode:\(env.logMode) logURL:\(env.logURL) SocketLog:\(env.enableSocketLog) TimeDebug:\(env.enableTimeDebug)")
+                    self.logTo("[Get]onLog:\(env.onlogPage) onAudio:\(env.onAudioPage) EnableLog:\(env.enableLog)")
+                    if !self.isProcessingBatch {
                         guard let cont = self.logContinuation else {
                             self.logTo("[LogConfig] no pending continuation, ignore")
                             return
                         }
-                        
                         self.logContinuation = nil
-                        cont.resume(returning: false)
-
+                        cont.resume(returning: true)
                     }
+                } else {
+                    self.logTo("[Socket] logConfig decode failed")
+                    guard let cont = self.logContinuation else {
+                        self.logTo("[LogConfig] no pending continuation, ignore")
+                        return
+                    }
+                    self.logContinuation = nil
+                    cont.resume(returning: false)
                 }
-
-                break
-
 
             case "RTMP":
                 if let env = try? decoder.decode(RTMPConfig.self, from: data) {
                     applyRTMP(env)
                 } else {
                     logTo("[Socket] log decode failed")
-
                     if !self.isProcessingBatch {
-                        // 單請求才 resume rtmpContinuation
-
                         guard let cont = self.rtmpContinuation else {
                             self.logTo("[RTMP] no pending continuation, ignore")
                             return
                         }
-
                         self.rtmpContinuation = nil
                         cont.resume(returning: true)
                     }
-                    
                 }
-
-                break
-
-
 
             case "log":
                 if let env = try? decoder.decode(LogMessage.self, from: data) {
@@ -1079,22 +1016,15 @@ class SocketClient : @unchecked Sendable {
                     logTo("[Socket] log decode failed")
                 }
 
-                break
-
-
-
             default:
-                logTo("[Socket] Unknown type: \(base.type)")
-
-                break
+                logTo("[Socket] Unknown type: \(type)")
             }
 
         } catch {
             logTo("[Socket]Decode failed ❌ \(error)")
-
-        }
         }
     }
+    
 
     private func processReceiveBuffer() {
         while true {

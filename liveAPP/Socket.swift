@@ -737,332 +737,172 @@ class SocketServer:ObservableObject {
     )
 
     private func handleReceivedData(_ data: Data, from connection: NWConnection) {
-        
         SocketServer.parsingQueue.async { [weak self] in
             guard let self = self else { return }
 
+            let base: TypePayload
+            do {
+                base = try JSONDecoder().decode(TypePayload.self, from: data)
+            } catch {
+                self.queue.async {
+                    self.removeConnection(connection)
+                }
+                self.logTo("[Socket]Decode failed ❌ \(error)")
+                return
+            }
+
+            self.queue.async { [data, connection] in
+                self.handleDecodedPayload(data: data, type: base.type, connection: connection)
+            }
+        }
+    }
+
+    private func handleDecodedPayload(data: Data, type: String, connection: NWConnection) {
         do {
             let decoder = JSONDecoder()
-            
-            // 先只 decode type
-            let base = try decoder.decode(TypePayload.self, from: data)
-            
-            
-            switch base.type {
+
+            switch type {
 
             case "heartbeat":
                 sendlog(message: "收到Socket心跳維持連線")
-
-                break
 
             case "StreamStarting":
                 sendlog(message: "直播開始")
                 StreamStarting()
 
-                break
-
             case "Ended":
-                let dict = try decoder.decode(StreamEnded.self,
-                    from: data
-                )
+                let dict = try decoder.decode(StreamEnded.self, from: data)
                 let MES = dict.Message
-
                 sendlog(message: "直播已結束: \(MES)")
-
                 if MES != "StreamEnded" {
                     StreamStatusChanged(isLive: false, message: MES)
                 } else {
                     StreamStatusChanged(isLive: false)
                 }
 
-                break
-
             case "StreamMessage":
-
-                // 假設你解析 JSON 得到 resultValue
-                let dict = try decoder.decode(ChatMessage.self,
-                    from: data
-                )
-
+                let dict = try decoder.decode(ChatMessage.self, from: data)
                 let user = dict.user
                 let msg = dict.message
+                let img = dict.img
+                let giftImg = dict.giftImg
+                let isMain = dict.isMain ?? true
+                let userNum = dict.userNum
+                let userList = dict.userList
 
-
-
-                let img : String? = dict.img
-                let giftImg: String? = dict.giftImg
-                let isMain: Bool = dict.isMain ?? true
-                let userNum: Int? = dict.userNum
-                let userList: [String]? = dict.userList
-
-                updateAudienceInfo(
-                    userNum: userNum,
-                    userList: userList
-                )
-
+                updateAudienceInfo(userNum: userNum, userList: userList)
 
                 guard !user.isEmpty, !msg.isEmpty else {
                     logTo("訊息是空的 不需要更新子母_StreamMessage")
                     return
                 }
 
-
-                renderChatMessage(
-                    user: user,
-                    msg: msg,
-                    img: img,
-                    giftImg: giftImg,
-                    isMain: isMain
-                )
+                renderChatMessage(user: user, msg: msg, img: img, giftImg: giftImg, isMain: isMain)
 
                 Task { @MainActor in
-                    TTSService.shared.speakStreamMessage(
-                        user: user,
-                        message: msg,
-                        isMain:isMain
-                    )
+                    TTSService.shared.speakStreamMessage(user: user, message: msg, isMain: isMain)
                 }
 
-                break
-
-
-
-                
-                
             case "UPSet":
-
-                // 假設你解析 JSON 得到 resultValue
-                let dict = try decoder.decode(
-                    UPSet.self,
-                    from: data
-                )
-
+                let dict = try decoder.decode(UPSet.self, from: data)
                 let key = dict.key
                 let VType = dict.ValueType
 
-                
-                var res : Any?
-                
+                var res: Any?
                 switch VType {
-                    
                 case "String":
                     res = userDefaults?.string(forKey: key)
                 case "Bool":
                     res = userDefaults?.bool(forKey: key)
-
                 case "Double":
-                    res =  userDefaults?.double(forKey: key)
+                    res = userDefaults?.double(forKey: key)
                 case "Int":
-                    res =  userDefaults?.integer(forKey: key)
-                    
+                    res = userDefaults?.integer(forKey: key)
                 case "Float":
-                    res =  userDefaults?.float(forKey: key)
-                    
+                    res = userDefaults?.float(forKey: key)
                 default:
                     logTo("Unknow?")
                     return
                 }
-                
-                
+
                 guard let result = res else {
                     logTo("Value for key \(key) is nil")
-
-                    let payload: [String: Any] = [
-
-                        "type": "UPSet",
-                        "key": key,
-                        "value": "\(key) is Nil"
-                    ]
-
-                    sendTo(connection, payload: payload) // ← 只回應發送請求的 client
-
+                    sendTo(connection, payload: ["type": "UPSet", "key": key, "value": "\(key) is Nil"])
                     return
                 }
-                
-                
-                let payload: [String: Any] = [
-                    
-                    "type": "UPSet",
-                    "key": key,
-                    "value": result
-                ]
 
-                sendTo(connection, payload: payload) // ← 只回應發送請求的 client
-
-                break
-
+                sendTo(connection, payload: ["type": "UPSet", "key": key, "value": result])
 
             case "batch":
-
                 let json = try JSONSerialization.jsonObject(with: data)
-
                 sendlog(message: "liveAppBactch Raw:\n\(json)")
-                // 先解析 requests 陣列
 
-                let dict = try decoder.decode(BatchRequest.self,
-                    from: data
-                )
-
-
+                let dict = try decoder.decode(BatchRequest.self, from: data)
                 let requests = dict.requests
-
-                
                 sendlog(message: "liveAppBactch Req:\n\(requests)")
 
-                let data = dict.data
-                sendlog(message: "liveAppBactch Req:\n\(String(describing:data))")
-                
+                let batchData = dict.data
+                sendlog(message: "liveAppBactch Req:\n\(String(describing: batchData))")
 
                 var responses: [[String: Any]] = []
-
                 for req in requests {
                     switch req {
                     case "requestRTMP":
-                        let rtmpPayload: [String: Any] = GetRTMPConfig()
-
-                        responses.append(rtmpPayload)
-
-                        break
-
+                        responses.append(GetRTMPConfig())
                     case "logConfig":
-                        let logPayload: [String: Any] = GetLogConfig()
-                        responses.append(logPayload)
-                        break
-
+                        responses.append(GetLogConfig())
                     case "log":
-                        
-
-                        // 判斷 data 是否存在
-                        if let data = data {
-                            // 遍歷所有 key/value
-                            for (key, value) in data {
+                        if let batchData = batchData {
+                            for (key, value) in batchData {
                                 logTo(String(describing: value), title: String(describing: key))
                             }
                         } else {
-
                             logTo("data 為 nil")
-
                         }
-
-                        break
-
-
-
                     default:
                         break
                     }
                 }
+                responses.append(["type": "BatchEnded"])
 
-                let lastPayload: [String: Any] = [
-                    "type": "BatchEnded"
-                ]
-
-                responses.append(lastPayload)
-
-
-                // 將 responses 逐條發送給客戶端
                 for (index, resp) in responses.enumerated() {
-
-                    // 先發送給客戶端
-                    sendTo(connection, payload: resp) // ← 只回應發送請求的 client
-
-
-                    // 只對第一個元素做檢查
+                    sendTo(connection, payload: resp)
                     if index == 0, let type = resp["type"] as? String, type == "RTMP" {
-
-                        // 複製 payload 並做修改
                         var logResp = resp
                         if let rtmpKey = logResp["rtmpKey"] as? String {
-                            logResp["rtmpKey"] = fixlogSafeKey(rtmpKey)  // 你的自訂修改函數
+                            logResp["rtmpKey"] = fixlogSafeKey(rtmpKey)
                         }
-
-                        // 打印日誌
                         sendlog(message: "RESBatch-RTMP->\n\(logResp)")
                     } else {
-                        // 如果不是第一個或不是 RTMP，正常打印或不打印
                         sendlog(message: "RESBatch->\n\(resp)")
                     }
                 }
 
-                break
-
-
-
-
             case "logConfig":
-
-                let payload: [String: Any] = GetLogConfig()
-
-                sendTo(connection, payload: payload) // ← 只回應發送請求的 client
-                break
-
-
+                sendTo(connection, payload: GetLogConfig())
 
             case "requestRTMP":
-
-                let payload: [String: Any] = GetRTMPConfig()
-
-                sendTo(connection, payload: payload) // ← 只回應發送請求的 client
-                break
-
-
+                sendTo(connection, payload: GetRTMPConfig())
 
             case "requestSettings":
                 logTo("棄用Sync UserDefaults to client 該項目不使用")
-                break
-
 
             case "audioLive":
-                // 假設你解析 JSON 得到 resultValue
-                let dict = try decoder.decode(
-                    AudioLive.self,
-                    from: data
-                )
-
-                let AppVol = dict.appVol
-                let MicVol = dict.micVol
-                let persist = dict.persist
-
-                LiveVolumeModel.shared.updateVolumes(mic: MicVol, app: AppVol,persist:persist)
-
-                logTo("Updated UserVol APP:\(AppVol) Mic:\(MicVol)) Persist:\(persist)")
-
-                break
-
+                let dict = try decoder.decode(AudioLive.self, from: data)
+                LiveVolumeModel.shared.updateVolumes(mic: dict.micVol, app: dict.appVol, persist: dict.persist)
+                logTo("Updated UserVol APP:\(dict.appVol) Mic:\(dict.micVol)) Persist:\(dict.persist)")
 
             case "settings":
-
-                // 假設你解析 JSON 得到 resultValue
-                let dict = try decoder.decode(
-                    [String: JSONValue].self,
-                    from: data
-                )
-
-
+                let dict = try decoder.decode([String: JSONValue].self, from: data)
                 if let key = dict["key"]?.rawValue as? String, let valueAny = dict["value"]?.rawValue {
-                    let safeValue: Any = safeJSONValue(valueAny) // 明確 Any
-                    let safeValueStr = String(describing: safeValue)
+                    let safeValueStr = String(describing: safeJSONValue(valueAny))
                     logTo("Updated UserDefaults: \(key) = \(safeValueStr)")
-                    
-                    userDefaults?.set(valueAny, forKey: key) // 用原值存 UserDefaults
-                    
+                    userDefaults?.set(valueAny, forKey: key)
                 }
 
-                break
-                
             case "log":
-                // 假設你解析 JSON 得到 resultValue
-                let dict = try decoder.decode(SLogMessage.self,
-                    from: data
-                )
-
-                let title = dict.title
-                let message = dict.message
-
-                receiveSocketLog(title: title, message: message)
-
-                break
-                
+                let dict = try decoder.decode(SLogMessage.self, from: data)
+                receiveSocketLog(title: dict.title, message: dict.message)
 
             case "reconnectStatus":
                 if let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -1089,22 +929,13 @@ class SocketServer:ObservableObject {
                     }
                     PIPService.shared.markOverlayDirty()
                 }
-                break
 
             default:
-                logTo("Unknown message type: \(base.type)")
-                break
-
+                logTo("Unknown message type: \(type)")
             }
-            
-        }  catch {
 
-            self.queue.async {
-                self.removeConnection(connection)
-            }
+        } catch {
             self.logTo("[Socket]Decode failed ❌ \(error)")
-
-        }
         }
     }
 
