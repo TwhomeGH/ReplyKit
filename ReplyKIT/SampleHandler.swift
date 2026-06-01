@@ -127,8 +127,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
 
-    private var needVideoConfiguration = true
-    private var needAudioConfiguration = true
+    private var needVideoConfiguration = false
+    private var needAudioConfiguration = false
 
     private var isSessionReady = false
     private var appVolume: Float = 1.0
