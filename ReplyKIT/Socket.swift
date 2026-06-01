@@ -199,6 +199,8 @@ class SocketClient : @unchecked Sendable {
             case .ready:
                 logTo("SocketClient connected")
                 isConnection = true
+                reconnectAttempt = 0
+                sendReconnectStatus(.success)
 
                 startHearbeat()
                 flushPendingLogs()
@@ -233,17 +235,36 @@ class SocketClient : @unchecked Sendable {
     }
 
     private var isReconnecting = false
+    private var reconnectAttempt = 0
+    private let maxReconnectAttempts = 10
+
+    private func reconnectDelay() -> TimeInterval {
+        let base = min(pow(2.0, Double(reconnectAttempt)), 30.0)
+        let jitter = Double.random(in: 0...base * 0.5)
+        return base + jitter
+    }
 
     func retry() {
-
-
         queue.async {
             self.stopHeartbeat()
 
-            guard !self.isReconnecting else { return }   // ✅ 防止重入
+            guard !self.isReconnecting else { return }
             self.isReconnecting = true
+            self.reconnectAttempt += 1
 
-            self.queue.asyncAfter(deadline: .now() + 2.0) {
+            guard self.reconnectAttempt <= self.maxReconnectAttempts else {
+                self.logTo("Max reconnect attempts (\(self.maxReconnectAttempts)) reached, giving up")
+                self.isReconnecting = false
+                self.reconnectAttempt = 0
+                self.sendReconnectStatus(.exhausted)
+                return
+            }
+
+            let delay = self.reconnectDelay()
+            self.logTo("Reconnect attempt \(self.reconnectAttempt)/\(self.maxReconnectAttempts) in \(String(format: "%.1f", delay))s")
+            self.sendReconnectStatus(.attempting)
+
+            self.queue.asyncAfter(deadline: .now() + delay) {
                 [weak self] in
                 guard let self = self else { return }
 
@@ -258,7 +279,30 @@ class SocketClient : @unchecked Sendable {
                 self.setupConnection()
             }
         }
-        
+    }
+
+    private enum ReconnectPhase {
+        case attempting
+        case success
+        case failed
+        case exhausted
+    }
+
+    private func sendReconnectStatus(_ phase: ReconnectPhase) {
+        let status: String
+        switch phase {
+        case .attempting: status = "attempting"
+        case .success: status = "success"
+        case .failed: status = "failed"
+        case .exhausted: status = "exhausted"
+        }
+        let payload: [String: Any] = [
+            "type": "reconnectStatus",
+            "status": status,
+            "attempt": reconnectAttempt,
+            "maxAttempts": maxReconnectAttempts
+        ]
+        sendPayload(payload)
     }
 
 
@@ -607,7 +651,16 @@ class SocketClient : @unchecked Sendable {
         }
         data.append(0x0A)
 
+        let sendTimeout = DispatchWorkItem { [weak self] in
+            self?.logTo("Send timeout, triggering reconnect")
+            self?.connection?.cancel()
+            self?.connection = nil
+            self?.retry()
+        }
+        queue.asyncAfter(deadline: .now() + 10, execute: sendTimeout)
+
         con.send(content: data, completion: .contentProcessed({ error in
+            sendTimeout.cancel()
             if let error = error {
                 self.logTo("Socket Send error: \(error.localizedDescription)")
             }
@@ -775,6 +828,8 @@ class SocketClient : @unchecked Sendable {
 
     private var receiveBuffer = Data()
 
+    private static let maxBufferSize = 1_048_576
+
     enum JSONValue: Codable {
         case string(String)
         case int(Int)
@@ -815,44 +870,39 @@ class SocketClient : @unchecked Sendable {
     
 
     private func handleJSONPacket(_ data: Data) {
-        // 先轉成 String
-        guard let string = String(data: data, encoding: .utf8) else {
-            logTo("[Socket] Invalid UTF8")
-            return
+        if RPConfig.shared.enableSocketLog {
+            logger.debug("Receive JSON packet \(data.count, privacy: .public) bytes")
         }
 
-        // 按換行拆成多條 JSON
-        let lines = string.split(separator: "\n", omittingEmptySubsequences: true)
+        do {
+            let json = try JSONSerialization.jsonObject(with: data)
 
-        for line in lines {
-            guard let lineData = line.data(using: .utf8) else { continue }
-
-            do {
-                let json = try JSONSerialization.jsonObject(with: lineData)
-                if RPConfig.shared.enableSocketLog {
-                    logger.debug("Receive JSON packet \(lineData.count, privacy: .public) bytes")
-                }
-
-                if let array = json as? [[String: Any]] {
-                    // 批量 JSON
-                    for item in array {
-                        if let itemData = try? JSONSerialization.data(withJSONObject: item, options: []) {
-                            handleSingleJSON(itemData)
-                        }
+            if let array = json as? [[String: Any]] {
+                for item in array {
+                    if let itemData = try? JSONSerialization.data(withJSONObject: item, options: []) {
+                        handleSingleJSON(itemData)
                     }
-                } else if json is [String: Any] {
-                    handleSingleJSON(lineData)
-                } else {
-                    logTo("[Socket] Unknown JSON format")
                 }
-
-            } catch {
-                logTo("[Socket] JSON decode failed: \(error)")
+            } else if json is [String: Any] {
+                handleSingleJSON(data)
+            } else {
+                logTo("[Socket] Unknown JSON format")
             }
+        } catch {
+            logTo("[Socket] JSON decode failed: \(error)")
         }
     }
 
+    private static let parsingQueue = DispatchQueue(
+        label: "SocketClientParsingQueue",
+        qos: .userInitiated,
+        attributes: .concurrent
+    )
+
     private func handleSingleJSON(_ data: Data) {
+        SocketClient.parsingQueue.async { [weak self] in
+            guard let self = self else { return }
+
         do {
 
             let decoder = JSONDecoder()
@@ -1043,6 +1093,7 @@ class SocketClient : @unchecked Sendable {
             logTo("[Socket]Decode failed ❌ \(error)")
 
         }
+        }
     }
 
     private func processReceiveBuffer() {
@@ -1088,6 +1139,12 @@ class SocketClient : @unchecked Sendable {
                 }
 
                 self.receiveBuffer.append(data)
+
+                if self.receiveBuffer.count > SocketClient.maxBufferSize {
+                    self.logTo("Buffer exceeded \(SocketClient.maxBufferSize) bytes, closing connection")
+                    self.retry()
+                    return
+                }
 
                 // 使用 processReceiveBuffer 處理所有可解析的 JSON
                 self.processReceiveBuffer()

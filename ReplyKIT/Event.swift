@@ -211,7 +211,7 @@ final class LogManager {
 
     // MARK: Rem Count
     private var localLogSize: Int = 0  // 累積字元數
-    private let maxLogBufferSize = 1_000_000  // 約 1MB 上限，可自行調整
+    private let maxLogBufferSize = 100_000  // 約 100KB 上限
 
     // MARK: flush寫入間隔
     var flushInterval: TimeInterval = 1.0

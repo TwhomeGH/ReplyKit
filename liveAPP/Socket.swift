@@ -29,6 +29,9 @@ class SocketServer:ObservableObject {
 
     static let shared = SocketServer()
 
+    static let maxBufferSize = 1_048_576
+    static let maxConnections = 10
+
     private var receiveBuffers: [ObjectIdentifier: Data] = [:]
 
     private var listener: NWListener?
@@ -280,6 +283,13 @@ class SocketServer:ObservableObject {
     // MARK: - Handle New Connection
     private func handleNewConnection(_ connection: NWConnection) {
         let id = ObjectIdentifier(connection)
+
+        if connections.count >= SocketServer.maxConnections {
+            logTo("Max connections (\(SocketServer.maxConnections)) reached, rejecting new connection")
+            connection.cancel()
+            return
+        }
+
         connections[id] = connection
         
         logTo("New connection added. Total connections: \(self.connections.count)")
@@ -295,11 +305,12 @@ class SocketServer:ObservableObject {
 
                 if self.connections[ObjectIdentifier(connection)] != nil {
                     self.logTo("Connection ready: \(connection)")
+                    self.replayFailedPayloads(for: connection)
 
                 }
 
 
-     
+      
             case .failed(let error):
                 self.logTo("Connection failed: \(error.localizedDescription)")
                 self.removeConnection(connection)
@@ -345,6 +356,12 @@ class SocketServer:ObservableObject {
                 }
 
                 buffer.append(data)
+
+                if buffer.count > SocketServer.maxBufferSize {
+                    self.logTo("[\(id)] Buffer exceeded \(SocketServer.maxBufferSize) bytes, closing connection")
+                    self.removeConnection(connection)
+                    return
+                }
 
                 // 🔑 與 ReplyKit Client 完全相同的拆包邏輯
                 while let newlineIndex = buffer.firstIndex(of: 0x0A) {
@@ -399,16 +416,8 @@ class SocketServer:ObservableObject {
 
     }
 
-    struct ChatBufferMessage: Identifiable {
-        let id = UUID()
-        let user: String
-        let msg: String
-        let img: String
-    }
-
-    private var messageBuffer: [ChatBufferMessage] = []
-
-    private var messageTimer: DispatchSourceTimer?
+    private var lastMessageTime: Date = .distantPast
+    private let messageThrottleInterval: TimeInterval = 0.05
 
 
 
@@ -496,7 +505,11 @@ class SocketServer:ObservableObject {
         giftImg: String?,
         isMain:Bool = true
     ) {
-
+        let now = Date()
+        guard now.timeIntervalSince(lastMessageTime) >= messageThrottleInterval else {
+            return
+        }
+        lastMessageTime = now
 
         logTo(
             "取得聊天室訊息:\(user):\(msg) Img:\(String(describing: img)) GIFT:\(String(describing: giftImg)) isMain:\(isMain)"
@@ -717,8 +730,17 @@ class SocketServer:ObservableObject {
 
     }
 
-    private func handleReceivedData(_ data: Data, from connection: NWConnection) {
+    private static let parsingQueue = DispatchQueue(
+        label: "SocketServerParsingQueue",
+        qos: .userInitiated,
+        attributes: .concurrent
+    )
 
+    private func handleReceivedData(_ data: Data, from connection: NWConnection) {
+        let id = ObjectIdentifier(connection)
+
+        SocketServer.parsingQueue.async { [weak self] in
+            guard let self = self else { return }
 
         do {
             let decoder = JSONDecoder()
@@ -1078,11 +1100,13 @@ class SocketServer:ObservableObject {
             
         }  catch {
 
-            removeConnection(connection)
-            logTo("[Socket]Decode failed ❌ \(error)")
+            self.queue.async {
+                self.removeConnection(connection)
+            }
+            self.logTo("[Socket]Decode failed ❌ \(error)")
 
         }
-        
+        }
     }
 
 
@@ -1206,6 +1230,8 @@ class SocketServer:ObservableObject {
 
 
     // MARK: - Connection Cleanup
+    private var pendingFailedPayloads: [ObjectIdentifier: [[String: Any]]] = [:]
+
     private func removeConnection(_ connection: NWConnection) {
         let id = ObjectIdentifier(connection)
 
@@ -1217,6 +1243,11 @@ class SocketServer:ObservableObject {
         connection.stateUpdateHandler = nil
         connection.cancel()
 
+        if let pendingQueue = sendQueues[id], !pendingQueue.isEmpty {
+            pendingFailedPayloads[id] = pendingQueue
+            self.logTo("Saved \(pendingQueue.count) pending payloads for re-queue")
+        }
+
         connections[id] = nil
         receiveBuffers[id] = nil
         sendQueues[id] = nil
@@ -1227,31 +1258,42 @@ class SocketServer:ObservableObject {
             self.logTo("已經沒有連線 啟動活動idleTimer")
         }
 
-        
-
         logTo("Connection removed. Remaining: \(self.connections.count)")
+    }
 
-
+    private func replayFailedPayloads(for connection: NWConnection) {
+        let id = ObjectIdentifier(connection)
+        guard let failedPayloads = pendingFailedPayloads.removeValue(forKey: id),
+              !failedPayloads.isEmpty else { return }
+        self.logTo("Re-playing \(failedPayloads.count) saved payloads")
+        for payload in failedPayloads {
+            enqueue(payload, to: connection)
+        }
     }
 
     func stop() {
         isStopping = true
 
         stopActivityIdleTimer()
-        stopInternal()
+        queue.async { [weak self] in
+            self?.stopInternal()
+        }
     }
 
     // MARK: - Suspend / Resume
     func suspend() {
         logTo("SocketServer 暫停（釋放連線但保留 listener）")
-        for (_, conn) in connections {
-            conn.stateUpdateHandler = nil
-            conn.cancel()
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            for (_, conn) in self.connections {
+                conn.stateUpdateHandler = nil
+                conn.cancel()
+            }
+            self.connections.removeAll()
+            self.receiveBuffers.removeAll()
+            self.sendQueues.removeAll()
+            self.sendingFlags.removeAll()
         }
-        connections.removeAll()
-        receiveBuffers.removeAll()
-        sendQueues.removeAll()
-        sendingFlags.removeAll()
     }
 
     func resume() {
@@ -1264,17 +1306,18 @@ class SocketServer:ObservableObject {
     /// 收到 Memory Warning 時釋放 buffer
     func releaseMemory() {
         logTo("SocketServer 釋放 buffer")
-        receiveBuffers.removeAll()
-        sendQueues.removeAll()
-        sendingFlags.removeAll()
-        idleTimers.values.forEach { $0.cancel() }
-        idleTimers.removeAll()
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            self.receiveBuffers.removeAll()
+            self.sendQueues.removeAll()
+            self.sendingFlags.removeAll()
+            self.idleTimers.values.forEach { $0.cancel() }
+            self.idleTimers.removeAll()
+        }
     }
 
 
     func stopInternal() {
-
-
         for (_, conn) in connections {
             conn.stateUpdateHandler = nil
             conn.cancel()
@@ -1285,16 +1328,11 @@ class SocketServer:ObservableObject {
 
         listener = nil
 
-
-
         idleTimers.values.forEach { $0.cancel() }
         idleTimers.removeAll()
 
-
-
-
         connections.removeAll()
-        receiveBuffers.removeAll()  // ✅ 同時清理所有 buffer
+        receiveBuffers.removeAll()
 
         logTo("SocketServer stopped")
     }

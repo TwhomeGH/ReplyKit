@@ -549,8 +549,13 @@ func sendlog(title:String = "liveApp",message: String) {
 
 }
 
+var isProcessingSocketLog = false
+
 func receiveSocketLog(title: String = "UseESocket", message: String) {
     guard LPConfig.shared.enableLog || LPConfig.shared.SocketLog else { return }
+    guard !isProcessingSocketLog else { return }
+    isProcessingSocketLog = true
+    defer { isProcessingSocketLog = false }
 
     let timeString = formatTime()
     let lines = message

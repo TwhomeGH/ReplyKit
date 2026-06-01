@@ -1147,8 +1147,11 @@ final class PIPServiceMessages {
             )
 
 
-            // ① 先只存資料
+            // ① 先只存資料（上限 200 segments，超過丟棄最舊的）
             pendingSegments.append(contentsOf: segments)
+            if pendingSegments.count > 200 {
+                pendingSegments.removeFirst(pendingSegments.count - 200)
+            }
 
             // ② 嘗試補畫面
             populateVisibleMessagesIfNeeded()
