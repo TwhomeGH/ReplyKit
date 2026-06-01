@@ -955,7 +955,8 @@ class SocketClient : @unchecked Sendable {
                         if rawValue is NSNull { return nil }
                         return rawValue
                     }()
-                    logger.debug("UPSet key=\(key, privacy: .public) type=\(type(of: rawValue), privacy: .public) value=\(String(describing:rawValue), privacy: .public) SafeVal:\(String(describing:rawValue),privacy: .public)")
+                    let desc = String(describing: rawValue)
+                    logger.debug("UPSet key=\(key, privacy: .public) type=\(type(of: rawValue), privacy: .public) value=\(desc, privacy: .public) SafeVal:\(desc, privacy: .public)")
                     logTo("UPGet -> \(String(describing: safeValue)) \(String(describing: safeValue))")
                     Task {
                         if let cont = await self.continuationStore.take(for: key) {
