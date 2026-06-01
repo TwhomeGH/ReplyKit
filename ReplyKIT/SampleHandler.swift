@@ -1379,7 +1379,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 videoSettings.videoSize = CGSize(width: CGFloat(dstW), height: CGFloat(dstH))
                 sendlog(message: "預設影片尺寸(橫向): \(dstW)x\(dstH)")
             }
-            await rtmpStream.setVideoSettings(videoSettings)
+            try? await rtmpStream.setVideoSettings(videoSettings)
         }
 
     }
