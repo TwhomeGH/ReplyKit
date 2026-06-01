@@ -975,7 +975,7 @@ class SocketClient : @unchecked Sendable {
                     )
 
                     Task {
-                        if let cont = await continuationStore.take(for: key) {
+                        if let cont = await self.continuationStore.take(for: key) {
                             cont.resume(returning: safeValue)
                         }
                     }
