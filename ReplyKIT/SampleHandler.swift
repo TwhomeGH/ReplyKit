@@ -1647,7 +1647,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         isBroadcasting = true
         isStopping = false
 
-        needVideoConfiguration = true
         needAudioConfiguration = true
 
 
@@ -1691,6 +1690,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 sendlog(message:"✅App:\(appVolume)  Mic:\(micVolume) AppAdd:\(appAddVolume) MicAdd:\(micAddVolume)")
 
+                needVideoConfiguration = true
 
                 await self.configureVideo_init()
                 await self.configureAudio()
