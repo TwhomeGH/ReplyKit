@@ -766,8 +766,6 @@ class GPUOutputConfig: Identifiable, ObservableObject, Codable {
         }
     }  
 
-    let encoder = JSONEncoder()
-    let decoder = JSONDecoder()
 
     // MARK: - 保存當前選擇的配置
     static func saveSelected(_ config: GPUOutputConfig?) {
@@ -776,7 +774,7 @@ class GPUOutputConfig: Identifiable, ObservableObject, Codable {
             return
         }
         
-        if let data = try? encoder.encode(config) {
+        if let data = try? JSONEncoder().encode(config) {
             UserDefaults.standard.set(data, forKey: userDefaultsSelectKey)
         }
     }
@@ -785,7 +783,7 @@ class GPUOutputConfig: Identifiable, ObservableObject, Codable {
     // MARK: - 讀取當前選擇的配置
     static func loadSelected() -> GPUOutputConfig? {
         if let data = UserDefaults.standard.data(forKey: userDefaultsSelectKey),
-           let config = try? decoder.decode(GPUOutputConfig.self, from: data) {
+           let config = try? JSONDecoder().decode(GPUOutputConfig.self, from: data) {
             return config
         }
         return nil

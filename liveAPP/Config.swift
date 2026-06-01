@@ -47,7 +47,7 @@ class ConfigManager<Key: Hashable & Codable, Value: Codable>: ObservableObject {
 
     private func loadUserConfig() {
         if let data = UserDefaults.standard.data(forKey: userDefaultsKey),
-           let saved = try? decoder.decode([Key: Value].self, from: data) {
+           let saved = try? JSONDecoder().decode([Key: Value].self, from: data) {
             layers.append(saved)
         }
     }
