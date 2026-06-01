@@ -42,8 +42,8 @@ class SharedDefaults {
 class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
    
-    var DWidth = 1920
-    var DHeight = 1334
+    var DWidth = 0
+    var DHeight = 0
 
 
     var rtmpURL:String?
@@ -1669,12 +1669,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         logger.info("運行通知")
 
-        isBroadcasting = true
-        isStopping = false
-
         // 先關閉，等 socket 配置套用後再開啟
         needVideoConfiguration = false
         needAudioConfiguration = true
+        isBroadcasting = true
+        isStopping = false
 
 
             //self.prepareCompressionSession()
@@ -1732,6 +1731,25 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 self.initProcessors()
 
+                // 在 publish 前再次確保影片尺寸正確
+                do {
+                    var finalVideoSettings = await rtmpStream.videoSettings
+                    let fw = RPConfig.shared.state.ODWidth > 0 ? RPConfig.shared.state.ODWidth : RPConfig.shared.state.ADWidth
+                    let fh = RPConfig.shared.state.ODHeight > 0 ? RPConfig.shared.state.ODHeight : RPConfig.shared.state.ADHeight
+                    if fw > 0 && fh > 0 {
+                        let rotate = RPConfig.shared.state.Rotate
+                        if rotate == 0 || rotate == 180 {
+                            finalVideoSettings.videoSize = CGSize(width: CGFloat(fh), height: CGFloat(fw))
+                            sendlog(message: "最終影片尺寸(直向): \(fh)x\(fw)")
+                        } else {
+                            finalVideoSettings.videoSize = CGSize(width: CGFloat(fw), height: CGFloat(fh))
+                            sendlog(message: "最終影片尺寸(橫向): \(fw)x\(fh)")
+                        }
+                    }
+                    let currentSize = finalVideoSettings.videoSize
+                    sendlog(message: "RTMP Publish 前 videoSize: \(Int(currentSize.width))x\(Int(currentSize.height))")
+                    await rtmpStream.setVideoSettings(finalVideoSettings)
+                }
 
                 await self.startRTMP(url: self.rtmpURL , key: self.rtmpKey)
 
