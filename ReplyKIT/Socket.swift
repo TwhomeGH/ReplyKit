@@ -957,7 +957,7 @@ class SocketClient : @unchecked Sendable {
                     }()
 
                     let desc = String(describing: rawValue)
-                    logger.debug("UPSet key=\(key) type=\(type(of: rawValue)) value=\(desc) SafeVal:\(desc)")
+                    logger.debug("UPSet key=\(key) type=\(type(of: rawValue)) value=\(desc) SafeVal:\(safeValue)")
                     
                     logTo("UPGet -> \(String(describing: safeValue)) \(String(describing: safeValue))")
 
