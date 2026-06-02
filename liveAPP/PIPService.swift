@@ -105,6 +105,13 @@ final class PIPService: NSObject, @unchecked Sendable {
 
     @objc func handleMemoryWarning() {
         PIPLogTo("收到 Memory Warning，釋放 PiP 快取")
+
+        // 清空累積訊息與動畫狀態，降低記憶體
+        messagesLayer?.clearAllMessages()
+        // 降為閒置 FPS 減少渲染負擔
+        currentFPS = idleFPS
+        renderTimer?.schedule(deadline: .now(), repeating: 1.0 / idleFPS)
+
         pixelBufferPool = nil
     }
 
@@ -1051,7 +1058,11 @@ final class PIPService: NSObject, @unchecked Sendable {
     @MainActor
     func renderIncremental() async -> Bool {
 
-        guard let displayLayer = displayLayer else { return false }
+        guard let displayLayer = displayLayer else {
+            // displayLayer 可能被系統移除，嘗試重新 attach
+            ensureDisplayLayerAttached()
+            return false
+        }
 
         // PiP active 時註冊 background task 保護 render 執行緒
         if didStartPiP && isInBackground {
@@ -1106,7 +1117,9 @@ final class PIPService: NSObject, @unchecked Sendable {
         guard backgroundTaskID == .invalid else { return }
         backgroundTaskID = UIApplication.shared.beginBackgroundTask { [weak self] in
             PIPLogTo("PiP background task 即將到期")
+            // 到期時重新註冊新的 background task，延長存活時間
             self?.endBackgroundTask()
+            self?.beginBackgroundTaskIfNeeded()
         }
         PIPLogTo("PiP background task 已註冊")
     }
@@ -1130,7 +1143,23 @@ final class PIPService: NSObject, @unchecked Sendable {
         isInBackground = false
         endBackgroundTask()
         reAttachDisplayLayerIfNeeded()
+
+        // 如果 pixelBufferPool 被 memory warning 釋放，重建它
+        if pixelBufferPool == nil && OframeSize.width > 0 && OframeSize.height > 0 {
+            setupPixelBufferPool(size: OframeSize)
+            PIPLogTo("重建 pixelBufferPool: \(OframeSize)")
+        }
+
         PIPLogTo("回到前景，已釋放 background task")
+    }
+
+    // 在 render 循環中保護 displayLayer 不被系統移除
+    func ensureDisplayLayerAttached() {
+        guard let layer = displayLayer, layer.superlayer == nil, didStartPiP else { return }
+        PIPLogTo("displayLayer 遺失，在 render 中重新 attach")
+        DispatchQueue.main.async { [weak self] in
+            self?.attachToForegroundWindow {}
+        }
     }
 
 

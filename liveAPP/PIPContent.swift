@@ -1660,6 +1660,14 @@ final class PIPServiceMessages {
     }
 
 
+    func clearAllMessages() {
+        pendingSegments.removeAll()
+        stackedMessages.removeAll()
+        animatingMessages.removeAll()
+        container.sublayers?.forEach { $0.removeFromSuperlayer() }
+        stopAnimation()
+    }
+
     private func stopAnimation() {
 
         phase = .idle
