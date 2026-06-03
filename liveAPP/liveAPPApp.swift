@@ -600,7 +600,7 @@ func postSystemNotification(title: String, body: String,imageURL: String? = nil)
     content.title = title
     content.body = body
     content.sound = .default
-    content.imageURL = imageURL ?? Bundle.main.url(forResource: "icon", withExtension: "png")
+    content.launchImageName = imageURL ?? Bundle.main.url(forResource: "icon", withExtension: "png")
 
     // 立即觸發
     let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
