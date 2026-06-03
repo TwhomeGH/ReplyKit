@@ -334,7 +334,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 sendlog(message: String(
                     format: "RE:麥克風音量更新: %.2f%% (原始值: %.5f)",
-                    volumeToPercentage(newVolume),
+                    volumeToPercentage(newVolume) * 100,
                     newVolume
                 ))
 
@@ -375,7 +375,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                     sendlog(message: String(
                         format: "!!應用音量更新: %.2f%% (原始值: %.5f)",
-                        volumeToPercentage(newVolume),
+                        volumeToPercentage(newVolume) * 100,
                         newVolume
                     ))
 

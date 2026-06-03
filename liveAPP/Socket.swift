@@ -911,6 +911,22 @@ class SocketServer:ObservableObject {
                     let safeValueStr = String(describing: safeJSONValue(valueAny))
                     logTo("Updated UserDefaults: \(key) = \(safeValueStr)")
                     userDefaults?.set(valueAny, forKey: key)
+                    let notificationName: String? = {
+                        switch key {
+                        case "appVolume": return "appVolumeChanged"
+                        case "micVolume": return "micVolumeChanged"
+                        case "appAddVolume": return "appAdd"
+                        case "micAddVolume": return "micAdd"
+                        default: return nil
+                        }
+                    }()
+                    if let name = notificationName {
+                        CFNotificationCenterPostNotification(
+                            cfCenter,
+                            CFNotificationName(name as CFString),
+                            nil, nil, true
+                        )
+                    }
                 }
 
             case "log":

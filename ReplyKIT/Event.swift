@@ -517,7 +517,7 @@ final class RPConfig {
                     ) {
 
 
-        stateQueue.async {
+        stateQueue.sync {
 
             if let isOringinAudio = isOringinAudio {
                 self.state.isOringinAudio = isOringinAudio
@@ -580,7 +580,7 @@ final class RPConfig {
                      ODHeight:Int? = nil,
                      ) {
 
-        stateQueue.async {
+        stateQueue.sync {
 
             if let RTMPURL = RTMPURL {
                 self.state.RTMPURL = RTMPURL
