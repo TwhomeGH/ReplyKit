@@ -844,10 +844,7 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
     }
 
 
-    deinit {
-        SocketServer.shared.stop()
-        sendlog(message: "App 釋放 SocketServer")
-    }
+    
 
     @Environment(\.scenePhase) private var scenePhase
 
