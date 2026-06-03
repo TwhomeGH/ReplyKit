@@ -603,7 +603,9 @@ func postSystemNotification(title: String, body: String,imageURL: String? = nil)
 
 
     if let imageURL = imageURL {
-        if let attachment = try? UNNotificationAttachment(identifier: "image", url: imageURL, options: nil) {
+        // 將 String 轉成 URL
+        let fileURL = URL(fileURLWithPath: imageURL)
+        if let attachment = try? UNNotificationAttachment(identifier: "image", url: fileURL, options: nil) {
             content.attachments = [attachment]
         }
     }
