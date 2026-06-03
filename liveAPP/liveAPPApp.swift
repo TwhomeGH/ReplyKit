@@ -595,36 +595,42 @@ func showLogOnScreen(_ message: String) {
 
 #endif
 
-func postSystemNotification(title: String, body: String,imageURL: String? = nil) {
+func postSystemNotification(title: String, body: String, imageURL: String? = nil) {
     let content = UNMutableNotificationContent()
     content.title = title
     content.body = body
     content.sound = .default
 
-
-    if let imageURL = imageURL {
-        // 將 String 轉成 URL
-        let fileURL = URL(fileURLWithPath: imageURL)
-        if let attachment = try? UNNotificationAttachment(identifier: "image", url: fileURL, options: nil) {
-            content.attachments = [attachment]
-        }
+    if let imageURL = imageURL, let url = URL(string: imageURL) {
+        // 下載遠端圖片並存到暫存，再建立附件
+        URLSession.shared.dataTask(with: url) { data, _, error in
+            if let data = data, error == nil {
+                let tempDir = FileManager.default.temporaryDirectory
+                let tempFile = tempDir.appendingPathComponent(UUID().uuidString + ".png")
+                try? data.write(to: tempFile)
+                if let attachment = try? UNNotificationAttachment(identifier: "image", url: tempFile, options: nil) {
+                    content.attachments = [attachment]
+                }
+            }
+            // 不論圖片是否下載成功，都發送通知
+            deliverNotification(content: content)
+        }.resume()
+    } else {
+        deliverNotification(content: content)
     }
+}
 
-
-    // 立即觸發
+private func deliverNotification(content: UNMutableNotificationContent) {
     let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
-
     let request = UNNotificationRequest(
         identifier: UUID().uuidString,
         content: content,
         trigger: trigger
     )
-
     UNUserNotificationCenter.current().add(request) { error in
         if let error = error {
             print("❌ 發送通知失敗: \(error)")
         } else {
-            print("\(body)")
             print("✅ 通知已發送")
         }
     }
