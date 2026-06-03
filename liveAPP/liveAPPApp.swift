@@ -595,11 +595,12 @@ func showLogOnScreen(_ message: String) {
 
 #endif
 
-func postSystemNotification(title: String, body: String) {
+func postSystemNotification(title: String, body: String,imageURL: String? = nil) {
     let content = UNMutableNotificationContent()
     content.title = title
     content.body = body
     content.sound = .default
+    content.imageURL = imageURL ?? Bundle.main.url(forResource: "icon", withExtension: "png")
 
     // 立即觸發
     let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
@@ -759,7 +760,7 @@ struct liveAPPApp: App {
 
         SocketServer.shared.start()
 
-        AppMessagePort.shared.setupReceiver()
+        //AppMessagePort.shared.setupReceiver()
 
         cacheInitialOrientation()
 
@@ -838,8 +839,15 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
         Task { @MainActor in
             TTSService.shared.refreshAudioSessionForCurrentSetting()
         }
+
+
     }
 
+
+    deinit {
+        SocketServer.shared.stop()
+        sendlog(message: "App 釋放 SocketServer")
+    }
 
     @Environment(\.scenePhase) private var scenePhase
 

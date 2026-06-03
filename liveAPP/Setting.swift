@@ -653,6 +653,8 @@ struct LogSettingView:View {
 
     @AppStorage("ChangeBit",store:userDefaults) private var ChangeBit = true
     @AppStorage("isLowLatencyRateControlEnabled",store:userDefaults)  private var isLowLatencyRateControlEnabled = true
+
+    @AppStorage("isNotifyChat",store:userDefaults) private var isNotifyChat = false
     
 
 
@@ -723,13 +725,22 @@ struct LogSettingView:View {
                     .padding(.bottom, 5)
 
             Toggle(isOn:$isLowLatencyRateControlEnabled){
-                                Text("啟用低延遲處理！")
+                    Text("啟用低延遲處理！")
+            }
+
+            Text("啟用後會對使用低延遲推流")                                                                                                     
+            .font(.footnote)
+            .foregroundColor(.secondary)
+            .padding(.bottom, 5)
+
+            Toggle(isOn:$isNotifyChat){
+                                Text("啟用聊天訊息通知！")
                             }
 
-                        Text("啟用後會對使用低延遲推流")                                                                                                     
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
-                        .padding(.bottom, 5)
+            Text("作為PIP子母窗口應高運存占用的替代方案，啟用後會對聊天訊息使用系統通知處理，避免PIP停止時訊息無法顯示的問題")                                                                                                     
+            .font(.footnote)
+            .foregroundColor(.secondary)
+            .padding(.bottom, 5)
 
             Toggle(isOn: $EnableRotatelog){
                 Text("啟用畫面旋轉調試日誌 ！")

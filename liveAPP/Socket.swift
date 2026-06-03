@@ -173,6 +173,11 @@ class SocketServer:ObservableObject {
         case lastClientDisconnected
     }
 
+
+    var isNotifyApp:Bool {
+        return userDefaults?.bool(forKey: "isNotifyChat") ?? false
+    }
+
     var isRunning: Bool {
         guard let listener else {
             isStopping = true
@@ -515,6 +520,10 @@ class SocketServer:ObservableObject {
             "取得聊天室訊息:\(user):\(msg) Img:\(String(describing: img)) GIFT:\(String(describing: giftImg)) isMain:\(isMain)"
         )
 
+
+        if isNotifyApp {
+            postSystemNotification(title: user, body: "\(msg)", imageURL: img)
+        }
 
         PIPService.shared
             .addMessage(
