@@ -287,6 +287,8 @@ private final class TTSCallAudioKeeper {
     }
 
     func start() {
+        guard !(isKeepingAlive && engine.isRunning) else { return }
+
         configureSessionOnly()
 
         if sourceNode == nil {
