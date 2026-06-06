@@ -801,7 +801,7 @@ struct LogSettingView:View {
 
             Button("重新開始直播計時器"){
                 sendlog(message: "直播開始計時器重啟")
-                StreamStarting()
+                SocketServer.shared.StreamStarting()
 
             }
 
@@ -812,7 +812,7 @@ struct LogSettingView:View {
 
             Button("停止直播計時器 直播結束"){
                 sendlog(message: "直播結束 計時器停止")
-                StreamStatusChanged(isLive: false)
+                SocketServer.shared.StreamStatusChanged(isLive: false)
 
             }
 
