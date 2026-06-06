@@ -797,6 +797,33 @@ struct LogSettingView:View {
                     .padding(.bottom, 5)
 
         }
+        Section(header: Text("直播計時器")) {
+
+            Button("重新開始直播計時器"){
+                sendlog(message: "直播開始計時器重啟")
+                StreamStarting()
+
+            }
+
+            Text("當直播計時器出現異常無法正常運行時可以用這個重啟它")
+                .font(.footnote)
+                .foregroundColor(.secondary)
+                .padding(.bottom, 5)
+
+            Button("停止直播計時器 直播結束"){
+                sendlog(message: "直播結束 計時器停止")
+                StreamStatusChanged(isLive: false)
+
+            }
+
+            Text("當直播結束時可以用這個停止計時器")
+                .font(.footnote)
+                .foregroundColor(.secondary)
+                .padding(.bottom, 5)
+
+            
+
+        }
 
         Section(header: Text("網路")) {
 

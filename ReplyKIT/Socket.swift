@@ -92,6 +92,8 @@ class SocketClient : @unchecked Sendable {
 
     private var isConnection: Bool = false
 
+    var onSocketReady: (() -> Void)?
+
     private var connection: NWConnection?
 
     private let queue = DispatchQueue(label: "SocketClientQueue")
@@ -205,9 +207,8 @@ class SocketClient : @unchecked Sendable {
                 startHearbeat()
                 flushPendingLogs()
                 sendLog(message:"Socket連接成功 擴展端通信")
-                
 
-                
+                self.onSocketReady?()
 
                 self.receive()
             case .failed(let error):
@@ -1133,3 +1134,4 @@ class SocketClient : @unchecked Sendable {
         }
     }
 }
+

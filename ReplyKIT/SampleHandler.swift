@@ -149,6 +149,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     private var reconnectAttempts = 0
     private let maxReconnectAttempts = 5
     private var reconnectionTask: Task<Void, Never>?
+    private var isInitialSyncDone = false
 
 
     private func reloadVolumes(type:Int = -1,volume:Float = 1.0) {
@@ -398,8 +399,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             
 
         case "SocketRetry":
+            sendlog(message: "收到 SocketRetry，觸發重連")
             SocketClient.shared.retry()
-            sendlog(message: "重連Socket!")
 
             break
 
@@ -1654,6 +1655,56 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         case exhausted
     }
 
+    // MARK: Socket 重連後自動同步配置
+    func handleSocketReconnected() {
+        guard isInitialSyncDone, !isStopping else { return }
+
+        sendlog(message: "Socket 已重連，開始同步配置...")
+
+        Task {
+            let oldRTMPURL = self.rtmpURL
+            let oldRTMPKey = self.rtmpKey
+
+            let success = await SocketClient.shared.requestRTMPKEYAndLog()
+
+            if success {
+                let newRTMPURL = RPConfig.shared.state.RTMPURL
+                let newRTMPKey = RPConfig.shared.state.RTMPKey
+
+                let configChanged = (oldRTMPURL != newRTMPURL) || (oldRTMPKey != newRTMPKey)
+
+                sendlog(message: "RTMP 配置同步完成，URL 變更: \(configChanged ? "是" : "否")")
+
+                if configChanged {
+                    self.rtmpURL = newRTMPURL
+                    self.rtmpKey = newRTMPKey
+
+                    self.setUserDefalutConfig(
+                        urlString: self.rtmpURL ?? "rtmp://192.168.0.242/live",
+                        streamKey: self.rtmpKey ?? "test"
+                    )
+
+                    self.attemptReconnect()
+                    sendlog(message: "RTMP 配置已變更，觸發重連")
+                } else {
+                    await self.streamStataus?.checkDisconnect(timeout: 3)
+                    sendlog(message: "RTMP 配置未變更，僅檢查連線健康度")
+                }
+            } else {
+                sendlog(message: "RTMP 配置同步失敗，1 秒後重試")
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                let retry = await SocketClient.shared.requestRTMPKEYAndLog()
+                if retry {
+                    self.rtmpURL = RPConfig.shared.state.RTMPURL
+                    self.rtmpKey = RPConfig.shared.state.RTMPKey
+                    sendlog(message: "重試成功，RTMP 配置已同步")
+                } else {
+                    sendlog(message: "RTMP 配置同步最終失敗")
+                }
+            }
+        }
+    }
+
     // MARK: 直播開始
     override func broadcastStarted(
         withSetupInfo setupInfo: [String : NSObject]?
@@ -1753,6 +1804,14 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 await self.startRTMP(url: self.rtmpURL , key: self.rtmpKey)
 
+                isInitialSyncDone = true
+                SocketClient.shared.onSocketReady = { [weak self] in
+                    Task { [weak self] in
+                        self?.handleSocketReconnected()
+                    }
+                }
+                sendlog(message: "已註冊 Socket 重連自動同步")
+
                 sendlog(message:"✅ Processor 初始化完成")
 
                 logger.info("✅ Processor 初始化完成")
@@ -1790,7 +1849,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             isStopping = true
             isBroadcasting = false
+            isInitialSyncDone = false
 
+            SocketClient.shared.onSocketReady = nil
             SocketClient.shared.sendStreamEnd()
 
             // 停止斷線監控 Task
