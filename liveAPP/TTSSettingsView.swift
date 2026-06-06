@@ -492,6 +492,13 @@ struct TTSSettingsView: View {
                                     }
                                 )
                             }
+
+                            Button("套用設定") {
+                                saveMiddleNameDraft()
+                                saveVoiceControlDrafts()
+                                TTSService.shared.updateDefault()
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)

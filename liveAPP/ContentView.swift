@@ -2699,8 +2699,6 @@ struct ContentView: View {
         .onChange(of: pageState.currentPage) { newValue in
             sendlog(message:"Page:\(newValue)")
 
-            pageState.currentPage = newValue
-
             if newValue == .log {
 
                 print("onlog:\(onlogPage) logTime:\(logTime)")
