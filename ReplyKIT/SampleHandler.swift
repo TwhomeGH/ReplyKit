@@ -2256,7 +2256,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 bm.monitorFPSAndAdjust(
                     with: sampleBuffer,
                     rtmpStream: rtmpStream,
-                    sendlog: { [weak self] msg in self?.sendlog(message: msg) ?? () }
+                    sendlog: { [weak self] msg in sendlog(message: msg) }
                 )
             }
 
