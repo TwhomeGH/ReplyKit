@@ -160,6 +160,7 @@ actor VideoBitrateAnalyzer {
     }
 
     private static func extractBitrateSamples(asset: AVAsset, duration: TimeInterval) async -> [VideoAnalysisResult.BitrateSample] {
+        guard duration > 0 else { return [] }
         guard let assetReader = try? AVAssetReader(asset: asset) else { return [] }
         guard let videoTrack = (try? await asset.loadTracks(withMediaType: .video))?.first else { return [] }
 
@@ -168,15 +169,17 @@ actor VideoBitrateAnalyzer {
         assetReader.add(output)
         assetReader.startReading()
 
-        let segmentCount = min(Int(duration), 100)
+        let segmentCount = max(min(Int(duration), 100), 1)
         let segmentDuration = duration / Double(segmentCount)
         var segments = [Int64](repeating: 0, count: segmentCount)
 
         while let sample = output.copyNextSampleBuffer() {
             let time = CMSampleBufferGetPresentationTimeStamp(sample)
+            guard CMTimeGetSeconds(time).isFinite else { continue }
             let sec = CMTimeGetSeconds(time)
+            guard sec >= 0 else { continue }
             let idx = min(Int(sec / segmentDuration), segmentCount - 1)
-            if idx >= 0 && idx < segmentCount {
+            if idx >= 0 {
                 segments[idx] += Int64(CMSampleBufferGetTotalSampleSize(sample))
             }
         }
