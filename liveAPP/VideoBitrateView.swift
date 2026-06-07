@@ -309,18 +309,23 @@ struct VideoBitrateView: View {
         return String(format: "%.0f Kbps", kbps)
     }
 
-    private func cleanupTempFiles() {
+    private func cleanupTempFiles(keeping keepURL: URL? = nil) {
         for url in tempFileURLs {
+            if url == keepURL { continue }
             try? FileManager.default.removeItem(at: url)
         }
-        tempFileURLs.removeAll()
+        if let keepURL = keepURL {
+            tempFileURLs = [keepURL]
+        } else {
+            tempFileURLs.removeAll()
+        }
     }
 
     private func startAnalysis(url: URL) {
         isAnalyzing = true
         errorMessage = nil
         result = nil
-        cleanupTempFiles()
+        cleanupTempFiles(keeping: url)
 
         let accessing = url.startAccessingSecurityScopedResource()
 
