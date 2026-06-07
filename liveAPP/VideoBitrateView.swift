@@ -34,9 +34,10 @@ struct VideoBitrateView: View {
                 guard let item = newItem else { return }
                 Task {
                     guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+                    let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "mp4"
                     let tempURL = FileManager.default.temporaryDirectory
                         .appendingPathComponent(UUID().uuidString)
-                        .appendingPathExtension("mov")
+                        .appendingPathExtension(ext)
                     try? data.write(to: tempURL)
                     tempFileURLs.append(tempURL)
                     selectedPickerItem = nil
