@@ -162,18 +162,31 @@ actor VideoBitrateAnalyzer {
     private static func extractBitrateSamples(asset: AVAsset, duration: TimeInterval) async -> [VideoAnalysisResult.BitrateSample] {
         guard duration > 0 else { return [] }
         guard let assetReader = try? AVAssetReader(asset: asset) else { return [] }
-        guard let videoTrack = (try? await asset.loadTracks(withMediaType: .video))?.first else { return [] }
+        guard let videoTrack = (try? await asset.loadTracks(withMediaType: .video))?.first else {
+            assetReader.cancelReading()
+            return []
+        }
 
-        let output = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: nil)
-        guard assetReader.canAdd(output) else { return [] }
+        let output = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+        ])
+        guard assetReader.canAdd(output) else {
+            assetReader.cancelReading()
+            return []
+        }
         assetReader.add(output)
-        assetReader.startReading()
+        guard assetReader.startReading() else {
+            assetReader.cancelReading()
+            return []
+        }
+        defer { assetReader.cancelReading() }
 
         let segmentCount = max(min(Int(duration), 100), 1)
         let segmentDuration = duration / Double(segmentCount)
         var segments = [Int64](repeating: 0, count: segmentCount)
 
-        while let sample = output.copyNextSampleBuffer() {
+        while true {
+            guard let sample = output.copyNextSampleBuffer() else { break }
             let time = CMSampleBufferGetPresentationTimeStamp(sample)
             guard CMTimeGetSeconds(time).isFinite else { continue }
             let sec = CMTimeGetSeconds(time)
@@ -183,8 +196,6 @@ actor VideoBitrateAnalyzer {
                 segments[idx] += Int64(CMSampleBufferGetTotalSampleSize(sample))
             }
         }
-
-        assetReader.cancelReading()
 
         return segments.enumerated().compactMap { (i, bytes) in
             guard bytes > 0 else { return nil }

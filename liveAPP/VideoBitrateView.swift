@@ -10,6 +10,7 @@ struct VideoBitrateView: View {
     @State private var errorMessage: String?
     @State private var showFilePicker = false
     @State private var showPhotosPicker = false
+    @State private var tempFileURLs: [URL] = []
 
     var body: some View {
         content
@@ -37,9 +38,13 @@ struct VideoBitrateView: View {
                         .appendingPathComponent(UUID().uuidString)
                         .appendingPathExtension("mov")
                     try? data.write(to: tempURL)
+                    tempFileURLs.append(tempURL)
                     selectedPickerItem = nil
                     startAnalysis(url: tempURL)
                 }
+            }
+            .onDisappear {
+                cleanupTempFiles()
             }
             .alert("錯誤", isPresented: Binding(
                 get: { errorMessage != nil },
@@ -303,10 +308,18 @@ struct VideoBitrateView: View {
         return String(format: "%.0f Kbps", kbps)
     }
 
+    private func cleanupTempFiles() {
+        for url in tempFileURLs {
+            try? FileManager.default.removeItem(at: url)
+        }
+        tempFileURLs.removeAll()
+    }
+
     private func startAnalysis(url: URL) {
         isAnalyzing = true
         errorMessage = nil
         result = nil
+        cleanupTempFiles()
 
         let accessing = url.startAccessingSecurityScopedResource()
 
