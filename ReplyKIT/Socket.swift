@@ -692,7 +692,6 @@ class SocketClient : @unchecked Sendable {
         let isOringinAudio:Bool?
 
         let h264level: String
-        let allowFrameReordering:Bool
         let BitRateMode: Int
         let videoBuffer: Int
 
@@ -750,7 +749,6 @@ class SocketClient : @unchecked Sendable {
             RTMPURL: c.rtmpURL,
             RTMPKey: c.rtmpKey,
             h264level: c.h264level,
-            allowFrameReordering: c.allowFrameReordering,
             BitRateMode: c.BitRateMode,
             BufferCount: c.videoBuffer,
             BitRate: c.BitRate,

@@ -454,7 +454,6 @@ final class RPConfig {
         var RTMPKey : String?
 
         var h264level : String = "AutoHight"
-        var allowFrameReordering:Bool = true
         var BitRateMode: Int = 0
         var BufferCount : Int = 3
         var BitRate : Int = 6_000_000
@@ -565,8 +564,7 @@ final class RPConfig {
     func updateState(RTMPURL:String? = nil,
                      RTMPKey:String? = nil,
                      h264level:String? = nil,
-                     allowFrameReordering:Bool? = nil,
-                     BitRateMode:Int? = 0,
+                      BitRateMode:Int? = 0,
                      BufferCount:Int? = nil,
                      BitRate:Int? = nil,
                      ChangeBit:Bool? = nil,
@@ -593,10 +591,6 @@ final class RPConfig {
 
             if let h264level = h264level {
                 self.state.h264level = h264level
-            }
-
-            if let allowFrameReordering = allowFrameReordering {
-                self.state.allowFrameReordering = allowFrameReordering
             }
 
             if let BitRateMode = BitRateMode {

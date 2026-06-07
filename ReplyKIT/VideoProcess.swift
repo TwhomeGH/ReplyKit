@@ -5,6 +5,10 @@ import CoreMedia
 
 
 final class VideoFrameProcessor {
+    // CFR 平滑：frameCount 產生恒定 PTS，避免 VFR 造成 B-frame 重排序損毀
+    private var frameCount: Int64 = 0
+    private let targetFPS: Int32 = 60
+
     // 初始化 RotatorPool（在 SampleHandler 或初始化時）
     var rotator: RPVideoRotatorNV12BatchQueueOptimized? = nil
 
@@ -153,7 +157,28 @@ final class VideoFrameProcessor {
                 angle: self.angle
             ) else { return }
 
-            await self.mediaMixer.append(rotated)
+            // CFR 平滑：以 frameCount 產生恒定 PTS，消除 VFR 造成的 PTS 抖動
+            let correctedPTS = CMTime(value: frameCount, timescale: targetFPS)
+            var correctedTiming = CMSampleTimingInfo(
+                duration: CMTime(value: 1, timescale: targetFPS),
+                presentationTimeStamp: correctedPTS,
+                decodeTimeStamp: CMTime.invalid
+            )
+            var correctedBuffer: CMSampleBuffer?
+            CMSampleBufferCreateCopyWithNewTiming(
+                allocator: kCFAllocatorDefault,
+                sampleBuffer: rotated,
+                sampleTimingEntryCount: 1,
+                sampleTimingArray: &correctedTiming,
+                sampleBufferOut: &correctedBuffer
+            )
+            frameCount += 1
+
+            if let cb = correctedBuffer {
+                await self.mediaMixer.append(cb)
+            } else {
+                await self.mediaMixer.append(rotated)
+            }
         }
     }
 

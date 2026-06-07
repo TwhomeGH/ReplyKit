@@ -639,7 +639,6 @@ struct PIPSettingsView: View {
 struct LogSettingView:View {
 
     @AppStorage("onlogPage",store:userDefaults) private var onlogPage = false
-    @AppStorage("allowFrameReordering",store:userDefaults) private var allowFrameReordering = true
     @AppStorage("BitRateMode",store:userDefaults)  private var BitRateMode = 0
 
     let BitRateOptions = ["ABR 平均碼率 VBR的改進版", "CBR 固定碼率", "VBR 可變位元率 iOS26後才有"]
@@ -669,17 +668,6 @@ struct LogSettingView:View {
                 CFNotificationCenterPostNotification(cfCenter, CFNotificationName("Enablelog" as CFString), nil, nil, true)
             }
 
-
-            Toggle(isOn: $allowFrameReordering){
-                Text("允許畫面幀捕捉！ 或許可以改進畫面品質")
-            }.onChange(of:allowFrameReordering) { newValue in
-                sendlog(message:"允許 ReplayKit 捕捉完整畫面幀 \(newValue)")
-            }
-            
-            Text("啟用後 捕捉完整畫面幀 開啟逐幀錄製會增加 CPU/GPU 負擔，可能影響效能")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-                    .padding(.bottom, 5)
 
 
             Picker("請選擇一個位元率模式", selection: $BitRateMode) {

@@ -151,6 +151,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     private var reconnectionTask: Task<Void, Never>?
     private var isInitialSyncDone = false
 
+    private var adaptiveBufferManager: AdaptiveVideoBufferManager?
 
     private func reloadVolumes(type:Int = -1,volume:Float = 1.0) {
 
@@ -1400,6 +1401,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     // MARK: Video Setting
     func configureMediaMixer() async {
 
+        adaptiveBufferManager = AdaptiveVideoBufferManager()
+
         streamStataus = MyStreamBitRateStrategy()
 
         await streamStataus?.refreshStatusTimestamp()
@@ -1886,6 +1889,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             audioProcessor?.cleanup()
             videoProcessor=nil
             audioProcessor=nil
+            adaptiveBufferManager = nil
 
         }
 
@@ -2175,7 +2179,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         }
 
 
-        videoSettings.allowFrameReordering = RPConfig.shared.state.allowFrameReordering
+        videoSettings.allowFrameReordering = false
 
 
         videoSettings.isLowLatencyRateControlEnabled = RPConfig.shared.state.isLowLatencyRateControlEnabled
@@ -2247,6 +2251,14 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             }
 
 
+
+            if let bm = adaptiveBufferManager {
+                bm.monitorFPSAndAdjust(
+                    with: sampleBuffer,
+                    rtmpStream: rtmpStream,
+                    sendlog: { [weak self] msg in self?.sendlog(message: msg) }
+                )
+            }
 
             if videoProcessor != nil {
 

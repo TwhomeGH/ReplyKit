@@ -78,6 +78,73 @@
 確保系統在某些異常負載下 能夠保持音訊正常
 
 
+## 修復 VFR 造成的 PTS 異常與畫面速率抖動
+
+### 問題發現
+
+在分析一段長時間直播錄影時，發現影片從約 **54分30秒** 後出現嚴重的畫面速率異常：
+
+- **ffprobe 分析結果**：`r_frame_rate=60/1`（聲稱 60fps）但 `avg_frame_rate≈100`，metadata 與實際不符
+- **封包結構**：約 **70% 的幀是「微幀」**（duration = 0.000011s，僅 1 個 PTS tick），穿插在正常 0.016-0.017s 幀之間
+- **觸發點**：~54:30 處編碼器嚴重卡頓（幀間隔高達 1.4s ~ 9.9s），恢復後即進入缺陷模式
+
+### 根因分析
+
+透過原始碼追溯，確認問題出在 **ReplyKIT 音視頻管線的三個設計缺陷**：
+
+| 問題 | 位置 | 影響 |
+|------|------|------|
+| `allowFrameReordering=true` + VFR 輸入 | `SampleHandler.swift:2178` | VideoToolbox B-frame 重排序導致 PTS 損毀 |
+| MediaMixer passthrough 無 CFR 轉換 | `SampleHandler.swift:1343` | VFR 原樣送入編碼器，不做 PTS 平滑 |
+| `AdaptiveVideoBufferManager` 被註解 | `AdaptiveVideoBufferManager.swift` | 無動態 buffer 緩衝，過載時直接崩潰 |
+
+**問題鏈**：
+1. ReplayKit 本質是 **VFR**（畫面無變化就不送 buffer）
+2. `MediaMixer` 設為 `passthrough`，不做任何 PTS 平滑
+3. `allowFrameReordering=true` 讓 VideoToolbox 開啟 B-frame 重排序（`has_b_frames=15`）
+4. 系統過載時 PTS 出現巨大間隔 → B-frame 重排序邏輯錯亂 → 輸出大量微幀
+5. 編碼器恢復後從未修正，缺陷持續到結束
+
+### 三層防禦改進
+
+#### 1. 關閉 Frame Reordering
+
+`SampleHandler.swift:2178` — 硬編碼為 `false`，並從配置項與 UI 完全移除：
+
+```swift
+videoSettings.allowFrameReordering = false
+```
+
+這阻止 VideoToolbox 做 B-frame 重排序，從根源避免 PTS 損毀。
+
+#### 2. CFR 平滑（Constant Frame Rate）
+
+`VideoProcess.swift` — 在 GPU 旋轉後、送入 MediaMixer 前，以 frameCount 產生恒定 PTS：
+
+```swift
+let correctedPTS = CMTime(value: frameCount, timescale: 60)
+// ... CMSampleBufferCreateCopyWithNewTiming ...
+frameCount += 1
+```
+
+無論 ReplayKit 以何種 VFR 送幀，編碼器永遠收到 0, 1/60s, 2/60s... 的恒定 PTS。
+
+#### 3. 恢復 AdaptiveVideoBufferManager
+
+取消註解整份 `AdaptiveVideoBufferManager.swift`，並重新接入 `SampleHandler`：
+
+- 根據處理器核心數初始化 buffer count
+- 即時監控 FPS、渲染延遲、幀間隔標準差
+- 系統過載時自動提高 buffer（最多 5），空載時降低（最少 3）
+- 每 3 秒輸出一次診斷日誌
+
+### 效果
+
+這三層防禦形成完整保護：
+- **第一層**：不允許 B-frame 重排序 → PTS 不會被編碼器亂序打亂
+- **第二層**：CFR 強制修正 PTS → 無論輸入多亂，輸出永遠是 60fps 節奏
+- **第三層**：動態 buffer 管理 → 系統過載時有緩衝空間，避免瞬間崩潰
+
 ## 新增重連設計
 
 當直播因網路問題 沒有連線成功 會最多嘗試重連 最多5次
