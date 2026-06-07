@@ -2620,6 +2620,7 @@ enum AppPage {
     case audio
     case PIPChat
     case tts
+    case videoBitrate
 
 }
 
@@ -2693,6 +2694,10 @@ struct ContentView: View {
             TTSSettingsView()
                 .tabItem { Label("TTS", systemImage: "speaker.wave.2") }
                 .tag(AppPage.tts)
+
+            VideoBitrateView()
+                .tabItem { Label("碼率", systemImage: "chart.bar.xaxis") }
+                .tag(AppPage.videoBitrate)
 
         }
         // ✅ 當選到音量分頁時啟用監聽
