@@ -5,9 +5,7 @@ import CoreMedia
 
 
 final class VideoFrameProcessor {
-    // CFR 平滑：frameCount 產生恒定 PTS，避免 VFR 造成 B-frame 重排序損毀
-    private var frameCount: Int64 = 0
-    private let targetFPS: Int32 = 60
+    private let startTime: CFTimeInterval = CACurrentMediaTime()
 
     // 初始化 RotatorPool（在 SampleHandler 或初始化時）
     var rotator: RPVideoRotatorNV12BatchQueueOptimized? = nil
@@ -152,16 +150,14 @@ final class VideoFrameProcessor {
                 angle: self.angle
             ) else { return }
 
-            // CFR 平滑：以 frameCount 產生恒定 PTS，消除 VFR 造成的 PTS 抖動（透過 queue.sync 保護 frameCount）
-            let (correctedPTS, correctDuration): (CMTime, CMTime) = queue.sync {
-                let pts = CMTime(value: frameCount, timescale: targetFPS)
-                let dur = CMTime(value: 1, timescale: targetFPS)
-                frameCount += 1
-                return (pts, dur)
-            }
+            // CFR：用真實牆鐘時間產生 PTS，確保影音同步（即使掉幀也不偏移）
+            let now = CACurrentMediaTime()
+            let elapsed = now - startTime
+            let cfpts = CMTime(seconds: elapsed, preferredTimescale: 600)
+            let cfduration = CMTime(seconds: 1.0 / 60.0, preferredTimescale: 600)
             var correctedTiming = CMSampleTimingInfo(
-                duration: correctDuration,
-                presentationTimeStamp: correctedPTS,
+                duration: cfduration,
+                presentationTimeStamp: cfpts,
                 decodeTimeStamp: CMTime.invalid
             )
             var correctedBuffer: CMSampleBuffer?
