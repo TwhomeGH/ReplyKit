@@ -33,6 +33,7 @@ public final class AdaptiveVideoBufferManager {
     private let logInterval: CFTimeInterval = 3.0
 
     private var bufferPerformanceHistory: [Int: [Double]] = [:]
+    private let maxHistoryPerBuffer = 30
 
     public init() {
         let processorCount = ProcessInfo.processInfo.processorCount
@@ -88,8 +89,12 @@ public final class AdaptiveVideoBufferManager {
         } else {
             smoothedFPS = emaAlpha * fps + (1 - emaAlpha) * smoothedFPS
 
-            bufferPerformanceHistory[currentBufferCount, default: []]
-                .append(smoothedFPS)
+            var history = bufferPerformanceHistory[currentBufferCount, default: []]
+            history.append(smoothedFPS)
+            if history.count > maxHistoryPerBuffer {
+                history.removeFirst(history.count - maxHistoryPerBuffer)
+            }
+            bufferPerformanceHistory[currentBufferCount] = history
         }
 
         // 計算繪製延遲
@@ -120,8 +125,8 @@ public final class AdaptiveVideoBufferManager {
                     currentBufferCount = newBufferCount
                     lastSetBufferCount = newBufferCount
 
-                    Task {
-                        await rtmpStream.setVideoInputBufferCounts(currentBufferCount)
+                    Task { [weak rtmpStream] in
+                        await rtmpStream?.setVideoInputBufferCounts(currentBufferCount)
                     }
                 }
             }

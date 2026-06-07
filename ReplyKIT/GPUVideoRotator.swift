@@ -615,6 +615,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
   // MARK: - Reusable Output
 private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
+    guard isActive else { return nil }
     outputPoolLock.lock()
     defer { outputPoolLock.unlock() }
 
@@ -658,6 +659,11 @@ private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
 
     // MARK: - Recycle Output
     func recycleOutput(_ outSet: ReusableOutputSet) {
+    guard isActive else {
+        outSet.cvY = nil
+        outSet.cvUV = nil
+        return
+    }
     let width = CVPixelBufferGetWidth(outSet.pixelBuffer)
     let height = CVPixelBufferGetHeight(outSet.pixelBuffer)
     let key = OutputKey(width: width, height: height)

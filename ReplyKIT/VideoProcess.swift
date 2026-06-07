@@ -88,18 +88,13 @@ final class VideoFrameProcessor {
     }
     func cleanup() {
         isActive = false
-
-        // Task 目前無法強制取消，確保 isActive 檢查能立即返回
-        Task {
-            if (rotator != nil) {
-                await rotator?.cleanup()
-                rotator = nil
-            }
-
+        let r = rotator
+        rotator = nil
+        if let r = r {
+            Task { await r.cleanup() }
         }
     }
     deinit {
-        cleanup()
         sendlog("🧹 VideoFrameProcessor deinit — resources released")
     }
 
@@ -157,10 +152,15 @@ final class VideoFrameProcessor {
                 angle: self.angle
             ) else { return }
 
-            // CFR 平滑：以 frameCount 產生恒定 PTS，消除 VFR 造成的 PTS 抖動
-            let correctedPTS = CMTime(value: frameCount, timescale: targetFPS)
+            // CFR 平滑：以 frameCount 產生恒定 PTS，消除 VFR 造成的 PTS 抖動（透過 queue.sync 保護 frameCount）
+            let (correctedPTS, correctDuration): (CMTime, CMTime) = queue.sync {
+                let pts = CMTime(value: frameCount, timescale: targetFPS)
+                let dur = CMTime(value: 1, timescale: targetFPS)
+                frameCount += 1
+                return (pts, dur)
+            }
             var correctedTiming = CMSampleTimingInfo(
-                duration: CMTime(value: 1, timescale: targetFPS),
+                duration: correctDuration,
                 presentationTimeStamp: correctedPTS,
                 decodeTimeStamp: CMTime.invalid
             )
@@ -172,7 +172,6 @@ final class VideoFrameProcessor {
                 sampleTimingArray: &correctedTiming,
                 sampleBufferOut: &correctedBuffer
             )
-            frameCount += 1
 
             if let cb = correctedBuffer {
                 await self.mediaMixer.append(cb)
