@@ -107,7 +107,7 @@ actor VideoBitrateAnalyzer {
 
                 videoInfos.append(VideoAnalysisResult.TrackInfo(
                     mediaType: .video,
-                    bitrate: bitrate ?? 0.0,
+                    bitrate: bitrate.map(Double.init) ?? 0.0,
                     codec: codec,
                     resolution: correctedSize,
                     frameRate: frameRate ?? Float(0.0),
@@ -136,7 +136,7 @@ actor VideoBitrateAnalyzer {
 
                 audioInfos.append(VideoAnalysisResult.TrackInfo(
                     mediaType: .audio,
-                    bitrate: bitrate ?? 0.0,
+                    bitrate: bitrate.map(Double.init) ?? 0.0,
                     codec: codec,
                     resolution: nil,
                     frameRate: nil,
