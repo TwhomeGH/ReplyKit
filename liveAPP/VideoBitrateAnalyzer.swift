@@ -167,26 +167,20 @@ actor VideoBitrateAnalyzer {
             return []
         }
 
-        let output = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
-        ])
+        let output = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: nil)
         guard assetReader.canAdd(output) else {
             assetReader.cancelReading()
             return []
         }
         assetReader.add(output)
-        guard assetReader.startReading() else {
-            assetReader.cancelReading()
-            return []
-        }
+        assetReader.startReading()
         defer { assetReader.cancelReading() }
 
         let segmentCount = max(min(Int(duration), 100), 1)
         let segmentDuration = duration / Double(segmentCount)
         var segments = [Int64](repeating: 0, count: segmentCount)
 
-        while true {
-            guard let sample = output.copyNextSampleBuffer() else { break }
+        while let sample = output.copyNextSampleBuffer() {
             let time = CMSampleBufferGetPresentationTimeStamp(sample)
             guard CMTimeGetSeconds(time).isFinite else { continue }
             let sec = CMTimeGetSeconds(time)
