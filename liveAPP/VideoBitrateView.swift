@@ -203,13 +203,13 @@ struct VideoBitrateView: View {
                     x: .value("時間", sample.time),
                     y: .value("碼率", sample.bitrate / 1000)
                 )
-                .interpolationMethod(.monotonic)
+                .interpolationMethod(.monotone)
 
                 AreaMark(
                     x: .value("時間", sample.time),
                     y: .value("碼率", sample.bitrate / 1000)
                 )
-                .interpolationMethod(.monotonic)
+                .interpolationMethod(.monotone)
                 .foregroundStyle(.blue.opacity(0.1))
             }
             .chartYAxisLabel("Kbps")

@@ -23,7 +23,7 @@ struct VideoAnalysisResult: Identifiable {
     let audioTracks: [TrackInfo]
 
     var averageBitrate: Double {
-        guard duration > 0 else { return 0 }
+        guard duration > 0 else { return 0.0 }
         return (Double(fileSize) * 8) / duration
     }
 
@@ -107,10 +107,10 @@ actor VideoBitrateAnalyzer {
 
                 videoInfos.append(VideoAnalysisResult.TrackInfo(
                     mediaType: .video,
-                    bitrate: bitrate ?? 0,
+                    bitrate: bitrate ?? 0.0,
                     codec: codec,
                     resolution: correctedSize,
-                    frameRate: frameRate ?? 0,
+                    frameRate: frameRate ?? Float(0.0),
                     audioSampleRate: nil,
                     audioChannels: nil
                 ))
@@ -131,12 +131,12 @@ actor VideoBitrateAnalyzer {
                 var channels: Int? = nil
                 if let format = format {
                     let basic = CMAudioFormatDescriptionGetStreamBasicDescription(format)
-                    channels = basic?.pointee.mChannelsPerFrame
+                    channels = basic.map { Int($0.pointee.mChannelsPerFrame) }
                 }
 
                 audioInfos.append(VideoAnalysisResult.TrackInfo(
                     mediaType: .audio,
-                    bitrate: bitrate ?? 0,
+                    bitrate: bitrate ?? 0.0,
                     codec: codec,
                     resolution: nil,
                     frameRate: nil,
@@ -159,9 +159,9 @@ actor VideoBitrateAnalyzer {
         )
     }
 
-    private static func extractBitrateSamples(asset: AVAsset, duration: TimeInterval) -> [VideoAnalysisResult.BitrateSample] {
+    private static func extractBitrateSamples(asset: AVAsset, duration: TimeInterval) async -> [VideoAnalysisResult.BitrateSample] {
         guard let assetReader = try? AVAssetReader(asset: asset) else { return [] }
-        guard let videoTrack = asset.tracks(withMediaType: .video).first else { return [] }
+        guard let videoTrack = (try? await asset.loadTracks(withMediaType: .video))?.first else { return [] }
 
         let output = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: nil)
         guard assetReader.canAdd(output) else { return [] }
@@ -177,7 +177,7 @@ actor VideoBitrateAnalyzer {
             let sec = CMTimeGetSeconds(time)
             let idx = min(Int(sec / segmentDuration), segmentCount - 1)
             if idx >= 0 && idx < segmentCount {
-                segments[idx] += CMSampleBufferGetTotalSampleSize(sample)
+                segments[idx] += Int64(CMSampleBufferGetTotalSampleSize(sample))
             }
         }
 
