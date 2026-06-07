@@ -9,68 +9,47 @@ struct VideoBitrateView: View {
     @State private var result: VideoAnalysisResult?
     @State private var errorMessage: String?
     @State private var showFilePicker = false
+    @State private var showPhotosPicker = false
 
     var body: some View {
-        NavigationView {
-            content
-                .navigationTitle("視頻碼率分析")
-                .toolbar {
-                    ToolbarItem(placement: .primaryAction) {
-                        Menu {
-                            Button {
-                                showPhotosPicker = true
-                            } label: {
-                                Label("從相簿", systemImage: "photo.on.rectangle")
-                            }
-                            Button {
-                                showFilePicker = true
-                            } label: {
-                                Label("從檔案", systemImage: "folder")
-                            }
-                        } label: {
-                            Label("選取視頻", systemImage: result != nil ? "arrow.triangle.2.circlepath" : "plus")
-                        }
+        content
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .fileImporter(
+                isPresented: $showFilePicker,
+                allowedContentTypes: [.movie, .video, UTType("com.apple.quicktime-movie")].compactMap { $0 },
+                allowsMultipleSelection: false
+            ) { fileResult in
+                switch fileResult {
+                case .success(let urls):
+                    if let url = urls.first {
+                        startAnalysis(url: url)
                     }
+                case .failure(let error):
+                    self.errorMessage = error.localizedDescription
                 }
-                .fileImporter(
-                    isPresented: $showFilePicker,
-                    allowedContentTypes: [.movie, .video, UTType("com.apple.quicktime-movie")].compactMap { $0 },
-                    allowsMultipleSelection: false
-                ) { fileResult in
-                    switch fileResult {
-                    case .success(let urls):
-                        if let url = urls.first {
-                            startAnalysis(url: url)
-                        }
-                    case .failure(let error):
-                        self.errorMessage = error.localizedDescription
-                    }
-                }
-        }
-        .photosPicker(isPresented: $showPhotosPicker, selection: $selectedPickerItem, matching: .videos)
-        .onChange(of: selectedPickerItem) { newItem in
-            guard let item = newItem else { return }
-            Task {
-                guard let data = try? await item.loadTransferable(type: Data.self) else { return }
-                let tempURL = FileManager.default.temporaryDirectory
-                    .appendingPathComponent(UUID().uuidString)
-                    .appendingPathExtension("mov")
-                try? data.write(to: tempURL)
-                selectedPickerItem = nil
-                startAnalysis(url: tempURL)
             }
-        }
-        .alert("錯誤", isPresented: Binding(
-            get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
-        ), actions: {
-            Button("確定") { errorMessage = nil }
-        }, message: {
-            Text(errorMessage ?? "")
-        })
+            .photosPicker(isPresented: $showPhotosPicker, selection: $selectedPickerItem, matching: .videos)
+            .onChange(of: selectedPickerItem) { newItem in
+                guard let item = newItem else { return }
+                Task {
+                    guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+                    let tempURL = FileManager.default.temporaryDirectory
+                        .appendingPathComponent(UUID().uuidString)
+                        .appendingPathExtension("mov")
+                    try? data.write(to: tempURL)
+                    selectedPickerItem = nil
+                    startAnalysis(url: tempURL)
+                }
+            }
+            .alert("錯誤", isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            ), actions: {
+                Button("確定") { errorMessage = nil }
+            }, message: {
+                Text(errorMessage ?? "")
+            })
     }
-
-    @State private var showPhotosPicker = false
 
     @ViewBuilder
     private var content: some View {
@@ -85,6 +64,8 @@ struct VideoBitrateView: View {
 
     private var placeholderView: some View {
         VStack(spacing: 20) {
+            Spacer()
+
             Image(systemName: "video.badge.plus")
                 .font(.system(size: 60))
                 .foregroundColor(.secondary)
@@ -116,11 +97,15 @@ struct VideoBitrateView: View {
                         .cornerRadius(10)
                 }
             }
+
+            Spacer()
         }
     }
 
     private var loadingView: some View {
         VStack(spacing: 16) {
+            Spacer()
+
             ProgressView()
                 .scaleEffect(1.5)
 
@@ -131,21 +116,54 @@ struct VideoBitrateView: View {
             Text("讀取軌道資訊和碼率樣本")
                 .font(.caption)
                 .foregroundColor(.secondary)
+
+            Spacer()
         }
     }
 
     private func resultView(_ result: VideoAnalysisResult) -> some View {
         ScrollView {
-            VStack(spacing: 16) {
-                fileInfoSection(result)
-                bitrateChartSection(result)
-                videoTracksSection(result)
-                audioTracksSection(result)
-                if !result.bitrateSamples.isEmpty {
-                    bitrateTimelineChart(result)
+            VStack(spacing: 0) {
+                HStack {
+                    Text("視頻碼率分析")
+                        .font(.largeTitle)
+                        .fontWeight(.bold)
+                    Spacer()
+                    Menu {
+                        Button {
+                            showPhotosPicker = true
+                        } label: {
+                            Label("從相簿", systemImage: "photo.on.rectangle")
+                        }
+                        Button {
+                            showFilePicker = true
+                        } label: {
+                            Label("從檔案", systemImage: "folder")
+                        }
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.title2)
+                            .padding(8)
+                            .background(Color.accentColor.opacity(0.15))
+                            .clipShape(Circle())
+                    }
                 }
+                .padding(.horizontal)
+                .padding(.top)
+                .padding(.bottom, 8)
+
+                VStack(spacing: 16) {
+                    fileInfoSection(result)
+                    bitrateChartSection(result)
+                    videoTracksSection(result)
+                    audioTracksSection(result)
+                    if !result.bitrateSamples.isEmpty {
+                        bitrateTimelineChart(result)
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.bottom)
             }
-            .padding()
         }
     }
 
