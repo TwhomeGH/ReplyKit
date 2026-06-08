@@ -1410,9 +1410,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             let rotate = RPConfig.shared.state.Rotate
             if rotate == 0 || rotate == 180 {
                 videoSettings.videoSize = CGSize(width: CGFloat(dstH), height: CGFloat(dstW))
+                videoSettings.profileLevel = kVTProfileLevel_H264_High_AutoLevel as String
                 sendlog(message: "預設影片尺寸(直向): \(dstH)x\(dstW)")
             } else {
                 videoSettings.videoSize = CGSize(width: CGFloat(dstW), height: CGFloat(dstH))
+                videoSettings.profileLevel = kVTProfileLevel_H264_High_AutoLevel as String
+
                 sendlog(message: "預設影片尺寸(橫向): \(dstW)x\(dstH)")
             }
             try? await rtmpStream.setVideoSettings(videoSettings)
@@ -1420,6 +1423,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             sendlog(message: "⚠️ 警告：未設定影片尺寸，將使用預設值 1280x720")
             var videoSettings = await rtmpStream.videoSettings
             videoSettings.videoSize = CGSize(width: 1280, height: 720)
+
+            videoSettings.profileLevel = kVTProfileLevel_H264_High_AutoLevel as String
+            
             try? await rtmpStream.setVideoSettings(videoSettings)
         }
 
@@ -1978,6 +1984,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     /// 根據解析度、幀率與 Profile 選擇 H.264 Level
     func h264ProfileLevel(forWidth width: Int, height: Int, fps: Int, profile: H264Profile) -> String {
+        // 計算宏塊數
         let macroblockWidth = (width + 15) / 16
         let macroblockHeight = (height + 15) / 16
         let mbPerFrame = macroblockWidth * macroblockHeight
@@ -1989,8 +1996,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             case 1620..<3600:
                 return fps <= 30 ? kVTProfileLevel_H264_Baseline_3_1 as String : kVTProfileLevel_H264_Baseline_3_2 as String
             case 3600..<8192: return fps <= 30 ? kVTProfileLevel_H264_Baseline_4_0 as String : kVTProfileLevel_H264_Baseline_4_1 as String
-            default:
-                return kVTProfileLevel_H264_Baseline_AutoLevel as String
+            default: return kVTProfileLevel_H264_Baseline_4_2 as String
             }
 
         case .main:
@@ -1999,9 +2005,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             case 1620..<3600:
                 return fps <= 30 ? kVTProfileLevel_H264_Main_3_1 as String : kVTProfileLevel_H264_Main_3_2 as String
             case 3600..<8192: return fps <= 30 ? kVTProfileLevel_H264_Main_4_0 as String : kVTProfileLevel_H264_Main_4_1 as String
-            case 8192..<8704: return kVTProfileLevel_H264_Main_4_2 as String
-            case 8704..<36864: return kVTProfileLevel_H264_Main_5_0 as String
-            default: return fps <= 60 ? kVTProfileLevel_H264_Main_5_1 as String : kVTProfileLevel_H264_Main_5_2 as String
+            default: return kVTProfileLevel_H264_Main_4_2 as String
             }
 
         case .high:
