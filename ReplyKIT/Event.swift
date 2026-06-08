@@ -498,9 +498,6 @@ final class RPConfig {
 
     var state: State
 
-    private let stateQueue = DispatchQueue(label: "RPConfig.state.queue")
-
-
 
     // MARK: - Public control API
     // ======================================================
@@ -517,9 +514,6 @@ final class RPConfig {
                     enableAGCFix:Bool? = nil,
                     enableMetalAudio:Bool? = nil 
                     ) {
-
-
-        stateQueue.sync {
 
             if let isOringinAudio = isOringinAudio {
                 self.state.isOringinAudio = isOringinAudio
@@ -555,8 +549,6 @@ final class RPConfig {
             if let enableMetalAudio = enableMetalAudio {
                 self.state.enableMetalAudio = enableMetalAudio
             }
-            
-        }
 
     }
 
@@ -581,8 +573,6 @@ final class RPConfig {
                      ODHeight:Int? = nil,
                      KeyFrameInterval:Int? = nil,
                      ) {
-
-        stateQueue.sync {
 
             if let RTMPURL = RTMPURL {
                 self.state.RTMPURL = RTMPURL
@@ -654,8 +644,6 @@ final class RPConfig {
                 self.state.KeyFrameInterval = KeyFrameInterval
             }
 
-        }
-        
     }
 
 
