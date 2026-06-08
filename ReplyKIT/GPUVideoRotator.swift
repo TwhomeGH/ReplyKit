@@ -369,6 +369,21 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     var hasMetalResources = false
 
+    /// 連續 Metal 操作失敗計數，達到閾值時自動重建管線
+    private var consecutiveMetalFailures = 0
+    private let maxConsecutiveMetalFailures = 5
+
+    /// 偵測 Metal 操作失敗，自動 cleanup 讓下一幀重新初始化
+    private func handleMetalFailure(_ reason: String) {
+        consecutiveMetalFailures += 1
+        logTo("Metal 失敗[\(consecutiveMetalFailures)/\(maxConsecutiveMetalFailures)]: \(reason)")
+        if consecutiveMetalFailures >= maxConsecutiveMetalFailures {
+            logTo("Metal 連續失敗次數過多，自動重建管線")
+            cleanupResources()
+            consecutiveMetalFailures = 0
+        }
+    }
+
     private func ensureMetalResources() -> Bool {
 
         guard hasMetalResources == false else {
@@ -552,7 +567,10 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             logTo("無效的輸出維度: \(dstW)x\(dstH)，跳過此幀")
             return nil
         }
-        guard let outSet = getReusableOutput(width: dstW, height: dstH) else { return nil }
+        guard let outSet = getReusableOutput(width: dstW, height: dstH) else {
+            handleMetalFailure("getReusableOutput(\(dstW)x\(dstH)) 返回 nil")
+            return nil
+        }
 
         guard let ycvTexIn = makeTexture(from: inBuffer, planeIndex: 0),
             let uvcvTexIn = makeTexture(from: inBuffer, planeIndex: 1),
@@ -560,11 +578,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
             recycleOutput(outSet)
 
-            // 必須釋放 semaphore，否則會 deadlock
-            // Task {
-            //     await gpuSemaphore.signal()
-            // }
-
+            handleMetalFailure("makeTexture 或 makeCommandBuffer 失敗")
             
 
             return nil
@@ -587,6 +601,8 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             cmd.addCompletedHandler { [self] _ in
                 guard !didResume else { return }
                 didResume = true
+
+                self.consecutiveMetalFailures = 0
 
                 frameC.inY = nil
                 frameC.inUV = nil
