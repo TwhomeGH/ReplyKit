@@ -2,6 +2,12 @@ import Foundation
 import AVFoundation
 import RTMPHaishinKit
 
+// ⚠️ 已停用（2025.06）
+// 原因：HaishinKit 的 setVideoInputBufferCounts 僅為 stored property setter，
+//       實際 buffering policy（AsyncStream.bufferingPolicy）在 stream 啟動時就已固定，
+//       runtime 期間呼叫無效。buffer count 只需在初始化時設定一次即可。
+// 保留此檔案以供日後 HaishinKit 版本若支援動態變更時參考。
+
 public final class AdaptiveVideoBufferManager {
     private var currentBufferCount: Int
     private var lastSetBufferCount: Int = -1

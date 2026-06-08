@@ -151,6 +151,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     private var reconnectionTask: Task<Void, Never>?
     private var isInitialSyncDone = false
 
+    // AdaptiveVideoBufferManager 已停用（2025.06）
+    // setVideoInputBufferCounts 僅為 stored property setter，HaishinKit 的 buffering policy
+    // 在 stream 啟動時就已固定，runtime 呼叫無效。初始化時設定一次即可。
     private var adaptiveBufferManager: AdaptiveVideoBufferManager?
 
     private func reloadVolumes(type:Int = -1,volume:Float = 1.0) {
@@ -847,14 +850,27 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     }
                 }
 
+                guard dstRW > 0 else {
+                    sendlog(message: "OutW 跳過: dstW=\(dstRW) 無效")
+                    return
+                }
+
+                let dstRH = SharedDefaults.group?.integer(forKey: "dstH") ?? 0
+                guard dstRH > 0 else {
+                    sendlog(message: "OutW 跳過: dstH=\(dstRH) 無效(尚未收到 OutH)")
+                    return
+                }
+
                 var VSET = await rtmpStream.videoSettings
-                VSET.videoSize.width = CGFloat(dstRW)
+                VSET.videoSize = CGSize(width: CGFloat(dstRW), height: CGFloat(dstRH))
 
                 try await rtmpStream.setVideoSettings(VSET)
 
                 ADWidth = dstRW
+                ADHeight = dstRH
                 videoProcessor?.rotator?.dstWW = dstRW
-                sendlog(message: "OutW:\(dstRW)")
+                videoProcessor?.rotator?.dstHH = dstRH
+                sendlog(message: "OutW:\(dstRW)x\(dstRH)")
 
             }
             
@@ -882,15 +898,28 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     }
                 }
 
+                guard dstRH > 0 else {
+                    sendlog(message: "OutH 跳過: dstH=\(dstRH) 無效")
+                    return
+                }
+
+                let dstRW = SharedDefaults.group?.integer(forKey: "dstW") ?? 0
+                guard dstRW > 0 else {
+                    sendlog(message: "OutH 跳過: dstW=\(dstRW) 無效(尚未收到 OutW)")
+                    return
+                }
+
                 var VSET = await rtmpStream.videoSettings
-                VSET.videoSize.height = CGFloat(dstRH)
+                VSET.videoSize = CGSize(width: CGFloat(dstRW), height: CGFloat(dstRH))
 
                 try await rtmpStream.setVideoSettings(VSET)
 
+                ADWidth = dstRW
                 ADHeight = dstRH
+                videoProcessor?.rotator?.dstWW = dstRW
                 videoProcessor?.rotator?.dstHH = dstRH
 
-                sendlog(message: "OutW:\(dstRH)")
+                sendlog(message: "OutH:\(dstRW)x\(dstRH)")
 
 
             }
@@ -1411,7 +1440,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     // MARK: Video Setting
     func configureMediaMixer() async {
 
-        adaptiveBufferManager = AdaptiveVideoBufferManager()
+        // AdaptiveVideoBufferManager 已停用：setVideoInputBufferCounts 在 runtime 無效
+        // adaptiveBufferManager = AdaptiveVideoBufferManager()
 
         streamStataus = MyStreamBitRateStrategy()
 
@@ -1909,7 +1939,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             audioProcessor?.cleanup()
             videoProcessor=nil
             audioProcessor=nil
-            adaptiveBufferManager = nil
+            // AdaptiveVideoBufferManager 已停用
+            // adaptiveBufferManager = nil
 
         }
 
@@ -2281,13 +2312,14 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
 
-            if let bm = adaptiveBufferManager {
-                bm.monitorFPSAndAdjust(
-                    with: sampleBuffer,
-                    rtmpStream: rtmpStream,
-                    sendlog: { msg in sendlog(message: msg) }
-                )
-            }
+            // AdaptiveVideoBufferManager 已停用：setVideoInputBufferCounts 在 runtime 無效
+            // if let bm = adaptiveBufferManager {
+            //     bm.monitorFPSAndAdjust(
+            //         with: sampleBuffer,
+            //         rtmpStream: rtmpStream,
+            //         sendlog: { msg in sendlog(message: msg) }
+            //     )
+            // }
 
             if videoProcessor != nil {
 

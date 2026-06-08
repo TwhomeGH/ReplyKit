@@ -137,6 +137,34 @@
 ### 修復
 改為成對檢查（OD 兩者 > 0 或 AD 兩者 > 0），維持維度一致性。
 
+## 修復 OutW/OutH 分開觸發造成 videoSize 維度不一致
+
+### 問題
+`OutW` 與 `OutH` 是兩個獨立的 Darwin Notification，App 端先發 OutW、再發 OutH。
+Extension 端原本的處理方式：
+- **OutW** 只改 `videoSize.width`
+- **OutH** 只改 `videoSize.height`
+
+這導致 OutW 處理完、OutH 尚未到達的時間窗口中，`videoSize` 為 **(新寬度, 舊高度)** 的錯誤組合。
+若編碼器在此時讀取，會得到錯誤解析度（如 854x480 或 0x0）。
+
+### 修復
+- **OutW/OutH 各自讀取雙維度**：兩個 handler 現在都同時讀取 `dstW` 與 `dstH`
+- **0 值保護**：若任一維度為 0，則跳過本次更新，等待另一方補齊
+- **原子設定**：`videoSize` 設為完整的 `CGSize(width:height:)`，不再分軸修改
+- **雙軸同步**：`ADWidth`/`ADHeight` 與 `rotator.dstWW`/`dstHH` 同時更新
+
+## 停用 AdaptiveVideoBufferManager
+
+### 原因
+經查閱 HaishinKit 原始碼，`setVideoInputBufferCounts` 僅為 **stored property setter**，
+其設定的值只在 `videoInputStream` computed property 被存取時讀取一次。
+而 `videoInputStream` 的 `for await` loop 在 stream 啟動時就已固定，**runtime 期間呼叫完全無效**。
+
+### 修改
+- 移除每幀對 `AdaptiveVideoBufferManager.monitorFPSAndAdjust` 的呼叫
+- 保留初始化時從 `RPConfig.shared.state.BufferCount` 設定一次的邏輯（`configureVideo_init` 與 reconnect 處）
+
 ## 改進音視頻管道處理
 
 目前音頻帶降噪功能 可選使用Metal加速
@@ -196,21 +224,20 @@ frameCount += 1
 
 無論 ReplayKit 以何種 VFR 送幀，編碼器永遠收到 0, 1/60s, 2/60s... 的恒定 PTS。
 
-#### 3. 恢復 AdaptiveVideoBufferManager
+#### 3. 靜態 Buffer 設定（取代動態調整）
 
-取消註解整份 `AdaptiveVideoBufferManager.swift`，並重新接入 `SampleHandler`：
+原 AdaptiveVideoBufferManager 提供的動態 buffer 管理已**停用**（經確認 `setVideoInputBufferCounts` 在 runtime 無效），
+改為在初始化階段從 `RPConfig.shared.state.BufferCount` 設定一次：
 
-- 根據處理器核心數初始化 buffer count
-- 即時監控 FPS、渲染延遲、幀間隔標準差
-- 系統過載時自動提高 buffer（最多 5），空載時降低（最少 3）
-- 每 3 秒輸出一次診斷日誌
+- `configureVideo_init` 處設定初始值
+- reconnect 建立新 stream 時重新設定
 
 ### 效果
 
 這三層防禦形成完整保護：
 - **第一層**：不允許 B-frame 重排序 → PTS 不會被編碼器亂序打亂
 - **第二層**：CFR 強制修正 PTS → 無論輸入多亂，輸出永遠是 60fps 節奏
-- **第三層**：動態 buffer 管理 → 系統過載時有緩衝空間，避免瞬間崩潰
+- **第三層**：靜態 buffer 管理 → 根據設備核心數與用戶設定選擇合理初始值
 
 ## 新增重連設計
 
