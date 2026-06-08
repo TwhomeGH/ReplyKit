@@ -70,6 +70,45 @@
 
 ## 最新修正內容說明
 
+## 修復 Socket 連線穩定性與首次推流解析度錯誤
+
+### 問題描述
+
+1. **首次推流解析度錯誤**：第一次推流時常變成 854x480，而非用戶指定的解析度（如 1920x1080）
+2. **Socket 死連接/殘留 Listener**：切換直播後舊連線未完全清理，導致新連線無法正常通訊
+
+### 根因分析
+
+**854x480 錯誤解析度：**
+- 當 `socket` 請求回傳的 `ODWidth`/`ODHeight` 與 `ADWidth`/`ADHeight` 皆為 0 時，`configureVideo` 跳過解析度設定，HaishinKit 使用預設 854x480
+- `SocketClient` 在連線尚未 `.ready` 時就發送 batch 請求，導致首次推流常 timeout 或拿到空配置
+
+**Socket 死連接：**
+- `SocketServer.isRunning` computed property 有副作用（直接 `listener.cancel()`、`listener = nil`），造成多次存取時的 race condition
+- `receive()` callback 在 `removeConnection` 後仍可能執行，訪問已釋放的 buffer
+- `SocketClient.setupConnection()` 直接覆蓋 `connection` 而不清理舊連線，舊連線的 receive 迴圈仍在背景運作
+- `rtmpBatchContinuation` 等 continuation 在連線關閉時未清理，造成記憶體洩漏
+
+### 修改內容
+
+#### 1. SocketClient（`ReplyKIT/Socket.swift`）
+- **setupConnection()**：先 closeConnection 清理舊連線再建立新連線
+- **waitForReady(timeout:)**：新增 async 方法，等待連線 `.ready` 後才發送請求（3s timeout）
+- **closeConnection()**：同步清理所有 pending continuation（rtmp、log、batch、ContinuationStore），避免洩漏
+- **\_requestRTMPKEYAndLog() / \_requestRTMPKEY() / \_requestLogConfig()**：都先 await waitForReady() 再發送
+- **ContinuationStore**：新增 cancelAll() 清理所有殘留的 continuation
+
+#### 2. SocketServer（`liveAPP/Socket.swift`）
+- **isRunning**：改為純 computed property，移除所有副作用
+- **cleanupStaleListener()**：獨立方法處理 failed/cancelled listener 的清理
+- **receive(from:)**：增加多層 `guard connections[id] != nil` 檢查，防止 callback 在連線移除後繼續處理
+- **start()**：先調用 cleanupStaleListener() 再檢查狀態
+
+#### 3. SampleHandler（`ReplyKIT/SampleHandler.swift`）
+- **configureVideo_init()**：當 OD/AD 皆為 0 時，從 App Group UserDefaults 讀取 dstW/dstH 作為 fallback；若仍為 0 則設定 1280x720 預設值
+- **configureVideo()**：相同 fallback 邏輯
+- **broadcastStarted publish 前**：最終 videoSize 檢查也加入 UserDefaults fallback
+
 ## 改進音視頻管道處理
 
 目前音頻帶降噪功能 可選使用Metal加速
