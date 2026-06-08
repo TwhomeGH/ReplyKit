@@ -194,6 +194,21 @@ Extension 端原本的處理方式：
 - `SampleHandler.swift` 移除 per-mode 硬編碼，改為統一讀取 `RPConfig.shared.state.KeyFrameInterval`（支援 Socket 傳遞，側載用戶也可用）
 - 值為 `0` 表示由編碼器自動決定（無最大間隔限制）
 
+## 修復 h264ProfileLevel 在高解析度下回傳無效 Level
+
+### 問題
+`h264ProfileLevel` 中 Baseline 和 Main 的 switch 缺少中高階 Level 範圍。
+對於 iPad 常見的 1920x1334 原始解析度（mbPerFrame≈10285），
+兩者都跳進 `default` 回傳 `xxx_4_2`，但 Level 4.2 最大只支援 8704 mb/frame。
+
+- **Baseline 4.2**：H.264 標準中 Baseline 最高只到 Level 4.1，回傳 4.2 是非法的
+- **Main 4.2**：10285 > 8704，超出 Level 4.2 規格，VideoToolbox 可能拒絕或編碼異常
+
+### 修復
+- **Baseline `default`** → 改為 `Baseline_AutoLevel`（讓編碼器自動選擇）
+- **Main** → 補上 `8192..<8704`(4.2)、`8704..<36864`(5.0)、`>=36864`(5.1/5.2) 等完整範圍
+- **High** → 維持不變（原本就有完整範圍）
+
 ## 改進音視頻管道處理
 
 目前音頻帶降噪功能 可選使用Metal加速
