@@ -180,39 +180,43 @@ class SocketServer:ObservableObject {
 
     var isRunning: Bool {
         guard let listener else {
-            isStopping = true
             return false
         }
 
         switch listener.state {
         case .ready:
-            logTo("listener 有效!")
-            isStopping = false
             return true
+        default:
+            return false
+        }
+    }
 
+    func cleanupStaleListener() {
+        guard let listener = self.listener else {
+            isStopping = true
+            return
+        }
+        switch listener.state {
+        case .ready:
+            isStopping = false
         case .failed(let error):
             logTo("listener 狀態 failed: \(error)")
             listener.stateUpdateHandler = nil
             listener.cancel()
-            self.listener = nil   // ✅ 強制釋放
+            self.listener = nil
             isStopping = true
-            return false
-
         case .cancelled:
             logTo("listener 狀態 cancelled")
             listener.stateUpdateHandler = nil
             listener.cancel()
-            self.listener = nil   // ✅ 強制釋放
+            self.listener = nil
             isStopping = true
-            return false
-
         default:
             logTo("listener 狀態非 ready，清理中")
             listener.stateUpdateHandler = nil
             listener.cancel()
-            self.listener = nil   // ✅ 強制釋放
+            self.listener = nil
             isStopping = true
-            return false
         }
     }
 
@@ -220,6 +224,8 @@ class SocketServer:ObservableObject {
     
     // MARK: - start
     func start(port: UInt16 = 9322) {
+
+        cleanupStaleListener()
 
         guard !isRunning else {
             logTo("SocketServer already running")
@@ -351,6 +357,9 @@ class SocketServer:ObservableObject {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
             guard let self = self else { return }
 
+            // 連線可能在等待期間被移除，double-check
+            guard connections[id] != nil else { return }
+
             if let data = data, !data.isEmpty {
                 var buffer = self.receiveBuffers[id] ?? Data()
 
@@ -384,11 +393,20 @@ class SocketServer:ObservableObject {
 
                     self.handleReceivedData(Data(lineData), from: connection)
 
+                    // handleReceivedData 可能移除了連線
+                    guard connections[id] != nil else { return }
+
                 }
 
-                self.receiveBuffers[id] = buffer
+                // 再次確認連線仍有效才寫回 buffer
+                if connections[id] != nil {
+                    self.receiveBuffers[id] = buffer
+                }
 
             }
+
+            // 連線可能在處理 data 時被移除
+            guard connections[id] != nil else { return }
 
             if let error = error {
                 self.logTo("Receive error: \(error)")
@@ -398,7 +416,7 @@ class SocketServer:ObservableObject {
 
             if isComplete {
                 // EOF 時可選擇處理殘留（通常不用）
-                if let buffer = self.receiveBuffers[id], !buffer.isEmpty {
+                if connections[id] != nil, let buffer = self.receiveBuffers[id], !buffer.isEmpty {
                     self.handleReceivedData(buffer, from: connection)
                 }
                 self.receiveBuffers[id] = nil

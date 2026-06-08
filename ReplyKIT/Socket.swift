@@ -78,6 +78,13 @@ class SocketClient : @unchecked Sendable {
         func take(for key: String) -> CheckedContinuation<Any?, Error>? {
             return store.removeValue(forKey: key)
         }
+
+        func cancelAll() {
+            for (_, cont) in store {
+                cont.resume(returning: nil)
+            }
+            store.removeAll()
+        }
     }
 
     private let continuationStore = ContinuationStore()
@@ -95,6 +102,8 @@ class SocketClient : @unchecked Sendable {
     var onSocketReady: (() -> Void)?
 
     private var connection: NWConnection?
+
+    private var readyContinuation: CheckedContinuation<Bool, Never>?
 
     private let queue = DispatchQueue(label: "SocketClientQueue")
 
@@ -158,6 +167,10 @@ class SocketClient : @unchecked Sendable {
     
     // MARK: - 連線初始化
     func setupConnection(host: String = "localhost" , port: UInt16 = 9322) {
+            if connection != nil {
+                closeConnection()
+            }
+
             connection = NWConnection(
                 host: NWEndpoint.Host(host),
                 port: NWEndpoint.Port(rawValue: port)!,
@@ -171,6 +184,28 @@ class SocketClient : @unchecked Sendable {
 
     }
 
+    func waitForReady(timeout: TimeInterval = 3.0) async -> Bool {
+        if connection?.state == .ready { return true }
+        return await withCheckedContinuation { cont in
+            queue.async { [weak self] in
+                guard let self = self else { cont.resume(returning: false); return }
+                if self.connection?.state == .ready {
+                    cont.resume(returning: true)
+                } else {
+                    self.readyContinuation = cont
+                    // 安全 timeout，防止永遠等不到
+                    self.queue.asyncAfter(deadline: .now() + timeout) { [weak self] in
+                        guard let self = self else { return }
+                        if self.readyContinuation != nil {
+                            self.readyContinuation = nil
+                            cont.resume(returning: false)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     func closeConnection() {
 
         isConnection = false
@@ -180,6 +215,18 @@ class SocketClient : @unchecked Sendable {
         connection?.stateUpdateHandler = nil
         connection?.cancel()
         connection = nil
+
+        readyContinuation?.resume(returning: false)
+        readyContinuation = nil
+
+        // 取消所有 pending continuation 避免洩漏（同步執行，避免死鎖）
+        rtmpContinuation?.resume(returning: false)
+        rtmpContinuation = nil
+        logContinuation?.resume(returning: false)
+        logContinuation = nil
+        rtmpBatchContinuation?.resume(returning: false)
+        rtmpBatchContinuation = nil
+        Task { await continuationStore.cancelAll() }
 
         stopHeartbeat()
 
@@ -204,6 +251,11 @@ class SocketClient : @unchecked Sendable {
                 reconnectAttempt = 0
                 sendReconnectStatus(.success)
 
+                self.queue.async {
+                    self.readyContinuation?.resume(returning: true)
+                    self.readyContinuation = nil
+                }
+
                 startHearbeat()
                 flushPendingLogs()
                 sendLog(message:"Socket連接成功 擴展端通信")
@@ -213,6 +265,10 @@ class SocketClient : @unchecked Sendable {
                 self.receive()
             case .failed(let error):
                 logTo("SocketClient failed: \(String(describing: error))")
+                self.queue.async {
+                    self.readyContinuation?.resume(returning: false)
+                    self.readyContinuation = nil
+                }
                 connection?.cancel()
                 connection = nil
                 isConnection = false
@@ -223,6 +279,10 @@ class SocketClient : @unchecked Sendable {
 
 
                 logTo("SocketClient cancelled")
+                self.queue.async {
+                    self.readyContinuation?.resume(returning: false)
+                    self.readyContinuation = nil
+                }
                 connection = nil
 
                 isConnection = false
@@ -381,6 +441,11 @@ class SocketClient : @unchecked Sendable {
 
     private func _requestRTMPKEYAndLog() async throws -> Bool {
 
+        // 等待連線 ready，避免發送失敗或 timeout
+        let ready = await waitForReady()
+        guard ready else {
+            throw TimeoutError.timedOut
+        }
 
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Bool, Error>) in
 
@@ -467,6 +532,9 @@ class SocketClient : @unchecked Sendable {
 
     private func _requestRTMPKEY() async throws -> Bool {
 
+        let ready = await waitForReady()
+        guard ready else { throw TimeoutError.timedOut }
+   
 
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Bool, Error>) in
 
@@ -506,6 +574,8 @@ class SocketClient : @unchecked Sendable {
 
     func _requestLogConfig() async throws -> Bool {
 
+        let ready = await waitForReady()
+        guard ready else { throw TimeoutError.timedOut }
 
         self.isProcessingBatch = true
 
@@ -630,6 +700,15 @@ class SocketClient : @unchecked Sendable {
             guard let cont = self.logContinuation else { return }
             self.logTo("取消LogConfig請求")
             self.logContinuation = nil
+            cont.resume(returning: false)
+        }
+    }
+
+    func cancelPendingRTMPBatch() {
+        queue.async {
+            guard let cont = self.rtmpBatchContinuation else { return }
+            self.logTo("取消Batch請求")
+            self.rtmpBatchContinuation = nil
             cont.resume(returning: false)
         }
     }

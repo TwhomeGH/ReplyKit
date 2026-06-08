@@ -1359,8 +1359,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         sendlog(message: "Video Buffer -> \(BCount)")
 
         // 在 frame 到來前先用 socket 配置設定 video size
-        let dstW: Int
-        let dstH: Int
+        var dstW: Int
+        var dstH: Int
         if RPConfig.shared.state.ODWidth > 0 && RPConfig.shared.state.ODHeight > 0 {
             dstW = RPConfig.shared.state.ODWidth
             dstH = RPConfig.shared.state.ODHeight
@@ -1368,7 +1368,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             dstW = RPConfig.shared.state.ADWidth
             dstH = RPConfig.shared.state.ADHeight
         } else {
-            dstW = 0; dstH = 0
+            // fallback: 讀取 App Group 中上次設定的值
+            dstW = SharedDefaults.group?.integer(forKey: "dstW") ?? 0
+            dstH = SharedDefaults.group?.integer(forKey: "dstH") ?? 0
+            if dstW > 0 && dstH > 0 {
+                sendlog(message: "使用 UserDefaults fallback: \(dstW)x\(dstH)")
+            }
         }
 
         if dstW > 0 && dstH > 0 {
@@ -1381,6 +1386,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 videoSettings.videoSize = CGSize(width: CGFloat(dstW), height: CGFloat(dstH))
                 sendlog(message: "預設影片尺寸(橫向): \(dstW)x\(dstH)")
             }
+            try? await rtmpStream.setVideoSettings(videoSettings)
+        } else {
+            sendlog(message: "⚠️ 警告：未設定影片尺寸，將使用預設值 1280x720")
+            var videoSettings = await rtmpStream.videoSettings
+            videoSettings.videoSize = CGSize(width: 1280, height: 720)
             try? await rtmpStream.setVideoSettings(videoSettings)
         }
 
@@ -1788,8 +1798,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 // 在 publish 前再次確保影片尺寸正確
                 do {
                     var finalVideoSettings = await rtmpStream.videoSettings
-                    let fw = RPConfig.shared.state.ODWidth > 0 ? RPConfig.shared.state.ODWidth : RPConfig.shared.state.ADWidth
-                    let fh = RPConfig.shared.state.ODHeight > 0 ? RPConfig.shared.state.ODHeight : RPConfig.shared.state.ADHeight
+                    var fw = RPConfig.shared.state.ODWidth > 0 ? RPConfig.shared.state.ODWidth : RPConfig.shared.state.ADWidth
+                    var fh = RPConfig.shared.state.ODHeight > 0 ? RPConfig.shared.state.ODHeight : RPConfig.shared.state.ADHeight
+                    if fw <= 0 || fh <= 0 {
+                        fw = ADWidth > 0 ? ADWidth : (SharedDefaults.group?.integer(forKey: "dstW") ?? 0)
+                        fh = ADHeight > 0 ? ADHeight : (SharedDefaults.group?.integer(forKey: "dstH") ?? 0)
+                    }
                     if fw > 0 && fh > 0 {
                         let rotate = RPConfig.shared.state.Rotate
                         if rotate == 0 || rotate == 180 {
@@ -2036,6 +2050,15 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             sendlog(message: "使用與GPU一致設定寬高：\(ADWidth) x \(ADHeight)")
             width = ADHeight
             height = ADWidth
+        } else {
+            // fallback: 讀取 App Group 中上次設定的值
+            let fbW = SharedDefaults.group?.integer(forKey: "dstW") ?? 0
+            let fbH = SharedDefaults.group?.integer(forKey: "dstH") ?? 0
+            if fbW > 0 && fbH > 0 {
+                sendlog(message: "configureVideo fallback UserDefaults: \(fbW)x\(fbH)")
+                width = fbH
+                height = fbW
+            }
         }
 
 
