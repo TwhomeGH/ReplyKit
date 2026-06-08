@@ -640,6 +640,7 @@ struct LogSettingView:View {
 
     @AppStorage("onlogPage",store:userDefaults) private var onlogPage = false
     @AppStorage("BitRateMode",store:userDefaults)  private var BitRateMode = 0
+    @AppStorage("KeyFrameInterval",store:userDefaults) private var KeyFrameInterval = 2
 
     let BitRateOptions = ["ABR 平均碼率 VBR的改進版", "CBR 固定碼率", "VBR 可變位元率 iOS26後才有"]
         
@@ -679,6 +680,19 @@ struct LogSettingView:View {
 
             Text("目前選擇：\(BitRateOptions[BitRateMode])")
                 .padding()
+
+            HStack {
+                Text("關鍵幀間隔 (秒)")
+                TextField("2", value: $KeyFrameInterval, format: .number)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .frame(width: 80)
+                Text("\(KeyFrameInterval == 0 ? "編碼器自動" : "\(KeyFrameInterval)秒")")
+                    .foregroundColor(.secondary)
+                    .font(.caption)
+            }
+            Text("預設 2 秒（Twitch/YouTube/Restream 建議值），0=編碼器自動")
+                .font(.footnote)
+                .foregroundColor(.secondary)
 
             Text("啟用日誌後, 會依用戶選擇App內顯示或外部服務器顯示 ，用於除錯或排查問題。")
                     .font(.footnote)

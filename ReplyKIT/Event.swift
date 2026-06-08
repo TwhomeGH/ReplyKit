@@ -491,6 +491,9 @@ final class RPConfig {
         // Metal 加速降噪
         var enableMetalAudio : Bool = false
 
+        // 關鍵幀間隔（秒），0=編碼器自動，>0=固定
+        var KeyFrameInterval : Int = 2
+
     }
 
     var state: State
@@ -576,6 +579,7 @@ final class RPConfig {
                      ADHeight:Int? = nil,
                      ODWidth:Int? = nil,
                      ODHeight:Int? = nil,
+                     KeyFrameInterval:Int? = nil,
                      ) {
 
         stateQueue.sync {
@@ -644,6 +648,10 @@ final class RPConfig {
                 self.state.ODHeight = ODHeight
 
                 sendlog(message:"輸出高度:\(ODWidth)")
+            }
+
+            if let KeyFrameInterval = KeyFrameInterval {
+                self.state.KeyFrameInterval = KeyFrameInterval
             }
 
         }

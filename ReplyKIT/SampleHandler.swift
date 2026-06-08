@@ -2238,6 +2238,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             
         }
 
+        let kv = RPConfig.shared.state.KeyFrameInterval
+        videoSettings.maxKeyFrameIntervalDuration = Int32(kv)
+        sendlog(message: "關鍵幀間隔: \(kv)s (\(kv == 0 ? "編碼器自動" : "固定"))")
 
         videoSettings.allowFrameReordering = false
 

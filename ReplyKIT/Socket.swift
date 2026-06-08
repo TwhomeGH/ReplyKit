@@ -791,6 +791,8 @@ class SocketClient : @unchecked Sendable {
         let enableAGCFix: Bool
         let enableMetalAudio: Bool
 
+        let KeyFrameInterval: Int?
+
         let appVolume: Double
         let micVolume: Double
         let appVolumeAdd: Double
@@ -820,7 +822,7 @@ class SocketClient : @unchecked Sendable {
 
         logRES.append("[Get]Bit:\(c.BitRate):\(c.ChangeBit) 低延遲模式:\(c.isLowLatencyRateControlEnabled) useBic:\(c.useBic)")
 
-        logRES.append("[Get]H264:\(c.h264level) : \(c.dstW)x\(c.dstH) \(c.videoBuffer) 方向:\(c.Rotate)")
+        logRES.append("[Get]H264:\(c.h264level) : \(c.dstW)x\(c.dstH) \(c.videoBuffer) 方向:\(c.Rotate) KF:\(c.KeyFrameInterval ?? -1)")
 
         logRES.append("[Get]OutDraw:\(c.odstW)x\(c.odstH) RotateOriginal:\(c.RotateOriginal)")
 
@@ -839,7 +841,8 @@ class SocketClient : @unchecked Sendable {
             ADWidth: c.dstW,
             ADHeight: c.dstH,
             ODWidth: c.odstW,
-            ODHeight: c.odstH
+            ODHeight: c.odstH,
+            KeyFrameInterval: c.KeyFrameInterval
         )
 
         RPConfig.shared.updateAudio(

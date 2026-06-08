@@ -656,7 +656,8 @@ class SocketServer:ObservableObject {
             "micVolumeAdd": userDefaults?
                 .double(forKey: "micAddVolume") ?? 1.0,
 
-
+            "KeyFrameInterval": userDefaults?
+                .integer(forKey: "KeyFrameInterval") ?? 2,
 
         ]
 

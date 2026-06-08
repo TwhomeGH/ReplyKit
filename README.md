@@ -183,6 +183,17 @@ Extension 端原本的處理方式：
   重置 `hasMetalResources`、textureCache、pipeline
 - 下一幀的 `ensureMetalResources()` 會從頭重建整條 Metal 管線
 
+## 新增可設定關鍵幀間隔（KeyFrameInterval）
+
+### 問題
+推流到 Restream 等平台時被拒，因為 `maxKeyFrameIntervalDuration` 原本鎖死在
+位元率模式對應的固定值（ABR=3s, CBR=4s, VBR=2s），部分平台要求更嚴格的 GOP 規範。
+
+### 修改
+- `Setting.swift` 新增「關鍵幀間隔」文字輸入框（預設 2 秒）
+- `SampleHandler.swift` 移除 per-mode 硬編碼，改為統一讀取 `RPConfig.shared.state.KeyFrameInterval`（支援 Socket 傳遞，側載用戶也可用）
+- 值為 `0` 表示由編碼器自動決定（無最大間隔限制）
+
 ## 改進音視頻管道處理
 
 目前音頻帶降噪功能 可選使用Metal加速
