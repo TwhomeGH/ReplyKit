@@ -165,6 +165,24 @@ Extension 端原本的處理方式：
 - 移除每幀對 `AdaptiveVideoBufferManager.monitorFPSAndAdjust` 的呼叫
 - 保留初始化時從 `RPConfig.shared.state.BufferCount` 設定一次的邏輯（`configureVideo_init` 與 reconnect 處）
 
+## 修復 Metal 管線中途失敗無自動重建
+
+### 問題
+`GPUVideoRotator` 的 `hasMetalResources` 一旦設為 `true` 就永久鎖定，
+`ensureMetalResources()` 永遠直接 return，不會重試初始化。
+若 GPU 中途重置或記憶體不足造成 texture/command buffer 建立失敗，
+所有後續幀靜默丟棄，沒有任何復原路徑。
+
+### 修復
+`GPUVideoRotator.swift` 加入 `consecutiveMetalFailures` 計數器：
+
+- `getReusableOutput` 失敗 → 計數 +1
+- `makeTexture` / `makeCommandBuffer` 失敗 → 計數 +1
+- 幀成功送出 → 計數歸零
+- 連續失敗達 **5 次** → 自動呼叫 `cleanupResources()`，
+  重置 `hasMetalResources`、textureCache、pipeline
+- 下一幀的 `ensureMetalResources()` 會從頭重建整條 Metal 管線
+
 ## 改進音視頻管道處理
 
 目前音頻帶降噪功能 可選使用Metal加速
