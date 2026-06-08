@@ -537,10 +537,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 var NewVW = DWidth
                 var NewVH = DHeight
 
-                if ODWidth > 0 || ODHeight > 0 {
+                if ODWidth > 0 && ODHeight > 0 {
                     NewVW = ODWidth
                     NewVH = ODHeight
-                } else if ADWidth > 0 || ADHeight > 0 {
+                } else if ADWidth > 0 && ADHeight > 0 {
                     NewVW = ADWidth
                     NewVH = ADHeight
                 }
@@ -1798,11 +1798,17 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 // 在 publish 前再次確保影片尺寸正確
                 do {
                     var finalVideoSettings = await rtmpStream.videoSettings
-                    var fw = RPConfig.shared.state.ODWidth > 0 ? RPConfig.shared.state.ODWidth : RPConfig.shared.state.ADWidth
-                    var fh = RPConfig.shared.state.ODHeight > 0 ? RPConfig.shared.state.ODHeight : RPConfig.shared.state.ADHeight
-                    if fw <= 0 || fh <= 0 {
-                        fw = ADWidth > 0 ? ADWidth : (SharedDefaults.group?.integer(forKey: "dstW") ?? 0)
-                        fh = ADHeight > 0 ? ADHeight : (SharedDefaults.group?.integer(forKey: "dstH") ?? 0)
+                    var fw: Int
+                    var fh: Int
+                    if RPConfig.shared.state.ODWidth > 0 && RPConfig.shared.state.ODHeight > 0 {
+                        fw = RPConfig.shared.state.ODWidth
+                        fh = RPConfig.shared.state.ODHeight
+                    } else if RPConfig.shared.state.ADWidth > 0 && RPConfig.shared.state.ADHeight > 0 {
+                        fw = RPConfig.shared.state.ADWidth
+                        fh = RPConfig.shared.state.ADHeight
+                    } else {
+                        fw = SharedDefaults.group?.integer(forKey: "dstW") ?? 0
+                        fh = SharedDefaults.group?.integer(forKey: "dstH") ?? 0
                     }
                     if fw > 0 && fh > 0 {
                         let rotate = RPConfig.shared.state.Rotate

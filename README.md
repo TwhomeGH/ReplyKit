@@ -109,6 +109,34 @@
 - **configureVideo()**：相同 fallback 邏輯
 - **broadcastStarted publish 前**：最終 videoSize 檢查也加入 UserDefaults fallback
 
+## 修復 GPU 旋轉初始化失敗造成畫面無法送出 (0x0)
+
+### 問題描述
+推流畫面完全沒送出去，輸出為 0x0，編碼器無幀可編。
+
+### 根因
+`GPUVideoRotator.ensureMetalResources()` 在 `hasMetalResources` 設為 `true` 之後才進行實際資源初始化（textureCache、computePipeline）。若初始化失敗（如 GPU 暫時忙碌、shader 編譯失敗），函數回傳 `false` 但 flag 已永久鎖定為 `true`。後續所有幀的呼叫直接跳過初始化，使用 nil 資源，全部靜默丟棄。
+
+### 修復
+- **`hasMetalResources`**：改為在所有資源初始化成功後才設為 `true`
+- **getReusableOutput 前**：加入 `dstW > 0 && dstH > 0` 保護，防止無效維度進入 GPU 管線
+
+## 修復 Rotate 事件處理器維度條件錯誤
+
+### 問題
+`SampleHandler.swift:540,543` 使用 `||`（OR）而非 `&&`（AND）判斷 OD/AD 維度有效性。例如 `ODWidth=1920` 但 `ODHeight=0` 時，仍會設定 `NewVW=1920, NewVH=0`，造成 `videoSize` 單軸為 0。
+
+### 修復
+改為 `&&`，確保寬高同時有效才套用。
+
+## 修復 broadcastStarted 維度混合問題
+
+### 問題
+`broadcastStarted` 中 ODWidth 與 ODHeight 獨立檢查（`ODWidth > 0 ? ODWidth : ADWidth`），可導致 OD Width 與 AD Height 被混合使用。
+
+### 修復
+改為成對檢查（OD 兩者 > 0 或 AD 兩者 > 0），維持維度一致性。
+
 ## 改進音視頻管道處理
 
 目前音頻帶降噪功能 可選使用Metal加速

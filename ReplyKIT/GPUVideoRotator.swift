@@ -375,21 +375,26 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             return true
         }
 
-        hasMetalResources = true
-
         let ctx = MetalContext.shared
 
         // 1️⃣ TextureCache（共用 MetalContext）
         if textureCache == nil {
             textureCache = ctx.ensureTextureCache()
-            if textureCache == nil { return false }
+            if textureCache == nil {
+                logTo("建立 TextureCache 失敗")
+                return false
+            }
         }
 
         // 2️⃣ 初始化「兩條」 ComputePipeline
         if pipelineBilinear == nil || pipelineBicubic == nil {
-            if !buildComputePipeline() { return false }
+            if !buildComputePipeline() {
+                logTo("建立 ComputePipeline 失敗")
+                return false
+            }
         }
 
+        hasMetalResources = true
         return true
 
     }
@@ -543,6 +548,10 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
         self.logTo("\(srcW)x\(srcH) -> \(dstW)x\(dstH) angle:\(angle)")
 
+        guard dstW > 0 && dstH > 0 else {
+            logTo("無效的輸出維度: \(dstW)x\(dstH)，跳過此幀")
+            return nil
+        }
         guard let outSet = getReusableOutput(width: dstW, height: dstH) else { return nil }
 
         guard let ycvTexIn = makeTexture(from: inBuffer, planeIndex: 0),
