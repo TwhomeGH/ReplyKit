@@ -145,6 +145,68 @@
 
 - `Event.swift` 移除 `stateQueue.sync`（writes 有鎖 reads 沒鎖，等於白加，還可能 deadlock）
 
+## Metal Shader 品質改造：float 精度 bicubic + unsharpen mask 後處理
+
+### 問題
+
+大動態畫面（快速運鏡、激烈運動）時，影像邊緣模糊、細節丟失。主要原因有二：
+
+1. **Bicubic 插值使用 `half` 精度** — Catmull-Rom 三次係數在 `half`（10-bit 尾數）下運算會產生約 0.25 grey level 的捨入誤差，尤其在係數累加（~0.01~2.0 動態範圍）時誤差更明顯
+2. **Interpolation 本身是平滑濾波** — 無論 bilinear 或 bicubic，旋轉+縮放後高頻細節會被自然衰減，缺少細節增強機制
+
+### 修改
+
+#### `rotateNV12.metal`
+
+**Bicubic 全精度化：**
+
+| 函數 | 修改前 | 修改後 |
+|------|--------|--------|
+| `catmullRom1D` | `half4` → `half` | `float4` → `float` |
+| `catmullRom1D_uv` | `half2` → `half` | `float2` → `float` |
+| `bicubicSampleY_16tap` | `half4 rows[4]`，`half4 col` | `float4 rows[4]`，`float4 col`，`float(tex.sample(...))` |
+| `bicubicSampleUV_16tap` | `half2 rows[4]`，`half2 col[4]` | `float2 rows[4]`，`float2 col[4]`，`float2(tex.sample(...))` |
+
+Texture read 維持 `half`（`r8Unorm` / `rg8Unorm` 本身就是 8-bit），但在進入算術運算前立即提升為 `float`，避免 interpolation 權重的累加誤差。
+
+**新增 `unsharpY` kernel：**
+
+```
+kernel void unsharpY(
+    texture2d<half, access::sample> srcY,   // 旋轉後的 Y
+    texture2d<half, access::write>  dstY,   // sharpen 後的 Y
+    constant float& amount,                 // 強度（0.0 ~ 0.5）
+    uint2 gid)
+```
+
+演算法：
+1. 3×3 Gaussian blur（未歸一化權重：中心 4、鄰邊 2、對角 1，總和 16）
+2. `sharpened = center + amount × (center − blurred)`
+3. Clamp 到 [0.0, 1.0] 後寫回
+
+使用 `coord::pixel` 模式的 nearest sampler，避免多餘的正規化計算。
+
+#### `GPUVideoRotator.swift`
+
+- 新增 `sharpenPipeline: MTLComputePipelineState?` — `buildComputePipeline()` 中新增 Pipeline C
+- 新增 `tempYTexture: MTLTexture?` — 避免同一個 command buffer 內讀寫衝突（rotation 寫 tempY → sharpen 讀 tempY 寫 dstY）
+- `ensureMetalResources()` 的 guard 納入 `sharpenPipeline == nil` 檢查
+- `cleanupResources()` 一併清理 sharpenPipeline + tempYTexture
+- `renderPlaneYUV()` 內部根據品質模式決定 sharpen 強度
+
+### 品質模式疊加
+
+| 模式 | Interpolation | Unsharp | 行為 |
+|------|-------------|---------|------|
+| `.live`（預設） | Bilinear | 0.15（輕度） | 低運算成本 + 基本細節補救 |
+| `.quality`（Bicubic） | Bicubic（float） | 0.25（中度） | 高精度插值 + 顯著細節增強 |
+
+### 效果
+
+- **float 精度的 bicubic**：消除係數捨入誤差，在平滑漸層區域有更乾淨的 interpolation
+- **Unsharpen mask**：在不改變 interpolation 方式的前提下，主動恢復被平滑的高頻邊緣
+- **兩 pass 獨立**：`unsharpY` 與 rotation kernel 分屬不同 compute encoder，中間依賴 implicit barrier 確保資料正確性
+
 ## 修復 Socket 連線穩定性與首次推流解析度錯誤
 
 ### 問題描述

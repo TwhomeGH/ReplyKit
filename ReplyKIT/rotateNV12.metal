@@ -11,23 +11,23 @@ struct Params {
     uint angle;       // 0 / 90 / 180 / 270
 };
 
-// --- Catmull-Rom 1D interpolation ---
-half catmullRom1D(half4 p, half t) {
-    half t2 = t * t;
-    half t3 = t2 * t;
-    return 0.5h * ((2.0h * p[1]) +
+// --- Catmull-Rom 1D interpolation (float precision) ---
+float catmullRom1D(float4 p, float t) {
+    float t2 = t * t;
+    float t3 = t2 * t;
+    return 0.5f * ((2.0f * p[1]) +
                    (-p[0] + p[2]) * t +
-                   (2.0h * p[0] - 5.0h * p[1] + 4.0h * p[2] - p[3]) * t2 +
-                   (-p[0] + 3.0h * p[1] - 3.0h * p[2] + p[3]) * t3);
+                   (2.0f * p[0] - 5.0f * p[1] + 4.0f * p[2] - p[3]) * t2 +
+                   (-p[0] + 3.0f * p[1] - 3.0f * p[2] + p[3]) * t3);
 }
 
-half2 catmullRom1D_uv(half2 p0, half2 p1, half2 p2, half2 p3, half t) {
-    half t2 = t * t;
-    half t3 = t2 * t;
-    return 0.5h * ((2.0h * p1) +
+float2 catmullRom1D_uv(float2 p0, float2 p1, float2 p2, float2 p3, float t) {
+    float t2 = t * t;
+    float t3 = t2 * t;
+    return 0.5f * ((2.0f * p1) +
                    (-p0 + p2) * t +
-                   (2.0h * p0 - 5.0h * p1 + 4.0h * p2 - p3) * t2 +
-                   (-p0 + 3.0h * p1 - 3.0h * p2 + p3) * t3);
+                   (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * t2 +
+                   (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * t3);
 }
 
 constexpr sampler linearClampSampler(
@@ -42,8 +42,14 @@ constexpr sampler nearestClampSampler(
     filter::nearest
 );
 
-// --- True 16-tap Catmull-Rom bicubic for Y plane ---
-half bicubicSampleY_16tap(
+constexpr sampler pixelNearest(
+    coord::pixel,
+    address::clamp_to_edge,
+    filter::nearest
+);
+
+// --- True 16-tap Catmull-Rom bicubic for Y plane (float precision) ---
+float bicubicSampleY_16tap(
     texture2d<half, access::sample> tex,
     float2 uv_px,
     uint2 texSize
@@ -53,29 +59,29 @@ half bicubicSampleY_16tap(
     float2 f = p - float2(ip);
     float2 texSizeF = float2(texSize);
 
-    half4 rows[4];
+    float4 rows[4];
     for (int r = 0; r < 4; r++) {
         int y = clamp(ip.y + r - 1, 0, int(texSize.y) - 1);
-        half4 col;
+        float4 col;
         for (int c = 0; c < 4; c++) {
             int x = clamp(ip.x + c - 1, 0, int(texSize.x) - 1);
             float2 norm = (float2(x, y) + 0.5f) / texSizeF;
-            col[c] = tex.sample(nearestClampSampler, norm).x;
+            col[c] = float(tex.sample(nearestClampSampler, norm).x);
         }
         rows[r] = col;
     }
 
-    half4 temp = half4(
-        catmullRom1D(rows[0], half(f.x)),
-        catmullRom1D(rows[1], half(f.x)),
-        catmullRom1D(rows[2], half(f.x)),
-        catmullRom1D(rows[3], half(f.x))
+    float4 temp = float4(
+        catmullRom1D(rows[0], f.x),
+        catmullRom1D(rows[1], f.x),
+        catmullRom1D(rows[2], f.x),
+        catmullRom1D(rows[3], f.x)
     );
-    return catmullRom1D(temp, half(f.y));
+    return catmullRom1D(temp, f.y);
 }
 
-// --- True 16-tap Catmull-Rom bicubic for UV plane ---
-half2 bicubicSampleUV_16tap(
+// --- True 16-tap Catmull-Rom bicubic for UV plane (float precision) ---
+float2 bicubicSampleUV_16tap(
     texture2d<half, access::sample> tex,
     float2 uv_px,
     uint2 texSize
@@ -85,19 +91,19 @@ half2 bicubicSampleUV_16tap(
     float2 f = p - float2(ip);
     float2 texSizeF = float2(texSize);
 
-    half2 rows[4];
+    float2 rows[4];
     for (int r = 0; r < 4; r++) {
         int y = clamp(ip.y + r - 1, 0, int(texSize.y) - 1);
-        half2 col[4];
+        float2 col[4];
         for (int c = 0; c < 4; c++) {
             int x = clamp(ip.x + c - 1, 0, int(texSize.x) - 1);
             float2 norm = (float2(x, y) + 0.5f) / texSizeF;
-            col[c] = tex.sample(nearestClampSampler, norm).rg;
+            col[c] = float2(tex.sample(nearestClampSampler, norm).rg);
         }
-        rows[r] = catmullRom1D_uv(col[0], col[1], col[2], col[3], half(f.x));
+        rows[r] = catmullRom1D_uv(col[0], col[1], col[2], col[3], f.x);
     }
 
-    return catmullRom1D_uv(rows[0], rows[1], rows[2], rows[3], half(f.y));
+    return catmullRom1D_uv(rows[0], rows[1], rows[2], rows[3], f.y);
 }
 
 inline float2 mapDstToSrc(
@@ -250,49 +256,80 @@ kernel void rotateNV12_bicubic(
     float srcXf = src.x;
     float srcYf = src.y;
 
-    half yVal;
-
     if (srcXf < 0.0f || srcXf > float(W - 1) ||
     srcYf < 0.0f || srcYf > float(H - 1)) {
 
-    yVal = half(0.0);
+        dstY.write(half(0.0), gid);
 
     } else {
 
-        yVal = bicubicSampleY_16tap(
+        float yF = bicubicSampleY_16tap(
             srcY,
             float2(srcXf, srcYf),
             uint2(srcY.get_width(), srcY.get_height())
         );
 
+        dstY.write(half(yF), gid);
+
     }
 
-    dstY.write(yVal, gid);
-
-    // --- UV bicubic (true 16-tap Catmull-Rom) ---
+    // --- UV bicubic (true 16-tap Catmull-Rom, float precision) ---
     if (((gid.x & 1u) == 0u) && ((gid.y & 1u) == 0u)) {
         uint2 uvPos = uint2(gid.x >> 1, gid.y >> 1);
 
         if (src.x < 0.0f || src.x > float(W - 1) ||
             src.y < 0.0f || src.y > float(H - 1)) {
 
-            dstUV.write(half4(0.5, 0.5, 0.0, 1.0), uvPos);
+            dstUV.write(half4(0.5h, 0.5h, 0.0h, 1.0h), uvPos);
 
         } else {
             float2 uvSrc = src * 0.5f;
             float2 uvClamped = clamp(uvSrc, 0.0f, float2(float(W) * 0.5f - 1.0f, float(H) * 0.5f - 1.0f));
 
-            half2 uvVal = bicubicSampleUV_16tap(
+            float2 uvF = bicubicSampleUV_16tap(
                 srcUV,
                 uvClamped,
                 uint2(srcUV.get_width(), srcUV.get_height())
             );
 
             dstUV.write(
-                half4(uvVal.x, uvVal.y, 0.0, 1.0),
+                half4(half(uvF.x), half(uvF.y), 0.0h, 1.0h),
                 uvPos
             );
         }
     }
 
+}
+
+// --- Unsharp mask for Y plane (3x3 gaussian blur + unsharp) ---
+kernel void unsharpY(
+    texture2d<half, access::sample> srcY   [[ texture(0) ]],
+    texture2d<half, access::write>  dstY   [[ texture(1) ]],
+    constant float& amount                 [[ buffer(0) ]],
+    uint2 gid                              [[ thread_position_in_grid ]]
+) {
+    uint w = dstY.get_width();
+    uint h = dstY.get_height();
+    if (gid.x >= w || gid.y >= h) return;
+
+    float center = float(srcY.sample(pixelNearest, float2(gid)).x);
+
+    // 3x3 gaussian blur (unnormalized, sum = 16)
+    // 1 2 1
+    // 2 4 2
+    // 1 2 1
+    float sum = 0.0;
+    for (int dy = -1; dy <= 1; dy++) {
+        for (int dx = -1; dx <= 1; dx++) {
+            float wgt;
+            if (dx == 0 && dy == 0) wgt = 4.0;
+            else if (dx == 0 || dy == 0) wgt = 2.0;
+            else wgt = 1.0;
+            float2 sampPos = float2(float(int(gid.x) + dx), float(int(gid.y) + dy));
+            sum += wgt * float(srcY.sample(pixelNearest, sampPos).x);
+        }
+    }
+    float blurred = sum / 16.0;
+    float sharpened = center + amount * (center - blurred);
+    dstY.write(half(clamp(sharpened, 0.0, 1.0)), gid);
 }
