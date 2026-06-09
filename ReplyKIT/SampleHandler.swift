@@ -1386,7 +1386,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     }
 
     func applyAllVideoSettings(width: Int, height: Int, stream: RTMPStream? = nil, setSize: Bool = true) async {
-        let target = stream ?? rtmpStream
+        guard let target = stream ?? rtmpStream else { return }
         var videoSettings = await target.videoSettings
 
         let profilelvl = h264ProfileLevelString(width: width, height: height)
