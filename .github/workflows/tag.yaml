@@ -56,7 +56,6 @@ jobs:
         id: diff
         run: |
           CHANGED=$(git diff --name-only ${{ steps.get_tag.outputs.latest_tag }} HEAD | grep -E '^liveAPP/|^ReplyKIT/' || true)
-          echo "changed_files=$CHANGED" >> $GITHUB_OUTPUT
           if [ -z "$CHANGED" ]; then
             echo "No relevant changes detected. Exiting..."
             exit 0
