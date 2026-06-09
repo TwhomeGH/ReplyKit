@@ -66,7 +66,7 @@
 這次重寫的重點是讓 GPU 旋轉後的輸出在不同長寬比、不同方向下都能維持正確的置中、縮放與色度對齊。
 
 
-[版本標記說明 Version Note](./Docs/version.md)
+[版本標記說明 Version Note](./Docs/version.md) · [本地建置工作流程 Build Workflow](./Docs/workflow.md)
 
 ## LogView 頁面切換卡死修復 + 設備信息頁增強
 
