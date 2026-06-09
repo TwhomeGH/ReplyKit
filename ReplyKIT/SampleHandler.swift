@@ -87,31 +87,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     private var lastVideoOrientation: AVCaptureVideoOrientation?
 
-    var base:Int = 100_000
-    var multiplier:Int = 60
-    // 100_000 * 30 = 3_000_000 bps
-    var bitrate:Int? {
 
-        didSet {
-            Task{
-
-                guard let streamStataus = streamStataus else {
-                    sendlog(message: "⚠️ streamStataus 尚未初始化，無法更新 BitRate")
-                    return
-                }
-                let VSet=await streamStataus.mamimumVideoBitRate
-
-                sendlog(message: "Old BitRate:\(VSet)")
-
-
-                guard let bit = bitrate else { return }
-
-                await streamStataus.updateVideoBitRate(to: bit)
-
-                sendlog(message: "New BitRate:\(VSet)")
-            }
-        }
-    }
 
 
 
@@ -647,33 +623,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
 
-        case "bitRateChange":
 
-            Task {
-                var Rlog = SharedDefaults.group?.integer(forKey: "bitRate") ?? 3_900_000
-                if RPConfig.shared.enableSocketLog {
-                    if let raw = try await SocketClient.shared.requestSet(for: "bitRate", type: "Int") {
-
-                        if let av = raw as? Int {
-                            let oldV = Rlog
-                            Rlog = av
-
-                            logger.debug("BitRate \(av)")
-                            sendlog(message: "Socket原始BitRate數據包:\(av) -> \(oldV)")
-                        } else {
-                            logger.error("BitRate 型別錯誤: \(type(of: raw))")
-                        }
-
-                    }
-                }
-
-                bitrate = Rlog
-                sendlog(message: "NewBit: \(String(describing: bitrate))")
-
-
-            }
-
-            break
 
 
 
@@ -1427,7 +1377,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         videoSettings.bitRate = RPConfig.shared.state.BitRate
 
         try? await target.setVideoSettings(videoSettings)
-        sendlog(message: "套用完整 video settings: \(width)x\(height) profile=\(profilelvl) keyframe=\(kv)s")
+        await streamStataus?.updateVideoBitRate(to: RPConfig.shared.state.BitRate)
+        sendlog(message: "套用完整 video settings: \(width)x\(height) profile=\(profilelvl) keyframe=\(kv)s bitrate=\(RPConfig.shared.state.BitRate/1000)kbps")
     }
 
     func configureVideo_init() async {
@@ -1560,7 +1511,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     func initProcessors() {
 
-        bitrate = RPConfig.shared.state.BitRate
+        Task { [weak self] in
+            await self?.streamStataus?.updateVideoBitRate(to: RPConfig.shared.state.BitRate)
+        }
 
         volumeNotifier = VolumeNotifier()
 

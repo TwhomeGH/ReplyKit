@@ -68,7 +68,82 @@
 
 [版本標記說明 Version Note](./Docs/version.md)
 
-## 最新修正內容說明
+## LogView 頁面切換卡死修復 + 設備信息頁增強
+
+### 問題
+
+切換到「日誌」或「音量」頁面再切走時，LogView 的 Coordinator 仍持續在背景處理 log 訊息：
+- `appendWorkItem` 持續排入 main queue
+- `shouldAutoScroll` 永不關閉（無 `onDisappear`）
+- 大量 UITextView 操作佔用主執行緒，造成 App 卡死
+
+### 修改
+
+#### LogView（`ContentView.swift`）
+
+- 補上 `.onDisappear` → 設 `isVisible = false`、`shouldAutoScroll = false`、取消 pending work item
+- `appendMessages()` 開頭檢查 `isVisible`，不在背景時直接 return
+- 新增 `cancelPendingWork()` 方法清除排隊訊息
+
+#### 設備信息頁（`OtherView.swift`）
+
+重新設計 `DeviceView`，加入即時圖表與更多系統資訊：
+
+| 項目 | 內容 |
+|------|------|
+| CPU 折線圖 | App CPU 使用率歷史 60 秒，搭配 SystemCPU 系統/用戶/閒置率 |
+| RAM 折線圖 | App 記憶體用量歷史 60 秒 |
+| 儲存空間 | 總容量 / 已使用 / 可用 GB |
+| 網路介面 | WiFi / Cellular / No Connection |
+| 系統資訊 | iOS 版本、開機時間、電量、電池狀態 |
+| GPU | Metal 裝置名稱 |
+
+## 統一 videoSettings 套用流程 + 移除 bitrate 雙路徑
+
+### 問題
+
+1. **configureVideo_init() 設定不完整** — 只設了 videoSize + 寫死 `High_AutoLevel`，profileLevel/bitRateMode/keyFrameInterval 都沒設。第一次 frame 到來時 `configureVideo(_:)` 才補齊，但 publish 早已送出 metadata 不正確。
+2. **attemptReconnect() 完全沒套 videoSettings** — 新建 `RTMPStream` 後直接 publish，encoder 用 HaishinKit 預設（854x480, profile Auto）。
+3. **configureVideo(_:) 內重複 100+ 行** — profileLevel switch / bitRateMode / keyFrameInterval / allowFrameReordering 等邏輯跟 `configureVideo_init()` 重複。
+4. **Bitrate 有兩條獨立路徑** — Darwin notification `bitRateChange` 更新 strategy max，Socket `applyRTMP` 直接設 encoder bitrate，兩者不同步。
+
+### 修改
+
+#### 新增共享函式
+
+`applyAllVideoSettings(width:height:stream:setSize:)` — 一次套用所有設定：
+
+- profileLevel（根據使用者選擇的 h264level + 解析度計算）
+- scalingMode
+- videoSize（可選，由 setSize 控制）
+- expectedFrameRate
+- bitRateMode（ABR / CBR / VBR）
+- maxKeyFrameIntervalDuration
+- allowFrameReordering
+- isLowLatencyRateControlEnabled
+- bitRate
+- streamStataus.mamimumVideoBitRate (strategy max)
+
+#### 三個呼叫點
+
+| 呼叫點 | 原本行為 | 現在 |
+|--------|----------|------|
+| `configureVideo_init()` | 只設 videoSize + 寫死 AutoHigh | 呼叫 `applyAllVideoSettings`，完整套用 |
+| `attemptReconnect()` | 完全沒設任何 videoSettings | 先 `applyAllVideoSettings(stream: newStream)` 再 publish |
+| `configureVideo(_:)` | 內聯 100+ 行重複邏輯 | 呼叫 `applyAllVideoSettings(setSize: false)` + 自己處理 orientation |
+
+#### Bitrate 統一
+
+- 移除 `bitrate` property + didSet
+- 移除 `bitRateChange` Darwin notification handler
+- `Eventlisten.swift` 移除 "bitRateChange" 註冊
+- `applyAllVideoSettings()` 同時設 `videoSettings.bitRate` + `streamStataus?.updateVideoBitRate(to:)`
+
+現在 bitrate 只有 socket 一條路：`GetRTMPConfig` → `applyRTMP` → `updateState` → `applyAllVideoSettings`，encoder 與 strategy max 在同一個點更新。
+
+#### stateQueue 移除
+
+- `Event.swift` 移除 `stateQueue.sync`（writes 有鎖 reads 沒鎖，等於白加，還可能 deadlock）
 
 ## 修復 Socket 連線穩定性與首次推流解析度錯誤
 

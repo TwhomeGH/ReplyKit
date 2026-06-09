@@ -1197,6 +1197,8 @@ struct LogTextView: UIViewRepresentable {
 
         var userIsInteracting = false
 
+        var isVisible = true
+
         var onNearBottomChanged: ((Bool) -> Void)?
 
 
@@ -1244,7 +1246,7 @@ struct LogTextView: UIViewRepresentable {
         private var appendWorkItem: DispatchWorkItem?
 
         func appendMessages(_ newMessages: [LogItem]) {
-            guard !newMessages.isEmpty else { return }
+            guard isVisible, !newMessages.isEmpty else { return }
 
             // 過濾掉已經 append 過的
             let uniqueMessages = newMessages.filter { appendedUUIDs.insert($0.id).inserted }
@@ -1419,6 +1421,12 @@ struct LogTextView: UIViewRepresentable {
 
 
 
+
+        func cancelPendingWork() {
+            appendWorkItem?.cancel()
+            appendWorkItem = nil
+            appendQueue.removeAll()
+        }
 
         func textViewDidChangeSelection(_ textView: UITextView) {
 
@@ -1631,7 +1639,14 @@ struct LogView: View {
                 .onAppear {
                     guard let coordinator = coordinator else { return }
                     coordinator.shouldAutoScroll = true
+                    coordinator.isVisible = true
 
+                }
+                .onDisappear {
+                    guard let coordinator = coordinator else { return }
+                    coordinator.isVisible = false
+                    coordinator.shouldAutoScroll = false
+                    coordinator.cancelPendingWork()
                 }
 
 

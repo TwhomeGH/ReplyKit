@@ -18,7 +18,7 @@ class Eventlisten {
     // MARK: 支援多事件的名稱列表
     let eventNames = [
         "micVolumeChanged", "appVolumeChanged","orientationChanged",
-        "bitRateChange","fpsChange",
+        "fpsChange",
         "micAdd","appAdd","onAudioPage","logMode",
         "onlogPage","Enablelog","logURL",
         "DebugRotate","DebugTime","OutW","OutH","VideoSet",

@@ -7,11 +7,20 @@
 
 
 import SwiftUI
+import Charts
+import Combine
 import MachO
 import Metal
+import UIKit
+import SystemConfiguration
+
+struct DataPoint: Identifiable {
+    let id = UUID()
+    let time: Date
+    let value: Double
+}
 
 struct DeviceInfo {
-
 
     // 屏幕寬高獲取本身寬高 剛好是反過來
     static let nativeWidth = UIScreen.main.nativeBounds.height
@@ -66,9 +75,26 @@ struct DeviceInfo {
         return "No Metal"
     }()
 
+    static var gpuVendor: String {
+        guard let device = MTLCreateSystemDefaultDevice() else { return "N/A" }
+        #if targetEnvironment(simulator)
+        return "Simulator"
+        #else
+        switch device.registryID {
+        case 0...: break
+        default: break
+        }
+        if device.supportsFamily(.apple1) { return "Apple" }
+        if device.name.contains("Intel") { return "Intel" }
+        if device.name.contains("AMD") { return "AMD" }
+        return "Unknown"
+        #endif
+    }
 
     static let cpuCount = ProcessInfo.processInfo.processorCount
     static let ramMB = Double(ProcessInfo.processInfo.physicalMemory) / 1024 / 1024
+    static let osVersion = ProcessInfo.processInfo.operatingSystemVersionString
+    static let systemUptime = ProcessInfo.processInfo.systemUptime
 
     static var deviceCode: String {
         var systemInfo = utsname()
@@ -98,6 +124,50 @@ struct DeviceInfo {
         }
 
         return kerr == KERN_SUCCESS ? info.resident_size : 0
+    }
+
+    static var totalDiskMB: Double {
+        if let attrs = try? FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory()),
+           let size = attrs[.systemSize] as? NSNumber {
+            return Double(size.int64Value) / 1024 / 1024
+        }
+        return 0
+    }
+
+    static var freeDiskMB: Double {
+        if let attrs = try? FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory()),
+           let free = attrs[.systemFreeSize] as? NSNumber {
+            return Double(free.int64Value) / 1024 / 1024
+        }
+        return 0
+    }
+
+    static var networkInterface: String {
+        #if targetEnvironment(simulator)
+        return "Simulator"
+        #else
+        let reachability = SCNetworkReachabilityCreateWithName(nil, "apple.com")
+        var flags = SCNetworkReachabilityFlags()
+        SCNetworkReachabilityGetFlags(reachability!, &flags)
+        if flags.contains(.isWWAN) { return "Cellular" }
+        if flags.contains(.reachable) { return "WiFi" }
+        return "No Connection"
+        #endif
+    }
+
+    static var batteryLevel: Int {
+        UIDevice.current.isBatteryMonitoringEnabled = true
+        return Int(UIDevice.current.batteryLevel * 100)
+    }
+
+    static var batteryState: String {
+        UIDevice.current.isBatteryMonitoringEnabled = true
+        switch UIDevice.current.batteryState {
+        case .unplugged: return "Unplugged"
+        case .charging: return "Charging"
+        case .full: return "Full"
+        default: return "Unknown"
+        }
     }
 }
 
@@ -159,10 +229,13 @@ struct DeviceView: View {
     let cpuInfo = SystemCPU()
 
     @State private var appMemoryMB: Double = 0
+    @State private var cpuHistory: [DataPoint] = []
+    @State private var memoryHistory: [DataPoint] = []
 
     @AppStorage("ReplyKitWidth",store: userDefaults) var ReplyKitW: Int = 0
     @AppStorage("ReplyKitHeight",store: userDefaults) var ReplyKitH: Int = 0
 
+    private let maxHistory = 60
 
     var body: some View {
         List {
@@ -172,62 +245,124 @@ struct DeviceView: View {
             ) {
                 Text("寬: \(DeviceInfo.nativeWidth, specifier: "%.0f") pt")
                 Text("高: \(DeviceInfo.nativeHeight, specifier: "%.0f") pt")
-
-
             }
 
             Section(header:
                         Label("ReplyKit 輸出",systemImage: "play.display")
             ) {
-
                 Text("寬: \(ReplyKitW) px")
                 Text("高: \(ReplyKitH) px")
-
                 Text("開播後自動更新")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
-
 
             Section(
                 header:
                     Label("CPU", systemImage: "cpu")
             ) {
                 if let usage = cpuInfo.usage() {
+                    Text("用戶: \(usage.user, specifier: "%.1f")%  系統: \(usage.system, specifier: "%.1f")%  閒置: \(usage.idle, specifier: "%.1f")%")
+                        .font(.caption)
 
-                    Text("用戶 User: \(usage.user, specifier: "%.1f") %")
-                    Text("系統 System: \(usage.system, specifier: "%.1f") %")
-                    Text("閒置 Idle: \(usage.idle, specifier: "%.1f") %")
+                    Chart {
+                        ForEach(cpuHistory) { pt in
+                            LineMark(
+                                x: .value("Time", pt.time),
+                                y: .value("CPU", pt.value)
+                            )
+                            .foregroundStyle(.orange)
+                        }
+                    }
+                    .chartYAxisLabel("App CPU %")
+                    .frame(height: 120)
                 }
 
-
                 Text("App 使用率: \(DeviceInfo.cpuUsagePercent, specifier: "%.1f") %")
-
-                Text("處理器/GPU名稱: \(DeviceInfo.cpuName)")
-
-                Text(
-                    "核心數: \(DeviceInfo.cpuCount)"
-                )
+                Text("處理器: \(DeviceInfo.cpuName)")
+                Text("核心數: \(DeviceInfo.cpuCount)")
                 Text("裝置代號: \(DeviceInfo.deviceCode)")
             }
 
             Section(
                 header:
-                    Label("記憶體 Ram", systemImage: "memorychip")
+                    Label("記憶體 RAM", systemImage: "memorychip")
             ) {
                 Text("總 RAM: \(DeviceInfo.ramMB, specifier: "%.0f") MB")
                 Text("App 使用中: \(appMemoryMB, specifier: "%.1f") MB")
+                    .foregroundColor(appMemoryMB > 300 ? .orange : .primary)
+
+                Chart {
+                    ForEach(memoryHistory) { pt in
+                        LineMark(
+                            x: .value("Time", pt.time),
+                            y: .value("Memory", pt.value)
+                        )
+                        .foregroundStyle(.blue)
+                    }
+                }
+                .chartYAxisLabel("MB")
+                .frame(height: 120)
+            }
+
+            Section(
+                header:
+                    Label("儲存空間", systemImage: "externaldrive")
+            ) {
+                let total = DeviceInfo.totalDiskMB
+                let free = DeviceInfo.freeDiskMB
+                let used = total - free
+                Text("總容量: \(total / 1024, specifier: "%.1f") GB")
+                Text("已使用: \(used / 1024, specifier: "%.1f") GB")
+                Text("可用: \(free / 1024, specifier: "%.1f") GB")
+                    .foregroundColor(free < 1024 ? .orange : .primary)
+            }
+
+            Section(
+                header:
+                    Label("網路", systemImage: "network")
+            ) {
+                Text("介面: \(DeviceInfo.networkInterface)")
+            }
+
+            Section(
+                header:
+                    Label("系統", systemImage: "gearshape")
+            ) {
+                Text("iOS: \(DeviceInfo.osVersion)")
+                Text("開機時間: \(uptimeString)")
+                Text("電量: \(DeviceInfo.batteryLevel)% (\(DeviceInfo.batteryState))")
+            }
+
+            Section(
+                header:
+                    Label("GPU / Metal", systemImage: "cpu")
+            ) {
+                Text("GPU: \(DeviceInfo.cpuName)")
             }
         }
         .onAppear {
-            updateMemory()
+            sample()
         }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
-            updateMemory()
+            sample()
         }
     }
 
+    private var uptimeString: String {
+        let s = Int(ProcessInfo.processInfo.systemUptime)
+        let h = s / 3600
+        let m = (s % 3600) / 60
+        let sec = s % 60
+        return "\(h)h \(m)m \(sec)s"
+    }
 
-
-    private func updateMemory() {
+    private func sample() {
         appMemoryMB = DeviceInfo.appMemoryMB
+        let now = Date()
+        cpuHistory.append(DataPoint(time: now, value: DeviceInfo.cpuUsagePercent))
+        memoryHistory.append(DataPoint(time: now, value: appMemoryMB))
+        if cpuHistory.count > maxHistory { cpuHistory.removeFirst() }
+        if memoryHistory.count > maxHistory { memoryHistory.removeFirst() }
     }
 }
