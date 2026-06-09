@@ -1360,6 +1360,76 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     }
 
 
+    func h264ProfileLevelString(width: Int, height: Int) -> String {
+        switch RPConfig.shared.state.h264level {
+        case "Baseline":
+            return h264ProfileLevel(forWidth: width, height: height, fps: 60, profile: .baseline)
+        case "Main":
+            return h264ProfileLevel(forWidth: width, height: height, fps: 60, profile: .main)
+        case "High":
+            return h264ProfileLevel(forWidth: width, height: height, fps: 60, profile: .high)
+        case "AutoBaseline":
+            return kVTProfileLevel_H264_Baseline_AutoLevel as String
+        case "AutoMain":
+            return kVTProfileLevel_H264_Main_AutoLevel as String
+        case "AutoHigh":
+            return kVTProfileLevel_H264_High_AutoLevel as String
+        case "ConstrainedBaseline":
+            return kVTProfileLevel_H264_ConstrainedBaseline_AutoLevel as String
+        case "ConstrainedHigh":
+            return kVTProfileLevel_H264_ConstrainedHigh_AutoLevel as String
+        case "Extended":
+            return kVTProfileLevel_H264_Extended_AutoLevel as String
+        default:
+            return kVTProfileLevel_H264_High_AutoLevel as String
+        }
+    }
+
+    func applyAllVideoSettings(width: Int, height: Int, stream: RTMPStream? = nil, setSize: Bool = true) async {
+        let target = stream ?? rtmpStream
+        var videoSettings = await target.videoSettings
+
+        let profilelvl = h264ProfileLevelString(width: width, height: height)
+        videoSettings.profileLevel = profilelvl
+        videoSettings.scalingMode = .letterbox
+
+        if setSize {
+            let rotate = RPConfig.shared.state.Rotate
+            if rotate == 0 || rotate == 180 {
+                videoSettings.videoSize = CGSize(width: CGFloat(height), height: CGFloat(width))
+            } else {
+                videoSettings.videoSize = CGSize(width: CGFloat(width), height: CGFloat(height))
+            }
+        }
+
+        videoSettings.expectedFrameRate = 60.0
+
+        switch RPConfig.shared.state.BitRateMode {
+        case 0:
+            videoSettings.bitRateMode = .average
+        case 1:
+            videoSettings.bitRateMode = .constant
+        case 2:
+            if #available(iOS 26.0, *) {
+                videoSettings.bitRateMode = .variable
+            } else {
+                videoSettings.bitRateMode = .average
+            }
+        default:
+            videoSettings.bitRateMode = .average
+        }
+
+        let kv = RPConfig.shared.state.KeyFrameInterval
+        videoSettings.maxKeyFrameIntervalDuration = Int32(kv)
+
+        videoSettings.allowFrameReordering = false
+        videoSettings.isLowLatencyRateControlEnabled = RPConfig.shared.state.isLowLatencyRateControlEnabled
+        videoSettings.bitRate = RPConfig.shared.state.BitRate
+
+        try? await target.setVideoSettings(videoSettings)
+        sendlog(message: "套用完整 video settings: \(width)x\(height) profile=\(profilelvl) keyframe=\(kv)s")
+    }
+
     func configureVideo_init() async {
         // Video settings
 
@@ -1406,27 +1476,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         }
 
         if dstW > 0 && dstH > 0 {
-            var videoSettings = await rtmpStream.videoSettings
-            let rotate = RPConfig.shared.state.Rotate
-            if rotate == 0 || rotate == 180 {
-                videoSettings.videoSize = CGSize(width: CGFloat(dstH), height: CGFloat(dstW))
-                videoSettings.profileLevel = kVTProfileLevel_H264_High_AutoLevel as String
-                sendlog(message: "預設影片尺寸(直向): \(dstH)x\(dstW)")
-            } else {
-                videoSettings.videoSize = CGSize(width: CGFloat(dstW), height: CGFloat(dstH))
-                videoSettings.profileLevel = kVTProfileLevel_H264_High_AutoLevel as String
-
-                sendlog(message: "預設影片尺寸(橫向): \(dstW)x\(dstH)")
-            }
-            try? await rtmpStream.setVideoSettings(videoSettings)
+            await applyAllVideoSettings(width: dstW, height: dstH)
+            sendlog(message: "預設影片尺寸: \(dstW)x\(dstH)")
         } else {
             sendlog(message: "⚠️ 警告：未設定影片尺寸，將使用預設值 1280x720")
-            var videoSettings = await rtmpStream.videoSettings
-            videoSettings.videoSize = CGSize(width: 1280, height: 720)
-
-            videoSettings.profileLevel = kVTProfileLevel_H264_High_AutoLevel as String
-            
-            try? await rtmpStream.setVideoSettings(videoSettings)
+            await applyAllVideoSettings(width: 1280, height: 720)
         }
 
     }
@@ -1650,6 +1704,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             // 重置 video settings 強制重新套用
             self.lastConfiguredSize = nil
+
+            let w = DWidth > 0 ? DWidth : (ADWidth > 0 ? ADWidth : 1280)
+            let h = DHeight > 0 ? DHeight : (ADHeight > 0 ? ADHeight : 720)
+            await applyAllVideoSettings(width: w, height: h, stream: newStream)
 
             do {
                 guard let url = self.rtmpURL, let key = self.rtmpKey else {
@@ -2144,128 +2202,15 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
 
-        var videoSettings = await rtmpStream.videoSettings
-
-
-        
-        if videoSettings.videoSize != newSize {
-            sendlog(
-                message: "VideoSize:\(newSize) old:\(videoSettings.videoSize)"
-            )
-        }
-
-        let profilelvl: String
-
-        switch RPConfig.shared.state.h264level {
-        case "Baseline":
-            let res = h264ProfileLevel(
-                forWidth: width,
-                height: height,
-                fps: 60,
-                profile: .baseline
-            )
-
-            profilelvl = res
-
-        case "Main":
-            let res = h264ProfileLevel(
-                forWidth: width,
-                height: height,
-                fps: 60,
-                profile: .main
-            )
-
-            profilelvl = res
-
-        case "High":
-            let res = h264ProfileLevel(
-                forWidth: width,
-                height: height,
-                fps: 60,
-                profile: .high
-            )
-
-            profilelvl = res
-
-        case "AutoBaseline":
-            profilelvl = kVTProfileLevel_H264_Baseline_AutoLevel as String
-        case "AutoMain":
-            profilelvl = kVTProfileLevel_H264_Main_AutoLevel as String
-        case "AutoHigh":
-            profilelvl = kVTProfileLevel_H264_High_AutoLevel as String
-
-        case "ConstrainedBaseline":
-            profilelvl = kVTProfileLevel_H264_ConstrainedBaseline_AutoLevel as String
-        case "ConstrainedHigh":
-            profilelvl = kVTProfileLevel_H264_ConstrainedHigh_AutoLevel as String
-        case "Extended":
-            profilelvl = kVTProfileLevel_H264_Extended_AutoLevel as String
-
-        default:
-            profilelvl = kVTProfileLevel_H264_High_AutoLevel as String
-        }
-
-        sendlog(message: "H264Profilelevel: \(profilelvl)")
-
-        videoSettings.profileLevel = profilelvl
-        videoSettings.scalingMode = .letterbox
-        
-        videoSettings.videoSize = newSize
-        videoSettings.expectedFrameRate = 60.0
-        
-
-        switch RPConfig.shared.state.BitRateMode {
-        case 0:
-            videoSettings.bitRateMode = .average
-            videoSettings.maxKeyFrameIntervalDuration = 3
-            break;
-        case 1:
-            videoSettings.bitRateMode = .constant
-            videoSettings.maxKeyFrameIntervalDuration = 4
-            break;
-        case 2: 
-
-            if #available(iOS 26.0, *) {
-                print("執行 iOS 26 功能 VBR")
-                videoSettings.bitRateMode = .variable
-                videoSettings.maxKeyFrameIntervalDuration = 2
-            } else {
-                print("執行舊版功能 使用ABR")
-                videoSettings.bitRateMode = .average
-                videoSettings.maxKeyFrameIntervalDuration = 3
-            }
-            break;
-
-
-        default:
-
-            videoSettings.bitRateMode = .average
-            videoSettings.maxKeyFrameIntervalDuration = 3
-            
-        }
-
-        let kv = RPConfig.shared.state.KeyFrameInterval
-        videoSettings.maxKeyFrameIntervalDuration = Int32(kv)
-        sendlog(message: "關鍵幀間隔: \(kv)s (\(kv == 0 ? "編碼器自動" : "固定"))")
-
-        videoSettings.allowFrameReordering = false
-
-
-        videoSettings.isLowLatencyRateControlEnabled = RPConfig.shared.state.isLowLatencyRateControlEnabled
-        videoSettings.bitRate = RPConfig.shared.state.BitRate
-
+        await applyAllVideoSettings(width: width, height: height, setSize: false)
 
         if lastConfiguredSize != newSize {
             lastConfiguredSize = newSize
-            try? await rtmpStream.setVideoSettings(videoSettings)
+            var vs2 = await rtmpStream.videoSettings
+            vs2.videoSize = newSize
+            try? await rtmpStream.setVideoSettings(vs2)
         }
 
-
-        DWidth = Int(newSize.width)
-        DHeight = Int(newSize.height)
-
-        sendlog(message: "有效更新: \(newSize)")
-        sendlog(message: "Video: \(videoSettings)")
         sendlog(message: "Video 拿到畫面 \(width)x\(height)")
     }
 
