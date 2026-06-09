@@ -639,7 +639,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     }
                 }
 
-                guard newBitRate > 0 else { break }
+                guard newBitRate > 0 else { return }
                 RPConfig.shared.state.BitRate = newBitRate
 
                 var settings = await rtmpStream.videoSettings
