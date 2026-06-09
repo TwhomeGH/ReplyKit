@@ -620,8 +620,37 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             break
 
+        case "bitRateChange":
 
+            Task {
 
+                var newBitRate = SharedDefaults.group?.integer(forKey: "bitRate") ?? 6_000_000
+
+                if RPConfig.shared.enableSocketLog {
+                    if let raw = try await SocketClient.shared.requestSet(for: "bitRate", type: "Int") {
+                        if let av = raw as? Int {
+                            let oldV = newBitRate
+                            newBitRate = av
+                            logger.debug("bitRateChange \(av)")
+                            sendlog(message: "Socket原始bitRate數據包:\(av) -> \(oldV)")
+                        } else {
+                            logger.error("bitRateChange 型別錯誤: \(type(of: raw))")
+                        }
+                    }
+                }
+
+                guard newBitRate > 0 else { break }
+                RPConfig.shared.state.BitRate = newBitRate
+
+                var settings = await rtmpStream.videoSettings
+                settings.bitRate = newBitRate
+                try? await rtmpStream.setVideoSettings(settings)
+                await streamStataus?.updateVideoBitRate(to: newBitRate)
+
+                sendlog(message: "bitRateChange: 更新 bitrate=\(newBitRate/1000)kbps")
+            }
+
+            break
 
 
 

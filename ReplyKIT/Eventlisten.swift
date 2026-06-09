@@ -23,7 +23,7 @@ class Eventlisten {
         "onlogPage","Enablelog","logURL",
         "DebugRotate","DebugTime","OutW","OutH","VideoSet",
         "PauseStream","ResumeStream",
-        "ChangeBit","SocketRetry",
+        "ChangeBit","SocketRetry","bitRateChange",
         "SocketLog","Rotate","RotateOriginal",
         "VideoReconfig"
 
