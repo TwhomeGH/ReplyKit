@@ -193,17 +193,16 @@ final class RealTimeNoiseSuppressor {
                     vDSP_Length(fftSize))
 
         // ======================================================
-        // 4️⃣ FFT
+        // 4️⃣ FFT with safe pointer unwrapping
         // ======================================================
         real.withUnsafeMutableBufferPointer { rPtr in
         imag.withUnsafeMutableBufferPointer { iPtr in
-
-            var split = DSPSplitComplex(realp: rPtr.baseAddress!,
-                                        imagp: iPtr.baseAddress!)
+            guard let rBase = rPtr.baseAddress, let iBase = iPtr.baseAddress else { return }
+            var split = DSPSplitComplex(realp: rBase, imagp: iBase)
 
             fftBuffer.withUnsafeBufferPointer { buf in
-                buf.baseAddress!.withMemoryRebound(to: DSPComplex.self,
-                                                capacity: fftSize/2) {
+                guard let src = buf.baseAddress else { return }
+                src.withMemoryRebound(to: DSPComplex.self, capacity: fftSize/2) {
                     vDSP_ctoz($0, 2, &split, 1, vDSP_Length(fftSize/2))
                 }
             }
@@ -277,14 +276,12 @@ final class RealTimeNoiseSuppressor {
                         FFTDirection(FFT_INVERSE))
 
             // ======================================================
-            // output (直接寫回 ptr)
+            // output (直接寫回 ptr) with safe pointer
             // ======================================================
             outBuffer.withUnsafeMutableBufferPointer { oPtr in
-                oPtr.baseAddress!.withMemoryRebound(to: DSPComplex.self,
-                                                    capacity: fftSize/2) {
-                    vDSP_ztoc(&split, 1,
-                            $0, 2,
-                            vDSP_Length(fftSize/2))
+                guard let dst = oPtr.baseAddress else { return }
+                dst.withMemoryRebound(to: DSPComplex.self, capacity: fftSize/2) {
+                    vDSP_ztoc(&split, 1, $0, 2, vDSP_Length(fftSize/2))
                 }
             }
 
@@ -481,15 +478,14 @@ final class AudioPreProcessor {
         // ==================================================
 
         if state.noiseFixEnabled {
-            let useMetal = state.metalAudioEnabled
-                        && metalNS != nil
-                        && !gpuLatency.isOverloaded
-            if useMetal {
-                let start = CACurrentMediaTime()
-                metalNS!.process(&micFloatBuffer, count: count, forceCPU: false)
-                gpuLatency.record(CACurrentMediaTime() - start)
-            } else if state.metalAudioEnabled, let metalNS = metalNS {
-                metalNS.process(&micFloatBuffer, count: count, forceCPU: true)
+            if state.metalAudioEnabled, let metalNS = metalNS {
+                if !gpuLatency.isOverloaded {
+                    let start = CACurrentMediaTime()
+                    metalNS.process(&micFloatBuffer, count: count, forceCPU: false)
+                    gpuLatency.record(CACurrentMediaTime() - start)
+                } else {
+                    metalNS.process(&micFloatBuffer, count: count, forceCPU: true)
+                }
             } else {
                 ns.process(&micFloatBuffer, count: count)
             }

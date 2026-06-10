@@ -201,16 +201,15 @@ final class MetalRealTimeNoiseSuppressor {
                   &fftBuffer, 1,
                   vDSP_Length(fftSize))
 
-        // 4. FFT forward
+        // 4. FFT forward with safe pointer unwrapping
         real.withUnsafeMutableBufferPointer { rPtr in
         imag.withUnsafeMutableBufferPointer { iPtr in
-
-            var split = DSPSplitComplex(realp: rPtr.baseAddress!,
-                                        imagp: iPtr.baseAddress!)
+            guard let rBase = rPtr.baseAddress, let iBase = iPtr.baseAddress else { return }
+            var split = DSPSplitComplex(realp: rBase, imagp: iBase)
 
             fftBuffer.withUnsafeBufferPointer { buf in
-                buf.baseAddress!.withMemoryRebound(to: DSPComplex.self,
-                                                   capacity: fftSize/2) {
+                guard let src = buf.baseAddress else { return }
+                src.withMemoryRebound(to: DSPComplex.self, capacity: fftSize/2) {
                     vDSP_ctoz($0, 2, &split, 1, vDSP_Length(fftSize/2))
                 }
             }
@@ -243,13 +242,11 @@ final class MetalRealTimeNoiseSuppressor {
                           vDSP_Length(log2(Float(fftSize))),
                           FFTDirection(FFT_INVERSE))
 
-            // 8. ZTO
+            // 8. ZTO with safe pointer
             outBuffer.withUnsafeMutableBufferPointer { oPtr in
-                oPtr.baseAddress!.withMemoryRebound(to: DSPComplex.self,
-                                                    capacity: fftSize/2) {
-                    vDSP_ztoc(&split, 1,
-                              $0, 2,
-                              vDSP_Length(fftSize/2))
+                guard let dst = oPtr.baseAddress else { return }
+                dst.withMemoryRebound(to: DSPComplex.self, capacity: fftSize/2) {
+                    vDSP_ztoc(&split, 1, $0, 2, vDSP_Length(fftSize/2))
                 }
             }
 

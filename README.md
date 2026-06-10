@@ -354,6 +354,44 @@ Extension 端原本的處理方式：
 確保系統在某些異常負載下 能夠保持音訊正常
 
 
+## 修復音訊 Metal/CPU 反覆切換與 iOS 26 Beta Crash
+
+### 問題發現
+
+#### 1. GPULatencyTracker 永久鎖定（永不恢復 Metal）
+
+`AudioNoiseMetal.swift` 的 `GPULatencyTracker` 在判定 GPU 過載後 (`isOverloaded = true`)，`record()` 只在 Metal 路徑被呼叫。一旦切到 CPU fallback，歷史記錄凍結，`isOverloaded` 永遠回不來，**音訊永久鎖在 CPU 模式**。
+
+#### 2. AudioPreProcessor.processMic force unwrap crash（iOS 26 Beta）
+
+`AudioNoiseFix.swift:489` 的 `metalNS!` 與 `AudioNoiseMetal.swift` / `AudioNoiseFix.swift` 共 7 處 `baseAddress!` force unwrap，在 iOS 26 Beta 下 Swift runtime 觸發 `EXC_BREAKPOINT` / `SIGTRAP`。
+
+Crash 路徑：`RPBroadcastSampleHandler _processPayloadWithAudioSample:` → Audio pipeline FFT 處理 → `baseAddress!` force unwrap of nil
+
+#### 3. VideoProcess sampleBuffer 長期持有
+
+`VideoFrameProcessor.process()` 的 `sampleBuffer` 被 Task closure strongly capture，直到 GPU rotation 完成才釋放。ReplayKit 的 buffer pool 因此被阻塞。
+
+### 修改
+
+| 檔案 | 問題 | 修改 |
+|------|------|------|
+| `AudioNoiseMetal.swift:15-53` | `GPULatencyTracker` 永久鎖定 | 加入 3 秒冷卻機制：overload 後 CPU 模式 3 秒，期滿自動 reset 嘗試恢復 Metal |
+| `AudioNoiseFix.swift:480-491` | `metalNS!` force unwrap | 重構為巢狀 `if let metalNS = metalNS`，消除 force unwrap |
+| `AudioNoiseMetal.swift:204-268` | `baseAddress!` × 4 | 改為 `guard let` + graceful skip（不 crash，該 frame passthrough） |
+| `AudioNoiseFix.swift:196-308` | `baseAddress!` × 3 | 同上 |
+| `VideoProcess.swift:102-104` | sampleBuffer 被 Task capture | Task 前提取 `CVPixelBuffer`，使 CMSampleBuffer 即時回到 ReplayKit pool |
+| `GPUVideoRotator.swift:502` | rotateAsync 需 CMSampleBuffer | 參數改為 `CVPixelBuffer`，與上述修改對應 |
+
+### 行為對比
+
+| 情境 | 改前 | 改後 |
+|------|------|------|
+| GPU 短暫過載 >8ms | 永久鎖 CPU | CPU 3s → 自動重試 Metal |
+| GPU 持續過載 | 永久鎖 CPU | 每 3s 嘗試一次 Metal，持續失敗則持續停在 CPU |
+| `baseAddress` 為 nil | `EXC_BREAKPOINT` crash | 安全跳過該 frame 處理，音訊 passthrough |
+| ReplayKit buffer pool | 被 Task 長時間佔用 | 提早回收，減少 buffer 競爭 |
+
 ## 修復 VFR 造成的 PTS 異常與畫面速率抖動
 
 ### 問題發現
