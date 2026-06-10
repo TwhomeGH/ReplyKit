@@ -383,6 +383,25 @@ Crash 路徑：`RPBroadcastSampleHandler _processPayloadWithAudioSample:` → Au
 | `VideoProcess.swift:102-104` | sampleBuffer 被 Task capture | Task 前提取 `CVPixelBuffer`，使 CMSampleBuffer 即時回到 ReplayKit pool |
 | `GPUVideoRotator.swift:502` | rotateAsync 需 CMSampleBuffer | 參數改為 `CVPixelBuffer`，與上述修改對應 |
 
+---
+
+#### 4. Metal 音訊與影片共用同一條 Command Queue 造成音訊撕裂
+
+##### 問題
+`MetalContext.shared.queue` 被 `AudioNoiseMetal`（音訊降噪）與 `GPUVideoRotator`（影片旋轉）共用。
+影片渲染的 GPU command 塞在 queue 前端時，音訊的 noise suppression kernel 必須排隊等待，
+導致 `runMetalKernelWithTimeout` 中的 `DispatchSemaphore.wait(timeout:)` 逾時或延遲，
+音訊即時管線無法在 frame 週期內完成（512 samples @ 48kHz ≈ 10.67ms），
+聽表現為音訊撕裂、爆音。
+
+##### 修改
+`AudioNoiseMetal.swift:132-139` — 不再取用 `MetalContext.shared.queue`，改為獨立建立一條
+`metalDevice.makeCommandQueue()`，音訊的 GPU 指令不再被影片工作阻塞。
+
+| 改前 | 改後 |
+|------|------|
+| `metalQueue = ctx.queue`（與影片共用） | `metalQueue = metalDevice.makeCommandQueue()!`（專屬音訊） |
+
 ### 行為對比
 
 | 情境 | 改前 | 改後 |

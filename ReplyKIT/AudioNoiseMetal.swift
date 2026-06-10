@@ -90,7 +90,7 @@ final class MetalRealTimeNoiseSuppressor {
     private var vadCounter: Int = 0
     private var isSpeech: Bool = false
 
-    // MARK: Metal
+    // MARK: Metal — 使用獨立 command queue 避免與影片渲染競爭
     private let metalDevice: MTLDevice
     private let metalQueue: MTLCommandQueue
     private let metalPipeline: MTLComputePipelineState
@@ -129,10 +129,14 @@ final class MetalRealTimeNoiseSuppressor {
                          vDSP_Length(fftSize),
                          Int32(vDSP_HANN_NORM))
 
-        // MARK: Metal setup
+        // MARK: Metal setup — 使用獨立 queue 避免與影片競爭 GPU
         let ctx = MetalContext.shared
         metalDevice = ctx.device
-        metalQueue = ctx.queue
+        guard let audioQueue = metalDevice.makeCommandQueue() else {
+            sendlog(message: "MetalNoiseSuppressor: 建立 audio queue 失敗")
+            return nil
+        }
+        metalQueue = audioQueue
 
         guard let fn = ctx.library.makeFunction(name: "noiseSuppress"),
               let pipeline = try? metalDevice.makeComputePipelineState(function: fn) else {
