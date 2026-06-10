@@ -537,6 +537,26 @@ frameCount += 1
 
 
 
+## 新增 TTS 佇列上限控制 (maxQueueSize)
+
+### 問題
+`AVSpeechSynthesizer` 無公開 API 查詢內部佇列深度，連續大量朗讀時佇列可能無限增長，
+極端情況下導致記憶體壓力甚至崩潰。
+
+### 修改
+- `TTSService.swift`：新增 `maxQueueSize`（0=無限制/5/10/20/50）與 `queueOverflowAction`
+- 透過 `AVSpeechSynthesizerDelegate`（`didFinish`/`didCancel`）維護 `pendingUtteranceCount`
+- `stopSpeaking(at: .immediate)` 時手動重置計數為 0
+- `speak()` 在佇列已滿時根據 `queueOverflowAction` 決定跳過新訊息或清空佇列
+- `TTSSettingsView.swift`：設定頁面新增「佇列上限」Picker 與「佇列滿載」Picker
+- 新增 `TTSQueueOverflowAction` 列舉 (skipNew / stopOld)
+
+### 相關檔案
+- `liveAPP/TTSService.swift`：佇列計數 + 上限控制 + delegate
+- `liveAPP/TTSSettingsView.swift`：佇列設定 UI
+
+---
+
 ## 修復 TTS 過濾器誤刪數字 + 新增純數字過濾選項
 
 ### 問題

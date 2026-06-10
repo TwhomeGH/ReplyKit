@@ -342,6 +342,8 @@ struct TTSSettingsView: View {
     @AppStorage("TTSReadUserName", store: userDefaults) private var readUserName = true
 
     @AppStorage("TTSInterruptCurrent", store: userDefaults) private var interruptCurrent = false
+    @AppStorage("TTSMaxQueueSize", store: userDefaults) private var maxQueueSize = 0
+    @AppStorage("TTSQueueOverflowAction", store: userDefaults) private var queueOverflowAction = 0
 
 
 
@@ -543,6 +545,29 @@ struct TTSSettingsView: View {
                                 }
                                 .pickerStyle(.menu) // 滾輪選單
 
+                            }
+
+                            HStack {
+                                Text("佇列上限：")
+                                Picker("", selection: $maxQueueSize) {
+                                    Text("無限制").tag(0)
+                                    Text("5").tag(5)
+                                    Text("10").tag(10)
+                                    Text("20").tag(20)
+                                    Text("50").tag(50)
+                                }
+                                .pickerStyle(.menu)
+                            }
+
+                            if maxQueueSize > 0 {
+                                HStack {
+                                    Text("佇列滿載：")
+                                    Picker("", selection: $queueOverflowAction) {
+                                        Text("跳過新訊息").tag(0)
+                                        Text("清空佇列").tag(1)
+                                    }
+                                    .pickerStyle(.menu)
+                                }
                             }
 
                             Button("測試朗讀") {

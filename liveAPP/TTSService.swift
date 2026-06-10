@@ -8,6 +8,11 @@
 import AVFoundation
 import Foundation
 
+enum TTSQueueOverflowAction: Int {
+    case skipNew = 0   // 跳過新訊息
+    case stopOld = 1   // 停止目前朗讀，清空佇列
+}
+
 @MainActor
 final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
     static let shared = TTSService()
@@ -28,6 +33,11 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
 
     //打斷
     var InterruptCurrent:Bool = true
+
+    // 佇列控制
+    var maxQueueSize: Int = 0   // 0 = 無限制
+    var queueOverflowAction: TTSQueueOverflowAction = .skipNew
+    private var pendingUtteranceCount = 0
 
     // 主語音配置
     var storedLanguage:String = ""
@@ -55,6 +65,11 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
         readMiddleName = userDefaults?.string(forKey:"TTSReadMiddleName") ?? ""
 
         InterruptCurrent = userDefaults?.bool(forKey: "TTSInterruptCurrent") ?? true
+
+        maxQueueSize = max(0, userDefaults?.integer(forKey: "TTSMaxQueueSize") ?? 0)
+
+        let rawAction = userDefaults?.integer(forKey: "TTSQueueOverflowAction") ?? 0
+        queueOverflowAction = TTSQueueOverflowAction(rawValue: rawAction) ?? .skipNew
 
         storedLanguage = userDefaults?.string(forKey: "TTSLanguage") ?? ""
 
@@ -101,6 +116,11 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
         readMiddleName = userDefaults?.string(forKey:"TTSReadMiddleName") ?? ""
 
         InterruptCurrent = userDefaults?.bool(forKey: "TTSInterruptCurrent") ?? true
+
+        maxQueueSize = max(0, userDefaults?.integer(forKey: "TTSMaxQueueSize") ?? 0)
+
+        let rawAction = userDefaults?.integer(forKey: "TTSQueueOverflowAction") ?? 0
+        queueOverflowAction = TTSQueueOverflowAction(rawValue: rawAction) ?? .skipNew
 
         storedLanguage = userDefaults?.string(forKey: "TTSLanguage") ?? ""
 
@@ -215,6 +235,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
         if synthesizer.isSpeaking {
             synthesizer.stopSpeaking(at: .immediate)
         }
+        pendingUtteranceCount = 0
     }
 
     func refreshAudioSessionForCurrentSetting() {
@@ -236,9 +257,23 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
     private func speak(_ text: String, keepsCallAudioAlive: Bool = true) {
         guard !text.isEmpty else { return }
 
-        if InterruptCurrent ,
+        if InterruptCurrent,
             synthesizer.isSpeaking {
             synthesizer.stopSpeaking(at: .immediate)
+            pendingUtteranceCount = 0
+        }
+
+        // 佇列上限檢查
+        if maxQueueSize > 0 && pendingUtteranceCount >= maxQueueSize {
+            switch queueOverflowAction {
+            case .skipNew:
+                sendlog(message:"TTS 佇列已滿 (\(pendingUtteranceCount)/\(maxQueueSize))，跳過新訊息")
+                return
+            case .stopOld:
+                sendlog(message:"TTS 佇列已滿 (\(pendingUtteranceCount)/\(maxQueueSize))，清空佇列")
+                synthesizer.stopSpeaking(at: .immediate)
+                pendingUtteranceCount = 0
+            }
         }
 
         #if os(iOS)
@@ -261,7 +296,21 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
         utterance.pitchMultiplier = Float(storedPitch > 0 ? storedPitch : 1.0)
         utterance.volume = Float(storedVolume > 0 ? storedVolume : 1.0)
 
+        pendingUtteranceCount += 1
         synthesizer.speak(utterance)
+    }
+
+    // MARK: - AVSpeechSynthesizerDelegate
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        Task { @MainActor in
+            self.pendingUtteranceCount = max(0, self.pendingUtteranceCount - 1)
+        }
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        Task { @MainActor in
+            self.pendingUtteranceCount = max(0, self.pendingUtteranceCount - 1)
+        }
     }
 
     #if os(iOS)
