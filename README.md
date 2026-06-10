@@ -656,6 +656,26 @@ TTS 過濾器設定頁面新增「移除純數字」Toggle 開關。
 
 ---
 
+## 修復首次 RTMP 連線容易失敗 (mediaMixer 時序競爭)
+
+### 問題
+`broadcastStarted()` 中 `configureMediaMixer()` 在 RTMP connect **之前**就呼叫了
+`mediaMixer.startRunning()`，導致混音器立即開始產出 frame，但此時 RTMP 連線尚未建立。
+HaishinKit 的 TCP timeout 為 15 秒，在這段期間 frame 持續積累，可能造成第一個 connect
+超時失敗，進而仰賴重連機制才成功。
+
+### 變更 (`SampleHandler.swift`)
+
+| 位置 | 修正前 | 修正後 |
+|------|--------|--------|
+| `configureMediaMixer()` | `addOutput` + **`startRunning`** | 只保留 `addOutput` |
+| `startRTMP()` 成功後 | (無) | 新增 `startRunning` |
+| `attemptReconnect()` 成功後 | `addOutput` 後無 `startRunning` | `addOutput` + **`startRunning`** |
+
+重連路徑也補上 `startRunning()`，避免極端情況（首次連線從未成功）下 mixer 永遠不啟動。
+
+---
+
 ## TODO 待辦事項
 
 

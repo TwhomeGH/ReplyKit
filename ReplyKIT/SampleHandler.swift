@@ -1511,9 +1511,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         
         await mediaMixer.addOutput(rtmpStream)
-        await mediaMixer.startRunning()
-
-
 
         didConfigureAudio = false
 
@@ -1612,6 +1609,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             _ = try await rtmpStream.publish(key)
 
+            await mediaMixer.startRunning()
 
             sendlog(message:"🎉 RTMP:\(url)/ KEY:\(fixlogSafeKey(key)) 連線中...",flush: true)
             // step 4: 標記 session ready
@@ -1711,6 +1709,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 await self.streamStataus?.refreshStatusTimestamp()
                 await newStream.setBitRateStrategy(self.streamStataus)
                 await self.mediaMixer.addOutput(newStream)
+                await self.mediaMixer.startRunning()
 
                 // 恢復斷線監控
                 self.startDisconnectMonitor()
