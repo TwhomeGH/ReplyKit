@@ -264,8 +264,10 @@ final class PIPService: NSObject, @unchecked Sendable {
                                            sampleTiming: &timing,
                                            sampleBufferOut: &sb)
 
-        if let attachments = sb.flatMap({ CMSampleBufferGetSampleAttachmentsArray($0, createIfNecessary: true) }) {
-            let dict = unsafeBitCast(CFArrayGetValueAtIndex(attachments, 0), to: CFMutableDictionary.self)
+        if let attachments = sb.flatMap({ CMSampleBufferGetSampleAttachmentsArray($0, createIfNecessary: true) }),
+           CFArrayGetCount(attachments) > 0,
+           let rawPtr = CFArrayGetValueAtIndex(attachments, 0) {
+            let dict = unsafeBitCast(rawPtr, to: CFMutableDictionary.self)
             CFDictionarySetValue(dict,
                                  Unmanaged.passUnretained(kCMSampleAttachmentKey_DisplayImmediately).toOpaque(),
                                  Unmanaged.passUnretained(kCFBooleanTrue).toOpaque())

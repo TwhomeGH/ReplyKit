@@ -742,68 +742,23 @@ final class RPConfig {
 
 }
 
-var lastlogT = Date()
-var IntTime:TimeInterval = 5.0
-
-var logState:Bool = RPConfig.shared.enableLog
-
 func updateLogFixState() {
-
-    let current = RPConfig.shared.enableLog 
-
-    guard current != logState else { return }
-
-    logState = current
-
-    if logState {
-        sendlog(message:"🔄 Log Enabled")
-    } else {
-        sendlog(message:"🔄 Log Disabled")
-
-    }
-
+    sendlog(message:"🔄 Log Enabled: \(RPConfig.shared.enableLog)")
 }
 
-var onlogState:Bool = RPConfig.shared.onLogPage
-
 func updateONLogFixState() {
-
-    let current = RPConfig.shared.onLogPage
-
-    guard current != onlogState else { return }
-
-    onlogState = current
-
-    if onlogState {
-        sendlog(message:"🔄 Log Enabled")
-    } else {
-        sendlog(message:"🔄 Log Disabled")
-
-    }
-
+    sendlog(message:"🔄 onLogPage: \(RPConfig.shared.onLogPage)")
 }
 
 
 func sendlog(title: String = "ReplyKit", message: String, flush:Bool = false) {
 
-    let noww=Date()
-
-    if noww.timeIntervalSince(lastlogT) > IntTime {
-        lastlogT=noww
-
-        logger
-            .info(
-                "RP: EnableLog:\(RPConfig.shared.enableLog) onlog:\(RPConfig.shared.onLogPage)"
-            )
+    guard RPConfig.shared.enableLog, RPConfig.shared.onLogPage else {
+        logger.debug("sendlog skipped: enableLog=\(RPConfig.shared.enableLog) onLogPage=\(RPConfig.shared.onLogPage)")
+        return
     }
 
-    if logState {
-        if onlogState {
-            LogManager.shared.log(title:title,message: message,flushImmediately: flush)
-
-        }
-
-    }
+    LogManager.shared.log(title:title, message:message, flushImmediately: flush)
 }
 
 

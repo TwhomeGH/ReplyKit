@@ -537,6 +537,105 @@ frameCount += 1
 
 
 
+## 修復 TTS 過濾器誤刪數字 + 新增純數字過濾選項
+
+### 問題
+
+`SpeechFilterManager.processMessage()` 在「移除表情符號」階段使用 `isEmoji` 過濾，
+但 Swift 的 `UnicodeScalar.properties.isEmoji` 對數字 `0-9`、`#`、`*` 也回傳 `true`
+（因為這些字元可以透過 Variant Selector-16 組合成 emoji keycap 序列，如 `#️⃣`、`0️⃣`），
+導致朗讀時數字被誤刪。
+
+### 修改
+
+#### `TTSSettingsView.swift - SpeechFilterManager`
+
+| 變更 | 說明 |
+|------|------|
+| `isEmoji` → `isEmojiPresentation` | `isEmojiPresentation` 只對「預設顯示為 emoji」的字元回傳 true，數字、#、* 不再被誤刪 |
+| 新增 `removePureNumbers` 屬性 | 可選是否移除純數字內容，使用正則 `(?<!\d)\d+(?!\d)` 確保只移除獨立數字，保留「第5名」這類混合內容 |
+| 新增儲存/載入 | UserDefaults 序列化新增 `removePureNumbers` 欄位 |
+
+#### UI 新增
+
+TTS 過濾器設定頁面新增「移除純數字」Toggle 開關。
+
+---
+
+## 修復 PIP unsafeBitCast 潛在崩潰
+
+### 問題
+
+`PIPService.swift:createSampleBuffer()` 中 `CFArrayGetValueAtIndex(attachments, 0)` 的結果
+直接傳入 `unsafeBitCast`，若陣列為空則回傳 nil，`unsafeBitCast(nil, to:)` 會觸發 crash。
+
+### 修改
+
+在 `unsafeBitCast` 前增加 `CFArrayGetCount(attachments) > 0` 與 `rawPtr` nil 檢查，
+確保只有有效指標才進行轉換。
+
+---
+
+## 修復 sendlog() 雙重快取不同步導致日誌靜默丟棄
+
+### 問題
+
+`Event.swift` 中的 `sendlog()` 依賴全局變數 `logState` / `onlogState`，這兩個變數
+只在 `updateLogFixState()` / `updateONLogFixState()` 被調用時更新。
+若 Extension 啟動時值尚未同步，即使 App 端已設為 true，擴展端仍認為 false，所有日誌被靜默丟棄。
+
+### 修改
+
+- 移除 `logState`、`onlogState` 全局變數及 `lastlogT`/`IntTime`
+- `sendlog()` 改為直接讀取 `RPConfig.shared.enableLog` 與 `RPConfig.shared.onLogPage`
+- `updateLogFixState()` / `updateONLogFixState()` 簡化為僅記錄日誌
+
+---
+
+## 修復 RTMP / Socket 重連耗盡後永久終止
+
+### 問題
+
+- RTMP 重連（`SampleHandler.swift`）上限 5 次 → 調用 `stopBroadcastWithError` 永久關閉推流
+- Socket 重連（`ReplyKIT/Socket.swift`）上限 10 次 → 永久放棄重連
+
+### 修改
+
+超過上限後不退避，改為 **固定 30 秒間隔持續重連**，不再終止推流或放棄連線：
+
+| 組件 | 上限後行為 (改前) | 上限後行為 (改後) |
+|------|------------------|------------------|
+| RTMP | `stopBroadcastWithError("RTMP 重連失敗")` | 每 30s 持續嘗試 |
+| Socket | `return` (放棄) | 每 30s 持續嘗試 |
+
+---
+
+## 修復 RemoteLogBuffer 滿時無告警
+
+### 問題
+
+`RemoteLogBuffer` 最多暫存 300 筆，滿時靜默丟棄最舊日誌，無任何提示。
+
+### 修改
+
+每丟棄 50 條記錄一次 `sendlog("⚠️ RemoteLogBuffer 已滿")` 告警。
+
+---
+
+## 新增 TTSService 監聽音頻服務丟失
+
+### 問題
+
+`TTSService` 只監聽 `mediaServicesWereResetNotification`，缺少
+`mediaServicesWereLostNotification`，無法在第一時間感知音頻服務中斷。
+
+### 修改
+
+新增 `AVAudioSession.mediaServicesWereLostNotification` 監聽，中斷時記錄日誌，
+後續由 `mediaServicesWereResetNotification` 自動恢復。
+
+---
+
 ## TODO 待辦事項
 
 

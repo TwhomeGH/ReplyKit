@@ -26,6 +26,9 @@ class SpeechFilterManager: ObservableObject {
     @Published var removeEmoji: Bool = true {
         didSet { saveToUserDefaults() }
     }
+    @Published var removePureNumbers: Bool = false {
+        didSet { saveToUserDefaults() }
+    }
     
     private let defaultsKey = "SpeechFilterSettings"
     
@@ -33,7 +36,7 @@ class SpeechFilterManager: ObservableObject {
         loadFromUserDefaults()
     }
     
-    /// 處理訊息：刪除 URL、表情符號、刪除或替換關鍵字
+    /// 處理訊息：刪除 URL、表情符號、純數字、刪除或替換關鍵字
     func processMessage(_ message: String) -> String {
         var result = message
         
@@ -45,17 +48,25 @@ class SpeechFilterManager: ObservableObject {
                                                  options: .regularExpression)
         }
         
-        // 2. 移除表情符號
+        // 2. 移除表情符號（使用 isEmojiPresentation 避免誤刪數字）
         if removeEmoji {
-            result = String(result.unicodeScalars.filter { !$0.properties.isEmoji })
+            result = String(result.unicodeScalars.filter { !$0.properties.isEmojiPresentation })
         }
         
-        // 3. 移除 blockKeywords
+        // 3. 移除純數字內容
+        if removePureNumbers {
+            let pureNumberPattern = #"(?<!\d)\d+(?!\d)"#
+            result = result.replacingOccurrences(of: pureNumberPattern,
+                                                 with: "",
+                                                 options: .regularExpression)
+        }
+        
+        // 4. 移除 blockKeywords
         for word in blockKeywords {
             result = result.replacingOccurrences(of: word, with: "")
         }
         
-        // 4. 替換 replaceKeywords
+        // 5. 替換 replaceKeywords
         for (word, replacement) in replaceKeywords {
             result = result.replacingOccurrences(of: word, with: replacement)
         }
@@ -69,7 +80,8 @@ class SpeechFilterManager: ObservableObject {
             "blockKeywords": blockKeywords,
             "replaceKeywords": replaceKeywords,
             "removeURLs": removeURLs,
-            "removeEmoji": removeEmoji
+            "removeEmoji": removeEmoji,
+            "removePureNumbers": removePureNumbers
         ]
         UserDefaults.standard.set(dict, forKey: defaultsKey)
     }
@@ -89,6 +101,9 @@ class SpeechFilterManager: ObservableObject {
         }
         if let emoji = dict["removeEmoji"] as? Bool {
             removeEmoji = emoji
+        }
+        if let numbers = dict["removePureNumbers"] as? Bool {
+            removePureNumbers = numbers
         }
     }
 }
@@ -172,6 +187,8 @@ struct FilterSettingsView: View {
             Toggle("移除 URL", isOn: $filter.removeURLs)
             
             Toggle("移除表情符號 Emoji", isOn: $filter.removeEmoji)
+            
+            Toggle("移除純數字", isOn: $filter.removePureNumbers)
             
             VStack(alignment: .leading) {
                 Text("排除關鍵字")

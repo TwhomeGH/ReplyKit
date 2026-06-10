@@ -361,7 +361,9 @@ final class RemoteLogBuffer {
 
         queue.async {
             if self.buffer.count >= self.maxBufferSize {
-                // 丟掉最舊的
+                if self.buffer.count % 50 == 0 {
+                    sendlog(message:"⚠️ RemoteLogBuffer 已滿 (\(self.maxBufferSize))，丟棄最舊日誌")
+                }
                 self.buffer.removeFirst()
             }
             self.buffer.append(item)

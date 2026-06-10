@@ -1647,19 +1647,21 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         guard !isStopping, !isReconnecting else { return }
 
         reconnectAttempts += 1
-        guard reconnectAttempts <= maxReconnectAttempts else {
-            sendlog(message: "❌ RTMP 重連次數已達上限，停止推流")
+
+        let delay: Double
+        if reconnectAttempts > maxReconnectAttempts {
+            // 超過上限後不退避，固定 30s 持續嘗試，不終止推流
+            sendlog(message: "⚠️ RTMP 重連次數已達上限 (\(maxReconnectAttempts))，持續每 30s 嘗試")
             notifyReconnectStatus(.exhausted)
-            stopBroadcastWithError("RTMP 重連失敗")
-            return
+            delay = 30.0
+        } else {
+            // 指數退避: 1s, 2s, 4s, 8s, 16s
+            delay = min(pow(2.0, Double(reconnectAttempts - 1)), 16.0)
         }
 
         isReconnecting = true
 
-        // 指數退避: 1s, 2s, 4s, 8s, 16s
-        let delay = min(pow(2.0, Double(reconnectAttempts - 1)), 16.0)
-
-        sendlog(message: "🔄 RTMP 斷線，第 \(reconnectAttempts)/\(maxReconnectAttempts) 次重連 (\(Int(delay))s 後)...")
+        sendlog(message: "🔄 RTMP 斷線，第 \(reconnectAttempts) 次重連 (\(Int(delay))s 後)...")
         notifyReconnectStatus(.attempting)
 
         // 暫停斷線監控

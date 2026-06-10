@@ -313,17 +313,16 @@ class SocketClient : @unchecked Sendable {
             self.isReconnecting = true
             self.reconnectAttempt += 1
 
-            guard self.reconnectAttempt <= self.maxReconnectAttempts else {
-                self.logTo("Max reconnect attempts (\(self.maxReconnectAttempts)) reached, giving up")
-                self.isReconnecting = false
-                self.reconnectAttempt = 0
+            let delay: TimeInterval
+            if self.reconnectAttempt > self.maxReconnectAttempts {
+                self.logTo("Max reconnect attempts (\(self.maxReconnectAttempts)) reached, continuing with 30s interval")
                 self.sendReconnectStatus(.exhausted)
-                return
+                delay = 30.0
+            } else {
+                delay = self.reconnectDelay()
+                self.logTo("Reconnect attempt \(self.reconnectAttempt)/\(self.maxReconnectAttempts) in \(String(format: "%.1f", delay))s")
+                self.sendReconnectStatus(.attempting)
             }
-
-            let delay = self.reconnectDelay()
-            self.logTo("Reconnect attempt \(self.reconnectAttempt)/\(self.maxReconnectAttempts) in \(String(format: "%.1f", delay))s")
-            self.sendReconnectStatus(.attempting)
 
             self.queue.asyncAfter(deadline: .now() + delay) {
                 [weak self] in
