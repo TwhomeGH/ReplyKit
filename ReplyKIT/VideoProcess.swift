@@ -100,6 +100,8 @@ final class VideoFrameProcessor {
 
 
     func process(_ sampleBuffer: CMSampleBuffer, oringinaltime: CMSampleTimingInfo) {
+        // 提早提取 CVPixelBuffer，讓 sampleBuffer 可被 ReplayKit 回收
+        guard let imageBuffer = sampleBuffer.imageBuffer as? CVPixelBuffer else { return }
         Task { [weak self] in
             guard let self = self, self.isActive else { return }
 
@@ -145,7 +147,7 @@ final class VideoFrameProcessor {
             }) else { return }
 
             guard let rotated = await rotator.rotateAsync(
-                sampleBuffer: sampleBuffer,
+                pixelBuffer: imageBuffer,
                 originalTime: oringinaltime,
                 angle: self.angle
             ) else { return }

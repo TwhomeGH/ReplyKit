@@ -499,54 +499,16 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
 
     // MARK: - Enqueue Frame
-    func rotateAsync(sampleBuffer: CMSampleBuffer,originalTime: CMSampleTimingInfo, angle: RotationAngle) async -> CMSampleBuffer? {
-
+    func rotateAsync(pixelBuffer: CVPixelBuffer, originalTime: CMSampleTimingInfo, angle: RotationAngle) async -> CMSampleBuffer? {
 
          // 延遲初始化 Metal/TextureCache
         guard ensureMetalResources() else {
             return nil
         }
 
-        
-
-        // ✅ 🔥 先看 GPU 是否已滿
-        // Task {
-
-        // let info = await gpuSemaphore.info()
-        // if info.now == 0 {
-        //     // 👉 GPU 已滿，直接丟掉這幀（避免排隊造成大卡）
-        //     logTo("GPU 滿載 可用Frame正在處理 丟幀")
-        //     return
-        // }
-
-        // self.logTo("GPU Info:\(info.now):\(info.max) \(String(describing:self.timing))")
-
-        // }
-
-        
-        //await gpuSemaphore.wait()
-        //let res = await asyncWait(NGPUSemaphore, timeout: .now() + 0.2)// 加入超時，避免死鎖
-
-
-
-        
-
-        //defer {
-        
-            //釋放釋放資源
-            
-            
-            //Task { await gpuSemaphore.signal() }
-
-
-        //}
-
         timing = originalTime
 
-        
-        guard let inBuffer = sampleBuffer.imageBuffer else { 
-            return nil 
-        }
+        let inBuffer = pixelBuffer
         let srcW = CVPixelBufferGetWidth(inBuffer)
         let srcH = CVPixelBufferGetHeight(inBuffer)
         var dstW = (
