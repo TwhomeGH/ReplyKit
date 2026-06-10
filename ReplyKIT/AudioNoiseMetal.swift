@@ -12,13 +12,24 @@ struct NoiseSuppressParams {
     var frameSize: UInt32 = 0
 }
 
-// MARK: - GPU 延遲追蹤器
+// MARK: - GPU 延遲追蹤器（附冷卻機制，避免 Metal/CPU 反覆切換）
 final class GPULatencyTracker {
     private var history: [Double] = []
     private let maxSize = 30
     private var _isOverloaded = false
+    private var lastFallbackTime: CFTimeInterval = 0
+    private let cooldownDuration: CFTimeInterval = 3.0
 
-    var isOverloaded: Bool { _isOverloaded }
+    var isOverloaded: Bool {
+        guard _isOverloaded else { return false }
+        let elapsed = CACurrentMediaTime() - lastFallbackTime
+        if elapsed >= cooldownDuration {
+            _isOverloaded = false
+            reset()
+            return false
+        }
+        return true
+    }
 
     func record(_ seconds: Double) {
         let ms = seconds * 1000
@@ -29,6 +40,7 @@ final class GPULatencyTracker {
         let avg = history.reduce(0, +) / Double(history.count)
         if avg > 8.0 {
             _isOverloaded = true
+            lastFallbackTime = CACurrentMediaTime()
         } else if avg < 3.0 {
             _isOverloaded = false
         }
