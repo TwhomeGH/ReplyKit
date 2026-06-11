@@ -1158,6 +1158,11 @@ class SocketServer:ObservableObject {
         }
     }
 
+    deinit {
+        idleTimers.values.forEach { $0.cancel() }
+        listener?.cancel()
+    }
+
     // MARK: - Suspend / Resume
     func suspend() {
         logTo("SocketServer 暫停（釋放連線但保留 listener）")
@@ -1171,6 +1176,7 @@ class SocketServer:ObservableObject {
             self.receiveBuffers.removeAll()
             self.sendQueues.removeAll()
             self.sendingFlags.removeAll()
+            self.pendingFailedPayloads.removeAll()
         }
     }
 
@@ -1189,6 +1195,7 @@ class SocketServer:ObservableObject {
             self.receiveBuffers.removeAll()
             self.sendQueues.removeAll()
             self.sendingFlags.removeAll()
+            self.pendingFailedPayloads.removeAll()
             self.idleTimers.values.forEach { $0.cancel() }
             self.idleTimers.removeAll()
         }
@@ -1211,6 +1218,9 @@ class SocketServer:ObservableObject {
 
         connections.removeAll()
         receiveBuffers.removeAll()
+        sendQueues.removeAll()
+        sendingFlags.removeAll()
+        pendingFailedPayloads.removeAll()
 
         logTo("SocketServer stopped")
     }

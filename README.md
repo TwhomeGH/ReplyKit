@@ -695,6 +695,41 @@ HaishinKit 的 TCP timeout 為 15 秒，在這段期間 frame 持續積累，可
 
 ---
 
+## 修復主 App 記憶體持續增長問題
+
+### 問題
+
+經實機監測發現主 App RAM 用量持續穩定上升，即使無明顯操作也不回落。
+
+### 根因分析
+
+全面審查所有 liveAPP target 中的集合類、緩衝區、定時器與單例，共找出以下記憶體洩漏或無界增長點：
+
+| 嚴重性 | 問題 | 位置 | 說明 |
+|--------|------|------|------|
+| 🔴 | `ConfigManager.layers` 無界增長 | `liveAPP/Config.swift:13` | 每次 `push()` 永久追加新層，無 `pop()` 或容量上限 |
+| 🔴 | `pendingFailedPayloads` 只增不減 | `liveAPP/Socket.swift:1111` | 斷線時暫存未送出 payload，但 `suspend()` / `releaseMemory()` / `stopInternal()` 皆未清理 |
+| 🟠 | `stopInternal()` 漏清多個字典 | `liveAPP/Socket.swift:1198` | 關閉 Socket 時未釋放 `sendQueues`、`sendingFlags`、`pendingFailedPayloads` |
+| 🟢 | `SocketServer` 缺 `deinit` | `liveAPP/Socket.swift` | listener 與 idleTimers 在物件釋放時無法自動取消 |
+
+經檢查後確認已受控（無須修正）：
+- `RemoteLogBuffer.buffer` → 上限 300 條，drain 後移除，失敗不回插
+- `LogBuffer.buffer` → batch 100 條排出，排完 removeFirst
+- `messageLines` → 上限 10000 行，超過砍半至 5000
+- `PiPImageCache.inFlightTasks` → `finishDownload()` 正確清理
+- `Socket.receiveBuffers` → `removeConnection()` / `suspend()` 皆有清理
+- `LogModel.messages` → 上限 1000 條，超出移除最舊
+- `OrientationObserver` → 單例存活整段 app 生命週期，observer 無須移除
+
+### 修改
+
+| 檔案 | 變更 |
+|------|------|
+| `liveAPP/Config.swift` | `push()` 加入 `maxLayers=10`，超出時移除最舊層（保留第 0 層 default） |
+| `liveAPP/Socket.swift` | `suspend()` / `releaseMemory()` / `stopInternal()` 三處補上 `pendingFailedPayloads.removeAll()` |
+| `liveAPP/Socket.swift` | `stopInternal()` 補上 `sendQueues.removeAll()` + `sendingFlags.removeAll()` |
+| `liveAPP/Socket.swift` | 新增 `deinit`，取消 idleTimers 與 listener |
+
 ## TODO 待辦事項
 
 

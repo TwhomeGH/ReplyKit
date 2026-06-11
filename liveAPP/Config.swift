@@ -13,6 +13,7 @@ class ConfigManager<Key: Hashable & Codable, Value: Codable>: ObservableObject {
     private var layers: [[Key: Value]] = []
 
     private let userDefaultsKey = "userConfig"
+    private let maxLayers = 10
 
     init(defaultConfig: [Key: Value]) {
         layers.append(defaultConfig)
@@ -21,8 +22,11 @@ class ConfigManager<Key: Hashable & Codable, Value: Codable>: ObservableObject {
     }
 
     func push(_ newConfig: [Key: Value]) {
+        while layers.count >= maxLayers {
+            layers.remove(at: 1)
+        }
         layers.append(newConfig)
-        saveUserConfig(newConfig) // 把這層存起來
+        saveUserConfig(newConfig)
         refresh()
     }
 
