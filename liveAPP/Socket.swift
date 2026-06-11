@@ -154,7 +154,12 @@ class SocketServer:ObservableObject {
 
     }
 
+    // MARK: - Deinit Socket Server
     deinit {
+
+        idleTimers.values.forEach { $0.cancel() }
+        listener?.cancel()
+
         CFNotificationCenterRemoveObserver(
             CFNotificationCenterGetDarwinNotifyCenter(),
             UnsafeRawPointer(Unmanaged.passUnretained(self).toOpaque()),
@@ -1158,10 +1163,6 @@ class SocketServer:ObservableObject {
         }
     }
 
-    deinit {
-        idleTimers.values.forEach { $0.cancel() }
-        listener?.cancel()
-    }
 
     // MARK: - Suspend / Resume
     func suspend() {
