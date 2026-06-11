@@ -74,7 +74,7 @@ class NotificationViewController: UIViewController, UNNotificationContentExtensi
         ])
     }
 
-    func didReceive(_ notification: UNNotification, withCompletion completion: @escaping (UNNotificationContentExtensionMediaPlayState) -> Void) {
+    func didReceive(_ notification: UNNotification) {
         let content = notification.request.content
         titleLabel.text = content.title
         bodyLabel.text = content.body
@@ -90,8 +90,6 @@ class NotificationViewController: UIViewController, UNNotificationContentExtensi
         if let appIcon = UIImage(named: "AppIcon") ?? UIImage(named: "AppIcon60x60") {
             appIconImageView.image = appIcon
         }
-
-        completion(.none)
     }
 
 }
