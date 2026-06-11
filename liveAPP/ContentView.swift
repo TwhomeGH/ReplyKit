@@ -170,7 +170,9 @@ struct BroadcastButton: UIViewRepresentable {
         return picker
     }
 
-    func updateUIView(_ uiView: RPSystemBroadcastPickerView, context: Context) { }
+    func updateUIView(_ uiView: RPSystemBroadcastPickerView, context: Context) {
+        uiView.preferredExtension = preferredExtension
+    }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(rtmpURL: rtmpURL, rtmpKey:rtmpKey)
@@ -818,6 +820,7 @@ struct LogSettingsView: View {
     @AppStorage("PIPFontMain", store: userDefaults) private var PIPFontMain = 14.0
     @AppStorage("PIPFontSecond", store: userDefaults) private var PIPFontSecond = 10.0
 
+    @AppStorage("broadcastExtension", store: userDefaults) private var broadcastExtension = "nuclear.liveAPP.ReplyKIT"
 
 
     var body: some View {
@@ -838,6 +841,16 @@ struct LogSettingsView: View {
                     GPURotateView(viewModel: gpuSettings)
                 }
 
+
+                Section(header: Text("廣播擴展 Bundle ID")) {
+                    TextField("nuclear.liveAPP.ReplyKIT", text: $broadcastExtension)
+                        .autocapitalization(.none)
+                        .disableAutocorrection(true)
+                        .font(.caption)
+                    Text("設定後需重新啟動廣播才生效")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                }
 
                 Section(header: Text("API 接口地址")) {
                     TextField("https://example.com/api/logs", text: $tempEndpoint)
@@ -2042,13 +2055,14 @@ struct homeView:View{
 
     @AppStorage("rtmpURL",store: userDefaults) var rtmpURL: String = "rtmp://192.168.0.102/live"
     @AppStorage("rtmpKey",store: userDefaults) var rtmpKey: String = "stream1?vhost=live2"
+    @AppStorage("broadcastExtension",store: userDefaults) var broadcastExtension: String = "nuclear.liveAPP.ReplyKIT"
 
     @StateObject var manager = BitrateManager()
 
     // iOS BroadcastButton
 #if os(iOS)
     @State var StreamBtn = BroadcastButton(
-        preferredExtension: "nuclear.liveAPP.ReplyKIT",
+        preferredExtension: userDefaults?.string(forKey: "broadcastExtension") ?? "nuclear.liveAPP.ReplyKIT",
         rtmpURL: "",
         rtmpKey: "",
         width: 50,
@@ -2554,12 +2568,12 @@ struct homeView:View{
 
 
 
-
                 VStack {
 
 #if os(iOS)
                     StreamBtn.frame(width: 0,height: 0)
                     Button(action: {
+
 
 
                         var g = rtmpKey
@@ -2615,6 +2629,15 @@ struct homeView:View{
                     .padding(.horizontal)
 #endif
 
+                }
+                .onChange(of: broadcastExtension) { newValue in
+                    StreamBtn = BroadcastButton(
+                        preferredExtension: newValue,
+                        rtmpURL: StreamBtn.rtmpURL,
+                        rtmpKey: StreamBtn.rtmpKey,
+                        width: 50,
+                        height: 50
+                    )
                 }
 
             }

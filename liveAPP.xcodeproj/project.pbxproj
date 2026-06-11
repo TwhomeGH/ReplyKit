@@ -18,6 +18,9 @@
 		CE2819FF2E5ACD680023BBC4 /* ReplyKIT.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CE2819E72E5ACD670023BBC4 /* ReplyKIT.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		CE281A0A2E5AE0850023BBC4 /* HaishinKit in Frameworks */ = {isa = PBXBuildFile; productRef = CE281A092E5AE0850023BBC4 /* HaishinKit */; };
 		CE281A0C2E5AE0850023BBC4 /* RTMPHaishinKit in Frameworks */ = {isa = PBXBuildFile; productRef = CE281A0B2E5AE0850023BBC4 /* RTMPHaishinKit */; };
+		CE281B0A2E5ACD670023BBC4 /* ReplyKITNotification.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CE281B012E5ACD670023BBC4 /* ReplyKITNotification.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		CE281B0D2E5ACD670023BBC4 /* UserNotificationsUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE281B0E2E5ACD670023BBC4 /* UserNotificationsUI.framework */; };
+		CE281B0F2E5ACD670023BBC4 /* UserNotifications.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE281B102E5ACD670023BBC4 /* UserNotifications.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -49,6 +52,13 @@
 			remoteGlobalIDString = CE2819E62E5ACD670023BBC4;
 			remoteInfo = ReplyKIT;
 		};
+		CE281B0C2E5ACD670023BBC4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CE28199A2E5AB3750023BBC4 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CE281B002E5ACD670023BBC4;
+			remoteInfo = ReplyKITNotification;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -60,6 +70,7 @@
 			files = (
 				CE2819FF2E5ACD680023BBC4 /* ReplyKIT.appex in Embed Foundation Extensions */,
 				CE2819FC2E5ACD680023BBC4 /* ReplyKITSetupUI.appex in Embed Foundation Extensions */,
+				CE281B0A2E5ACD670023BBC4 /* ReplyKITNotification.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -74,6 +85,9 @@
 		CE2819E82E5ACD670023BBC4 /* ReplayKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ReplayKit.framework; path = System/Library/Frameworks/ReplayKit.framework; sourceTree = SDKROOT; };
 		CE2819F22E5ACD670023BBC4 /* ReplyKITSetupUI.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ReplyKITSetupUI.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		CE2819F42E5ACD680023BBC4 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
+		CE281B012E5ACD670023BBC4 /* ReplyKITNotification.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ReplyKITNotification.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		CE281B0E2E5ACD670023BBC4 /* UserNotificationsUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotificationsUI.framework; path = System/Library/Frameworks/UserNotificationsUI.framework; sourceTree = SDKROOT; };
+		CE281B102E5ACD670023BBC4 /* UserNotifications.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotifications.framework; path = System/Library/Frameworks/UserNotifications.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -98,6 +112,13 @@
 				Info.plist,
 			);
 			target = CE2819A12E5AB3750023BBC4 /* liveAPP */;
+		};
+		CE281B032E5ACD670023BBC4 /* Exceptions for "ReplyKITNotification" folder in "ReplyKITNotification" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = CE281B002E5ACD670023BBC4 /* ReplyKITNotification */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -134,6 +155,14 @@
 				CE281A042E5ACD680023BBC4 /* Exceptions for "ReplyKITSetupUI" folder in "ReplyKITSetupUI" target */,
 			);
 			path = ReplyKITSetupUI;
+			sourceTree = "<group>";
+		};
+		CE281B022E5ACD670023BBC4 /* ReplyKITNotification */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				CE281B032E5ACD670023BBC4 /* Exceptions for "ReplyKITNotification" folder in "ReplyKITNotification" target */,
+			);
+			path = ReplyKITNotification;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -183,6 +212,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CE281B052E5ACD670023BBC4 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CE281B0D2E5ACD670023BBC4 /* UserNotificationsUI.framework in Frameworks */,
+				CE281B0F2E5ACD670023BBC4 /* UserNotifications.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -194,6 +232,7 @@
 				CE2819BC2E5AB3790023BBC4 /* liveAPPUITests */,
 				CE2819EA2E5ACD670023BBC4 /* ReplyKIT */,
 				CE2819F62E5ACD680023BBC4 /* ReplyKITSetupUI */,
+				CE281B022E5ACD670023BBC4 /* ReplyKITNotification */,
 				CE2819D52E5AB9350023BBC4 /* Frameworks */,
 				CE2819A32E5AB3750023BBC4 /* Products */,
 			);
@@ -207,6 +246,7 @@
 				CE2819B92E5AB3790023BBC4 /* liveAPPUITests.xctest */,
 				CE2819E72E5ACD670023BBC4 /* ReplyKIT.appex */,
 				CE2819F22E5ACD670023BBC4 /* ReplyKITSetupUI.appex */,
+				CE281B012E5ACD670023BBC4 /* ReplyKITNotification.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -216,6 +256,8 @@
 			children = (
 				CE2819E82E5ACD670023BBC4 /* ReplayKit.framework */,
 				CE2819F42E5ACD680023BBC4 /* UIKit.framework */,
+				CE281B0E2E5ACD670023BBC4 /* UserNotificationsUI.framework */,
+				CE281B102E5ACD670023BBC4 /* UserNotifications.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -237,6 +279,7 @@
 			dependencies = (
 				CE2819FB2E5ACD680023BBC4 /* PBXTargetDependency */,
 				CE2819FE2E5ACD680023BBC4 /* PBXTargetDependency */,
+				CE281B0B2E5ACD670023BBC4 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				CE2819A42E5AB3750023BBC4 /* liveAPP */,
@@ -344,6 +387,28 @@
 			productReference = CE2819F22E5ACD670023BBC4 /* ReplyKITSetupUI.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		CE281B002E5ACD670023BBC4 /* ReplyKITNotification */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CE281B072E5ACD670023BBC4 /* Build configuration list for PBXNativeTarget "ReplyKITNotification" */;
+			buildPhases = (
+				CE281B042E5ACD670023BBC4 /* Sources */,
+				CE281B052E5ACD670023BBC4 /* Frameworks */,
+				CE281B062E5ACD670023BBC4 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				CE281B022E5ACD670023BBC4 /* ReplyKITNotification */,
+			);
+			name = ReplyKITNotification;
+			packageProductDependencies = (
+			);
+			productName = ReplyKITNotification;
+			productReference = CE281B012E5ACD670023BBC4 /* ReplyKITNotification.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -371,6 +436,9 @@
 					CE2819F12E5ACD670023BBC4 = {
 						CreatedOnToolsVersion = 16.3;
 					};
+					CE281B002E5ACD670023BBC4 = {
+						CreatedOnToolsVersion = 16.3;
+					};
 				};
 			};
 			buildConfigurationList = CE28199D2E5AB3750023BBC4 /* Build configuration list for PBXProject "liveAPP" */;
@@ -396,6 +464,7 @@
 				CE2819B82E5AB3790023BBC4 /* liveAPPUITests */,
 				CE2819E62E5ACD670023BBC4 /* ReplyKIT */,
 				CE2819F12E5ACD670023BBC4 /* ReplyKITSetupUI */,
+				CE281B002E5ACD670023BBC4 /* ReplyKITNotification */,
 			);
 		};
 /* End PBXProject section */
@@ -430,6 +499,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		CE2819F02E5ACD670023BBC4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CE281B062E5ACD670023BBC4 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -474,6 +550,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CE281B042E5ACD670023BBC4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -496,6 +579,11 @@
 			isa = PBXTargetDependency;
 			target = CE2819E62E5ACD670023BBC4 /* ReplyKIT */;
 			targetProxy = CE2819FD2E5ACD680023BBC4 /* PBXContainerItemProxy */;
+		};
+		CE281B0B2E5ACD670023BBC4 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = CE281B002E5ACD670023BBC4 /* ReplyKITNotification */;
+			targetProxy = CE281B0C2E5ACD670023BBC4 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -959,6 +1047,72 @@
 			};
 			name = Release;
 		};
+		CE281B082E5ACD670023BBC4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2025101801;
+				DEVELOPMENT_TEAM = DD4ZZ69XV7;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ReplyKITNotification/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ReplyKITNotification;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 2.3;
+				PRODUCT_BUNDLE_IDENTIFIER = nuclear.liveAPP.ReplyKITNotification;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				REGISTER_APP_GROUPS = YES;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Debug;
+		};
+		CE281B092E5ACD670023BBC4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2025101801;
+				DEVELOPMENT_TEAM = DD4ZZ69XV7;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ReplyKITNotification/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ReplyKITNotification;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 2.3;
+				PRODUCT_BUNDLE_IDENTIFIER = nuclear.liveAPP.ReplyKITNotification;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				REGISTER_APP_GROUPS = YES;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -1012,6 +1166,15 @@
 			buildConfigurations = (
 				CE281A062E5ACD680023BBC4 /* Debug */,
 				CE281A072E5ACD680023BBC4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CE281B072E5ACD670023BBC4 /* Build configuration list for PBXNativeTarget "ReplyKITNotification" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CE281B082E5ACD670023BBC4 /* Debug */,
+				CE281B092E5ACD670023BBC4 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

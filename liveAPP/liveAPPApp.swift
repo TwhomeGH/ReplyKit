@@ -602,6 +602,7 @@ func postSystemNotification(title: String, body: String, imageURL: String? = nil
     content.title = title
     content.body = body
     content.sound = .default
+    content.categoryIdentifier = "replykit_notification"
 
     if let imageURL = imageURL, let url = URL(string: imageURL) {
         // 下載遠端圖片並存到暫存，再建立附件
@@ -852,6 +853,14 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
                 print("❌ 通知授權錯誤: \(error)")
             }
         }
+
+        let category = UNNotificationCategory(
+            identifier: "replykit_notification",
+            actions: [],
+            intentIdentifiers: [],
+            options: []
+        )
+        UNUserNotificationCenter.current().setNotificationCategories([category])
 
         Task { @MainActor in
             TTSService.shared.refreshAudioSessionForCurrentSetting()

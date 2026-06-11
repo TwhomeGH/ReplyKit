@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.usernotifications.content-extension</string>
+		<key>NSExtensionPrincipalClass</key>
+		<string>$(PRODUCT_MODULE_NAME).NotificationViewController</string>
+		<key>UNNotificationExtensionCategory</key>
+		<array>
+			<string>replykit_notification</string>
+		</array>
+		<key>UNNotificationExtensionInitialContentSizeRatio</key>
+		<real>0.3</real>
+		<key>UNNotificationExtensionDefaultContentHidden</key>
+		<false/>
+	</dict>
+</dict>
+</plist>
