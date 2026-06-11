@@ -86,8 +86,8 @@ class NotificationViewController: UIViewController, UNNotificationContentExtensi
             }
             attachment.url.stopAccessingSecurityScopedResource()
         }
-
-        if let appIcon = UIImage(named: "AppIcon") ?? UIImage(named: "AppIcon60x60") {
+        //Mark: - Load App Icon
+        if let appIcon = UIImage(named: "AppIcon60x60@2x") ?? UIImage(named: "AppIcon76x76@2x") {
             appIconImageView.image = appIcon
         }
     }
