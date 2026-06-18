@@ -2,102 +2,73 @@ name: Check Changes & Trigger Tag
 
 on:
   push:
-    branches:
-      - main      # 或你想要監控的分支
     paths:
-      - "liveAPP*/**"
-      - "ReplyKIT*/**"
-  workflow_dispatch:
+      - "liveAPP/**"
+      - "ReplyKIT/**"
 
 jobs:
   detect-changes:
     runs-on: ubuntu-latest
     steps:
-      # 1️⃣ Checkout repository
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Check commit timestamp (within 30 minutes)
-        id: timecheck
-        run: |
-          COMMIT_TIME=$(git log -1 --format=%ct)
-          NOW=$(date +%s)
-          DIFF=$((NOW - COMMIT_TIME))
+      - name: Fetch all tags
+        run: git fetch origin --tags
 
-          echo "Commit age: ${DIFF}s"
-
-          if [ $DIFF -gt 1800 ]; then
-            echo "recent=false" >> $GITHUB_OUTPUT
-          else
-            echo "recent=true" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Stop if older than 30 minutes
-        if: steps.timecheck.outputs.recent == 'false'
-        run: |
-          echo "⏳ This commit is older than 30 minutes. Skipping workflow."
-          exit 0
-
-
-
-      # 2️⃣ Get latest tag
       - name: Get latest tag
         id: get_tag
         run: |
-          latest_tag=$(git tag --sort=-creatordate | head -n1)
-          echo "latest_tag=$latest_tag" >> $GITHUB_OUTPUT
+          latest_tag=$(git tag --list "[0-9]*" | sort -V | tail -n1)
+          echo "latest_tag=$latest_tag" >> "$GITHUB_OUTPUT"
           echo "Latest tag: $latest_tag"
 
-
-      # 3️⃣ Compare changes in monitored paths
-      - name: Compare changes
+      - name: Compare changes in monitored paths
         id: diff
         run: |
-          CHANGED=$(git diff --name-only ${{ steps.get_tag.outputs.latest_tag }} HEAD | grep -E '^liveAPP/|^ReplyKIT/' || true)
+          LATEST="${{ steps.get_tag.outputs.latest_tag }}"
+          if [ -z "$LATEST" ]; then
+            echo "No existing tag found, will create v0.0.1"
+            exit 0
+          fi
+          CHANGED=$(git diff --name-only "$LATEST" HEAD -- liveAPP/ ReplyKIT/ || true)
+          echo "changed_files=$CHANGED" >> "$GITHUB_OUTPUT"
           if [ -z "$CHANGED" ]; then
             echo "No relevant changes detected. Exiting..."
             exit 0
           fi
-          echo "Changes detected in relevant paths: $CHANGED"
+          echo "Changes detected in relevant paths"
 
-      # 4️⃣ Create new tag with auto-increment (patch/minor/major)
       - name: Create new tag
         run: |
           latest_tag="${{ steps.get_tag.outputs.latest_tag }}"
-          
           if [ -z "$latest_tag" ]; then
             NEW_TAG="0.0.1"
           else
-         
-            # 解析成 major, minor, patch
-            IFS='.' read -r major minor patch <<< "$latest_tag"
-
-
-            # 遞增 patch
-
-            patch=$((patch + 1))
-
-            # patch 超過 9 → 進位 minor
-            if [ "$patch" -gt 9 ]; then
-              patch=0
-              minor=$((minor + 1))
-            fi
-
-            # minor 超過 9 → 進位 major
-            if [ "$minor" -gt 9 ]; then
-              minor=0
-              major=$((major + 1))
-            fi
-
-            NEW_TAG="$major.$minor.$patch"
+            IFS='.' read -r major minor patch <<< "${latest_tag}"
+            while true; do
+              patch=$((patch + 1))
+              if [ "$patch" -gt 9 ]; then
+                patch=0
+                minor=$((minor + 1))
+              fi
+              if [ "$minor" -gt 9 ]; then
+                minor=0
+                major=$((major + 1))
+              fi
+              NEW_TAG="$major.$minor.$patch"
+              if ! git rev-parse "$NEW_TAG" >/dev/null 2>&1; then
+                break
+              fi
+              echo "Tag $NEW_TAG already exists, trying next..."
+            done
           fi
 
           echo "New tag: $NEW_TAG"
 
-          # 設定 git user & push tag
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          git tag $NEW_TAG
-          git push origin $NEW_TAG
+          git tag "$NEW_TAG"
+          git push origin "$NEW_TAG"
