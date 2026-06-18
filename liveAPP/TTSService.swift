@@ -357,8 +357,6 @@ private final class TTSCallAudioKeeper {
 
     func start() {
         guard !isActive else { return }
-        // Force reconfigure in case session was taken over
-        isConfigured = false
         configureSessionOnly()
         isActive = true
     }
@@ -366,7 +364,6 @@ private final class TTSCallAudioKeeper {
     func stop() {
         guard isActive else { return }
         isActive = false
-        isConfigured = false
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 

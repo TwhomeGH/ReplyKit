@@ -143,11 +143,12 @@ struct BroadcastButton: UIViewRepresentable {
 
     func makeUIView(context: Context) -> RPSystemBroadcastPickerView {
         let picker = RPSystemBroadcastPickerView(frame: .zero)
-        picker.preferredExtension = preferredExtension
+        let actualExtension = (Bundle.main.bundleIdentifier ?? "") + ".ReplyKIT"
+        picker.preferredExtension = actualExtension
         picker.showsMicrophoneButton = true
         picker.isHidden = true
 
-        sendlog(title: "BroadcastButton", message: "preferredExtension = \(preferredExtension)")
+        sendlog(title: "BroadcastButton", message: "preferredExtension = \(actualExtension)")
         sendlog(title: "BroadcastButton", message: "Bundle.main.bundleIdentifier = \(Bundle.main.bundleIdentifier ?? "nil")")
 
         Coordinator.currentPicker = picker
@@ -161,7 +162,8 @@ struct BroadcastButton: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: RPSystemBroadcastPickerView, context: Context) {
-        uiView.preferredExtension = preferredExtension
+        let actualExtension = (Bundle.main.bundleIdentifier ?? "") + ".ReplyKIT"
+        uiView.preferredExtension = actualExtension
         context.coordinator.rtmpURL = rtmpURL
         context.coordinator.rtmpKey = rtmpKey
     }
