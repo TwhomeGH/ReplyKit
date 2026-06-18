@@ -363,17 +363,16 @@ private final class TTSCallAudioKeeper {
 
     private func configurePlaybackSession() throws {
         let session = AVAudioSession.sharedInstance()
+        // Deactivate first to allow category change if session was active
+        try? session.setActive(false, options: .notifyOthersOnDeactivation)
         try session.setCategory(
             .playback,
             mode: .default,
             options: [
                 .allowBluetoothA2DP,
-                .allowAirPlay,
-                .duckOthers
+                .allowAirPlay
             ]
         )
-        try session.setPreferredSampleRate(48_000)
-        try session.setPreferredIOBufferDuration(0.02)
         try session.setActive(true, options: .notifyOthersOnDeactivation)
     }
 }
