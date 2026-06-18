@@ -133,83 +133,72 @@ class BitrateManager: ObservableObject {
 
 #if os(iOS)
 struct BroadcastButton: UIViewRepresentable {
-    var preferredExtension: String  // 你的 Broadcast Upload Extension Bundle ID
-    var rtmpURL: String              // 要推流的 RTMP 地址
+    var preferredExtension: String
+    var rtmpURL: String
     var rtmpKey: String
     var width: CGFloat
     var height: CGFloat
-    var base:Int = 100_000
-    var multiplier:Int = 34
-
-
-    // 存內部 Coordinator
-    private class CoordinatorWrapper {
-        var coordinator: Coordinator?
-    }
-    private let wrapper = CoordinatorWrapper()
-
+    var base: Int = 100_000
+    var multiplier: Int = 34
 
     func makeUIView(context: Context) -> RPSystemBroadcastPickerView {
-        //        let picker = RPSystemBroadcastPickerView(frame: CGRect(x: 0, y: 0, width: width, height: height))
         let picker = RPSystemBroadcastPickerView(frame: .zero)
         picker.preferredExtension = preferredExtension
         picker.showsMicrophoneButton = true
-        picker.isHidden=true
+        picker.isHidden = true
 
-
-        //監聽按下事件
         for view in picker.subviews {
             if let button = view as? UIButton {
                 button.addTarget(context.coordinator, action: #selector(Coordinator.buttonTapped), for: .touchUpInside)
-                context.coordinator.button = button
+                context.coordinator.setup(picker: picker, rtmpURL: rtmpURL, rtmpKey: rtmpKey)
             }
         }
 
-        // 保存 Coordinator
-        wrapper.coordinator = context.coordinator
         return picker
     }
 
     func updateUIView(_ uiView: RPSystemBroadcastPickerView, context: Context) {
         uiView.preferredExtension = preferredExtension
+        context.coordinator.rtmpURL = rtmpURL
+        context.coordinator.rtmpKey = rtmpKey
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(rtmpURL: rtmpURL, rtmpKey:rtmpKey)
+        Coordinator()
     }
 
-    // 新增：公開觸發方法
     func triggerButton() {
-        wrapper.coordinator?.triggerButton()
+        Coordinator.shared.triggerButton()
     }
 
     class Coordinator: NSObject {
-        let rtmpURL: String
-        let rtmpKey: String
-        var UR:UIDeviceOrientation = .unknown
-        weak var button: UIButton?
+        static let shared = Coordinator()
+        var rtmpURL: String = ""
+        var rtmpKey: String = ""
+        var UR: UIDeviceOrientation = .unknown
+        private weak var picker: RPSystemBroadcastPickerView?
 
-        init(rtmpURL: String,rtmpKey:String) {
+        func setup(picker: RPSystemBroadcastPickerView, rtmpURL: String, rtmpKey: String) {
+            self.picker = picker
             self.rtmpURL = rtmpURL
             self.rtmpKey = rtmpKey
         }
 
         @objc func buttonTapped() {
-
-            UR=UIDevice.current.orientation
-            logger.info("ROTATE:\(String(describing:self.UR))")
-            userDefaults?.set(self.UR.rawValue,forKey: "L3Rotate")
+            UR = UIDevice.current.orientation
+            logger.info("ROTATE:\(String(describing: UR))")
+            userDefaults?.set(UR.rawValue, forKey: "L3Rotate")
         }
+
         func triggerButton() {
-            
             let payload = [
-                "type":"log",
-                "message":"Socket連線測試"
+                "type": "log",
+                "message": "Socket連線測試"
             ]
-            
             SocketServer.shared.queueSend(payload: payload)
-            
-            button?.sendActions(for: .touchUpInside)
+
+            guard let button = picker?.subviews.first(where: { $0 is UIButton }) as? UIButton else { return }
+            button.sendActions(for: .touchUpInside)
         }
     }
 }
