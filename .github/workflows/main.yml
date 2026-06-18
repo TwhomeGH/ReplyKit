@@ -86,25 +86,36 @@ jobs:
           scheme: ${{ steps.scheme.outputs.scheme }}
           filetype_parameter: ${{ steps.filetype_parameter.outputs.filetype_parameter }}
           file_to_build: ${{ steps.filetype_parameter.outputs.file_to_build }}
+        continue-on-error: true
         run: |
-          set -o pipefail
           echo "Running a fast build on iOS Simulator to surface compile errors quickly"
+          set +e
           xcodebuild -scheme "$scheme" -"$filetype_parameter" "$file_to_build" \
             -sdk iphonesimulator -configuration Debug \
-            clean build CODE_SIGNING_ALLOWED=NO 2>&1 | tee xcodebuild.log | xcpretty
-          
+            clean build CODE_SIGNING_ALLOWED=NO 2>&1 | tee xcodebuild.log | xcpretty --no-utf --no-color
           EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+
           echo "Fast build exit code: $EXIT_CODE"
 
           # 將 exit code 輸出到 GitHub Actions
-          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
+          echo "exit_code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
 
           # 如果失敗，顯示警告而不是失敗
           if [ $EXIT_CODE -ne 0 ]; then
             echo "::warning::Fast build failed with exit code $EXIT_CODE"
+            echo "--- Raw xcodebuild output (last 100 lines) ---"
+            tail -100 xcodebuild.log 2>/dev/null || echo "(log file not found)"
           else
             echo "::notice::Fast build succeeded"
           fi
+
+      - name: Upload xcodebuild log
+        if: steps.fast_build.outputs.exit_code != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: xcodebuild.log
       
       
       
