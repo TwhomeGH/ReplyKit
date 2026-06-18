@@ -236,12 +236,13 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
             synthesizer.stopSpeaking(at: .immediate)
         }
         pendingUtteranceCount = 0
+        callAudioKeeper.stop()
     }
 
     func refreshAudioSessionForCurrentSetting() {
         #if os(iOS)
-        if  isEnabled {
-            callAudioKeeper.start()
+        if isEnabled {
+            callAudioKeeper.configureSessionOnly()
         } else {
             callAudioKeeper.stop()
         }
@@ -304,12 +305,18 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         Task { @MainActor in
             self.pendingUtteranceCount = max(0, self.pendingUtteranceCount - 1)
+            if self.pendingUtteranceCount == 0 {
+                self.callAudioKeeper.stop()
+            }
         }
     }
 
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
         Task { @MainActor in
             self.pendingUtteranceCount = max(0, self.pendingUtteranceCount - 1)
+            if self.pendingUtteranceCount == 0 {
+                self.callAudioKeeper.stop()
+            }
         }
     }
 
@@ -333,94 +340,42 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
 #if os(iOS)
 @MainActor
 private final class TTSCallAudioKeeper {
-    private let engine = AVAudioEngine()
-    private var sourceNode: AVAudioSourceNode?
-    private var isKeepingAlive = false
+    private var isActive = false
 
     func configureSessionOnly() {
         do {
-            try configureCallSession()
+            try configurePlaybackSession()
         } catch {
-            sendlog(message: "TTS通話音訊會話設定失敗: \(error.localizedDescription)")
+            sendlog(message: "TTS音訊會話設定失敗: \(error.localizedDescription)")
         }
     }
 
     func start() {
-        guard !(isKeepingAlive && engine.isRunning) else { return }
-
+        guard !isActive else { return }
         configureSessionOnly()
-
-        if sourceNode == nil {
-            let format = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1)
-            guard let format else {
-                sendlog(message: "TTS通話音訊格式建立失敗")
-                return
-            }
-
-            var phase = 0.0
-            let amplitude = 0.00001
-            let theta = 2.0 * Double.pi * 18.0 / format.sampleRate
-            let node = AVAudioSourceNode { _, _, frameCount, audioBufferList -> OSStatus in
-                let buffers = UnsafeMutableAudioBufferListPointer(audioBufferList)
-                for frame in 0..<Int(frameCount) {
-                    let sample = Float(sin(phase) * amplitude)
-                    phase += theta
-                    if phase > 2.0 * Double.pi {
-                        phase -= 2.0 * Double.pi
-                    }
-
-                    for buffer in buffers {
-                        guard let data = buffer.mData else { continue }
-                        data.assumingMemoryBound(to: Float.self)[frame] = sample
-                    }
-                }
-                return noErr
-            }
-
-            engine.attach(node)
-            engine.connect(node, to: engine.mainMixerNode, format: format)
-            engine.mainMixerNode.outputVolume = 1.0
-            sourceNode = node
-        }
-
-        guard !engine.isRunning else {
-            isKeepingAlive = true
-            return
-        }
-
-        do {
-            engine.prepare()
-            try engine.start()
-            isKeepingAlive = true
-            sendlog(message: "TTS已啟用語音通話後台保活")
-        } catch {
-            isKeepingAlive = false
-            sendlog(message: "TTS通話音訊引擎啟動失敗: \(error.localizedDescription)")
-        }
+        isActive = true
     }
 
     func stop() {
-        guard isKeepingAlive || engine.isRunning else { return }
-
-        engine.stop()
-        isKeepingAlive = false
+        guard isActive else { return }
+        isActive = false
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        sendlog(message: "TTS已停止語音通話後台保活")
     }
 
-    private func configureCallSession() throws {
+    private func configurePlaybackSession() throws {
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(
-            .playAndRecord,
+            .playback,
             mode: .default,
             options: [
-                .allowBluetoothHFP,
-                .allowBluetoothA2DP
+                .allowBluetoothA2DP,
+                .allowAirPlay,
+                .duckOthers
             ]
         )
         try session.setPreferredSampleRate(48_000)
         try session.setPreferredIOBufferDuration(0.02)
-        try session.setActive(true)
+        try session.setActive(true, options: .notifyOthersOnDeactivation)
     }
 }
 #endif
