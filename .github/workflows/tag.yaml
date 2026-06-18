@@ -6,6 +6,7 @@ on:
     paths:
       - "liveAPP/**"
       - "ReplyKIT/**"
+      - "ReplyKITNotifications/**"
 
 jobs:
   detect-changes:
