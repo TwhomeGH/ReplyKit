@@ -162,8 +162,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
             forName: AVAudioSession.mediaServicesWereLostNotification,
             object: AVAudioSession.sharedInstance(),
             queue: .main
-        ) { [weak self] notification in
-            guard let self else { return }
+        ) { _ in
             Task { @MainActor in
                 sendlog(message: "TTS: 音頻服務已丟失，等待重置")
             }
