@@ -1,22 +1,12 @@
 {
-  "originHash" : "8ffe6f7a82e841484f1811cde89a8ba809ba01add34d36d4faced84ec356d0a7",
   "pins" : [
     {
       "identity" : "haishinkitfixswfit",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/TwhomeGH/HaishinKitFixSwfit.git",
       "state" : {
-        "revision" : "f181d1ee97521703f9a464e9a341283f91194a4f",
+        "revision" : "a6e170bb1f595d9c925ea9f6d2e59f974c6efe3c",
         "version" : null
-      }
-    },
-    {
-      "identity" : "logboard",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/shogo4405/Logboard.git",
-      "state" : {
-        "revision" : "8f41c63afb903040b77049ee2efa8c257b8c0d50",
-        "version" : "2.6.0"
       }
     }
   ],
