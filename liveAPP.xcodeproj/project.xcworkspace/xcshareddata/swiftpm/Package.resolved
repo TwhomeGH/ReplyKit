@@ -2,12 +2,12 @@
   "originHash" : "8ffe6f7a82e841484f1811cde89a8ba809ba01add34d36d4faced84ec356d0a7",
   "pins" : [
     {
-      "identity" : "haishinkit.swift",
+      "identity" : "haishinkitfixswfit",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/HaishinKit/HaishinKit.swift.git",
+      "location" : "https://github.com/TwhomeGH/HaishinKitFixSwfit.git",
       "state" : {
-        "revision" : "47f4593c790b2af38d1607a9b44be3f4fad5076a",
-        "version" : "2.2.3"
+        "revision" : "f181d1ee97521703f9a464e9a341283f91194a4f",
+        "version" : null
       }
     },
     {

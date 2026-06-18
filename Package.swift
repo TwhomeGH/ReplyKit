@@ -27,8 +27,8 @@ let package = Package(
         .target(
             name: "ReplyKIT",
             dependencies: [
-                .product(name: "HaishinKit", package: "HaishinKit"),
-                .product(name: "RTMPHaishinKit", package: "HaishinKit")
+                .product(name: "HaishinKit", package: "HaishinKitFixSwfit"),
+                .product(name: "RTMPHaishinKit", package: "HaishinKitFixSwfit")
             ],
             path: "ReplyKIT",
             exclude: ["Info.plist"]
