@@ -24,18 +24,23 @@ jobs:
           fetch-tags: true
           ref: ${{ github.event.workflow_run.head_sha }}
 
-      - name: Get latest tag
+      - name: Get tag from tag workflow
         id: get_tag
         run: |
-          TAG=$(git tag --sort=-creatordate | head -n1)
+          TAG="${{ github.event.workflow_run.outputs.new_tag }}"
+
+          if [ -z "$TAG" ]; then
+            # Fallback: detect latest tag locally if workflow_run output unavailable
+            TAG=$(git tag --list "[0-9]*" | sort -V | tail -n1)
+          fi
 
           if [ -z "$TAG" ]; then
             echo "❌ No tag found"
             exit 1
           fi
 
-          echo "TAG=$TAG" >> $GITHUB_ENV
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "Using tag: $TAG"
 
       

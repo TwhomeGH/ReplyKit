@@ -11,6 +11,8 @@ on:
 jobs:
   detect-changes:
     runs-on: ubuntu-latest
+    outputs:
+      new_tag: ${{ steps.create_tag.outputs.new_tag }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -43,6 +45,7 @@ jobs:
           echo "Changes detected in relevant paths"
 
       - name: Create new tag
+        id: create_tag
         run: |
           latest_tag="${{ steps.get_tag.outputs.latest_tag }}"
           if [ -z "$latest_tag" ]; then
@@ -68,6 +71,7 @@ jobs:
           fi
 
           echo "New tag: $NEW_TAG"
+          echo "new_tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
 
           git config user.name "github-actions"
           git config user.email "actions@github.com"
