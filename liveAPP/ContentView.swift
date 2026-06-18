@@ -820,7 +820,7 @@ struct LogSettingsView: View {
     @AppStorage("PIPFontMain", store: userDefaults) private var PIPFontMain = 14.0
     @AppStorage("PIPFontSecond", store: userDefaults) private var PIPFontSecond = 10.0
 
-    @AppStorage("broadcastExtension", store: userDefaults) private var broadcastExtension = "nuclear.liveAPP.ReplyKIT"
+    @AppStorage("broadcastExtension", store: userDefaults) private var broadcastExtension = (Bundle.main.bundleIdentifier ?? "nuclear.liveAPP") + ".ReplyKIT"
 
 
     var body: some View {
@@ -843,7 +843,7 @@ struct LogSettingsView: View {
 
 
                 Section(header: Text("廣播擴展 Bundle ID")) {
-                    TextField("nuclear.liveAPP.ReplyKIT", text: $broadcastExtension)
+                    TextField((Bundle.main.bundleIdentifier ?? "nuclear.liveAPP") + ".ReplyKIT", text: $broadcastExtension)
                         .autocapitalization(.none)
                         .disableAutocorrection(true)
                         .font(.caption)
@@ -2055,14 +2055,14 @@ struct homeView:View{
 
     @AppStorage("rtmpURL",store: userDefaults) var rtmpURL: String = "rtmp://192.168.0.102/live"
     @AppStorage("rtmpKey",store: userDefaults) var rtmpKey: String = "stream1?vhost=live2"
-    @AppStorage("broadcastExtension",store: userDefaults) var broadcastExtension: String = "nuclear.liveAPP.ReplyKIT"
+    @AppStorage("broadcastExtension",store: userDefaults) var broadcastExtension: String = (Bundle.main.bundleIdentifier ?? "nuclear.liveAPP") + ".ReplyKIT"
 
     @StateObject var manager = BitrateManager()
 
     // iOS BroadcastButton
 #if os(iOS)
     @State var StreamBtn = BroadcastButton(
-        preferredExtension: userDefaults?.string(forKey: "broadcastExtension") ?? "nuclear.liveAPP.ReplyKIT",
+        preferredExtension: userDefaults?.string(forKey: "broadcastExtension") ?? (Bundle.main.bundleIdentifier ?? "nuclear.liveAPP") + ".ReplyKIT",
         rtmpURL: "",
         rtmpKey: "",
         width: 50,

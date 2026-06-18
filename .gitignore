@@ -1,0 +1,3 @@
+#排除swift build文件夹
+
+.build/

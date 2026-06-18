@@ -1857,6 +1857,14 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 sendlog(message:"✅App:\(appVolume)  Mic:\(micVolume) AppAdd:\(appAddVolume) MicAdd:\(micAddVolume)")
 
+                // 重新建立 RTMP 連線物件，避免 init() 中的過期狀態導致首次連線失敗
+                _ = try? await rtmpStream.close()
+                _ = try? await rtmpConnection?.close()
+                rtmpConnection = RTMPConnection()
+                rtmpStream = RTMPStream(connection: rtmpConnection!)
+                lastConfiguredSize = nil
+                sendlog(message: "🔄 RTMP 連線物件已重新建立")
+
                 needVideoConfiguration = true
 
                 await self.configureVideo_init()

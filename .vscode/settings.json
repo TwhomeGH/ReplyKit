@@ -1,0 +1,8 @@
+{
+    "swift.sourcekit-lsp.serverArguments": [],
+    "swift.diagnosticsCollection": "all",
+    "files.exclude": {
+        "**/.build": true,
+        "**/.swiftpm": true
+    }
+}
