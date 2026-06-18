@@ -323,15 +323,18 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
     private func handleAudioSessionInterruption(_ notification: Notification) {
         guard
             let rawType = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
-            let type = AVAudioSession.InterruptionType(rawValue: rawType),
-            type == .ended
+            let type = AVAudioSession.InterruptionType(rawValue: rawType)
         else { return }
 
-        refreshAudioSessionForCurrentSetting()
+        if type == .ended {
+            // Interruption ended — force reconfigure to reclaim session
+            callAudioKeeper.forceReconfigure()
+        }
     }
 
     private func handleMediaServicesReset(_ notification: Notification) {
-        refreshAudioSessionForCurrentSetting()
+        // Audio services were fully rebuilt — must force reconfigure
+        callAudioKeeper.forceReconfigure()
     }
     #endif
 }
@@ -340,10 +343,13 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
 @MainActor
 private final class TTSCallAudioKeeper {
     private var isActive = false
+    private var isConfigured = false
 
     func configureSessionOnly() {
+        guard !isConfigured else { return }
         do {
             try configurePlaybackSession()
+            isConfigured = true
         } catch {
             sendlog(message: "TTS音訊會話設定失敗: \(error.localizedDescription)")
         }
@@ -351,6 +357,8 @@ private final class TTSCallAudioKeeper {
 
     func start() {
         guard !isActive else { return }
+        // Force reconfigure in case session was taken over
+        isConfigured = false
         configureSessionOnly()
         isActive = true
     }
@@ -358,12 +366,22 @@ private final class TTSCallAudioKeeper {
     func stop() {
         guard isActive else { return }
         isActive = false
+        isConfigured = false
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    func forceReconfigure() {
+        isConfigured = false
+        if isActive {
+            start()
+        } else {
+            configureSessionOnly()
+        }
     }
 
     private func configurePlaybackSession() throws {
         let session = AVAudioSession.sharedInstance()
-        // Deactivate first to allow category change if session was active
+        // Deactivate first so we can change category cleanly
         try? session.setActive(false, options: .notifyOthersOnDeactivation)
         try session.setCategory(
             .playback,
