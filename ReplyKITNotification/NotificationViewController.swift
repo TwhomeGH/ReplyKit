@@ -89,7 +89,11 @@ class NotificationViewController: UIViewController, UNNotificationContentExtensi
             }
         }
         //Mark: - Load App Icon
-        if let appIcon = UIImage(named: "AppIcon60x60@2x") ?? UIImage(named: "AppIcon76x76@2x") {
+        let appBundleURL = Bundle.main.bundleURL
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        if let appBundle = Bundle(url: appBundleURL),
+           let appIcon = UIImage(named: "AppIcon", in: appBundle, compatibleWith: nil) {
             appIconImageView.image = appIcon
         }
     }
