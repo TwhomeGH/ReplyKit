@@ -642,7 +642,7 @@ struct LogSettingView:View {
     @AppStorage("BitRateMode",store:userDefaults)  private var BitRateMode = 0
     @AppStorage("KeyFrameInterval",store:userDefaults) private var KeyFrameInterval = 2
 
-    let BitRateOptions = ["ABR 平均碼率 VBR的改進版", "CBR 固定碼率", "VBR 可變位元率 iOS26後才有"]
+    let BitRateOptions = ["ABR 平均碼率 VBR的改進版", "CBR 固定碼率", "VBR 可變位元率", "Quality 品質模式"]
         
     @AppStorage("BacklogTime",store:userDefaults) private var logTime = false
 

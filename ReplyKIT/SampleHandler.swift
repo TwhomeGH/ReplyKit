@@ -1389,10 +1389,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         case 1:
             videoSettings.bitRateMode = .constant
         case 2:
-            if #available(iOS 26.0, *) {
-                videoSettings.bitRateMode = .variable
-            } else {
-                videoSettings.bitRateMode = .average
+            videoSettings.bitRateMode = .variable
+        case 3:
+            videoSettings.bitRateMode = .quality
+            if let quality = videoSettings.quality {
+                // quality mode: bitRate is ignored, use quality value (0.0~1.0)
             }
         default:
             videoSettings.bitRateMode = .average

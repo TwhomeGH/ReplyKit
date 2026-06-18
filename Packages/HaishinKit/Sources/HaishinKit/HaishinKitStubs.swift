@@ -20,6 +20,7 @@ public enum BitRateMode {
     case average
     case constant
     case variable
+    case quality
 }
 
 public enum AudioMixerTrackMode {
@@ -36,6 +37,8 @@ public struct VideoCodecSettings: Sendable {
     public var maxKeyFrameIntervalDuration: Int32 = 2
     public var allowFrameReordering: Bool = false
     public var isLowLatencyRateControlEnabled: Bool = true
+    public var frameInterval: Double = 0.0
+    public var quality: Float? = nil
     public init() {}
 }
 

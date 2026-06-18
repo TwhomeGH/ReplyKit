@@ -13,6 +13,14 @@
 > 
 > 文檔可能沒有更新 所以實際包含功能會有所區別
 
+## HaishinKit Fork
+
+推流引擎已切換至自行維護的 fork：
+
+- **Repo**: [TwhomeGH/HaishinKitFixSwfit](https://github.com/TwhomeGH/HaishinKitFixSwfit)
+- **修正內容**: VBR iOS 13+ 支援、Quality mode、VBV 參數、ABR 演算法改善、NetworkMonitor 擁塞檢測強化
+- 完整改動說明請見 [CHANGES.md](https://github.com/TwhomeGH/HaishinKitFixSwfit/blob/main/CHANGES.md)
+
 
 ## 問題應對方案 
 

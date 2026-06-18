@@ -1182,12 +1182,12 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		CE2819D22E5AB5750023BBC4 /* XCRemoteSwiftPackageReference "HaishinKit.swift" */ = {
+		CE2819D22E5AB5750023BBC4 /* XCRemoteSwiftPackageReference "HaishinKitFixSwfit" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/HaishinKit/HaishinKit.swift.git";
+			repositoryURL = "https://github.com/TwhomeGH/HaishinKitFixSwfit.git";
 			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.2.5;
+				kind = branch;
+				branch = main;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

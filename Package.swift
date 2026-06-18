@@ -10,7 +10,7 @@ let package = Package(
         .macOS(.v14)
     ],
     dependencies: [
-        .package(path: "Packages/HaishinKit")
+        .package(url: "https://github.com/TwhomeGH/HaishinKitFixSwfit.git", branch: "main")
     ],
     targets: [
         .target(
