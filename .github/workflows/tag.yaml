@@ -1,6 +1,7 @@
 name: Check Changes & Trigger Tag
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - "liveAPP/**"
