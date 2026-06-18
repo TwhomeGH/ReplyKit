@@ -80,11 +80,13 @@ class NotificationViewController: UIViewController, UNNotificationContentExtensi
         bodyLabel.text = content.body
 
         if let attachment = content.attachments.first {
-            attachment.url.startAccessingSecurityScopedResource()
+            let didStartAccess = attachment.url.startAccessingSecurityScopedResource()
             if let data = try? Data(contentsOf: attachment.url) {
                 avatarImageView.image = UIImage(data: data)
             }
-            attachment.url.stopAccessingSecurityScopedResource()
+            if didStartAccess {
+                attachment.url.stopAccessingSecurityScopedResource()
+            }
         }
         //Mark: - Load App Icon
         if let appIcon = UIImage(named: "AppIcon60x60@2x") ?? UIImage(named: "AppIcon76x76@2x") {
