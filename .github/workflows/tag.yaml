@@ -36,7 +36,6 @@ jobs:
             exit 0
           fi
           CHANGED=$(git diff --name-only "$LATEST" HEAD -- liveAPP/ ReplyKIT/ || true)
-          echo "changed_files=$CHANGED" >> "$GITHUB_OUTPUT"
           if [ -z "$CHANGED" ]; then
             echo "No relevant changes detected. Exiting..."
             exit 0
