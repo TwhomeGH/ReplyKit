@@ -147,10 +147,10 @@ struct BroadcastButton: UIViewRepresentable {
         picker.showsMicrophoneButton = true
         picker.isHidden = true
 
+        Coordinator.currentPicker = picker
         for view in picker.subviews {
             if let button = view as? UIButton {
                 button.addTarget(context.coordinator, action: #selector(Coordinator.buttonTapped), for: .touchUpInside)
-                context.coordinator.setup(picker: picker, rtmpURL: rtmpURL, rtmpKey: rtmpKey)
             }
         }
 
@@ -168,21 +168,14 @@ struct BroadcastButton: UIViewRepresentable {
     }
 
     func triggerButton() {
-        Coordinator.shared.triggerButton()
+        Coordinator.trigger()
     }
 
     class Coordinator: NSObject {
-        static let shared = Coordinator()
+        static weak var currentPicker: RPSystemBroadcastPickerView?
         var rtmpURL: String = ""
         var rtmpKey: String = ""
         var UR: UIDeviceOrientation = .unknown
-        private weak var picker: RPSystemBroadcastPickerView?
-
-        func setup(picker: RPSystemBroadcastPickerView, rtmpURL: String, rtmpKey: String) {
-            self.picker = picker
-            self.rtmpURL = rtmpURL
-            self.rtmpKey = rtmpKey
-        }
 
         @objc func buttonTapped() {
             self.UR = UIDevice.current.orientation
@@ -190,14 +183,16 @@ struct BroadcastButton: UIViewRepresentable {
             userDefaults?.set(self.UR.rawValue, forKey: "L3Rotate")
         }
 
-        func triggerButton() {
+        static func trigger() {
             let payload = [
                 "type": "log",
                 "message": "Socket連線測試"
             ]
             SocketServer.shared.queueSend(payload: payload)
 
-            guard let button = picker?.subviews.first(where: { $0 is UIButton }) as? UIButton else { return }
+            guard let picker = currentPicker,
+                  let button = picker.subviews.first(where: { $0 is UIButton }) as? UIButton
+            else { return }
             button.sendActions(for: .touchUpInside)
         }
     }
