@@ -147,6 +147,9 @@ struct BroadcastButton: UIViewRepresentable {
         picker.showsMicrophoneButton = true
         picker.isHidden = true
 
+        sendlog(title: "BroadcastButton", message: "preferredExtension = \(preferredExtension)")
+        sendlog(title: "BroadcastButton", message: "Bundle.main.bundleIdentifier = \(Bundle.main.bundleIdentifier ?? "nil")")
+
         Coordinator.currentPicker = picker
         for view in picker.subviews {
             if let button = view as? UIButton {
