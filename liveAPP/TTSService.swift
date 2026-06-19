@@ -382,7 +382,6 @@ private final class TTSCallAudioKeeper {
         }
         sendlog(message: "TTS stop: 停止音訊會話")
         isActive = false
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
     func forceReconfigure() {
