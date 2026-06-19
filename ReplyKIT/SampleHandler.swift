@@ -1381,11 +1381,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             }
         }
 
-        // ReplayKit screen capture is normally ~30fps. Keeping encoder expectation
-        // aligned avoids asking VideoToolbox to pace a stream we never feed at 60fps.
-        let expectedFrameRate = 30.0
+        // 此參數基準以修改後 https://github.com/TwhomeGH/HaishinKitFixSwfit 的版本內部設計為主，
+        // 實測在 30fps 以下的幀率下，設置過高的 expectedFrameRate 反而會導致實際幀率下降，甚至出現卡頓。因此建議根據實際情況設置一個合理的幀率上限，例如 60fps。
+
+        let expectedFrameRate = 60.0
         videoSettings.expectedFrameRate = expectedFrameRate
-        videoSettings.frameInterval = 1.0 / expectedFrameRate
+        //不改預設值 videoSettings.frameInterval = 1.0 / expectedFrameRate
 
         switch RPConfig.shared.state.BitRateMode {
         case 0:
