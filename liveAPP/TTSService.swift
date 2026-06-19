@@ -243,7 +243,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
         #if os(iOS)
         sendlog(message: "TTSService.refreshAudioSessionForCurrentSetting: isEnabled=\(isEnabled)")
         if isEnabled {
-            callAudioKeeper.configureSessionOnly()
+            callAudioKeeper.forceReconfigure()
         } else {
             callAudioKeeper.stop()
         }
@@ -388,17 +388,11 @@ private final class TTSCallAudioKeeper {
     func forceReconfigure() {
         sendlog(message: "TTS forceReconfigure: 強制重新配置")
         isConfigured = false
-        if isActive {
-            start()
-        } else {
-            configureSessionOnly()
-        }
+        configureSessionOnly()
     }
 
     private func configurePlaybackSession() throws {
         let session = AVAudioSession.sharedInstance()
-        // Deactivate first so we can change category cleanly
-        try? session.setActive(false, options: .notifyOthersOnDeactivation)
         try session.setCategory(
             .playback,
             mode: .default,
