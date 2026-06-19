@@ -1382,7 +1382,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         }
 
         videoSettings.expectedFrameRate = 60.0
-        videoSettings.frameInterval = 1.0 / videoSettings.expectedFrameRate
+        videoSettings.frameInterval = 1.0 / (videoSettings.expectedFrameRate ?? 60.0)
 
         switch RPConfig.shared.state.BitRateMode {
         case 0:
