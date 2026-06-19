@@ -541,7 +541,6 @@ frameCount += 1
 
 目前支援以下贊助方式：
 
-- **GitHub Sponsors**: [https://github.com/sponsors/TwhomeGH](https://github.com/sponsors/TwhomeGH)
 - **Twitch**: [https://twitch.tv/twhomegh](https://twitch.tv/twhomegh)
 
 ### 贊助用途
