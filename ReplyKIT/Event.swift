@@ -565,7 +565,7 @@ final class RPConfig {
     func updateState(RTMPURL:String? = nil,
                      RTMPKey:String? = nil,
                      h264level:String? = nil,
-                      BitRateMode:Int? = 0,
+                     BitRateMode:Int? = nil,
                      BufferCount:Int? = nil,
                      BitRate:Int? = nil,
                      ChangeBit:Bool? = nil,

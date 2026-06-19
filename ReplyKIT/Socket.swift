@@ -430,9 +430,11 @@ class SocketClient : @unchecked Sendable {
             }
         } catch TimeoutError.timedOut {
             logger.debug("RTMPKEY timeout")
+            cancelPendingRTMPBatch()
             return false
         } catch {
             logger.debug("RTMPKEY error: \(error)")
+            cancelPendingRTMPBatch()
 
             return false
         }
@@ -454,6 +456,7 @@ class SocketClient : @unchecked Sendable {
                     }
 
                     self.rtmpBatchContinuation = cont
+                    self.isProcessingBatch = true
 
                     let payload: [String: Any] = [
                         "type": "batch",
@@ -520,10 +523,12 @@ class SocketClient : @unchecked Sendable {
             }
         } catch TimeoutError.timedOut {
             logger.debug("RTMPKEY timeout")
+            cancelPendingRTMP()
         
             return false
         } catch {
             logger.debug("RTMPKEY error: \(error)")
+            cancelPendingRTMP()
 
             return false
         }
@@ -563,10 +568,12 @@ class SocketClient : @unchecked Sendable {
             }
         } catch TimeoutError.timedOut {
             logger.debug("LogConfig timeout")
+            cancelPendingLog()
 
             return false
         } catch {
             logger.debug("LogConfig error: \(error)")
+            cancelPendingLog()
             return false
         }
     }
@@ -575,8 +582,6 @@ class SocketClient : @unchecked Sendable {
 
         let ready = await waitForReady()
         guard ready else { throw TimeoutError.timedOut }
-
-        self.isProcessingBatch = true
 
         return try await withCheckedThrowingContinuation { cont in
 
@@ -699,6 +704,7 @@ class SocketClient : @unchecked Sendable {
             guard let cont = self.logContinuation else { return }
             self.logTo("取消LogConfig請求")
             self.logContinuation = nil
+            self.isProcessingBatch = false
             cont.resume(returning: false)
         }
     }
@@ -708,6 +714,7 @@ class SocketClient : @unchecked Sendable {
             guard let cont = self.rtmpBatchContinuation else { return }
             self.logTo("取消Batch請求")
             self.rtmpBatchContinuation = nil
+            self.isProcessingBatch = false
             cont.resume(returning: false)
         }
     }
@@ -993,7 +1000,7 @@ class SocketClient : @unchecked Sendable {
                     return
                 }
                 self.rtmpBatchContinuation = nil
-                self.isProcessingBatch = true
+                self.isProcessingBatch = false
                 updateLogFixState()
                 updateONLogFixState()
                 cont.resume(returning: true)

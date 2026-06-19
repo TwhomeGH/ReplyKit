@@ -22,8 +22,6 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
 
     private let minBitrate = 1_500_000       // 最低 1500 kbps
     private let stepUp: Double = 1.05      // 緩升 5%
-    private let stepDown: Double = 0.99    // 緩降 1%
-
     private var avgOutBps: Double? //EMA平滑曲線
 
     var lastBitrateChangeTime: Date? = nil
@@ -198,7 +196,7 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
 
 
 
-                sendlog(message: "📉 Bitrate 降至 : \(newBitV.bitRate) : \(newBitV.bitRate / 1000) Kbps")
+                sendlog(message: "📉 Bitrate 降至 : \(res) : \(res / 1000) Kbps")
 
                 await applyVideoBitrate(res, to: stream)
 
@@ -212,7 +210,7 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
 
                 let res = max(minBitrate, target) // ✅ 同樣保護
 
-                sendlog(message: "📈 Bitrate 回升至 \(newBitV.bitRate / 1000) Kbps")
+                sendlog(message: "📈 Bitrate 回升至 \(res / 1000) Kbps")
 
                 await applyVideoBitrate(res, to: stream)
 
@@ -240,7 +238,7 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
                 Int(smoothBps * 0.85)
             ) // 例如降到 85% 的平均出流量
 
-            sendlog(message: "📉 Bitrate 網路不穩，調整至: \(newBitV.bitRate / 1000) Kbps")
+            sendlog(message: "📉 Bitrate 網路不穩，調整至: \(res / 1000) Kbps")
 
             await applyVideoBitrate(res, to: stream)
 
@@ -251,7 +249,7 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
 
             let res = mamimumVideoBitRate
 
-            sendlog(message: "BitRateReset: \(newBit.bitRate)")
+            sendlog(message: "BitRateReset: \(newBit.bitRate) -> \(res)")
 
             await applyVideoBitrate(res, to: stream)
 

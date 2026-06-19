@@ -1381,8 +1381,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             }
         }
 
-        videoSettings.expectedFrameRate = 60.0
-        videoSettings.frameInterval = 1.0 / (videoSettings.expectedFrameRate ?? 60.0)
+        // ReplayKit screen capture is normally ~30fps. Keeping encoder expectation
+        // aligned avoids asking VideoToolbox to pace a stream we never feed at 60fps.
+        let expectedFrameRate = 30.0
+        videoSettings.expectedFrameRate = expectedFrameRate
+        videoSettings.frameInterval = 1.0 / expectedFrameRate
 
         switch RPConfig.shared.state.BitRateMode {
         case 0:
@@ -1482,7 +1485,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         // AdaptiveVideoBufferManager 已停用：setVideoInputBufferCounts 在 runtime 無效
         // adaptiveBufferManager = AdaptiveVideoBufferManager()
 
-        streamStataus = MyStreamBitRateStrategy()
+        streamStataus = MyStreamBitRateStrategy(
+            videoBitRate: RPConfig.shared.state.BitRate
+        )
 
         await streamStataus?.refreshStatusTimestamp()
 
