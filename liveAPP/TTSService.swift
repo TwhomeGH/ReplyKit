@@ -235,11 +235,13 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
             synthesizer.stopSpeaking(at: .immediate)
         }
         pendingUtteranceCount = 0
+        sendlog(message: "TTSService.stop: 停止朗讀")
         callAudioKeeper.stop()
     }
 
     func refreshAudioSessionForCurrentSetting() {
         #if os(iOS)
+        sendlog(message: "TTSService.refreshAudioSessionForCurrentSetting: isEnabled=\(isEnabled)")
         if isEnabled {
             callAudioKeeper.configureSessionOnly()
         } else {
@@ -250,6 +252,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
 
     func stopPersistentAudio() {
         #if os(iOS)
+        sendlog(message: "TTSService.stopPersistentAudio")
         callAudioKeeper.stop()
         #endif
     }
@@ -326,6 +329,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
             let type = AVAudioSession.InterruptionType(rawValue: rawType)
         else { return }
 
+        sendlog(message: "TTS interruption: type=\(type.rawValue)")
         if type == .ended {
             // Interruption ended — force reconfigure to reclaim session
             callAudioKeeper.forceReconfigure()
@@ -333,6 +337,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
     }
 
     private func handleMediaServicesReset(_ notification: Notification) {
+        sendlog(message: "TTS mediaServicesWereReset: 音訊服務已重置")
         // Audio services were fully rebuilt — must force reconfigure
         callAudioKeeper.forceReconfigure()
     }
@@ -346,28 +351,42 @@ private final class TTSCallAudioKeeper {
     private var isConfigured = false
 
     func configureSessionOnly() {
-        guard !isConfigured else { return }
+        guard !isConfigured else {
+            sendlog(message: "TTS configureSessionOnly: 已配置過，跳過")
+            return
+        }
+        sendlog(message: "TTS configureSessionOnly: 開始配置音訊會話")
         do {
             try configurePlaybackSession()
             isConfigured = true
+            sendlog(message: "TTS configureSessionOnly: 配置成功")
         } catch {
-            sendlog(message: "TTS音訊會話設定失敗: \(error.localizedDescription)")
+            sendlog(message: "TTS configureSessionOnly: 配置失敗 \(error.localizedDescription)")
         }
     }
 
     func start() {
-        guard !isActive else { return }
+        guard !isActive else {
+            sendlog(message: "TTS start: 已啟用，跳過")
+            return
+        }
+        sendlog(message: "TTS start: 啟動音訊會話")
         configureSessionOnly()
         isActive = true
     }
 
     func stop() {
-        guard isActive else { return }
+        guard isActive else {
+            sendlog(message: "TTS stop: 未啟用，跳過")
+            return
+        }
+        sendlog(message: "TTS stop: 停止音訊會話")
         isActive = false
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
     func forceReconfigure() {
+        sendlog(message: "TTS forceReconfigure: 強制重新配置")
         isConfigured = false
         if isActive {
             start()
