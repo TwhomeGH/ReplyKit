@@ -74,7 +74,6 @@ let cfduration = CMTime(seconds: 1.0 / 60.0, preferredTimescale: 600)
 | 修改 | 說明 |
 |------|------|
 | `allowFrameReordering = true` | 允許 B-frame，與主流伺服器相容 |
-| 新增 `frameInterval = 1.0 / expectedFrameRate` | 明確告知編碼器預期幀間隔 |
 | 移除 publish 前重複的 `setVideoSettings()` | 避免 encoder 反覆重建 |
 
 ---
