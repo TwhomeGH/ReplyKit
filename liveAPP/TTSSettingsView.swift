@@ -600,7 +600,6 @@ struct TTSSettingsView: View {
             rateDraft = rate
             pitchDraft = pitch
             volumeDraft = volume
-            TTSService.shared.refreshAudioSessionForCurrentSetting()
             if voiceOptions.isEmpty {
                 voiceOptions = TTSVoiceOption.available
             }

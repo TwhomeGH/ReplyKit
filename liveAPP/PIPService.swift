@@ -417,7 +417,6 @@ final class PIPService: NSObject, @unchecked Sendable {
             try session.setCategory(.playback, mode: .default,
                                     options: [
                                         .mixWithOthers,
-                                        .allowBluetoothA2DP,
                                         .allowAirPlay
                                     ]
             )
@@ -1235,7 +1234,7 @@ final class PIPTestService: NSObject {
     func setupAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers, .allowBluetoothA2DP, .allowAirPlay])
+            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers, .allowAirPlay])
             try session.setActive(true)
         } catch {
             logTo("AVAudioSession setup error: \(error)")

@@ -888,7 +888,6 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
 
                     case .background:
                         sendlog(message: "App 進入背景，保持 SocketServer 運作中")
-                        TTSService.shared.refreshAudioSessionForCurrentSetting()
 
                         // 通知 PIPService 進入背景
                         PIPService.shared.appDidEnterBackground()
@@ -908,7 +907,6 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
                     case .active:
                         sendlog(message: "App 回到前景")
                         SocketServer.shared.start()
-                        TTSService.shared.refreshAudioSessionForCurrentSetting()
 
                         // 通知 PIPService 回到前景
                         PIPService.shared.appWillEnterForeground()

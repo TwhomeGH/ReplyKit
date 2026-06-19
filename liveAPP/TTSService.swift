@@ -397,7 +397,6 @@ private final class TTSCallAudioKeeper {
             mode: .default,
             options: [
                 .mixWithOthers,
-                .allowBluetoothA2DP,
                 .allowAirPlay
             ]
         )
