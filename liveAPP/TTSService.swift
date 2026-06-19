@@ -243,7 +243,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
         #if os(iOS)
         sendlog(message: "TTSService.refreshAudioSessionForCurrentSetting: isEnabled=\(isEnabled)")
         if isEnabled {
-            callAudioKeeper.forceReconfigure()
+            callAudioKeeper.configureSessionOnly()
         } else {
             callAudioKeeper.stop()
         }
@@ -402,7 +402,7 @@ private final class TTSCallAudioKeeper {
                 .allowAirPlay
             ]
         )
-        try session.setActive(true, options: .notifyOthersOnDeactivation)
+        try session.setActive(true)
     }
 }
 #endif

@@ -421,7 +421,7 @@ final class PIPService: NSObject, @unchecked Sendable {
                                         .allowAirPlay
                                     ]
             )
-            try session.setActive(true, options: .notifyOthersOnDeactivation)
+            try session.setActive(true)
         } catch {
             PIPLogTo("AVAudioSession setup error: \(error)")
         }
@@ -1236,7 +1236,7 @@ final class PIPTestService: NSObject {
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playback, mode: .default, options: [.mixWithOthers, .allowBluetoothA2DP, .allowAirPlay])
-            try session.setActive(true, options: .notifyOthersOnDeactivation)
+            try session.setActive(true)
         } catch {
             logTo("AVAudioSession setup error: \(error)")
         }
