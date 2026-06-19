@@ -13,6 +13,72 @@
 > 
 > 文檔可能沒有更新 所以實際包含功能會有所區別
 
+---
+
+## 2026.06.19 重大修復：PTS 時間軸不一致導致部分平台無法推流
+
+### 問題發現
+
+在排查「部分 RTMP 平台一直推不上去」的問題時，發現影像 Pipeline 存在多個關鍵缺陷：
+
+#### P0. 影音 PTS 使用不同 Timebase（最嚴重）
+
+| 管線 | 使用的 PTS | 位置 |
+|------|-----------|------|
+| 影片 | 虛擬牆鐘 `CACurrentMediaTime() - startTime` | `VideoProcess.swift` |
+| 音訊 | ReplayKit 原始 `presentationTimeStamp` | `AudioProcess.swift` |
+
+影片用 `CACurrentMediaTime()` 造假 PTS，音訊保留 ReplayKit 原始 PTS，兩者為**完全不同的 timebase**。嚴格 RTMP 伺服器/CDN 遇到 A/V PTS 在不同時間軸上跳動時，會直接斷流拒絕。
+
+#### P0. 重連後 PTS 歸零
+
+`VideoFrameProcessor` 的 `startTime` 在 init 時固定為 `CACurrentMediaTime()`。Broadcast Extension 重啟時（`broadcastFinished` → `broadcastStarted`），新的 Processor 產生新 `startTime`，PTS 從 0 重新開始。多數 RTMP 伺服器要求 PTS 嚴格單調遞增，歸零 = reject。
+
+#### P0. 寫死 60fps Frame Duration
+
+```swift
+let cfduration = CMTime(seconds: 1.0 / 60.0, preferredTimescale: 600)
+```
+
+無論實際幀率多少，duration 始終為 1/60s。VFR（可變幀率）場景下送出錯誤的時間資訊。
+
+#### P1. 無 Backpressure 控制
+
+每幀以 `Task { }` 非同步 dispatch，GPU Rotator 處理不及時 frame 無限積壓，增加記憶體壓力與延遲。
+
+#### P1. 多次重複 videoSettings 套用
+
+`broadcastStarted` 中 `configureVideo_init()` → `configureVideo(sampleBuffer)` → publish 前又手動設一次，總共三次 `setVideoSettings()`，每次可能觸發 encoder 重建造成串流中斷。
+
+#### P2. allowFrameReordering = false
+
+限制編碼器不允許 B-frame，對部分伺服器反而有相容性問題。
+
+#### P2. frameInterval 未設定
+
+`VideoCodecSettings.frameInterval` 預設 0.0（自動），但 `expectedFrameRate` 已設 60fps，應明確設定 `frameInterval = 1/60`。
+
+### 修正內容
+
+#### VideoProcess.swift
+
+| 修改 | 說明 |
+|------|------|
+| 移除 `startTime` | 不再使用牆鐘造假 PTS |
+| 改用 `oringinaltime.presentationTimeStamp` | 與音訊使用同一 ReplayKit timebase |
+| 改用 `oringinaltime.duration`（有效時）| 寫死 60fps → 真實 frame duration |
+| 加入 inflight counter（上限 4） | 超過即 drop frame，防止 GPU 積壓 |
+
+#### SampleHandler.swift
+
+| 修改 | 說明 |
+|------|------|
+| `allowFrameReordering = true` | 允許 B-frame，與主流伺服器相容 |
+| 新增 `frameInterval = 1.0 / expectedFrameRate` | 明確告知編碼器預期幀間隔 |
+| 移除 publish 前重複的 `setVideoSettings()` | 避免 encoder 反覆重建 |
+
+---
+
 ## HaishinKit Fork
 
 推流引擎已切換至自行維護的 fork：

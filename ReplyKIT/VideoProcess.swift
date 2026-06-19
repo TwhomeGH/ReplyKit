@@ -5,9 +5,6 @@ import CoreMedia
 
 
 final class VideoFrameProcessor {
-    private let startTime: CFTimeInterval = CACurrentMediaTime()
-
-    // 初始化 RotatorPool（在 SampleHandler 或初始化時）
     var rotator: RPVideoRotatorNV12BatchQueueOptimized? = nil
 
     private let mediaMixer: MediaMixer
@@ -17,6 +14,25 @@ final class VideoFrameProcessor {
     )
 
     private let sendlog: (String) -> Void
+
+    // 限制同時 inflight frame 數量，避免 GPU 積壓
+    private var inflightCount = 0
+    private let inflightLock = NSLock()
+    private var lastDropLog: CFTimeInterval = 0
+
+    private func acquireSlot() -> Bool {
+        inflightLock.lock()
+        defer { inflightLock.unlock() }
+        guard inflightCount < 4 else { return false }
+        inflightCount += 1
+        return true
+    }
+
+    private func releaseSlot() {
+        inflightLock.lock()
+        inflightCount -= 1
+        inflightLock.unlock()
+    }
 
     private var lastRotatorKey: (useBic: Bool, dstW: Int, dstH: Int, outW: Int, outH: Int, RotateOriginal: Bool)?
 
@@ -100,9 +116,17 @@ final class VideoFrameProcessor {
 
 
     func process(_ sampleBuffer: CMSampleBuffer, oringinaltime: CMSampleTimingInfo) {
-        // 提早提取 CVPixelBuffer，讓 sampleBuffer 可被 ReplayKit 回收
         guard let imageBuffer = sampleBuffer.imageBuffer else { return }
+        guard acquireSlot() else {
+            let now = CACurrentMediaTime()
+            if now - lastDropLog > 1.0 {
+                lastDropLog = now
+                sendlog("⚠️ VideoProcessor: dropping frame (inflight=4)")
+            }
+            return
+        }
         Task { [weak self] in
+            defer { self?.releaseSlot() }
             guard let self = self, self.isActive else { return }
 
             guard let rotator = queue.sync(execute: { () -> RPVideoRotatorNV12BatchQueueOptimized? in
@@ -152,14 +176,17 @@ final class VideoFrameProcessor {
                 angle: self.angle
             ) else { return }
 
-            // CFR：用真實牆鐘時間產生 PTS，確保影音同步（即使掉幀也不偏移）
-            let now = CACurrentMediaTime()
-            let elapsed = now - startTime
-            let cfpts = CMTime(seconds: elapsed, preferredTimescale: 600)
-            let cfduration = CMTime(seconds: 1.0 / 60.0, preferredTimescale: 600)
+            // 使用 ReplayKit 原始 PTS / duration，確保影音同一 timebase
+            let pts = oringinaltime.presentationTimeStamp
+            let duration: CMTime
+            if oringinaltime.duration.isValid, oringinaltime.duration.seconds > 0 {
+                duration = oringinaltime.duration
+            } else {
+                duration = CMTime(seconds: 1.0 / 60.0, preferredTimescale: 600)
+            }
             var correctedTiming = CMSampleTimingInfo(
-                duration: cfduration,
-                presentationTimeStamp: cfpts,
+                duration: duration,
+                presentationTimeStamp: pts,
                 decodeTimeStamp: CMTime.invalid
             )
             var correctedBuffer: CMSampleBuffer?

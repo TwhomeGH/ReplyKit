@@ -1382,6 +1382,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         }
 
         videoSettings.expectedFrameRate = 60.0
+        videoSettings.frameInterval = 1.0 / videoSettings.expectedFrameRate
 
         switch RPConfig.shared.state.BitRateMode {
         case 0:
@@ -1399,7 +1400,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         let kv = RPConfig.shared.state.KeyFrameInterval
         videoSettings.maxKeyFrameIntervalDuration = Int32(kv)
 
-        videoSettings.allowFrameReordering = false
+        videoSettings.allowFrameReordering = true
         videoSettings.isLowLatencyRateControlEnabled = RPConfig.shared.state.isLowLatencyRateControlEnabled
         videoSettings.bitRate = RPConfig.shared.state.BitRate
 
@@ -1878,35 +1879,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 self.initProcessors()
 
-                // 在 publish 前再次確保影片尺寸正確
-                do {
-                    var finalVideoSettings = await rtmpStream.videoSettings
-                    var fw: Int
-                    var fh: Int
-                    if RPConfig.shared.state.ODWidth > 0 && RPConfig.shared.state.ODHeight > 0 {
-                        fw = RPConfig.shared.state.ODWidth
-                        fh = RPConfig.shared.state.ODHeight
-                    } else if RPConfig.shared.state.ADWidth > 0 && RPConfig.shared.state.ADHeight > 0 {
-                        fw = RPConfig.shared.state.ADWidth
-                        fh = RPConfig.shared.state.ADHeight
-                    } else {
-                        fw = SharedDefaults.group?.integer(forKey: "dstW") ?? 0
-                        fh = SharedDefaults.group?.integer(forKey: "dstH") ?? 0
-                    }
-                    if fw > 0 && fh > 0 {
-                        let rotate = RPConfig.shared.state.Rotate
-                        if rotate == 0 || rotate == 180 {
-                            finalVideoSettings.videoSize = CGSize(width: CGFloat(fh), height: CGFloat(fw))
-                            sendlog(message: "最終影片尺寸(直向): \(fh)x\(fw)")
-                        } else {
-                            finalVideoSettings.videoSize = CGSize(width: CGFloat(fw), height: CGFloat(fh))
-                            sendlog(message: "最終影片尺寸(橫向): \(fw)x\(fh)")
-                        }
-                    }
-                    let currentSize = finalVideoSettings.videoSize
-                    sendlog(message: "RTMP Publish 前 videoSize: \(Int(currentSize.width))x\(Int(currentSize.height))")
-                    try await rtmpStream.setVideoSettings(finalVideoSettings)
-                }
+                // configureVideo_init() 已套用完整 videoSettings，此處僅 log 確認
+                let publishSize = await rtmpStream.videoSettings.videoSize
+                sendlog(message: "RTMP Publish 前 videoSize: \(Int(publishSize.width))x\(Int(publishSize.height))")
 
                 await self.startRTMP(url: self.rtmpURL , key: self.rtmpKey)
 
