@@ -347,7 +347,13 @@ final class LogManager {
         flushTimer?.setEventHandler { [weak self] in
             guard let self = self else { return }
             if self.mode == .local || self.mode == .both {
-                self.flushLocalLogs()
+                // onLogPage 為 false 時只清空 buffer，不寫入檔案或 socket
+                if RPConfig.shared.onLogPage {
+                    self.flushLocalLogs()
+                } else if self.localLogSize >= self.maxLogBufferSize {
+                    self.localLogBuffer.removeAll()
+                    self.localLogSize = 0
+                }
             }
         }
         flushTimer?.resume()
@@ -751,14 +757,14 @@ func updateONLogFixState() {
 }
 
 
-func sendlog(title: String = "ReplyKit", message: String, flush:Bool = false) {
-
-    guard RPConfig.shared.enableLog, RPConfig.shared.onLogPage else {
-        logger.debug("sendlog skipped: enableLog=\(RPConfig.shared.enableLog) onLogPage=\(RPConfig.shared.onLogPage)")
+func sendlog(title: String = "ReplyKit", message: String, flush: Bool = false) {
+    guard RPConfig.shared.enableLog else {
+        logger.debug("sendlog skipped: enableLog=\(RPConfig.shared.enableLog)")
         return
     }
-
-    LogManager.shared.log(title:title, message:message, flushImmediately: flush)
+    // onLogPage 只控制是否 flush 到外部（檔案/Socket），不控制是否寫入 buffer
+    // 確保無日誌頁時 LogManager 仍正常緩衝，問題可事後追溯
+    LogManager.shared.log(title: title, message: message, flushImmediately: flush && RPConfig.shared.onLogPage)
 }
 
 

@@ -79,6 +79,54 @@ let cfduration = CMTime(seconds: 1.0 / 60.0, preferredTimescale: 600)
 
 ---
 
+## 2026.06.19 底層 HaishinKit 修復（RTMP 協定層）
+
+在持續追蹤「部分平台推不上去」的問題時，往下排查到依賴的 HaishinKit fork 底層，發現兩個 Critical bug：
+
+### 🔴 C1. Chunk `.two` Header 寫入範圍錯誤
+
+**檔案**: `RTMPHaishinKit/Sources/RTMP/RTMPChunk.swift:305`
+
+```swift
+// ❌ ClosedRange：4 bytes 範圍但只寫入 3 bytes，第 4 byte 保留舊資料
+data.replaceSubrange(position...position + 3, with: message.timestamp.bigEndian.data[1...3])
+// ✅ Half-open range：精準 3 bytes
+data.replaceSubrange(position..<position + 3, with: message.timestamp.bigEndian.data[1...3])
+```
+
+`.zero`（line 289）和 `.one`（line 298）正確使用 `..<` half-open range，唯獨 `.two` 誤用 `...` ClosedRange。導致第一個 `.two` chunk 送出後，下一個 chunk 的 basic header 被污染，串流資料從該點開始損毀。
+
+**影響**: 對 RTMP 協定實作嚴謹的伺服器（如部分 CDN、Wowza、自研 server）在此刻斷流。
+
+### 🔴 C2. E-RTMP（Enhanced RTMP）參數預設送出
+
+**檔案**: `RTMPHaishinKit/Sources/RTMP/RTMPConnection.swift:261-263`
+
+```swift
+// ❌ 預設送出 fourCcList / videoFourCcInfoMap / audioFourCcInfoMap
+fourCcList: [String]? = RTMPConnection.supportedFourCcList,
+videoFourCcInfoMap: AMFObject? = RTMPConnection.supportedVideoFourCcInfoMap,
+audioFourCcInfoMap: AMFObject? = RTMPConnection.supportedAudioFourCcInfoMap,
+```
+
+建制 `RTMPConnection()` 時這三個參數預設為非 nil，connect command 中會夾帶 `"capsEx"`、`"fourCcList"` 等 Enhanced RTMP 欄位。不支援 E-RTMP 的伺服器收到未知欄位時可能直接拒絕連線。
+
+**修正**: 預設值改為 `nil`，只有呼叫端明確傳入時才送。
+
+### 其他一併發現的問題
+
+| 問題 | 位置 | 嚴重性 | 說明 |
+|------|------|--------|------|
+| Timestamp 嚴格小於（`<`）而非小於等於 | `RTMPTimestamp.swift:21` | 🟡 | 重複 PTS 會 throw → frame 被靜默丟棄 |
+| DTS 優先於 PTS 作為 RTMP timestamp | `RTMPStream.swift:764` | 🟡 | B-frame 場景送出錯誤的 presentation time |
+| CTS 任意加 66ms offset | `RTMPMessage.swift:465` | 🟡 | A/V 不同步約 2 frames |
+| Handshake C1 timestamp 永遠送 0 | `RTMPHandshake.swift:23` | 🟡 | 部分伺服器驗證此欄位 |
+| `setVideoInputBufferCounts` 僅為 stored property setter | `StreamConvertible.swift:82-84` | 🟡 | **確認**：只在 publish() 前有效，runtime 無效 |
+| 無 send buffer limit | `RTMPSocket.swift:86-112` | 🟡 | 慢網環境記憶體無限增長 |
+| No keep-alive/ping | `RTMPConnection.swift` | 🟢 | 部分負載均衡器逾時斷連 |
+
+---
+
 ## HaishinKit Fork
 
 推流引擎已切換至自行維護的 fork：
