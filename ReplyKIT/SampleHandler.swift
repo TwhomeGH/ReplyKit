@@ -1870,10 +1870,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 await self.configureAudio()
                 await self.configureMediaMixer()
 
+                RPScreenRecorder.shared().isMicrophoneEnabled = false
+                try? await mediaMixer.setVoiceChatEnabled(true)
 
-                
-
-                sendlog(message:"✅ MediaMixer 配置完成")
+                sendlog(message:"✅ MediaMixer 配置完成 (voice chat enabled)")
 
                 logger.info("✅ MediaMixer 配置完成")
 

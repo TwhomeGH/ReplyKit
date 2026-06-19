@@ -127,6 +127,34 @@ audioFourCcInfoMap: AMFObject? = RTMPConnection.supportedAudioFourCcInfoMap,
 
 ---
 
+## 2026.06.20 語音通話與直播共存
+
+支援直播過程中同時進行語音通話（VoIP / LINE 通話 / 自建語聊），不中斷背景音樂播放。
+
+### 啟用方式
+
+```swift
+// App 層（broadcastStarted / broadcastStarted）
+RPScreenRecorder.shared().isMicrophoneEnabled = false  // 關閉 ReplayKit mic，避免雙重音源
+try? await mediaMixer.setVoiceChatEnabled(true)
+```
+
+### 架構
+
+| 元件 | 職責 |
+|------|------|
+| `AudioRouteManager` (iOS 限定) | 設定 AVAudioSession `.playAndRecord` + `.voiceChat` mode + `.mixWithOthers` + `.allowBluetooth` + `.defaultToSpeaker`；啟動 `AVAudioEngine` inputNode tap，將 mic PCM buffer 以 `Task { await mediaMixer.append(buffer, when:) }` 餵入現有音訊 pipeline |
+| `MediaMixer.setVoiceChatEnabled(_:)` | 公開 API，內部呼叫 `AudioRouteManager.activate()` / `deactivate()` |
+| `stopRunning()` | 自動停用 voice chat、釋放 engine、恢復 AVAudioSession `.playback` + `.mixWithOthers` |
+
+### App 層需自行處理
+
+1. **ReplayKit mic 雙重來源** — 啟用 voice chat 時，務必設 `RPScreenRecorder.shared().isMicrophoneEnabled = false`，只讓 ReplayKit 提供 `.audioApp`，mic 由 AVAudioEngine 負責
+2. **通話下鏈（聽對方聲音）** — 由 app 自行管理（例如 `AVAudioEngine` mixer node 或系統 audio unit），本 SDK 僅處理 mic 上鏈
+3. **Bluetooth 相容** — `.allowBluetooth` 確保藍牙耳機 mic 可用於通話
+
+---
+
 ## HaishinKit Fork
 
 推流引擎已切換至自行維護的 fork：
