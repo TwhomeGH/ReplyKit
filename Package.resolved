@@ -1,0 +1,14 @@
+{
+  "pins" : [
+    {
+      "identity" : "haishinkitfixswfit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/TwhomeGH/HaishinKitFixSwfit.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "eb1b08e80c4ac24636e20a4f4ff97118013d95e9"
+      }
+    }
+  ],
+  "version" : 2
+}

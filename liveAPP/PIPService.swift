@@ -414,9 +414,11 @@ final class PIPService: NSObject, @unchecked Sendable {
     func setupAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .default,
+            try session.setCategory(.playback, mode: .default,
                                     options: [
-                                        .mixWithOthers
+                                        .mixWithOthers,
+                                        .allowBluetoothA2DP,
+                                        .allowAirPlay
                                     ]
             )
             try session.setActive(true, options: .notifyOthersOnDeactivation)
@@ -1233,7 +1235,7 @@ final class PIPTestService: NSObject {
     func setupAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .default, options: [.mixWithOthers, .allowBluetoothHFP])
+            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers, .allowBluetoothA2DP, .allowAirPlay])
             try session.setActive(true, options: .notifyOthersOnDeactivation)
         } catch {
             logTo("AVAudioSession setup error: \(error)")
