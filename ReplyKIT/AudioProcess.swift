@@ -141,7 +141,7 @@ final class VolumeNotifier {
     private var pendingAppVolume: Float = 0
     private var pendingMicVolume: Float = 0
     private var lastSendTime: TimeInterval = 0
-    private let minInterval: TimeInterval = 0.1
+    private let minInterval: TimeInterval = 0.2
     private let queue = DispatchQueue(label: "com.liveapp.volumeNotifier")
 
     var isActive = true
@@ -246,7 +246,7 @@ final class AudioProcessor : @unchecked Sendable {
     private var audioEngine: AudioEngine? = nil
 
 
-    var rmsInterval: CFTimeInterval = 0.1
+    var rmsInterval: CFTimeInterval = 0.2
     
 
     private func updateNoiseFixState() {
