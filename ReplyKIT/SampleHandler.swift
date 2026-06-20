@@ -123,7 +123,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     // MARK: 重連狀態
     private var isReconnecting = false
     private var reconnectAttempts = 0
-    private let maxReconnectAttempts = 5
+    private let maxReconnectAttempts = 10
     private var reconnectionTask: Task<Void, Never>?
     private var isInitialSyncDone = false
 
