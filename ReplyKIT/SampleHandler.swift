@@ -1178,32 +1178,32 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
 
+    // MARK: 設定方向偵測 已棄用
+    // func configureOrientation() {
+    //     let manager = DeviceOrientationManager.shared   // 使用單例
+    //     let lockedValue = SharedDefaults.group?.bool(forKey: "LockIN") ?? false
+    //     if  lockedValue {
+    //         sendlog(message:"\(lockedValue)不偵測 初始化一次")
+    //         manager.isEnabled = false
+    //         manager.stopUpdates()
+    //     } else {
+    //         // 解鎖方向 → 啟動 Motion 偵測
+    //         manager.isEnabled = true
+    //         sendlog(message:"偵測開啟")
+    //         manager.startUpdates()
+    //         manager.orientationChanged = { [weak self] deviceOrientation in
 
-    func configureOrientation() {
-        let manager = DeviceOrientationManager.shared   // 使用單例
-        let lockedValue = SharedDefaults.group?.bool(forKey: "LockIN") ?? false
-        if  lockedValue {
-            sendlog(message:"\(lockedValue)不偵測 初始化一次")
-            manager.isEnabled = false
-            manager.stopUpdates()
-        } else {
-            // 解鎖方向 → 啟動 Motion 偵測
-            manager.isEnabled = true
-            sendlog(message:"偵測開啟")
-            manager.startUpdates()
-            manager.orientationChanged = { [weak self] deviceOrientation in
+    //             sendlog(message: "方向Free中")
+    //             #if os(iOS)
+    //             guard let self else { return }
+    //             Task {
+    //                 await self.updateVideoOrientation(from: deviceOrientation)
+    //             }
+    //             #endif
 
-                sendlog(message: "方向Free中")
-                #if os(iOS)
-                guard let self else { return }
-                Task {
-                    await self.updateVideoOrientation(from: deviceOrientation)
-                }
-                #endif
-
-            }
-        }
-    }
+    //         }
+    //     }
+    // }
 
     var isStopping = false
 
@@ -1953,13 +1953,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             isReconnecting = false
             reconnectAttempts = 0
 
-            //ExtensionMessagePort.shared.disconnectFromApp()
-
-
             removeObservers()
             isSessionReady = false
-
-            DeviceOrientationManager.shared.stopUpdates()
 
             
             volumeNotifier=nil
@@ -1977,11 +1972,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             // AdaptiveVideoBufferManager 已停用
             // adaptiveBufferManager = nil
 
+            sendlog(message:"[RTMP] \(message)")
+            LogManager.shared.forceFlush()
+
         }
 
 
-        sendlog(message:"[RTMP] \(message)")
-        LogManager.shared.forceFlush()
+
 
 
     }
@@ -2223,15 +2220,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
 
-                // ✅ 初始化時才抓一次方向
-                #if os(iOS)
-                if DeviceOrientationManager.shared.isEnabled {
-
-                        let orientation = UIDevice.current.orientation
-                        self.nowOrientation = orientation
-
-                }
-#endif
 
             }
 
