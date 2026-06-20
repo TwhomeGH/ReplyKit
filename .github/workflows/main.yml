@@ -150,7 +150,43 @@ jobs:
             CODE_SIGNING_ALLOWED=NO
 
             
-      # 4️⃣ Export Unsigned IPA using external plist
+      # 4️⃣ Extract symbols for crash symbolication
+      - name: Extract symbol map 提取符號表
+        run: |
+          ARCHIVE="build/liveApp.xcarchive"
+          APPEX="$ARCHIVE/Products/Applications/liveAPP.app/PlugIns/ReplyKIT.appex/ReplyKIT"
+          DSYM="$ARCHIVE/dSYMs/ReplyKIT.appex.dSYM/Contents/Resources/DWARF/ReplyKIT"
+
+          if [ -f "$APPEX" ]; then
+            echo "=== Binary info ==="
+            file "$APPEX"
+            echo ""
+            echo "=== Full symbol map ==="
+            nm -n "$APPEX" > build/symbol_map.txt 2>&1
+            echo "Symbol map size: $(wc -l < build/symbol_map.txt) lines"
+          else
+            echo "⚠️ Appex binary not found at $APPEX"
+          fi
+
+          if [ -f "$DSYM" ]; then
+            echo "=== dSYM UUID ==="
+            dwarfdump --uuid "$DSYM" 2>&1 || true
+            echo ""
+            echo "=== dSYM lookup example (offset 800224) ==="
+            dwarfdump --lookup 0x800224 --arch arm64 "$DSYM" 2>&1 || true
+          else
+            echo "⚠️ dSYM not found at $DSYM"
+          fi
+
+      - name: Upload symbol map 上傳符號表
+        uses: actions/upload-artifact@v7
+        with:
+          name: crash-symbols
+          path: |
+            build/symbol_map.txt
+            build/liveApp.xcarchive/dSYMs/
+
+      # 5️⃣ Export Unsigned IPA using external plist
       - name: Export Unsigned IPA 打包未簽名的 IPA
         run: |
         
@@ -241,7 +277,7 @@ jobs:
 
 
         
-      # 5️⃣ Upload IPA & Archive to Release
+      # 6️⃣ Upload IPA & Archive to Release
       - name: Upload Release 上傳 Release
         uses: softprops/action-gh-release@v3
         with:

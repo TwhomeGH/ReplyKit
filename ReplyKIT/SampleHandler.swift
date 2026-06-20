@@ -1556,7 +1556,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
     func rebuildAudio() {
-        audioProcessor?.cleanup()
+        // 讓他自己使用deinit清理資源，然後重建一個新的實例
+        audioProcessor = nil
+
         audioProcessor = AudioProcessor(
             mediaMixer: mediaMixer,
             volumeNotifier: volumeNotifier!,
@@ -1570,7 +1572,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     }
     func rebuildVideo() {
-        videoProcessor?.cleanup()
+        // 讓他自己使用deinit清理資源，然後重建一個新的實例
+        videoProcessor = nil
+
         videoProcessor = VideoFrameProcessor(
             mediaMixer: mediaMixer,
             sendlog: { message in
@@ -1866,11 +1870,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             // 取消重連（由 RTMPConnection 內部處理，關閉連線即可）
             _ = try? await rtmpConnection?.close()
 
-            removeObservers()
+            
             isSessionReady = false
 
             
-            volumeNotifier=nil
+            removeObservers()
 
             await mediaMixer.removeOutput(rtmpStream)
             await mediaMixer.stopRunning()
@@ -1879,7 +1883,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             _ = try? await rtmpStream.close()
             _ = try? await rtmpConnection?.close()
 
-            
+            volumeNotifier=nil
             videoProcessor=nil
             audioProcessor=nil
             // AdaptiveVideoBufferManager 已停用
