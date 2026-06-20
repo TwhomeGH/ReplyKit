@@ -23,7 +23,7 @@ final class VideoFrameProcessor {
     private func acquireSlot() -> Bool {
         inflightLock.lock()
         defer { inflightLock.unlock() }
-        guard inflightCount < 4 else { return false }
+        guard inflightCount < 8 else { return false }
         inflightCount += 1
         return true
     }
@@ -109,6 +109,7 @@ final class VideoFrameProcessor {
         }
     }
     deinit {
+        cleanup()
         sendlog("🧹 VideoFrameProcessor deinit — resources released")
     }
 
