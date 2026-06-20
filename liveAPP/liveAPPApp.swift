@@ -679,34 +679,6 @@ struct liveAPPApp: App {
 
     @StateObject var logModel = LogModel()
 
-   
-
-
-    #if os(iOS)
-    func cacheInitialOrientation() {
-        let deviceOrientation = UIDevice.current.orientation
-        guard deviceOrientation != .faceUp,
-              deviceOrientation != .faceDown,
-              deviceOrientation != .unknown else { return }
-
-
-        // 明確使用 App Group
-        let userDefaults = UserDefaults(
-            suiteName: "group.nuclear.liveAPP"
-        ) ?? .standard
-
-        userDefaults.set(deviceOrientation.rawValue, forKey: "LOrientation")
-        
-    }
-    #else
-    func cacheInitialOrientation() {
-        print("not make this!!")
-    }
-#endif
-
-
-
-
 
 
     enum OrientationCategory {
@@ -717,43 +689,6 @@ struct liveAPPApp: App {
 
 
 
-
-    #if os(iOS)
-    func startMonitoringOrientation() {
-        print("事件註冊")
-        StableLockRotationDetector.shared.debugMode=true
-        StableLockRotationDetector.shared.onLockStateDetected = { isLocked in
-
-
-            if isLocked {
-
-                let cfCenter = CFNotificationCenterGetDarwinNotifyCenter()
-
-
-                CFNotificationCenterPostNotification(cfCenter,
-                                                     CFNotificationName("orientationChanged" as CFString),
-                                                     nil, nil, true)
-
-                print("使用者可能開了螢幕鎖定 🔒")
-            } else {
-
-                let cfCenter = CFNotificationCenterGetDarwinNotifyCenter()
-
-                CFNotificationCenterPostNotification(cfCenter,
-                                                     CFNotificationName("orientationChanged" as CFString),
-                                                     nil, nil, true)
-
-                print("螢幕方向自由旋轉 ✅")
-            }
-        }
-
-        StableLockRotationDetector.shared.startMonitoring(interval: 0.5)
-    }
-#else
-    func startMonitoringOrientation() {
-        print("Not make!!")
-    }
-    #endif
 
 
 
@@ -777,12 +712,6 @@ struct liveAPPApp: App {
         }
 
         SocketServer.shared.start()
-
-        //AppMessagePort.shared.setupReceiver()
-
-        cacheInitialOrientation()
-
-        
 
 
         UserDefaults.standard.set(0, forKey: "lastReadLineCount")
@@ -809,9 +738,6 @@ struct liveAPPApp: App {
         #endif
 
 
-
-
-       
 
 #if os(iOS)
 
@@ -892,15 +818,22 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
                         // 通知 PIPService 進入背景
                         PIPService.shared.appDidEnterBackground()
 
-                        // 註冊 background task 保護 SocketServer
+                        // 註冊 background task 保護 SocketServer（chain 模式續命）
                         #if os(iOS)
                         if backgroundTaskID == .invalid {
                             backgroundTaskID = UIApplication.shared.beginBackgroundTask {
-                                sendlog(message: "Background task 即將到期")
+                                sendlog(message: "Socket background task 即將到期，重新註冊續命")
+                                // 到期時重新註冊新的 background task，延長存活時間
                                 UIApplication.shared.endBackgroundTask(self.backgroundTaskID)
                                 self.backgroundTaskID = .invalid
+                                // 重新註冊（如同 PiP 的 chain 模式）
+                                self.backgroundTaskID = UIApplication.shared.beginBackgroundTask {
+                                    UIApplication.shared.endBackgroundTask(self.backgroundTaskID)
+                                    self.backgroundTaskID = .invalid
+                                }
+                                sendlog(message: "Socket background task 已續命")
                             }
-                            sendlog(message: "Background task 已註冊，ID: \(backgroundTaskID)")
+                            sendlog(message: "Socket background task 已註冊，ID: \(backgroundTaskID)")
                         }
                         #endif
 
