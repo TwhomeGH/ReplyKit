@@ -434,6 +434,7 @@ final class AudioProcessor : @unchecked Sendable {
     func enqueue(_ sampleBuffer: CMSampleBuffer, trackType: AudioTrackType, oringinaltime: CMSampleTimingInfo) {
         Task { [weak self] in
             guard let self = self, self.isActive else { return }
+            guard await mediaMixer.isRunning else { return }
 
             if self.UseOringin {
 
