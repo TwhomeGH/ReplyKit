@@ -1681,7 +1681,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             await mediaMixer.removeOutput(rtmpStream)
 
             await self.mediaMixer.stopRunning()
-            
+
             _ = try? await rtmpStream.close()
             _ = try? await rtmpConnection?.close()
 
@@ -1690,17 +1690,17 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             guard !self.isStopping else { return }
 
             // 建立新連線
-            let newConnection = RTMPConnection()
-            let newStream = RTMPStream(connection: newConnection)
+            
+           
             let BCount = max(RPConfig.shared.state.BufferCount, 3)
-            await newStream.setVideoInputBufferCounts(BCount)
+            await rtmpStream.setVideoInputBufferCounts(BCount)
 
             // 重置 video settings 強制重新套用
             self.lastConfiguredSize = nil
 
             let w = DWidth > 0 ? DWidth : (ADWidth > 0 ? ADWidth : 1280)
             let h = DHeight > 0 ? DHeight : (ADHeight > 0 ? ADHeight : 720)
-            await applyAllVideoSettings(width: w, height: h, stream: newStream)
+            await applyAllVideoSettings(width: w, height: h, stream: rtmpStream)
 
             do {
                 guard let url = self.rtmpURL, let key = self.rtmpKey else {
@@ -1710,17 +1710,20 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     return
                 }
 
-                _ = try await newConnection.connect(url)
-                _ = try await newStream.publish(key)
-
+                
                 // 成功 — 替換參考
-                self.rtmpConnection = newConnection
-                self.rtmpStream = newStream
+                
 
                 await self.streamStataus?.refreshStatusTimestamp()
-                await newStream.setBitRateStrategy(self.streamStataus)
-                await self.mediaMixer.addOutput(newStream)
+                await rtmpStream.setBitRateStrategy(self.streamStataus)
+                await self.mediaMixer.addOutput(rtmpStream)
                 await self.mediaMixer.startRunning()
+
+
+                _ = try await rtmpConnection.connect(url)
+                _ = try await rtmpStream.publish(key)
+
+
 
                 // 恢復斷線監控
                 self.startDisconnectMonitor()
@@ -1965,7 +1968,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             DeviceOrientationManager.shared.stopUpdates()
 
-            volumeNotifier?.cleanup()
+            
             volumeNotifier=nil
 
             await mediaMixer.removeOutput(rtmpStream)
@@ -1975,8 +1978,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             _ = try? await rtmpStream.close()
             _ = try? await rtmpConnection?.close()
 
-            videoProcessor?.cleanup()
-            audioProcessor?.cleanup()
+            
             videoProcessor=nil
             audioProcessor=nil
             // AdaptiveVideoBufferManager 已停用
