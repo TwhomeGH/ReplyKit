@@ -233,7 +233,7 @@ class SocketClient : @unchecked Sendable {
 
         receiveBuffer.removeAll()  // ✅ 清空累積 buffer
 
-        //stopObservingLocalChanges()
+
         self.logTo("SocketClient connection closed")
 
 
@@ -1267,38 +1267,38 @@ class SocketClient : @unchecked Sendable {
         }
     }
 
-    private var localChangesObserver: NSObjectProtocol?
+    // private var localChangesObserver: NSObjectProtocol?
 
-    // MARK: - 監聽本地 UserDefaults
-    private func observeLocalChanges() {
-        localChangesObserver = NotificationCenter.default.addObserver(
-            forName: UserDefaults.didChangeNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            guard let self = self, !self.isProcessingRemoteUpdate else { return }
-            let defaults = UserDefaults.standard
-            for (key, value) in defaults.dictionaryRepresentation() {
-                self.sendSettings(key: key, value: value)
-            }
-        }
+    // MARK: - 監聽本地 UserDefaults 因為目前沒有需要主動推送的設定變更，但未來如果有需要，可以考慮加入這個功能
+    // private func observeLocalChanges() {
+    //     localChangesObserver = NotificationCenter.default.addObserver(
+    //         forName: UserDefaults.didChangeNotification,
+    //         object: nil,
+    //         queue: .main
+    //     ) { [weak self] _ in
+    //         guard let self = self, !self.isProcessingRemoteUpdate else { return }
+    //         let defaults = UserDefaults.standard
+    //         for (key, value) in defaults.dictionaryRepresentation() {
+    //             self.sendSettings(key: key, value: value)
+    //         }
+    //     }
 
-    }
+    // }
 
-    private func stopObservingLocalChanges() {
-        if let observer = localChangesObserver {
-            NotificationCenter.default.removeObserver(observer)
-            localChangesObserver = nil
-        }
-    }
+    // private func stopObservingLocalChanges() {
+    //     if let observer = localChangesObserver {
+    //         NotificationCenter.default.removeObserver(observer)
+    //         localChangesObserver = nil
+    //     }
+    // }
 
     // MARK: - 初次同步
-    private func sendInitialUserDefaults() {
-        let defaults = UserDefaults.standard
-        for (key, value) in defaults.dictionaryRepresentation() {
-            sendSettings(key: key, value: value)
-        }
-    }
+    // private func sendInitialUserDefaults() {
+    //     let defaults = UserDefaults.standard
+    //     for (key, value) in defaults.dictionaryRepresentation() {
+    //         sendSettings(key: key, value: value)
+    //     }
+    // }
 
     // MARK: - JSON 安全轉換
     private func safeJSONValue(_ value: Any) -> Any {
