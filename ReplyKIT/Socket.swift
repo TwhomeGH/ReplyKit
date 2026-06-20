@@ -184,7 +184,7 @@ class SocketClient : @unchecked Sendable {
 
     }
 
-    func waitForReady(timeout: TimeInterval = 3.0) async -> Bool {
+    func waitForReady(timeout: TimeInterval = 10.0) async -> Bool {
         if connection?.state == .ready { return true }
         return await withCheckedContinuation { cont in
             queue.async { [weak self] in
@@ -377,7 +377,7 @@ class SocketClient : @unchecked Sendable {
 
     func requestSet(for key: String, type: String) async throws -> Any? {
 
-        guard let con = connection,con.state == .ready else {
+        guard await waitForReady() else {
             return nil
         }
 
@@ -423,7 +423,7 @@ class SocketClient : @unchecked Sendable {
 
 
 
-    func requestRTMPKEYAndLog(timeout: TimeInterval = 5.0) async -> Bool {
+    func requestRTMPKEYAndLog(timeout: TimeInterval = 15.0) async -> Bool {
         do {
             return try await withTimeout(timeout) {
                 try await self._requestRTMPKEYAndLog()
@@ -516,7 +516,7 @@ class SocketClient : @unchecked Sendable {
 
     // MARK: - 發送
 
-    func requestRTMPKEY(timeout: TimeInterval = 5.5) async -> Bool {
+    func requestRTMPKEY(timeout: TimeInterval = 15.0) async -> Bool {
         do {
             return try await withTimeout(timeout) {
                 try await self._requestRTMPKEY()
@@ -561,7 +561,7 @@ class SocketClient : @unchecked Sendable {
 
     }
 
-    func requestLogConfig(timeout: TimeInterval = 5.5) async -> Bool {
+    func requestLogConfig(timeout: TimeInterval = 15.0) async -> Bool {
         do {
             return try await withTimeout(timeout) {
                 try await self._requestLogConfig()
