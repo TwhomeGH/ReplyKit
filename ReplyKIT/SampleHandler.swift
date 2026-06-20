@@ -112,9 +112,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     private var appAddVolume: Float = 1.0
     private var micAddVolume: Float = 1.0
 
+    // MARK: 推流物件 RTMP
     private var rtmpConnection :RTMPConnection?
-
-
     private var rtmpStream : RTMPStream!
 
 
@@ -1682,8 +1681,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             await self.mediaMixer.stopRunning()
 
-            _ = try? await rtmpStream.close()
-            _ = try? await rtmpConnection?.close()
 
             // 等待退避時間
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
@@ -1691,7 +1688,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             // 建立新連線
             
-           
+
             let BCount = max(RPConfig.shared.state.BufferCount, 3)
             await rtmpStream.setVideoInputBufferCounts(BCount)
 
@@ -1717,13 +1714,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 await self.streamStataus?.refreshStatusTimestamp()
                 await rtmpStream.setBitRateStrategy(self.streamStataus)
                 await self.mediaMixer.addOutput(rtmpStream)
-                await self.mediaMixer.startRunning()
 
-
-                _ = try await rtmpConnection.connect(url)
-                _ = try await rtmpStream.publish(key)
-
-
+                
+                await startRTMP(url: url, key: key)
 
                 // 恢復斷線監控
                 self.startDisconnectMonitor()
@@ -1874,8 +1867,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 // 重新建立 RTMP 連線物件，避免 init() 中的過期狀態導致首次連線失敗
                 _ = try? await rtmpStream.close()
                 _ = try? await rtmpConnection?.close()
+
                 rtmpConnection = RTMPConnection()
                 rtmpStream = RTMPStream(connection: rtmpConnection!)
+
                 lastConfiguredSize = nil
                 sendlog(message: "🔄 RTMP 連線物件已重新建立")
 
