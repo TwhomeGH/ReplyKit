@@ -1518,20 +1518,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         didConfigureAudio = false
 
-        configureOrientation()
-
-
-        // if DeviceOrientationManager.shared.isEnabled {
-
-
-        //        #if os(iOS)
-        //
-        //        let videofrom = await UIDevice.current.orientation
-        //        await updateVideoOrientation(from: videofrom)
-        //
-        //        #endif
-
-        //}
 
 
     }
