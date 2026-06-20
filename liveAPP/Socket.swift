@@ -960,10 +960,9 @@ class SocketServer:ObservableObject {
             case "reconnectStatus":
                 if let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                    let status = dict["status"] as? String,
-                   let attempt = dict["attempt"] as? Int,
-                   let maxAttempts = dict["maxAttempts"] as? Int {
+                   let attempt = dict["attempt"] as? Int {
                     LPConfig.shared.reconnectAttempt = attempt
-                    LPConfig.shared.reconnectMaxAttempts = maxAttempts
+                    let maxAttempts = LPConfig.shared.reconnectMaxAttempts
                     switch status {
                     case "attempting":
                         LPConfig.shared.isReconnecting = true

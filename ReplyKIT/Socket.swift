@@ -245,10 +245,15 @@ class SocketClient : @unchecked Sendable {
         connection?.stateUpdateHandler = { [weak self] state in
             guard let self = self else { return }
             switch state {
-            case .ready:
+             case .ready:
                 logTo("SocketClient connected")
                 isConnection = true
                 reconnectAttempt = 0
+                circuitBreakerFailCount = 0
+                circuitBreakerOpen = false
+                if self.socketState.canTransition(to: .connected) {
+                    self.socketState = .connected
+                }
                 sendReconnectStatus(.success)
 
                 self.queue.async {
@@ -263,7 +268,7 @@ class SocketClient : @unchecked Sendable {
                 self.onSocketReady?()
 
                 self.receive()
-            case .failed(let error):
+             case .failed(let error):
                 logTo("SocketClient failed: \(String(describing: error))")
                 self.queue.async {
                     self.readyContinuation?.resume(returning: false)
@@ -272,10 +277,28 @@ class SocketClient : @unchecked Sendable {
                 connection?.cancel()
                 connection = nil
                 isConnection = false
+                if self.socketState.canTransition(to: .disconnected) {
+                    self.socketState = .disconnected
+                }
 
+                // Circuit breaker: track consecutive failures
+                self.circuitBreakerFailCount += 1
+                if self.circuitBreakerFailCount >= self.circuitBreakerThreshold {
+                    self.circuitBreakerOpen = true
+                    self.logTo("🔒 電路斷路器開啟，冷卻 \(Int(self.circuitBreakerCooldown))s")
+                    self.sendReconnectStatus(.exhausted)
+                    self.queue.asyncAfter(deadline: .now() + self.circuitBreakerCooldown) { [weak self] in
+                        guard let self = self else { return }
+                        self.circuitBreakerOpen = false
+                        self.circuitBreakerFailCount = 0
+                        self.logTo("🔓 電路斷路器關閉，恢復重連")
+                        self.retry()
+                    }
+                    return
+                }
 
                 self.retry()
-            case .cancelled:
+             case .cancelled:
 
 
                 logTo("SocketClient cancelled")
@@ -286,6 +309,14 @@ class SocketClient : @unchecked Sendable {
                 connection = nil
 
                 isConnection = false
+                if self.socketState.canTransition(to: .disconnected) {
+                    self.socketState = .disconnected
+                }
+
+                guard !self.circuitBreakerOpen else {
+                    self.logTo("⚠️ 電路斷路器已開啟，取消重連")
+                    return
+                }
                 self.retry()
             default:
                 break
@@ -299,6 +330,41 @@ class SocketClient : @unchecked Sendable {
     private var reconnectAttempt = 0
     private let maxReconnectAttempts = 10
 
+    // MARK: - Circuit Breaker
+    private var circuitBreakerOpen = false
+    private var circuitBreakerFailCount = 0
+    private let circuitBreakerThreshold = 5
+    private let circuitBreakerCooldown: TimeInterval = 60
+    private var circuitBreakerTimer: DispatchSourceTimer?
+
+    // MARK: - Connection State Machine
+    private enum SocketState {
+        case disconnected
+        case connecting
+        case connected
+        case reconnecting
+        case circuitBreakerOpen
+
+        func canTransition(to newState: SocketState) -> Bool {
+            switch (self, newState) {
+            case (.disconnected, .connecting),
+                 (.connecting, .connected),
+                 (.connecting, .disconnected),
+                 (.connected, .disconnected),
+                 (.reconnecting, .connecting),
+                 (.reconnecting, .disconnected),
+                 (.disconnected, .circuitBreakerOpen),
+                 (.circuitBreakerOpen, .connecting),
+                 (_, .disconnected):
+                return true
+            default:
+                return false
+            }
+        }
+    }
+
+    private var socketState: SocketState = .disconnected
+
     private func reconnectDelay() -> TimeInterval {
         let base = min(pow(2.0, Double(reconnectAttempt)), 30.0)
         let jitter = Double.random(in: 0...base * 0.5)
@@ -308,8 +374,14 @@ class SocketClient : @unchecked Sendable {
     func retry() {
         queue.async {
             self.stopHeartbeat()
-
+            if self.circuitBreakerOpen {
+                self.logTo("⚠️ 電路斷路器已開啟，跳過重連")
+                self.sendReconnectStatus(.exhausted)
+                return
+            }
             guard !self.isReconnecting else { return }
+            guard self.socketState.canTransition(to: .reconnecting) else { return }
+            self.socketState = .reconnecting
             self.isReconnecting = true
             self.reconnectAttempt += 1
 
