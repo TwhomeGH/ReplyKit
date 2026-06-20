@@ -59,6 +59,19 @@ final class VideoFrameProcessor {
             await rotator?.cleanup()
             rotator = nil
         }
+
+        func updateDebug(_ value: Bool) {
+            rotator?.debug = value
+        }
+
+        func updateTsDebug(_ value: Bool) {
+            rotator?.tsDebug(value)
+        }
+
+        func updateDestination(width: Int, height: Int) {
+            rotator?.dstWW = width
+            rotator?.dstHH = height
+        }
     }
 
     private let mediaMixer: MediaMixer
@@ -120,6 +133,18 @@ final class VideoFrameProcessor {
     func cleanup() {
         isActive = false
         Task { await rotatorManager.cleanup() }
+    }
+
+    func setRotatorDebug(_ value: Bool) async {
+        await rotatorManager.updateDebug(value)
+    }
+
+    func setRotatorTsDebug(_ value: Bool) async {
+        await rotatorManager.updateTsDebug(value)
+    }
+
+    func setRotatorDestination(width: Int, height: Int) async {
+        await rotatorManager.updateDestination(width: width, height: height)
     }
 
     deinit {

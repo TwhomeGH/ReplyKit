@@ -1205,7 +1205,6 @@ class SocketClient : @unchecked Sendable {
     }
 
     private func runReceiveLoop() async {
-        guard let self = self else { return }
         guard let con = self.connection else { return }
         let currentConnection = con
 

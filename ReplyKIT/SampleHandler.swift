@@ -402,7 +402,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     }
                 }
                 
-                videoProcessor?.rotator?.debug = Rlog
+                await videoProcessor?.setRotatorDebug(Rlog)
                 sendlog(message:"[旋轉日誌變化] VideoRotate \(Rlog)")
 
             }
@@ -433,7 +433,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     }
                 }
 
-                videoProcessor?.rotator?.tsDebug(Rlog)
+                await videoProcessor?.setRotatorTsDebug(Rlog)
                 sendlog(message:"[旋轉日誌時間軸檢查] VideoTime \(Rlog)")
 
             }
@@ -842,8 +842,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 ADWidth = dstRW
                 ADHeight = dstRH
-                videoProcessor?.rotator?.dstWW = dstRW
-                videoProcessor?.rotator?.dstHH = dstRH
+                await videoProcessor?.setRotatorDestination(width: dstRW, height: dstRH)
                 sendlog(message: "OutW:\(dstRW)x\(dstRH)")
 
             }
@@ -890,8 +889,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 ADWidth = dstRW
                 ADHeight = dstRH
-                videoProcessor?.rotator?.dstWW = dstRW
-                videoProcessor?.rotator?.dstHH = dstRH
+                await videoProcessor?.setRotatorDestination(width: dstRW, height: dstRH)
 
                 sendlog(message: "OutH:\(dstRW)x\(dstRH)")
 
