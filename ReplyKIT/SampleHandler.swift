@@ -1626,6 +1626,14 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 sendlog(message:"🎉 RTMP 推流成功",flush: true)
                 logger.info("🎉 RTMP 推流成功")
 
+                // 恢復斷線監控
+                self.startDisconnectMonitor()
+
+                self.isReconnecting = false
+                self.reconnectAttempts = 0
+
+                self.notifyReconnectStatus(.success)
+
 
             }
 
@@ -1635,10 +1643,18 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     }  catch RTMPStream.Error.requestFailed(let response) {
             sendlog(message: "RTMP 推流失敗 \(response)，嘗試重連")
+
+            self.isReconnecting = false
+            self.notifyReconnectStatus(.failed)
             attemptReconnect()
+
+
 
         } catch {
             sendlog(message: "RTMP 其他錯誤 \(error)，嘗試重連")
+
+            self.isReconnecting = false
+            self.notifyReconnectStatus(.failed)
             attemptReconnect()
 
     }
@@ -1699,35 +1715,25 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             let h = DHeight > 0 ? DHeight : (ADHeight > 0 ? ADHeight : 720)
             await applyAllVideoSettings(width: w, height: h, stream: rtmpStream)
 
-
-                guard let url = self.rtmpURL, let key = self.rtmpKey else {
-                    sendlog(message: "❌ RTMP 重連失敗：URL 或 Key 為 nil")
-                    self.isReconnecting = false
-                    self.attemptReconnect()
-                    return
-                }
-
-                
-                // 成功 — 替換參考
-                
-
-                await self.streamStataus?.refreshStatusTimestamp()
-                await rtmpStream.setBitRateStrategy(self.streamStataus)
-                await self.mediaMixer.addOutput(rtmpStream)
-
-                
-                await startRTMP(url: url, key: key)
-
-                // 恢復斷線監控
-                self.startDisconnectMonitor()
-
+            guard let url = self.rtmpURL, let key = self.rtmpKey else {
+                sendlog(message: "❌ RTMP 重連失敗：URL 或 Key 為 nil")
                 self.isReconnecting = false
-                self.reconnectAttempts = 0
+                self.attemptReconnect()
+                return
+            }
 
-                sendlog(message: "✅ RTMP 重連成功！")
-                self.notifyReconnectStatus(.success)
-                
             
+            // 成功 — 替換參考
+            
+
+            await self.streamStataus?.refreshStatusTimestamp()
+            await rtmpStream.setBitRateStrategy(self.streamStataus)
+            await self.mediaMixer.addOutput(rtmpStream)
+
+            
+            await startRTMP(url: url, key: key)
+
+
         }
     }
 
