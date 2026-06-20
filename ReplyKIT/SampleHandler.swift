@@ -1829,11 +1829,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             //self.prepareCompressionSession()
 
 
-            // 同時發出兩個請求 (最多重試 3 次)
+            // 同時發出兩個請求 (最多重試 3 次，不 sleep 避免 extension 超時)
             var result = await SocketClient.shared.requestRTMPKEYAndLog()
             for _ in 0..<2 where !result {
-                sendlog(message: "Socket 請求失敗，5 秒後重試...")
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                sendlog(message: "Socket 請求失敗，立即重試...")
                 result = await SocketClient.shared.requestRTMPKEYAndLog()
             }
 
