@@ -1677,7 +1677,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             guard let self = self else { return }
 
             // 關閉舊連線
+            
             await mediaMixer.removeOutput(rtmpStream)
+
+            await self.mediaMixer.stopRunning()
+            
             _ = try? await rtmpStream.close()
             _ = try? await rtmpConnection?.close()
 
