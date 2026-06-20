@@ -1610,12 +1610,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 return
             }
 
-            // 先讓 MediaMixer 開始消費 frame，避免 initProcessors 後無處去的 frame 無限堆疊
-            await mediaMixer.startRunning()
-
             _ = try await rtmpConnection?.connect(url)
 
             _ = try await rtmpStream.publish(key)
+
+            // 連線完成後再讓 MediaMixer 開始消費 frame，避免 frame 在 socket 未就緒時被丟棄
+            await mediaMixer.startRunning()
 
             sendlog(message:"🎉 RTMP:\(url)/ KEY:\(fixlogSafeKey(key)) 連線中...",flush: true)
             // step 4: 標記 session ready
