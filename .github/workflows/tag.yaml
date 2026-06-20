@@ -7,6 +7,7 @@ on:
       - "liveAPP/**"
       - "ReplyKIT/**"
       - "ReplyKITNotifications/**"
+      - "Package.resolved"
 
 jobs:
   detect-changes:
