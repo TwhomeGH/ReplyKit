@@ -1489,7 +1489,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         await streamStataus?.setOnDisconnect { [weak self] in
             Task { @MainActor in
-                self?.sendlog(message: "斷線監控觸發，由 RTMPConnection 處理重連")
+                sendlog(message: "斷線監控觸發，由 RTMPConnection 處理重連")
             }
         }
 
@@ -1586,8 +1586,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     func startRTMP(url:String?,key:String?) async {
 
         // 設定重連回呼（取代 attemptReconnect）
-        rtmpConnection?.isReconnectEnabled = true
-        rtmpConnection?.onReconnectStateChanged = { [weak self] state in
+        await rtmpConnection?.setReconnectEnabled(true)
+        await rtmpConnection?.setOnReconnectStateChanged { [weak self] state in
             guard let self = self else { return }
             switch state {
             case .started(let attempt, let maxAttempts):
