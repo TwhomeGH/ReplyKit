@@ -348,28 +348,55 @@ class SocketServer:ObservableObject {
         receiveBuffers[id] = Data()       // ✅ 為該連線創建專屬 buffer
 
         connection.start(queue: queue)
-        receive(from: connection)
+        startReceiveLoop(for: connection)
     }
 
 
 
     // MARK: - Receive Data
-    private func receive(from connection: NWConnection) {
+    private var receiveTasks: [ObjectIdentifier: Task<Void, Never>] = [:]
+
+    private func startReceiveLoop(for connection: NWConnection) {
         let id = ObjectIdentifier(connection)
+        receiveTasks[id]?.cancel()
+        receiveTasks[id] = Task { [weak self] in
+            await self?.runReceiveLoop(connection: connection, id: id)
+        }
+    }
 
-        guard connections[id] != nil else { return } // 連線已被移除，直接 return
+    private func stopReceiveLoop(for connection: NWConnection) {
+        let id = ObjectIdentifier(connection)
+        receiveTasks[id]?.cancel()
+        receiveTasks[id] = nil
+    }
 
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
-            guard let self = self else { return }
+    private func runReceiveLoop(connection: NWConnection, id: ObjectIdentifier) async {
+        guard connections[id] != nil else { return }
 
-            // 連線可能在等待期間被移除，double-check
-            guard connections[id] != nil else { return }
+        while !Task.isCancelled {
+            guard connections[id] != nil else { break }
 
-            if let data = data, !data.isEmpty {
+            let result: (data: Data?, isComplete: Bool, error: NWError?)
+            do {
+                result = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(Data?, Bool, NWError?), Error>) in
+                    guard connections[id] != nil else {
+                        continuation.resume(throwing: CancellationError())
+                        return
+                    }
+                    connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { data, _, isComplete, error in
+                        continuation.resume(returning: (data, isComplete, error))
+                    }
+                }
+            } catch {
+                break
+            }
+
+            guard connections[id] != nil else { break }
+
+            if let data = result.data, !data.isEmpty {
                 var buffer = self.receiveBuffers[id] ?? Data()
 
-
-                self.resetIdleTimer(for: connection)
+                resetIdleTimer(for: connection)
                 if LPConfig.shared.SocketLog {
                     logger.debug("Socket received \(data.count) bytes")
                 }
@@ -377,62 +404,41 @@ class SocketServer:ObservableObject {
                 buffer.append(data)
 
                 if buffer.count > SocketServer.maxBufferSize {
-                    self.logTo("[\(id)] Buffer exceeded \(SocketServer.maxBufferSize) bytes, closing connection")
-                    self.removeConnection(connection)
+                    logTo("[\(id)] Buffer exceeded \(SocketServer.maxBufferSize) bytes, closing connection")
+                    removeConnection(connection)
                     return
                 }
 
-                // 🔑 與 ReplyKit Client 完全相同的拆包邏輯
                 while let newlineIndex = buffer.firstIndex(of: 0x0A) {
                     let lineData = buffer[..<newlineIndex]
-
-
-                    let removeCount = buffer.distance(
-                        from: buffer.startIndex,
-                        to: buffer.index(after: newlineIndex)
-                    )
-
+                    let removeCount = buffer.distance(from: buffer.startIndex, to: buffer.index(after: newlineIndex))
                     buffer.removeFirst(removeCount)
-
                     guard !lineData.isEmpty else { continue }
-
-                    self.handleReceivedData(Data(lineData), from: connection)
-
-                    // handleReceivedData 可能移除了連線
+                    handleReceivedData(Data(lineData), from: connection)
                     guard connections[id] != nil else { return }
-
                 }
 
-                // 再次確認連線仍有效才寫回 buffer
                 if connections[id] != nil {
-                    self.receiveBuffers[id] = buffer
+                    receiveBuffers[id] = buffer
                 }
-
             }
 
-            // 連線可能在處理 data 時被移除
-            guard connections[id] != nil else { return }
+            guard connections[id] != nil else { break }
 
-            if let error = error {
-                self.logTo("Receive error: \(error)")
-                self.removeConnection(connection)
+            if let error = result.error {
+                logTo("Receive error: \(error)")
+                removeConnection(connection)
                 return
             }
 
-            if isComplete {
-                // EOF 時可選擇處理殘留（通常不用）
-                if connections[id] != nil, let buffer = self.receiveBuffers[id], !buffer.isEmpty {
-                    self.handleReceivedData(buffer, from: connection)
+            if result.isComplete {
+                if connections[id] != nil, let buffer = receiveBuffers[id], !buffer.isEmpty {
+                    handleReceivedData(buffer, from: connection)
                 }
-                self.receiveBuffers[id] = nil
-                self.removeConnection(connection)
+                receiveBuffers[id] = nil
+                removeConnection(connection)
                 return
             }
-
-            
-            self.receive(from: connection)
-
-
         }
     }
     
@@ -1130,6 +1136,7 @@ class SocketServer:ObservableObject {
             self.logTo("Saved \(pendingQueue.count) pending payloads for re-queue")
         }
 
+        stopReceiveLoop(for: connection)
         connections[id] = nil
         receiveBuffers[id] = nil
         sendQueues[id] = nil
