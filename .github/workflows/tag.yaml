@@ -38,7 +38,7 @@ jobs:
             echo "No existing tag found, will create v0.0.1"
             exit 0
           fi
-          CHANGED=$(git diff --name-only "$LATEST" HEAD -- liveAPP/ ReplyKIT/ || true)
+          CHANGED=$(git diff --name-only "$LATEST" HEAD -- liveAPP/ ReplyKIT/ Package.resolved || true)
           if [ -z "$CHANGED" ]; then
             echo "No relevant changes detected. Exiting..."
             exit 0
