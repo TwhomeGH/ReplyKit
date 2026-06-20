@@ -1699,7 +1699,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             let h = DHeight > 0 ? DHeight : (ADHeight > 0 ? ADHeight : 720)
             await applyAllVideoSettings(width: w, height: h, stream: rtmpStream)
 
-            do {
+
                 guard let url = self.rtmpURL, let key = self.rtmpKey else {
                     sendlog(message: "❌ RTMP 重連失敗：URL 或 Key 為 nil")
                     self.isReconnecting = false
@@ -1726,12 +1726,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 sendlog(message: "✅ RTMP 重連成功！")
                 self.notifyReconnectStatus(.success)
-            } catch {
-                sendlog(message: "❌ RTMP 重連失敗: \(error)")
-                self.isReconnecting = false
-                self.notifyReconnectStatus(.failed)
-                self.attemptReconnect()
-            }
+                
+            
         }
     }
 
