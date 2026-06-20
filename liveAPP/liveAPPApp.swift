@@ -177,7 +177,7 @@ final class LogReceiver {
     init() {
         // 讀取上次儲存 offset
 
-        lastReadOffset = UInt64(UserDefaults.standard.integer(forKey: "lastReadOffset"))
+        lastReadOffset = UInt64(userDefaults?.integer(forKey: "lastReadOffset") ?? 0)
 
         // 註冊 Darwin 通知
         CFNotificationCenterAddObserver(
@@ -328,8 +328,8 @@ final class LogReceiver {
 
             LogBuffer.shared.push(linesToSend)
 
-        // ✅ 批次更新 offset，降低 UserDefaults I/O
-            UserDefaults.standard.set(Int(lastReadOffset), forKey: "lastReadOffset")
+            // ✅ 批次更新 offset，降低 UserDefaults I/O
+            userDefaults?.set(Int(lastReadOffset), forKey: "lastReadOffset")
 
 
 
@@ -713,8 +713,6 @@ struct liveAPPApp: App {
 
         SocketServer.shared.start()
 
-
-        UserDefaults.standard.set(0, forKey: "lastReadLineCount")
 
         // MARK: - 記憶體壓力監聽
         #if os(iOS)
