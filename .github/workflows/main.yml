@@ -27,10 +27,12 @@ jobs:
       - name: Get tag from tag workflow
         id: get_tag
         run: |
-          TAG="${{ github.event.workflow_run.outputs.new_tag }}"
+          # workflow_run event does not expose triggering workflow's job outputs,
+          # so we find the tag from the checked-out commit instead
+          TAG=$(git tag --points-at HEAD | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -n1)
 
           if [ -z "$TAG" ]; then
-            # Fallback: detect latest tag locally if workflow_run output unavailable
+            # Fallback: detect latest tag
             TAG=$(git tag --list "[0-9]*" | sort -V | tail -n1)
           fi
 

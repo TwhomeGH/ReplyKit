@@ -229,13 +229,14 @@ class SocketClient : @unchecked Sendable {
         Task { await continuationStore.cancelAll() }
 
         stopHeartbeat()
+        stopReceiveLoop()
 
         receiveBuffer.removeAll()  // ✅ 清空累積 buffer
 
         //stopObservingLocalChanges()
         self.logTo("SocketClient connection closed")
 
-        
+
     }
 
 
@@ -267,7 +268,7 @@ class SocketClient : @unchecked Sendable {
 
                 self.onSocketReady?()
 
-                self.receive()
+                self.startReceiveLoop()
              case .failed(let error):
                 logTo("SocketClient failed: \(String(describing: error))")
                 self.queue.async {
@@ -1189,17 +1190,48 @@ class SocketClient : @unchecked Sendable {
     }
 
     // MARK: - 接收資料
-    private func receive() {
-        guard let con = connection else { return }
+    private var receiveTask: Task<Void, Never>?
 
-        let currentConnection = con // 捕獲當下的 connection
+    private func startReceiveLoop() {
+        receiveTask?.cancel()
+        receiveTask = Task { [weak self] in
+            await self?.runReceiveLoop()
+        }
+    }
 
-        con.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
-            guard let self = self else { return }
+    private func stopReceiveLoop() {
+        receiveTask?.cancel()
+        receiveTask = nil
+    }
 
-            guard self.connection === currentConnection else { return }
+    private func runReceiveLoop() async {
+        guard let self = self else { return }
+        guard let con = self.connection else { return }
+        let currentConnection = con
 
-            if let data = data {
+        while !Task.isCancelled {
+            guard self.connection === currentConnection else { break }
+
+            let result: (data: Data?, isComplete: Bool, error: NWError?)
+            do {
+                result = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(Data?, Bool, NWError?), Error>) in
+                    guard self.connection === currentConnection else {
+                        continuation.resume(throwing: CancellationError())
+                        return
+                    }
+                    con.receive(minimumIncompleteLength: 1, maximumLength: 65536) { data, _, isComplete, error in
+                        if let error = error {
+                            continuation.resume(returning: (data, isComplete, error))
+                        } else {
+                            continuation.resume(returning: (data, isComplete, nil))
+                        }
+                    }
+                }
+            } catch {
+                break
+            }
+
+            if let data = result.data {
                 if RPConfig.shared.enableSocketLog {
                     logger.debug("Socket received \(data.count, privacy: .public) bytes")
                 }
@@ -1212,12 +1244,10 @@ class SocketClient : @unchecked Sendable {
                     return
                 }
 
-                // 使用 processReceiveBuffer 處理所有可解析的 JSON
                 self.processReceiveBuffer()
-
             }
 
-            if let error = error {
+            if let error = result.error {
                 self.logTo("Socket receive error: \(error)")
 
                 CFNotificationCenterPostNotification(
@@ -1232,12 +1262,9 @@ class SocketClient : @unchecked Sendable {
                 return
             }
 
-            // EOF 時處理最後一筆資料（可能沒有換行符）
-            if isComplete, !self.receiveBuffer.isEmpty {
+            if result.isComplete, !self.receiveBuffer.isEmpty {
                 self.processReceiveBuffer()
             }
-
-            self.receive() // 繼續接收
         }
     }
 

@@ -5,15 +5,65 @@ import CoreMedia
 
 
 final class VideoFrameProcessor {
-    var rotator: RPVideoRotatorNV12BatchQueueOptimized? = nil
+    private actor RotatorManager {
+        private var rotator: RPVideoRotatorNV12BatchQueueOptimized?
+        private var lastKey: (useBic: Bool, dstW: Int, dstH: Int, outW: Int, outH: Int, RotateOriginal: Bool)?
+        private let sendlog: (String) -> Void
+        private var debug: Bool
+
+        init(debug: Bool, sendlog: @escaping (String) -> Void) {
+            self.debug = debug
+            self.sendlog = sendlog
+        }
+
+        func getOrCreateRotator() async -> RPVideoRotatorNV12BatchQueueOptimized? {
+            let key = (
+                useBic: RPConfig.shared.state.useBic,
+                dstW: RPConfig.shared.state.ADWidth,
+                dstH: RPConfig.shared.state.ADHeight,
+                outW: RPConfig.shared.state.ODWidth,
+                outH: RPConfig.shared.state.ODHeight,
+                RotateOriginal: RPConfig.shared.state.RotateOriginal
+            )
+            if let r = rotator, let last = lastKey, last != key {
+                await r.cleanup()
+                rotator = nil
+                sendlog("[Rotator] config changed, recreating")
+            }
+            lastKey = key
+
+            if let r = rotator { return r }
+
+            let dstRW = RPConfig.shared.state.ADWidth
+            let dstRH = RPConfig.shared.state.ADHeight
+            let outW = RPConfig.shared.state.ODWidth
+            let outH = RPConfig.shared.state.ODHeight
+            let mode: RPVideoRotatorNV12BatchQueueOptimized.QualityMode =
+                RPConfig.shared.state.useBic ? .quality : .live
+            let RotateOriginal = RPConfig.shared.state.RotateOriginal
+            guard let r = RPVideoRotatorNV12BatchQueueOptimized(
+                dstW: dstRW, dstH: dstRH,
+                outW: outW, outH: outH,
+                debug: debug,
+                useBic: mode,
+                RotateOriginal: RotateOriginal
+            ) else {
+                sendlog("GPU Rotator init failed")
+                return nil
+            }
+            rotator = r
+            return r
+        }
+
+        func cleanup() async {
+            await rotator?.cleanup()
+            rotator = nil
+        }
+    }
 
     private let mediaMixer: MediaMixer
-
-    private let queue = DispatchQueue(
-        label: "video.processor.queue"
-    )
-
     private let sendlog: (String) -> Void
+    private let rotatorManager: RotatorManager
 
     // 限制同時 inflight frame 數量，避免 GPU 積壓
     private var inflightCount = 0
@@ -34,9 +84,6 @@ final class VideoFrameProcessor {
         inflightLock.unlock()
     }
 
-    private var lastRotatorKey: (useBic: Bool, dstW: Int, dstH: Int, outW: Int, outH: Int, RotateOriginal: Bool)?
-
-
     var angle = RotationAngle(
                 rawValue: UInt32(RPConfig.shared.state.Rotate)
             ) ?? .landscapeRight
@@ -44,76 +91,41 @@ final class VideoFrameProcessor {
     var Rotate = RPConfig.shared.state.Rotate
 
     private func updateRotateFixState() {
-
         let current = RPConfig.shared.state.Rotate
-
         guard current != Rotate else { return }
-
         Rotate = current
-
-        if current != Rotate {
-            sendlog("🟢 New Rotate \(current)")
-        } else {
-            sendlog("🔴 Old Rotate \(Rotate)")
-                
-        }
-    }
-
-
-    private func updateVideoFixState() {
-
-        let current = RPConfig.shared.enableRotateLog
-
-        guard current != debug else { return }
-
-        debug = current
-
-        if debug {
-            sendlog("🔄 Rotate Log Enabled")
-        } else {
-            sendlog("🔄 Rotate Log Disabled")
-
-        }
-
+        sendlog("🟢 New Rotate \(current)")
     }
 
     var isActive = true
-
     var hasPublished = false
-
     var debug = RPConfig.shared.enableRotateLog
-
 
     init(mediaMixer: MediaMixer,
         sendlog: @escaping (String) -> Void) {
         self.mediaMixer = mediaMixer
-
         self.sendlog = sendlog
         self.isActive = true
         self.hasPublished = false
-
-
+        self.rotatorManager = RotatorManager(
+            debug: RPConfig.shared.enableRotateLog,
+            sendlog: sendlog
+        )
         self.angle = RotationAngle(
                 rawValue: UInt32(RPConfig.shared.state.Rotate)
             ) ?? .landscapeRight
-
         self.updateRotateFixState()
-        self.updateVideoFixState()
     }
+
     func cleanup() {
         isActive = false
-        let r = rotator
-        rotator = nil
-        if let r = r {
-            Task { await r.cleanup() }
-        }
+        Task { await rotatorManager.cleanup() }
     }
+
     deinit {
         cleanup()
         sendlog("🧹 VideoFrameProcessor deinit — resources released")
     }
-
-    
 
 
     func process(_ sampleBuffer: CMSampleBuffer, oringinaltime: CMSampleTimingInfo) {
@@ -130,46 +142,7 @@ final class VideoFrameProcessor {
             }
             defer { self.releaseSlot() }
 
-            guard let rotator = queue.sync(execute: { () -> RPVideoRotatorNV12BatchQueueOptimized? in
-                let key = (
-                    useBic: RPConfig.shared.state.useBic,
-                    dstW: RPConfig.shared.state.ADWidth,
-                    dstH: RPConfig.shared.state.ADHeight,
-                    outW: RPConfig.shared.state.ODWidth,
-                    outH: RPConfig.shared.state.ODHeight,
-                    RotateOriginal: RPConfig.shared.state.RotateOriginal
-                )
-                if let r = self.rotator, let last = self.lastRotatorKey, last != key {
-                    let old = r
-                    Task { await old.cleanup() }
-                    self.rotator = nil
-                    self.sendlog("[Rotator] config changed, recreating")
-                }
-                self.lastRotatorKey = key
-
-                if let r = self.rotator { return r }
-                let dstRW = RPConfig.shared.state.ADWidth
-                let dstRH = RPConfig.shared.state.ADHeight
-                let outW = RPConfig.shared.state.ODWidth
-                let outH = RPConfig.shared.state.ODHeight
-                let mode: RPVideoRotatorNV12BatchQueueOptimized.QualityMode =
-                    RPConfig.shared.state.useBic ? .quality : .live
-                let RotateOriginal = RPConfig.shared.state.RotateOriginal
-                guard let r = RPVideoRotatorNV12BatchQueueOptimized(
-                    dstW: dstRW, dstH: dstRH,
-                    outW: outW, outH: outH,
-                    debug: self.debug,
-                    useBic: mode,
-                    RotateOriginal: RotateOriginal
-                ) else {
-                    // Swift 6.0語法須明確self使用
-                    
-                    self.sendlog("GPU Rotator init failed")
-                    return nil
-                }
-                self.rotator = r
-                return r
-            }) else { return }
+            guard let rotator = await rotatorManager.getOrCreateRotator() else { return }
 
             guard let rotated = await rotator.rotateAsync(
                 pixelBuffer: imageBuffer,
@@ -177,7 +150,6 @@ final class VideoFrameProcessor {
                 angle: self.angle
             ) else { return }
 
-            // 使用 ReplayKit 原始 PTS / duration，確保影音同一 timebase
             let pts = oringinaltime.presentationTimeStamp
             let duration: CMTime
             if oringinaltime.duration.isValid, oringinaltime.duration.seconds > 0 {
