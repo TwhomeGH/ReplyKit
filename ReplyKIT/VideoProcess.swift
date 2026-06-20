@@ -124,7 +124,7 @@ final class VideoFrameProcessor {
                 let now = CACurrentMediaTime()
                 if now - lastDropLog > 1.0 {
                     lastDropLog = now
-                    sendlog("⚠️ VideoProcessor: dropping frame (inflight=4)")
+                    sendlog("⚠️ VideoProcessor: dropping frame (inflight=8)")
                 }
                 return
             }
@@ -199,6 +199,9 @@ final class VideoFrameProcessor {
                 sampleBufferOut: &correctedBuffer
             )
 
+            guard await mediaMixer.isRunning else {
+                return
+            }
             if let cb = correctedBuffer {
                 await self.mediaMixer.append(cb)
             } else {
