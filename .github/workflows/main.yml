@@ -147,7 +147,8 @@ jobs:
             -configuration Release \
             -archivePath $PWD/build/liveApp.xcarchive \
             -destination "generic/platform=iOS" \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            SWIFT_SYMBOL_REDACTION=NO
 
             
       # 4️⃣ Extract symbols for crash symbolication
@@ -171,9 +172,6 @@ jobs:
           if [ -f "$DSYM" ]; then
             echo "=== dSYM UUID ==="
             dwarfdump --uuid "$DSYM" 2>&1 || true
-            echo ""
-            echo "=== dSYM lookup example (offset 800224) ==="
-            dwarfdump --lookup 0x800224 --arch arm64 "$DSYM" 2>&1 || true
           else
             echo "⚠️ dSYM not found at $DSYM"
           fi

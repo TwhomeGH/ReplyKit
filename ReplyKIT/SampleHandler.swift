@@ -1890,11 +1890,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             // adaptiveBufferManager = nil
 
             sendlog(message:"[RTMP] \(message)")
-            LogManager.shared.forceFlush()
+            
 
         }
 
 
+        LogManager.shared.forceFlush()
 
 
 
