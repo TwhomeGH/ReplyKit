@@ -2117,10 +2117,10 @@ struct homeView:View{
 #endif
 
 
-    @State var lockIN:Bool = getUserDefault(forKey:"LockIN") ?? true
-    @State var lockDetect=false
-    @State var videoRotate=true
     
+    @State var lockDetect=false
+
+
     @State private var showForm = false
     @AppStorage("PauseStream",store: userDefaults) var PauseStream: Bool = false
 
@@ -2182,120 +2182,8 @@ struct homeView:View{
 
                     VStack(spacing:10){
 
-                        Text("旋轉控制[棄用]").font(.headline)
-                            .padding()
+                        
                         VStack(alignment: .leading){
-
-                            if #available(iOS 17.0, *) {
-                                Toggle("停用自動偵測旋轉",isOn: $lockIN)
-                                    .onChange(of: lockIN) {
-                                        old,
-                                        newValue in
-
-                                        print("LockIN \(newValue)")
-
-                                        setUserDefault(newValue,forKey:"LockIN")
-
-
-                                        CFNotificationCenterPostNotification(
-                                            cfCenter,
-                                            CFNotificationName(
-                                                "orientationChanged" as CFString
-                                            ),
-                                            nil,
-                                            nil,
-                                            true
-                                        )
-
-
-                                    }
-                            } else {
-                                // Fallback on earlier versions
-                                Toggle("停用自動偵測旋轉",isOn: $lockIN)
-                                    .onChange(of: lockIN) {
-
-                                        newValue in
-
-                                        print("LockIN \(newValue)")
-
-                                        setUserDefault(newValue,forKey:"LockIN")
-
-
-                                        CFNotificationCenterPostNotification(
-                                            cfCenter,
-                                            CFNotificationName(
-                                                "orientationChanged" as CFString
-                                            ),
-                                            nil,
-                                            nil,
-                                            true
-                                        )
-
-
-                                    }
-                            }
-
-                            if #available(iOS 17.0, *) {
-                                Toggle("自動旋轉視頻",isOn: $videoRotate)
-                                    .onChange(of: videoRotate) {
-                                        old,
-                                        newValue in
-
-                                        print("RotateVideo \(newValue)")
-
-                                        setUserDefault(
-                                            newValue,
-                                            forKey:"VideoRotate"
-                                        )
-                                        //syncUserDefault()
-
-
-
-
-                                        CFNotificationCenterPostNotification(
-                                            cfCenter,
-                                            CFNotificationName(
-                                                "videoRotateChanged" as CFString
-                                            ),
-                                            nil,
-                                            nil,
-                                            true
-                                        )
-
-
-                                    }
-                            } else {
-                                // Fallback on earlier versions
-                                Toggle("自動旋轉視頻",isOn: $videoRotate)
-                                    .onChange(of: videoRotate) {
-
-                                        newValue in
-
-                                        print("RotateVideo \(newValue)")
-
-                                        setUserDefault(
-                                            newValue,
-                                            forKey:"VideoRotate"
-                                        )
-                                        //syncUserDefault()
-
-
-
-
-                                        CFNotificationCenterPostNotification(
-                                            cfCenter,
-                                            CFNotificationName(
-                                                "videoRotateChanged" as CFString
-                                            ),
-                                            nil,
-                                            nil,
-                                            true
-                                        )
-
-
-                                    }
-                            }
-
 
 #if os(iOS)
                             Toggle("設備方向鎖定偵測",isOn:$lockDetect)
