@@ -1577,6 +1577,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
     func rebuildAudio() {
+        audioProcessor?.cleanup()
         audioProcessor = AudioProcessor(
             mediaMixer: mediaMixer,
             volumeNotifier: volumeNotifier!,
@@ -1590,6 +1591,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     }
     func rebuildVideo() {
+        videoProcessor?.cleanup()
         videoProcessor = VideoFrameProcessor(
             mediaMixer: mediaMixer,
             sendlog: { message in

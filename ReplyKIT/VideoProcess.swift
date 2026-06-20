@@ -117,17 +117,17 @@ final class VideoFrameProcessor {
 
     func process(_ sampleBuffer: CMSampleBuffer, oringinaltime: CMSampleTimingInfo) {
         guard let imageBuffer = sampleBuffer.imageBuffer else { return }
-        guard acquireSlot() else {
-            let now = CACurrentMediaTime()
-            if now - lastDropLog > 1.0 {
-                lastDropLog = now
-                sendlog("⚠️ VideoProcessor: dropping frame (inflight=4)")
-            }
-            return
-        }
         Task { [weak self] in
-            defer { self?.releaseSlot() }
             guard let self = self, self.isActive else { return }
+            guard self.acquireSlot() else {
+                let now = CACurrentMediaTime()
+                if now - lastDropLog > 1.0 {
+                    lastDropLog = now
+                    sendlog("⚠️ VideoProcessor: dropping frame (inflight=4)")
+                }
+                return
+            }
+            defer { self.releaseSlot() }
 
             guard let rotator = queue.sync(execute: { () -> RPVideoRotatorNV12BatchQueueOptimized? in
                 let key = (
