@@ -5,18 +5,76 @@ import CoreMedia
 
 
 final class VideoFrameProcessor {
-    private actor RotatorManager {
+    private actor ProcessorActor {
         private var rotator: RPVideoRotatorNV12BatchQueueOptimized?
         private var lastKey: (useBic: Bool, dstW: Int, dstH: Int, outW: Int, outH: Int, RotateOriginal: Bool)?
         private let sendlog: (String) -> Void
         private var debug: Bool
+        private var isProcessing = false
+        private var frameCount: Int = 0
+        private var lastDropLog: CFTimeInterval = 0
 
         init(debug: Bool, sendlog: @escaping (String) -> Void) {
             self.debug = debug
             self.sendlog = sendlog
         }
 
-        func getOrCreateRotator() async -> RPVideoRotatorNV12BatchQueueOptimized? {
+        func processFrame(
+            imageBuffer: CVImageBuffer,
+            originalTime: CMSampleTimingInfo,
+            angle: RotationAngle,
+            mediaMixer: MediaMixer,
+            sendlog sendLog: @escaping (String) -> Void
+        ) async {
+            guard !isProcessing else {
+                let now = CACurrentMediaTime()
+                if now - lastDropLog > 1.0 {
+                    lastDropLog = now
+                    sendLog("⚠️ VideoProcessor: dropping frame (busy)")
+                }
+                return
+            }
+            isProcessing = true
+            defer { isProcessing = false }
+
+            guard let rotator = await getOrCreateRotator() else { return }
+
+            guard let rotated = await rotator.rotateAsync(
+                pixelBuffer: imageBuffer,
+                originalTime: originalTime,
+                angle: angle
+            ) else { return }
+
+            let pts = originalTime.presentationTimeStamp
+            let duration: CMTime
+            if originalTime.duration.isValid, originalTime.duration.seconds > 0 {
+                duration = originalTime.duration
+            } else {
+                duration = CMTime(seconds: 1.0 / 60.0, preferredTimescale: 600)
+            }
+            var correctedTiming = CMSampleTimingInfo(
+                duration: duration,
+                presentationTimeStamp: pts,
+                decodeTimeStamp: CMTime.invalid
+            )
+            var correctedBuffer: CMSampleBuffer?
+            CMSampleBufferCreateCopyWithNewTiming(
+                allocator: kCFAllocatorDefault,
+                sampleBuffer: rotated,
+                sampleTimingEntryCount: 1,
+                sampleTimingArray: &correctedTiming,
+                sampleBufferOut: &correctedBuffer
+            )
+
+            guard await mediaMixer.isRunning else { return }
+            if let cb = correctedBuffer {
+                await mediaMixer.append(cb)
+            } else {
+                await mediaMixer.append(rotated)
+            }
+        }
+
+        private func getOrCreateRotator() async -> RPVideoRotatorNV12BatchQueueOptimized? {
             let key = (
                 useBic: RPConfig.shared.state.useBic,
                 dstW: RPConfig.shared.state.ADWidth,
@@ -76,26 +134,7 @@ final class VideoFrameProcessor {
 
     private let mediaMixer: MediaMixer
     private let sendlog: (String) -> Void
-    private let rotatorManager: RotatorManager
-
-    // 限制同時 inflight frame 數量，避免 GPU 積壓
-    private var inflightCount = 0
-    private let inflightLock = NSLock()
-    private var lastDropLog: CFTimeInterval = 0
-
-    private func acquireSlot() -> Bool {
-        inflightLock.lock()
-        defer { inflightLock.unlock() }
-        guard inflightCount < 8 else { return false }
-        inflightCount += 1
-        return true
-    }
-
-    private func releaseSlot() {
-        inflightLock.lock()
-        inflightCount -= 1
-        inflightLock.unlock()
-    }
+    private let processorActor: ProcessorActor
 
     var angle = RotationAngle(
                 rawValue: UInt32(RPConfig.shared.state.Rotate)
@@ -120,7 +159,7 @@ final class VideoFrameProcessor {
         self.sendlog = sendlog
         self.isActive = true
         self.hasPublished = false
-        self.rotatorManager = RotatorManager(
+        self.processorActor = ProcessorActor(
             debug: RPConfig.shared.enableRotateLog,
             sendlog: sendlog
         )
@@ -132,19 +171,19 @@ final class VideoFrameProcessor {
 
     func cleanup() {
         isActive = false
-        Task { await rotatorManager.cleanup() }
+        Task { await processorActor.cleanup() }
     }
 
     func setRotatorDebug(_ value: Bool) async {
-        await rotatorManager.updateDebug(value)
+        await processorActor.updateDebug(value)
     }
 
     func setRotatorTsDebug(_ value: Bool) async {
-        await rotatorManager.updateTsDebug(value)
+        await processorActor.updateTsDebug(value)
     }
 
     func setRotatorDestination(width: Int, height: Int) async {
-        await rotatorManager.updateDestination(width: width, height: height)
+        await processorActor.updateDestination(width: width, height: height)
     }
 
     deinit {
@@ -152,58 +191,17 @@ final class VideoFrameProcessor {
         sendlog("🧹 VideoFrameProcessor deinit — resources released")
     }
 
-
     func process(_ sampleBuffer: CMSampleBuffer, oringinaltime: CMSampleTimingInfo) {
         guard let imageBuffer = sampleBuffer.imageBuffer else { return }
         Task { [weak self] in
-            guard let self = self, self.isActive else { return }
-            guard self.acquireSlot() else {
-                let now = CACurrentMediaTime()
-                if now - lastDropLog > 1.0 {
-                    lastDropLog = now
-                    sendlog("⚠️ VideoProcessor: dropping frame (inflight=8)")
-                }
-                return
-            }
-            defer { self.releaseSlot() }
-
-            guard let rotator = await rotatorManager.getOrCreateRotator() else { return }
-
-            guard let rotated = await rotator.rotateAsync(
-                pixelBuffer: imageBuffer,
+            guard let self, self.isActive else { return }
+            await self.processorActor.processFrame(
+                imageBuffer: imageBuffer,
                 originalTime: oringinaltime,
-                angle: self.angle
-            ) else { return }
-
-            let pts = oringinaltime.presentationTimeStamp
-            let duration: CMTime
-            if oringinaltime.duration.isValid, oringinaltime.duration.seconds > 0 {
-                duration = oringinaltime.duration
-            } else {
-                duration = CMTime(seconds: 1.0 / 60.0, preferredTimescale: 600)
-            }
-            var correctedTiming = CMSampleTimingInfo(
-                duration: duration,
-                presentationTimeStamp: pts,
-                decodeTimeStamp: CMTime.invalid
+                angle: self.angle,
+                mediaMixer: self.mediaMixer,
+                sendlog: self.sendlog
             )
-            var correctedBuffer: CMSampleBuffer?
-            CMSampleBufferCreateCopyWithNewTiming(
-                allocator: kCFAllocatorDefault,
-                sampleBuffer: rotated,
-                sampleTimingEntryCount: 1,
-                sampleTimingArray: &correctedTiming,
-                sampleBufferOut: &correctedBuffer
-            )
-
-            guard await mediaMixer.isRunning else {
-                return
-            }
-            if let cb = correctedBuffer {
-                await self.mediaMixer.append(cb)
-            } else {
-                await self.mediaMixer.append(rotated)
-            }
         }
     }
 

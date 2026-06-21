@@ -2176,45 +2176,24 @@ struct homeView:View{
                         .cornerRadius(8)
 
 
+                        #if os(iOS)
+                        Toggle("設備方向鎖定偵測",isOn:$lockDetect)
+                            .onChange(of: lockDetect) { enabled in
+                                if enabled {
+                                    print("啟用")
+                                    StableLockRotationDetector.shared.debugMode=true
+                                    StableLockRotationDetector.shared.startMonitoring()
+                                } else {
+                                    StableLockRotationDetector.shared.stopMonitoring()
+                                    print("停用偵測")
+                                }
+                            }
+#endif
+                        
+
+
                     }
                     .frame(maxWidth: .infinity)
-
-
-                    VStack(spacing:10){
-
-                        
-                        VStack(alignment: .leading){
-
-#if os(iOS)
-                            Toggle("設備方向鎖定偵測",isOn:$lockDetect)
-                                .onChange(of: lockDetect) { enabled in
-                                    if enabled {
-                                        print("啟用")
-                                        StableLockRotationDetector.shared.debugMode=true
-                                        StableLockRotationDetector.shared.startMonitoring()
-                                    } else {
-                                        StableLockRotationDetector.shared.stopMonitoring()
-                                        print("停用偵測")
-                                    }
-                                }
-#endif
-
-                        }
-                        .frame(maxWidth: .infinity) //
-
-                        .fixedSize(horizontal: false, vertical: true) // 撐滿寬度，內容自適應高度
-
-                        .padding()
-                        #if os(iOS)
-                        .background(Color(UIColor.secondarySystemGroupedBackground))
-                        #elseif os(macOS)
-                        .background(Color(NSColor.windowBackgroundColor))
-                        #endif
-
-                        .cornerRadius(8)
-
-                    }
-                    .frame(maxWidth: .infinity) // 撐滿右側空間
 
                 }
                 .padding()
