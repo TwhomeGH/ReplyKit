@@ -1200,6 +1200,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     // }
 
     var isStopping = false
+    private var processorsInitialized = false
 
     func stopBroadcastWithError(_ message: String) {
 
@@ -1557,11 +1558,15 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     func rebuildAudio() {
         // 讓他自己使用deinit清理資源，然後重建一個新的實例
+        guard let notifier = volumeNotifier else {
+            sendlog(message: "⚠️ rebuildAudio: volumeNotifier 為 nil，跳過重建")
+            return
+        }
         audioProcessor = nil
 
         audioProcessor = AudioProcessor(
             mediaMixer: mediaMixer,
-            volumeNotifier: volumeNotifier!,
+            volumeNotifier: notifier,
             appAddVolume: appAddVolume,
             micAddVolume: micAddVolume,
             appVolume: appVolume,
@@ -1825,7 +1830,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 }
                 sendlog(message: "已註冊 Socket 重連自動同步")
 
-                sendlog(message:"✅ Processor 初始化完成")
+                processorsInitialized = true
+            sendlog(message:"✅ Processor 初始化完成")
 
                 logger.info("✅ Processor 初始化完成")
 
@@ -2160,7 +2166,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 videoProcessor?.process(sampleBuffer,oringinaltime:timing )
 
-            } else {
+            } else if processorsInitialized {
                 if lastTimestamp.seconds > lastlogTime + logInterval  {
                     sendlog(message: "Video進程不存在！")
                     lastlogTime = lastTimestamp.seconds
@@ -2198,7 +2204,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     audioProcessor?
                         .enqueue(sampleBuffer, trackType: trackType,oringinaltime:timing)
 
-                } else {
+                } else if processorsInitialized {
                     if lastTimestamp.seconds > lastlogTimeAudio + logInterval  {
                         sendlog(message: "Audio進程不存在！")
                         lastlogTimeAudio = lastTimestamp.seconds
