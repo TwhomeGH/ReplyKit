@@ -19,44 +19,14 @@ final class VideoFrameProcessor {
         func processFrame(
             imageBuffer: CVImageBuffer,
             originalTime: CMSampleTimingInfo,
-            angle: RotationAngle,
-            mediaMixer: MediaMixer
-        ) async {
-            guard let rotator = await getOrCreateRotator() else { return }
-
-            guard let rotated = await rotator.rotateAsync(
+            angle: RotationAngle
+        ) async -> CMSampleBuffer? {
+            guard let rotator = await getOrCreateRotator() else { return nil }
+            return await rotator.rotateAsync(
                 pixelBuffer: imageBuffer,
                 originalTime: originalTime,
                 angle: angle
-            ) else { return }
-
-            let pts = originalTime.presentationTimeStamp
-            let duration: CMTime
-            if originalTime.duration.isValid, originalTime.duration.seconds > 0 {
-                duration = originalTime.duration
-            } else {
-                duration = CMTime(seconds: 1.0 / 60.0, preferredTimescale: 600)
-            }
-            var correctedTiming = CMSampleTimingInfo(
-                duration: duration,
-                presentationTimeStamp: pts,
-                decodeTimeStamp: CMTime.invalid
             )
-            var correctedBuffer: CMSampleBuffer?
-            CMSampleBufferCreateCopyWithNewTiming(
-                allocator: kCFAllocatorDefault,
-                sampleBuffer: rotated,
-                sampleTimingEntryCount: 1,
-                sampleTimingArray: &correctedTiming,
-                sampleBufferOut: &correctedBuffer
-            )
-
-            guard await mediaMixer.isRunning else { return }
-            if let cb = correctedBuffer {
-                await mediaMixer.append(cb)
-            } else {
-                await mediaMixer.append(rotated)
-            }
         }
 
         private func getOrCreateRotator() async -> RPVideoRotatorNV12BatchQueueOptimized? {
@@ -180,12 +150,39 @@ final class VideoFrameProcessor {
         guard let imageBuffer = sampleBuffer.imageBuffer else { return }
         Task { [weak self] in
             guard let self, self.isActive else { return }
-            await self.processorActor.processFrame(
+            guard let rotated = await self.processorActor.processFrame(
                 imageBuffer: imageBuffer,
                 originalTime: oringinaltime,
-                angle: self.angle,
-                mediaMixer: self.mediaMixer
+                angle: self.angle
+            ) else { return }
+
+            let pts = oringinaltime.presentationTimeStamp
+            let duration: CMTime
+            if oringinaltime.duration.isValid, oringinaltime.duration.seconds > 0 {
+                duration = oringinaltime.duration
+            } else {
+                duration = CMTime(seconds: 1.0 / 60.0, preferredTimescale: 600)
+            }
+            var correctedTiming = CMSampleTimingInfo(
+                duration: duration,
+                presentationTimeStamp: pts,
+                decodeTimeStamp: CMTime.invalid
             )
+            var correctedBuffer: CMSampleBuffer?
+            CMSampleBufferCreateCopyWithNewTiming(
+                allocator: kCFAllocatorDefault,
+                sampleBuffer: rotated,
+                sampleTimingEntryCount: 1,
+                sampleTimingArray: &correctedTiming,
+                sampleBufferOut: &correctedBuffer
+            )
+
+            guard await self.mediaMixer.isRunning else { return }
+            if let cb = correctedBuffer {
+                await self.mediaMixer.append(cb)
+            } else {
+                await self.mediaMixer.append(rotated)
+            }
         }
     }
 
