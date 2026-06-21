@@ -10,9 +10,6 @@ final class VideoFrameProcessor {
         private var lastKey: (useBic: Bool, dstW: Int, dstH: Int, outW: Int, outH: Int, RotateOriginal: Bool)?
         private let sendlog: (String) -> Void
         private var debug: Bool
-        private var isProcessing = false
-        private var frameCount: Int = 0
-        private var lastDropLog: CFTimeInterval = 0
 
         init(debug: Bool, sendlog: @escaping (String) -> Void) {
             self.debug = debug
@@ -23,20 +20,8 @@ final class VideoFrameProcessor {
             imageBuffer: CVImageBuffer,
             originalTime: CMSampleTimingInfo,
             angle: RotationAngle,
-            mediaMixer: MediaMixer,
-            sendlog sendLog: @escaping (String) -> Void
+            mediaMixer: MediaMixer
         ) async {
-            guard !isProcessing else {
-                let now = CACurrentMediaTime()
-                if now - lastDropLog > 1.0 {
-                    lastDropLog = now
-                    sendLog("⚠️ VideoProcessor: dropping frame (busy)")
-                }
-                return
-            }
-            isProcessing = true
-            defer { isProcessing = false }
-
             guard let rotator = await getOrCreateRotator() else { return }
 
             guard let rotated = await rotator.rotateAsync(
@@ -199,8 +184,7 @@ final class VideoFrameProcessor {
                 imageBuffer: imageBuffer,
                 originalTime: oringinaltime,
                 angle: self.angle,
-                mediaMixer: self.mediaMixer,
-                sendlog: self.sendlog
+                mediaMixer: self.mediaMixer
             )
         }
     }
