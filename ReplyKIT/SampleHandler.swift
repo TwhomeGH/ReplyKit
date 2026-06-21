@@ -1623,7 +1623,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             sendlog(message: "🔄 RTMP connect \(url)")
             let connectResult = try await rtmpConnection?.connect(url)
-            sendlog(message: "🔄 RTMP connect 完成: \(connectResult ?? "nil")")
+            sendlog(message: "🔄 RTMP connect 完成: \(connectResult?.description ?? "nil")")
             sendlog(message: "🔄 RTMP publish \(fixlogSafeKey(key))")
             _ = try await rtmpStream.publish(key)
 
