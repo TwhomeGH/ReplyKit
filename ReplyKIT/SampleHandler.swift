@@ -1608,8 +1608,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 sendlog(message: "RTMP 重連失敗 \(error)")
                 self.notifyReconnectStatus(.failed)
             case .exhausted:
-                sendlog(message: "⚠️ RTMP 重連次數已達上限")
+                sendlog(message: "⚠️ RTMP 重連次數已達上限，停止直播")
                 self.notifyReconnectStatus(.exhausted)
+                self.stopBroadcastWithError("RTMP 重連次數已達上限")
             }
         }
 
@@ -1620,8 +1621,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 return
             }
 
-            _ = try await rtmpConnection?.connect(url)
-
+            sendlog(message: "🔄 RTMP connect \(url)")
+            let connectResult = try await rtmpConnection?.connect(url)
+            sendlog(message: "🔄 RTMP connect 完成: \(connectResult?.description ?? "nil")")
+            sendlog(message: "🔄 RTMP publish \(fixlogSafeKey(key))")
             _ = try await rtmpStream.publish(key)
 
             // 連線完成後再讓 MediaMixer 開始消費 frame，避免 frame 在 socket 未就緒時被丟棄
@@ -1769,16 +1772,15 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 return
             }
 
+            // 🔹 從 Socket 拿 RTMP 設定
+            rtmpURL = RPConfig.shared.state.RTMPURL
+            rtmpKey = RPConfig.shared.state.RTMPKey
+            sendlog(message: "使用 RTMP \(rtmpURL ?? "nil") key:\(fixlogSafeKey(rtmpKey ?? "nil"))")
 
-                // 🔹 從 UserDefaults 拿 RTMP 設定
-                rtmpURL = RPConfig.shared.state.RTMPURL
-                rtmpKey = RPConfig.shared.state.RTMPKey
-
-
-                self.setUserDefalutConfig(
-                    urlString: self.rtmpURL ?? "rtmp://192.168.0.242/live",
-                    streamKey: self.rtmpKey ?? "test"
-                )
+            self.setUserDefalutConfig(
+                urlString: self.rtmpURL ?? "rtmp://192.168.0.242/live",
+                streamKey: self.rtmpKey ?? "test"
+            )
 
 
                 logger.debug("✅ RTMP設定: \(String(describing: self.rtmpURL)) \(String(describing: self.rtmpKey))")

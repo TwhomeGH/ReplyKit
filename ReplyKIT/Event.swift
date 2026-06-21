@@ -658,7 +658,7 @@ final class RPConfig {
     var enableSocketLog: Bool = false
     var enableRotateLog: Bool = false
 
-    var enableLog: Bool = false
+    var enableLog: Bool = true
     var logMode: Int = 1
     var onLogPage: Bool = false
 
@@ -686,7 +686,7 @@ final class RPConfig {
 
 
         enableLog=SharedDefaults.group?.bool(forKey: "Enablelog")
-        ?? false
+        ?? true
 
         onLogPage=SharedDefaults.group?.bool(forKey: "onlogPage")
         ?? false
