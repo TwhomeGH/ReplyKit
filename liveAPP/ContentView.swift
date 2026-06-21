@@ -2031,7 +2031,7 @@ struct homeView:View{
     @AppStorage("logAppBackground",store:userDefaults) private var logAppBackground = false
 
 
-    @AppStorage("h264level",store: userDefaults) var h264level: String = "Main"
+    @AppStorage("h264level",store: userDefaults) var h264level: String = "AutoHigh"
 
     // 封裝成 Binding
     var selectedProfile: Binding<H264Profile> {
