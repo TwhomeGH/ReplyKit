@@ -1603,6 +1603,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 self.isSessionReady = true
                 self.notifyReconnectStatus(.success)
                 await self.mediaMixer.startRunning()
+
+                self.initProcessors()
+
                 self.startDisconnectMonitor()
             case .failed(let error):
                 sendlog(message: "RTMP 重連失敗 \(error)")
@@ -1807,8 +1810,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 logger.info("✅ MediaMixer 配置完成")
 
-                self.initProcessors()
-
+                
                 // configureVideo_init() 已套用完整 videoSettings，此處僅 log 確認
                 let publishSize = await rtmpStream.videoSettings.videoSize
                 sendlog(message: "RTMP Publish 前 videoSize: \(Int(publishSize.width))x\(Int(publishSize.height))")
