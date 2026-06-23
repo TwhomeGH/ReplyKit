@@ -1696,10 +1696,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             sendlog(message: "🔄 RTMP publish \(fixlogSafeKey(key))")
             _ = try await rtmpStream.publish(key)
 
-            // 連線完成後再讓 MediaMixer 開始消費 frame，避免 frame 在 socket 未就緒時被丟棄
-            await mediaMixer.startRunning()
-
-            sendlog(message:"🎉 RTMP:\(url)/ KEY:\(fixlogSafeKey(key)) 連線中...",flush: true)
+            sendlog(message:"🎉 RTMP:\(url)/ KEY:\(fixlogSafeKey(key)) 連線成功",flush: true)
             // step 4: 標記 session ready
             await MainActor.run {
                 // Add output
@@ -1886,6 +1883,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 processorsInitialized = true
                 sendlog(message:"✅ Processor 初始化完成 audio:\(audioProcessor != nil) video:\(videoProcessor != nil)")
                 logger.info("✅ Processor 初始化完成")
+
+                // 先啟動 MediaMixer，避免連線失敗時整條管線停擺
+                await mediaMixer.startRunning()
+                sendlog(message:"✅ MediaMixer 已啟動，開始接收音視頻數據")
 
                 await self.startRTMP(url: self.rtmpURL , key: self.rtmpKey)
 
