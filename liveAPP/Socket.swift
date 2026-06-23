@@ -63,7 +63,7 @@ class SocketServer:ObservableObject {
     }
 
 
-    private var restartWorkItem: DispatchWorkItem?
+    private var currentRestartKey: String?
 
     @Published private(set) var isStopping = false
 
@@ -109,18 +109,15 @@ class SocketServer:ObservableObject {
         }
         lastRestartTime = Date()
 
-        restartWorkItem?.cancel()
-
-        let work = DispatchWorkItem { [weak self] in
+        let restartKey = "restart_\(UUID().uuidString)"
+        currentRestartKey = restartKey
+        queue.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self else { return }
+            guard self.currentRestartKey == restartKey else { return }
             self.logTo("Restarting SocketServer...")
             self.stopInternal()
             self.start()
-
         }
-
-        restartWorkItem = work
-        queue.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
     // MARK: - C callback
@@ -1001,12 +998,16 @@ class SocketServer:ObservableObject {
 
     private var sendQueues: [ObjectIdentifier: [[String: Any]]] = [:]
     private var sendingFlags: [ObjectIdentifier: Bool] = [:]
+    private var sendTimeoutFlags: [String: Bool] = [:]
 
 
     // MARK: 群播
     func queueSend(payload: [String: Any]) {
-        for conn in connections.values {
-            enqueue(payload, to: conn)
+        queue.async { [weak self] in
+            guard let self else { return }
+            for conn in self.connections.values {
+                self.enqueue(payload, to: conn)
+            }
         }
     }
 
@@ -1048,22 +1049,20 @@ class SocketServer:ObservableObject {
             self.resetIdleTimer(for: conn)
 
 
-            // ⚠️ 啟動 watchdog timer
-            let sendTimeout: DispatchWorkItem = DispatchWorkItem { [weak self, weak conn] in
-
+            // ⚠️ 啟動 watchdog timer，使用 flag 避免 DispatchWorkItem 的 over-release
+            let timeoutKey = "send_\(id)"
+            self.sendTimeoutFlags[timeoutKey] = true
+            self.queue.asyncAfter(deadline: .now() + 10) { [weak self, weak conn] in
                 guard let self, let conn else { return }
+                guard self.sendTimeoutFlags.removeValue(forKey: timeoutKey) != nil else { return }
                 self.logTo("Send timeout, removing connection")
                 self.removeConnection(conn)
             }
 
-            self.queue.asyncAfter(deadline: .now() + 10, execute: sendTimeout)
-
             conn.send(content: dataWithNewline, completion: .contentProcessed { [weak self] error in
 
-                sendTimeout.cancel() // 成功回來就取消 watchdog
-
                 guard let self = self else { return }
-
+                self.sendTimeoutFlags.removeValue(forKey: timeoutKey)
 
                 if let error {
                     self.removeConnection(conn)
