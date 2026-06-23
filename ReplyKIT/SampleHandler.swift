@@ -1021,12 +1021,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                                 sendlog(message:"[Audio] ⚠️ 延遲重試逾時或已停止，跳過")
                                 return
                             }
-                            sendlog(message:"[Audio] 延遲重試: processors 已就緒，套用 onAudioPage=\(self.RPConfig.shared.onAudioPage)")
+                            sendlog(message:"[Audio] 延遲重試: processors 已就緒，套用 onAudioPage=\(RPConfig.shared.onAudioPage)")
                             if self.audioProcessor != nil {
-                                self.audioProcessor?.updatePage(status: self.RPConfig.shared.onAudioPage)
+                                self.audioProcessor?.updatePage(status: RPConfig.shared.onAudioPage)
                             } else {
                                 self.rebuildAudio()
-                                self.audioProcessor?.updatePage(status: self.RPConfig.shared.onAudioPage)
+                                self.audioProcessor?.updatePage(status: RPConfig.shared.onAudioPage)
                             }
                         }
                     }
