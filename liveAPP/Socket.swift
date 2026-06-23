@@ -742,6 +742,7 @@ class SocketServer:ObservableObject {
         let enableLog = userDefaults?.bool(forKey: "Enablelog") ?? false
         let enableSocketLog = userDefaults?.bool(forKey: "EnableSocketlog") ?? false
         let enableTimeDebug = userDefaults?.bool(forKey: "EnableTimeDebug") ?? false
+        let enablePipelineLog = userDefaults?.bool(forKey: "EnablePipelineLog") ?? false
 
         LPConfig.shared.logMode = logMode
         LPConfig.shared.logURL = logURL
@@ -758,11 +759,11 @@ class SocketServer:ObservableObject {
             "enableLog": enableLog,
             "enableSocketLog": enableSocketLog,
             "enableTimeDebug": enableTimeDebug,
+            "enablePipelineLog": enablePipelineLog,
 
 
 
         ]
-
         logTo("RTMP DebugLogConfig[Socket]\(payload)")
 
         return payload

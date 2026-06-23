@@ -431,10 +431,30 @@ final class AudioProcessor : @unchecked Sendable {
     }
 
 
+    private var enqueueCount: Int = 0
+    private var lastEnqueueLog: CFTimeInterval = 0
+
     func enqueue(_ sampleBuffer: CMSampleBuffer, trackType: AudioTrackType, oringinaltime: CMSampleTimingInfo) {
+        enqueueCount += 1
+        let pts = oringinaltime.presentationTimeStamp.seconds
+        let now = CACurrentMediaTime()
+        let enablePipeLog = RPConfig.shared.enablePipelineLog
+        let shouldLog = enablePipeLog && (enqueueCount == 1 || enqueueCount % 300 == 0 || (now - lastEnqueueLog) > 5.0)
+
         Task { [weak self] in
-            guard let self = self, self.isActive else { return }
-            guard await mediaMixer.isRunning else { return }
+            guard let self = self, self.isActive else {
+                if shouldLog { sendlog(message: "[AudioProcessor] ⚠️ #\(enqueueCount) 跳過: isActive=\(self?.isActive ?? false)") }
+                return
+            }
+            guard await mediaMixer.isRunning else {
+                if shouldLog { sendlog(message: "[AudioProcessor] ⚠️ #\(enqueueCount) MediaMixer 未運行 PTS:\(String(format:"%.3f",pts))s") }
+                return
+            }
+
+            if shouldLog {
+                lastEnqueueLog = now
+                sendlog(message: "[AudioProcessor] #\(enqueueCount) 進入 track:\(trackType) PTS:\(String(format:"%.3f",pts))s mode:\(self.UseOringin ? "原始" : "專用")")
+            }
 
             if self.UseOringin {
 
@@ -442,6 +462,7 @@ final class AudioProcessor : @unchecked Sendable {
                 let retimed = retimeAudioBuffer(RSample, originalTime: oringinaltime)
                 processRMS(retimed, trackType: trackType)
 
+                if shouldLog { sendlog(message: "[AudioProcessor] #\(enqueueCount) 送出MediaMixer track:\(trackType.rawValue)") }
                 await self.mediaMixer.append(RSample, track: trackType.rawValue)
 
             } else {
@@ -453,6 +474,7 @@ final class AudioProcessor : @unchecked Sendable {
                 let retimed = retimeAudioBuffer(sampleBuffer, originalTime: oringinaltime)
                 processRMS(retimed, trackType: trackType)
 
+                if shouldLog { sendlog(message: "[AudioProcessor] #\(enqueueCount) 送出MediaMixer track:\(trackType.rawValue)") }
                 await self.mediaMixer.append(sampleBuffer, track: trackType.rawValue)
             }
         }

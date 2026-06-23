@@ -107,6 +107,8 @@ final class VideoFrameProcessor {
     var isActive = true
     var hasPublished = false
     var debug = RPConfig.shared.enableRotateLog
+    var processedCount: Int = 0
+    var sentCount: Int = 0
 
     init(mediaMixer: MediaMixer,
         sendlog: @escaping (String) -> Void) {
@@ -148,15 +150,32 @@ final class VideoFrameProcessor {
 
     func process(_ sampleBuffer: CMSampleBuffer, oringinaltime: CMSampleTimingInfo) {
         guard let imageBuffer = sampleBuffer.imageBuffer else { return }
+        let pts = oringinaltime.presentationTimeStamp
+        processedCount += 1
+        let isFirstFrame = processedCount == 1
+        let enablePipeLog = RPConfig.shared.enablePipelineLog
+
+        if enablePipeLog, isFirstFrame || processedCount % 300 == 0 {
+            sendlog("[VideoProcessor] #\(processedCount) 進入 PTS:\(String(format:"%.3f",pts.seconds))s")
+        }
+
         Task { [weak self] in
             guard let self, self.isActive else { return }
             guard let rotated = await self.processorActor.processFrame(
                 imageBuffer: imageBuffer,
                 originalTime: oringinaltime,
                 angle: self.angle
-            ) else { return }
+            ) else {
+                if enablePipeLog {
+                    sendlog("[VideoProcessor] ⚠️ #\(processedCount) 旋轉失敗 PTS:\(String(format:"%.3f",pts.seconds))s")
+                }
+                return
+            }
 
-            let pts = oringinaltime.presentationTimeStamp
+            if enablePipeLog, isFirstFrame || processedCount % 300 == 0 {
+                sendlog("[VideoProcessor] #\(processedCount) 旋轉完成 PTS:\(String(format:"%.3f",pts.seconds))s")
+            }
+
             let duration: CMTime
             if oringinaltime.duration.isValid, oringinaltime.duration.seconds > 0 {
                 duration = oringinaltime.duration
@@ -177,7 +196,16 @@ final class VideoFrameProcessor {
                 sampleBufferOut: &correctedBuffer
             )
 
-            guard await self.mediaMixer.isRunning else { return }
+            guard await self.mediaMixer.isRunning else {
+                if enablePipeLog {
+                    sendlog("[VideoProcessor] ⚠️ #\(processedCount) MediaMixer 未運行，跳過 PTS:\(String(format:"%.3f",pts.seconds))s")
+                }
+                return
+            }
+            sentCount += 1
+            if enablePipeLog, isFirstFrame || processedCount % 300 == 0 {
+                sendlog("[VideoProcessor] #\(processedCount) 送出MediaMixer PTS:\(String(format:"%.3f",pts.seconds))s")
+            }
             if let cb = correctedBuffer {
                 await self.mediaMixer.append(cb)
             } else {

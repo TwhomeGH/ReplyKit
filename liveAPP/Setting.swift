@@ -650,6 +650,7 @@ struct LogSettingView:View {
     @AppStorage("EnableRotatelog",store:userDefaults) private var EnableRotatelog = false
     @AppStorage("EnableSocketlog",store:userDefaults) private var EnableSocketlog = false
     @AppStorage("EnableTimeDebug",store:userDefaults) private var EnableTimeDebug = false
+    @AppStorage("EnablePipelineLog",store:userDefaults) private var EnablePipelineLog = false
 
     @AppStorage("ChangeBit",store:userDefaults) private var ChangeBit = true
     @AppStorage("isLowLatencyRateControlEnabled",store:userDefaults)  private var isLowLatencyRateControlEnabled = true
@@ -768,7 +769,16 @@ struct LogSettingView:View {
                     .foregroundColor(.secondary)
                     .padding(.bottom, 5)
 
-
+            Toggle(isOn: $EnablePipelineLog){
+                Text("啟用管線調試日誌 ！")
+            }
+            .onChange(of:EnablePipelineLog) { newValue in
+                CFNotificationCenterPostNotification(cfCenter, CFNotificationName("DebugPipeline" as CFString), nil, nil, true)
+            }
+            Text("啟用後顯示, 視頻/音頻幀流動日誌")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .padding(.bottom, 5)
 
             Toggle(isOn: $EnableSocketlog){
                 Text("啟用Socket轉送日誌 ！")

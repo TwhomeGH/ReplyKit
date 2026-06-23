@@ -216,7 +216,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 var newVolume = SharedDefaults.group?.double(forKey: "micAddVolume") ?? 1.0
 
-                guard let audioProcessor else { return }
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "micAddVolume", type: "Double") {
 
@@ -234,6 +233,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 }
 
                 micAddVolume=Float(newVolume)
+
+                guard let audioProcessor else {
+                    sendlog(message:"[Audio] micAdd 跳過: audioProcessor nil init:\(processorsInitialized)")
+                    return
+                }
                 audioProcessor.updateVolumes(micAdd: micAddVolume)
 
                 sendlog(message: String(
@@ -253,7 +257,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 var newVolume = SharedDefaults.group?.double(forKey: "appAddVolume") ?? 1.0
 
-                guard let audioProcessor else { return }
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "appAddVolume", type: "Double") {
 
@@ -271,6 +274,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 }
 
                 appAddVolume=Float(newVolume)
+
+                guard let audioProcessor else {
+                    sendlog(message:"[Audio] appAdd 跳過: audioProcessor nil init:\(processorsInitialized)")
+                    return
+                }
                 audioProcessor.updateVolumes(appAdd: appAddVolume)
 
                 sendlog(message: String(
@@ -289,8 +297,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             Task {
                 var newVolume = SharedDefaults.group?.double(forKey: "micVolume") ?? 1.0
-
-                guard let audioProcessor else { return }
 
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "micVolume", type: "Double") {
@@ -315,6 +321,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 ))
 
                 micVolume=Float(newVolume)
+
+                guard let audioProcessor else {
+                    sendlog(message:"[Audio] micVolume 跳過: audioProcessor nil init:\(processorsInitialized)")
+                    return
+                }
                 audioProcessor.updateVolumes(mic: micVolume)
 
 
@@ -329,9 +340,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             Task {
 
                 var newVolume = SharedDefaults.group?.double(forKey: "appVolume") ?? 1.0
-
-                guard let audioProcessor else { return }
-
 
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "appVolume", type: "Double") {
@@ -357,6 +365,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
                     appVolume=Float(newVolume)
+
+                    guard let audioProcessor else {
+                        sendlog(message:"[Audio] appVolume 跳過: audioProcessor nil init:\(processorsInitialized)")
+                        return
+                    }
                     audioProcessor.updateVolumes(app: appVolume)
 
                     await updateAppAudioVolume(appVolume)
@@ -440,10 +453,37 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             break
 
+        case "DebugPipeline":
+
+            Task {
+                var Plog=SharedDefaults.group?.bool(forKey: "EnablePipelineLog") ?? false
+                if RPConfig.shared.enableSocketLog {
+                    if let raw = try await SocketClient.shared.requestSet(for: "EnablePipelineLog", type: "Bool") {
+
+                        if let av = raw as? Bool {
+                            let oldV = Plog
+                            Plog = av
+
+                            logger.debug("EnablePipelineLog \(av)")
+                            sendlog(message: "Socket原始EnablePipelineLog數據包:\(av) -> \(oldV)")
+                        } else {
+                            logger.error("EnablePipelineLog 型別錯誤: \(type(of: raw))")
+                        }
+
+                    }
+                }
+
+                RPConfig.shared.enablePipelineLog = Plog
+                sendlog(message:"[管線調試日誌] enablePipelineLog \(Plog)")
+
+            }
+
+            break
 
 
 
         case "RotateOriginal":
+            
             
 
             Task {
@@ -955,26 +995,43 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     }
                 }
 
+                RPConfig.shared.onAudioPage = APage
+                sendlog(message: "AudioPage:\(String(describing: RPConfig.shared.onAudioPage)) processorInit:\(processorsInitialized)")
 
                 if audioProcessor != nil {
 
-                    RPConfig.shared.onAudioPage = APage
                     audioProcessor?.updatePage(status: RPConfig.shared.onAudioPage)
                     sendlog(
                         message:"[Audio] Page \(String(describing: RPConfig.shared.onAudioPage))"
                     )
 
+                } else if processorsInitialized {
+
+                    sendlog(message:"[Audio] ⚠️ audioProcessor 為 nil 但 processorsInitialized=true，呼叫 rebuildAudio")
+                    rebuildAudio()
+                    audioProcessor?.updatePage(status: RPConfig.shared.onAudioPage)
+
+                } else {
+
+                    sendlog(message:"[Audio] ⚠️ audioProcessor 為 nil，processorsInitialized=false，排程延遲重試")
+                    Task.detached { [weak self] in
+                        try? await Task.sleep(nanoseconds: 2_000_000_000)
+                        await MainActor.run {
+                            guard let self = self, self.processorsInitialized else {
+                                sendlog(message:"[Audio] ⚠️ 延遲重試逾時或已停止，跳過")
+                                return
+                            }
+                            sendlog(message:"[Audio] 延遲重試: processors 已就緒，套用 onAudioPage=\(self.RPConfig.shared.onAudioPage)")
+                            if self.audioProcessor != nil {
+                                self.audioProcessor?.updatePage(status: self.RPConfig.shared.onAudioPage)
+                            } else {
+                                self.rebuildAudio()
+                                self.audioProcessor?.updatePage(status: self.RPConfig.shared.onAudioPage)
+                            }
+                        }
+                    }
+
                 }
-
-                else {
-
-                    sendlog(message:"[Audio] audioProcessor is nil AudioProcessor!")
-
-
-                }
-
-
-                sendlog(message: "AudioPage:\(String(describing: RPConfig.shared.onAudioPage))")
 
             }
 
@@ -1118,6 +1175,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         guard let avOrientation = avOrientation(from: orientation) else { return }
 
+        sendlog(message: "[旋轉時間軸] updateVideoOrientation device:\(orientation.rawValue) av:\(avOrientation.rawValue)")
+
         var videoSettings = await rtmpStream.videoSettings
         var size = videoSettings.videoSize
 
@@ -1125,11 +1184,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         let newSize:CGSize
 
         if ODWidth > 0 && ODHeight > 0 {
-            sendlog(message: "畫布設定寬高：\(ODWidth) x \(ODHeight)")
+            sendlog(message: "[旋轉時間軸] 畫布設定寬高：\(ODWidth) x \(ODHeight)")
             size.width = CGFloat(ODHeight)
             size.height = CGFloat(ODWidth)
         }else if ADWidth > 0 && ADHeight > 0 {
-            sendlog(message: "用戶設定目標寬高：\(ADWidth) x \(ADHeight)")
+            sendlog(message: "[旋轉時間軸] 用戶設定目標寬高：\(ADWidth) x \(ADHeight)")
             size.width = CGFloat(ADHeight)
             size.height = CGFloat(ADWidth)
         }
@@ -1137,11 +1196,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         switch avOrientation {
         case .portrait, .portraitUpsideDown:
             newSize = CGSize(width: size.height, height: size.width)
-            sendlog(message: "直向:\(size) → \(videoSettings)")
+            sendlog(message: "[旋轉時間軸] 直向:\(size) → \(videoSettings)")
 
         default:
             newSize = CGSize(width: size.height, height: size.width)
-            sendlog(message: "橫向:\(size) → \(videoSettings)")
+            sendlog(message: "[旋轉時間軸] 橫向:\(size) → \(videoSettings)")
 
 
             break;
@@ -1526,6 +1585,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         }
 
         volumeNotifier = VolumeNotifier()
+        sendlog(message: "[Init] volumeNotifier created")
 
 
         audioProcessor = AudioProcessor(
@@ -1537,6 +1597,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 micVolume: micVolume,
                 onAudioPage: RPConfig.shared.onAudioPage
             )
+        sendlog(message: "[Init] audioProcessor created \(audioProcessor != nil)")
         
             videoProcessor = VideoFrameProcessor(
                 mediaMixer: mediaMixer,
@@ -1544,6 +1605,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     sendlog(message: message)
                 }
             )
+        sendlog(message: "[Init] videoProcessor created \(videoProcessor != nil)")
 
 
             
@@ -1572,7 +1634,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             micVolume: micVolume,
             onAudioPage: RPConfig.shared.onAudioPage
         )
-        sendlog(message: "已嘗試重建Audio")
+        sendlog(message: "[Rebuild] audioProcessor 重建 \(audioProcessor != nil)")
 
     }
     func rebuildVideo() {
@@ -1585,7 +1647,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 sendlog(message: message)
             }
         )
-        sendlog(message: "已嘗試重建Video")
+        sendlog(message: "[Rebuild] videoProcessor 重建 \(videoProcessor != nil)")
 
     }
 
@@ -2067,31 +2129,35 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         var avfrom = lastVideoOrientation
         let newSize: CGSize
 
-        sendlog(message: "ReplayKit 畫面方向 : \(RPConfig.shared.state.Rotate)")
+        let rotateConfig = RPConfig.shared.state.Rotate
+        sendlog(message: "ReplayKit 畫面方向 : \(rotateConfig) | AD:\(ADWidth)x\(ADHeight) OD:\(ODWidth)x\(ODHeight) 原始:\(width)x\(height)")
 
-        switch RPConfig.shared.state.Rotate {
+        switch rotateConfig {
             case 0,180:
                 avfrom = .portrait
+                sendlog(message: "[旋轉時間軸] 配置=直向(\(rotateConfig)°)")
             case 90,270:
                 avfrom = .landscapeRight
+                sendlog(message: "[旋轉時間軸] 配置=橫向(\(rotateConfig)°)")
             default:
                 avfrom = .landscapeRight
+                sendlog(message: "[旋轉時間軸] 配置=橫向預設(\(rotateConfig)°)")
                 break
         }
 
         switch avfrom {
         case .portrait, .portraitUpsideDown:
             newSize = CGSize(width: CGFloat(width), height: CGFloat(height))
-            sendlog(message: "初始更新直向")
+            sendlog(message: "[旋轉時間軸] 初始更新直向 size:\(newSize)")
             await mediaMixer.setVideoOrientation(.portrait)
         case .landscapeLeft,.landscapeRight:
             newSize = CGSize(width: CGFloat(height), height: CGFloat(width))
-            sendlog(message: "初始更新橫向")
+            sendlog(message: "[旋轉時間軸] 初始更新橫向 size:\(newSize)")
             await mediaMixer.setVideoOrientation(.landscapeRight)
             
         default:
             newSize = CGSize(width: CGFloat(height), height: CGFloat(width))
-            sendlog(message: "初始更新橫向")
+            sendlog(message: "[旋轉時間軸] 初始更新橫向(預設) size:\(newSize)")
             await mediaMixer.setVideoOrientation(.landscapeRight)
             
         }
@@ -2113,6 +2179,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     var lastlogTime : Double = 0.0
     var lastlogTimeAudio : Double = 0.0
     var logInterval : CFTimeInterval = 1.0
+    var logIntervalDetail : CFTimeInterval = 5.0
+    var videoFrameCount: Int = 0
+    var audioFrameCount: Int = 0
+    var lastDetailLogTime: Double = 0.0
 
 
     override func processSampleBuffer(_ sampleBuffer: CMSampleBuffer, with sampleBufferType: RPSampleBufferType) {
@@ -2162,13 +2232,20 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             //     )
             // }
 
+            videoFrameCount += 1
+
+            if RPConfig.shared.enablePipelineLog, videoFrameCount == 1 || videoFrameCount % 300 == 0 {
+                let sinceStart = timestamp.seconds
+                sendlog(message: "[Video流水] #\(videoFrameCount) PTS:\(String(format:"%.3f",sinceStart))s proc:\(videoProcessor != nil ? "Y" : "N") init:\(processorsInitialized)")
+            }
+
             if videoProcessor != nil {
 
                 videoProcessor?.process(sampleBuffer,oringinaltime:timing )
 
             } else if processorsInitialized {
                 if lastTimestamp.seconds > lastlogTime + logInterval  {
-                    sendlog(message: "Video進程不存在！")
+                    sendlog(message: "[Video] ⚠️ 進程不存在！ count:\(videoFrameCount)")
                     lastlogTime = lastTimestamp.seconds
                     if !isStopping {
                         rebuildVideo()
@@ -2189,6 +2266,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 let trackType: AudioTrackType = (sampleBufferType == .audioApp) ? .app : .mic
 
+                audioFrameCount += 1
+
+                if RPConfig.shared.enablePipelineLog, audioFrameCount == 1 || audioFrameCount % 300 == 0 {
+                    let sinceStart = timestamp.seconds
+                    sendlog(message: "[Audio流水] #\(audioFrameCount) track:\(trackType) PTS:\(String(format:"%.3f",sinceStart))s proc:\(audioProcessor != nil ? "Y" : "N") init:\(processorsInitialized)")
+                }
+
                 
                 if needAudioConfiguration  && !didConfigureAudio {
                     didConfigureAudio = true
@@ -2206,7 +2290,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 } else if processorsInitialized {
                     if lastTimestamp.seconds > lastlogTimeAudio + logInterval  {
-                        sendlog(message: "Audio進程不存在！")
+                        sendlog(message: "[Audio] ⚠️ 進程不存在！ count:\(audioFrameCount)")
                         lastlogTimeAudio = lastTimestamp.seconds
 
                         if !isStopping {

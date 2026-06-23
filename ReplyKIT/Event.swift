@@ -655,6 +655,7 @@ final class RPConfig {
 
     // 日誌相關
     var enableTimeDebug:Bool
+    var enablePipelineLog:Bool = false
     var enableSocketLog: Bool = false
     var enableRotateLog: Bool = false
 
@@ -679,6 +680,9 @@ final class RPConfig {
 
         enableTimeDebug = SharedDefaults.group?
             .bool(forKey: "EnableTimeDebug") ?? false
+
+        enablePipelineLog = SharedDefaults.group?
+            .bool(forKey: "EnablePipelineLog") ?? false
 
         enableRotateLog = SharedDefaults.group?.bool(forKey: "EnableRotatelog") ?? false
 
