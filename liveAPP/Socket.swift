@@ -621,6 +621,7 @@ class SocketServer:ObservableObject {
             "BitRate": userDefaults?.integer(forKey: "bitRate") ?? 3_900_000,
             "ChangeBit": userDefaults?.bool(forKey: "ChangeBit") ?? false,
             "isLowLatencyRateControlEnabled":userDefaults?.bool(forKey:"isLowLatencyRateControlEnabled") ?? true,
+            "useEnhancedRTMP":userDefaults?.bool(forKey:"useEnhancedRTMP") ?? false,
             "isOringinAudio":userDefaults?.bool(forKey:"isOringinAudio") ?? true,
 
             "h264level": userDefaults?

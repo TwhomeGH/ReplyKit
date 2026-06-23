@@ -1070,8 +1070,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     override init() {
 
         rtmpConnection = RTMPConnection()
+        rtmpConnection?.useEnhancedRTMP = RPConfig.shared.state.useEnhancedRTMP
         rtmpStream = RTMPStream(connection: rtmpConnection!)
-        
+
         
         ADWidth = RPConfig.shared.state.ADWidth
         ADHeight = RPConfig.shared.state.ADHeight
@@ -1858,10 +1859,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 _ = try? await rtmpConnection?.close()
 
                 rtmpConnection = RTMPConnection()
+                rtmpConnection?.useEnhancedRTMP = RPConfig.shared.state.useEnhancedRTMP
                 rtmpStream = RTMPStream(connection: rtmpConnection!)
 
                 lastConfiguredSize = nil
-                sendlog(message: "🔄 RTMP 連線物件已重新建立")
+                sendlog(message: "🔄 RTMP 連線物件已重新建立 useEnhancedRTMP:\(RPConfig.shared.state.useEnhancedRTMP)")
 
                 needVideoConfiguration = true
 

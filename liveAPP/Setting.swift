@@ -736,6 +736,18 @@ struct LogSettingView:View {
             .foregroundColor(.secondary)
             .padding(.bottom, 5)
 
+            Toggle(isOn: Binding(
+                get: { userDefaults?.bool(forKey: "useEnhancedRTMP") ?? false },
+                set: { userDefaults?.set($0, forKey: "useEnhancedRTMP") }
+            )){
+                Text("啟用 Enhanced RTMP (E-RTMP)")
+            }
+
+            Text("啟用後使用增強型 RTMP 協定，提高傳輸效率")
+            .font(.footnote)
+            .foregroundColor(.secondary)
+            .padding(.bottom, 5)
+
             Toggle(isOn:$isNotifyChat){
                                 Text("啟用聊天訊息通知！")
                             }
