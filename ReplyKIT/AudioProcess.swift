@@ -462,7 +462,7 @@ final class AudioProcessor : @unchecked Sendable {
                 let retimed = retimeAudioBuffer(RSample, originalTime: oringinaltime)
                 processRMS(retimed, trackType: trackType)
 
-                if shouldLog { sendlog(message: "[AudioProcessor] #\(self?.enqueueCount) 送出MediaMixer track:\(trackType.rawValue)") }
+                if shouldLog { sendlog(message: "[AudioProcessor] #\(enqueueCount) 送出MediaMixer track:\(trackType.rawValue)") }
                 await self.mediaMixer.append(RSample, track: trackType.rawValue)
 
             } else {
