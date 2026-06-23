@@ -1672,8 +1672,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 self.notifyReconnectStatus(.success)
                 await self.mediaMixer.startRunning()
 
-                self.initProcessors()
-
                 self.startDisconnectMonitor()
             case .failed(let error):
                 sendlog(message: "RTMP 重連失敗 \(error)")
@@ -1883,6 +1881,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 let publishSize = await rtmpStream.videoSettings.videoSize
                 sendlog(message: "RTMP Publish 前 videoSize: \(Int(publishSize.width))x\(Int(publishSize.height))")
 
+                // 先初始化 Processor，確保音視頻管線在 RTMP 連線前準備就緒
+                initProcessors()
+                processorsInitialized = true
+                sendlog(message:"✅ Processor 初始化完成 audio:\(audioProcessor != nil) video:\(videoProcessor != nil)")
+                logger.info("✅ Processor 初始化完成")
+
                 await self.startRTMP(url: self.rtmpURL , key: self.rtmpKey)
 
                 isInitialSyncDone = true
@@ -1892,12 +1896,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     }
                 }
                 sendlog(message: "已註冊 Socket 重連自動同步")
-
-                initProcessors()
-                processorsInitialized = true
-            sendlog(message:"✅ Processor 初始化完成")
-
-                logger.info("✅ Processor 初始化完成")
 
 
                 
