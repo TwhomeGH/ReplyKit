@@ -442,18 +442,18 @@ final class AudioProcessor : @unchecked Sendable {
         let shouldLog = enablePipeLog && (enqueueCount == 1 || enqueueCount % 300 == 0 || (now - lastEnqueueLog) > 5.0)
 
         Task { [weak self] in
-            guard let self = self, self.isActive else {
-                if shouldLog { sendlog(message: "[AudioProcessor] ⚠️ #\(self?.enqueueCount) 跳過: isActive=\(self?.isActive ?? false)") }
+            guard let self, self.isActive else {
+                if shouldLog { sendlog(message: "[AudioProcessor] ⚠️ #\(enqueueCount) 跳過: isActive=\(isActive)") }
                 return
             }
             guard await mediaMixer.isRunning else {
-                if shouldLog { sendlog(message: "[AudioProcessor] ⚠️ #\(self?.enqueueCount) MediaMixer 未運行 PTS:\(String(format:"%.3f",pts))s") }
+                if shouldLog { sendlog(message: "[AudioProcessor] ⚠️ #\(enqueueCount) MediaMixer 未運行 PTS:\(String(format:"%.3f",pts))s") }
                 return
             }
 
             if shouldLog {
                 lastEnqueueLog = now
-                sendlog(message: "[AudioProcessor] #\(self?.enqueueCount) 進入 track:\(trackType) PTS:\(String(format:"%.3f",pts))s mode:\(self?.UseOringin == true ? "原始" : "專用")")
+                sendlog(message: "[AudioProcessor] #\(enqueueCount) 進入 track:\(trackType) PTS:\(String(format:"%.3f",pts))s mode:\(UseOringin ? "原始" : "專用")")
             }
 
             if self.UseOringin {
