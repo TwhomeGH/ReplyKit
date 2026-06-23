@@ -1663,7 +1663,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             case .started(let attempt, let maxAttempts):
                 sendlog(message: "🔄 RTMP 正在重連 (第 \(attempt)/\(maxAttempts) 次)...")
                 self.notifyReconnectStatus(.attempting, attempt: attempt)
-                await self.mediaMixer.stopRunning()
+                // 重連期間保持 MediaMixer 運行，讓音視頻管線持續處理數據
                 self.disconnectMonitorTask?.cancel()
                 self.disconnectMonitorTask = nil
             case .succeeded:
