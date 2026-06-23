@@ -1557,9 +1557,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
     func rebuildAudio() {
-        // 讓他自己使用deinit清理資源，然後重建一個新的實例
+        if volumeNotifier == nil {
+            sendlog(message: "🔄 rebuildAudio: volumeNotifier 為 nil，重新建立")
+            volumeNotifier = VolumeNotifier()
+        }
         guard let notifier = volumeNotifier else {
-            sendlog(message: "⚠️ rebuildAudio: volumeNotifier 為 nil，跳過重建")
+            sendlog(message: "⚠️ rebuildAudio: volumeNotifier 建立失敗")
             return
         }
         audioProcessor = nil
