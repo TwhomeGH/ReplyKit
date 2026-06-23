@@ -1557,12 +1557,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
     func rebuildAudio() {
-        if volumeNotifier == nil {
-            sendlog(message: "🔄 rebuildAudio: volumeNotifier 為 nil，重新建立")
-            volumeNotifier = VolumeNotifier()
-        }
+        // 讓他自己使用deinit清理資源，然後重建一個新的實例
         guard let notifier = volumeNotifier else {
-            sendlog(message: "⚠️ rebuildAudio: volumeNotifier 建立失敗")
+            sendlog(message: "⚠️ rebuildAudio: volumeNotifier 為 nil，跳過重建")
             return
         }
         audioProcessor = nil
@@ -1833,6 +1830,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 }
                 sendlog(message: "已註冊 Socket 重連自動同步")
 
+                initProcessors()
                 processorsInitialized = true
             sendlog(message:"✅ Processor 初始化完成")
 
