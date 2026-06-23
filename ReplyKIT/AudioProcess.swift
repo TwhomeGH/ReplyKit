@@ -443,17 +443,17 @@ final class AudioProcessor : @unchecked Sendable {
 
         Task { [weak self] in
             guard let self = self, self.isActive else {
-                if shouldLog { sendlog(message: "[AudioProcessor] ⚠️ #\(self.enqueueCount) 跳過: isActive=\(self?.isActive ?? false)") }
+                if shouldLog { sendlog(message: "[AudioProcessor] ⚠️ #\(self?.enqueueCount) 跳過: isActive=\(self?.isActive ?? false)") }
                 return
             }
             guard await mediaMixer.isRunning else {
-                if shouldLog { sendlog(message: "[AudioProcessor] ⚠️ #\(self.enqueueCount) MediaMixer 未運行 PTS:\(String(format:"%.3f",pts))s") }
+                if shouldLog { sendlog(message: "[AudioProcessor] ⚠️ #\(self?.enqueueCount) MediaMixer 未運行 PTS:\(String(format:"%.3f",pts))s") }
                 return
             }
 
             if shouldLog {
                 lastEnqueueLog = now
-                sendlog(message: "[AudioProcessor] #\(enqueueCount) 進入 track:\(trackType) PTS:\(String(format:"%.3f",pts))s mode:\(self.UseOringin ? "原始" : "專用")")
+                sendlog(message: "[AudioProcessor] #\(self?.enqueueCount) 進入 track:\(trackType) PTS:\(String(format:"%.3f",pts))s mode:\(self?.UseOringin == true ? "原始" : "專用")")
             }
 
             if self.UseOringin {
@@ -462,7 +462,7 @@ final class AudioProcessor : @unchecked Sendable {
                 let retimed = retimeAudioBuffer(RSample, originalTime: oringinaltime)
                 processRMS(retimed, trackType: trackType)
 
-                if shouldLog { sendlog(message: "[AudioProcessor] #\(enqueueCount) 送出MediaMixer track:\(trackType.rawValue)") }
+                if shouldLog { sendlog(message: "[AudioProcessor] #\(self?.enqueueCount) 送出MediaMixer track:\(trackType.rawValue)") }
                 await self.mediaMixer.append(RSample, track: trackType.rawValue)
 
             } else {
