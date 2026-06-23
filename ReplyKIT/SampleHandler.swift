@@ -1858,6 +1858,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 _ = try? await rtmpStream.close()
                 _ = try? await rtmpConnection?.close()
 
+                rtmpConnection = nil
+                rtmpStream = nil 
+                
                 rtmpConnection = RTMPConnection(useEnhancedRTMP: RPConfig.shared.state.useEnhancedRTMP)
                 
                 rtmpStream = RTMPStream(connection: rtmpConnection!)
