@@ -1016,11 +1016,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     sendlog(message:"[Audio] ⚠️ audioProcessor 為 nil，processorsInitialized=false，排程延遲重試")
                     Task.detached { [weak self] in
                         try? await Task.sleep(nanoseconds: 2_000_000_000)
+                        guard let self else { return }
+                        let isInit = await MainActor.run { self.processorsInitialized }
+                        guard isInit else {
+                            await MainActor.run { sendlog(message:"[Audio] ⚠️ 延遲重試逾時或已停止，跳過") }
+                            return
+                        }
                         await MainActor.run {
-                            guard let self = self, self.processorsInitialized else {
-                                sendlog(message:"[Audio] ⚠️ 延遲重試逾時或已停止，跳過")
-                                return
-                            }
                             sendlog(message:"[Audio] 延遲重試: processors 已就緒，套用 onAudioPage=\(RPConfig.shared.onAudioPage)")
                             if self.audioProcessor != nil {
                                 self.audioProcessor?.updatePage(status: RPConfig.shared.onAudioPage)
