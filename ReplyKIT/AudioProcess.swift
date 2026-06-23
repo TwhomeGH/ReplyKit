@@ -443,11 +443,11 @@ final class AudioProcessor : @unchecked Sendable {
 
         Task { [weak self] in
             guard let self = self, self.isActive else {
-                if shouldLog { sendlog(message: "[AudioProcessor] ⚠️ #\(enqueueCount) 跳過: isActive=\(self?.isActive ?? false)") }
+                if shouldLog { sendlog(message: "[AudioProcessor] ⚠️ #\(self.enqueueCount) 跳過: isActive=\(self?.isActive ?? false)") }
                 return
             }
             guard await mediaMixer.isRunning else {
-                if shouldLog { sendlog(message: "[AudioProcessor] ⚠️ #\(enqueueCount) MediaMixer 未運行 PTS:\(String(format:"%.3f",pts))s") }
+                if shouldLog { sendlog(message: "[AudioProcessor] ⚠️ #\(self.enqueueCount) MediaMixer 未運行 PTS:\(String(format:"%.3f",pts))s") }
                 return
             }
 
