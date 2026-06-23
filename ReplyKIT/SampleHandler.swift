@@ -1069,8 +1069,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     // MARK: 初始化
     override init() {
 
-        rtmpConnection = RTMPConnection()
-        rtmpConnection?.useEnhancedRTMP = RPConfig.shared.state.useEnhancedRTMP
+        rtmpConnection = RTMPConnection(useEnhancedRTMP: RPConfig.shared.state.useEnhancedRTMP)
+        
         rtmpStream = RTMPStream(connection: rtmpConnection!)
 
         
@@ -1858,8 +1858,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 _ = try? await rtmpStream.close()
                 _ = try? await rtmpConnection?.close()
 
-                rtmpConnection = RTMPConnection()
-                rtmpConnection?.useEnhancedRTMP = RPConfig.shared.state.useEnhancedRTMP
+                rtmpConnection = RTMPConnection(useEnhancedRTMP: RPConfig.shared.state.useEnhancedRTMP)
+                
                 rtmpStream = RTMPStream(connection: rtmpConnection!)
 
                 lastConfiguredSize = nil
