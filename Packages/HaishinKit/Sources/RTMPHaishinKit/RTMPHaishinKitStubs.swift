@@ -12,9 +12,6 @@ open class RTMPConnection {
     public init() {}
     open func connect(_: String) async throws {}
     open func close() async throws {}
-    open var useEnhancedRTMP: Bool = false
-    open var isReconnectEnabled: Bool = false
-    open func setReconnectEnabled(_: Bool) async {}
 }
 
 // MARK: - RTMPStream

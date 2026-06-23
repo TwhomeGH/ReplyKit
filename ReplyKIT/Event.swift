@@ -501,6 +501,9 @@ final class RPConfig {
         // 關鍵幀間隔（秒），0=編碼器自動，>0=固定
         var KeyFrameInterval : Int = 2
 
+        // RTMP 內部日誌
+        var enableRTMPLog : Bool = false
+
     }
 
     var state: State
@@ -579,8 +582,9 @@ final class RPConfig {
                      ADHeight:Int? = nil,
                      ODWidth:Int? = nil,
                      ODHeight:Int? = nil,
-                     KeyFrameInterval:Int? = nil,
-                     ) {
+                      KeyFrameInterval:Int? = nil,
+                      enableRTMPLog:Bool? = nil,
+                      ) {
 
             if let RTMPURL = RTMPURL {
                 self.state.RTMPURL = RTMPURL
@@ -654,6 +658,10 @@ final class RPConfig {
 
             if let KeyFrameInterval = KeyFrameInterval {
                 self.state.KeyFrameInterval = KeyFrameInterval
+            }
+
+            if let enableRTMPLog = enableRTMPLog {
+                self.state.enableRTMPLog = enableRTMPLog
             }
 
     }
@@ -744,7 +752,8 @@ final class RPConfig {
              // 音訊自動增益
             enableAGCFix:SharedDefaults.group?.bool(forKey: "enableAGCFix") ?? false,
             // Metal 音訊降噪
-            enableMetalAudio:SharedDefaults.group?.bool(forKey: "enableMetalAudio") ?? false
+            enableMetalAudio:SharedDefaults.group?.bool(forKey: "enableMetalAudio") ?? false,
+            enableRTMPLog:SharedDefaults.group?.bool(forKey: "enableRTMPLog") ?? false
         )
 
 

@@ -748,6 +748,18 @@ struct LogSettingView:View {
             .foregroundColor(.secondary)
             .padding(.bottom, 5)
 
+            Toggle(isOn: Binding(
+                get: { userDefaults?.bool(forKey: "enableRTMPLog") ?? false },
+                set: { userDefaults?.set($0, forKey: "enableRTMPLog") }
+            )){
+                Text("啟用 RTMP 內部日誌")
+            }
+
+            Text("顯示 RTMP 連線層的內部事件日誌，便於排查連線問題")
+            .font(.footnote)
+            .foregroundColor(.secondary)
+            .padding(.bottom, 5)
+
             Toggle(isOn:$isNotifyChat){
                                 Text("啟用聊天訊息通知！")
                             }

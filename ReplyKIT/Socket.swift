@@ -872,6 +872,7 @@ class SocketClient : @unchecked Sendable {
         let enableMetalAudio: Bool
 
         let KeyFrameInterval: Int?
+        let enableRTMPLog: Bool?
 
         let appVolume: Double
         let micVolume: Double
@@ -924,7 +925,8 @@ class SocketClient : @unchecked Sendable {
             ADHeight: c.dstH,
             ODWidth: c.odstW,
             ODHeight: c.odstH,
-            KeyFrameInterval: c.KeyFrameInterval
+            KeyFrameInterval: c.KeyFrameInterval,
+            enableRTMPLog: c.enableRTMPLog
         )
 
         RPConfig.shared.updateAudio(
@@ -939,6 +941,7 @@ class SocketClient : @unchecked Sendable {
             enableMetalAudio: c.enableMetalAudio
         )
 
+        logRES.append("[Get]RTMPLog:\(c.enableRTMPLog ?? false)")
         logRES.append("[Get]Audio App:\(c.appVolume) Mic:\(c.micVolume) AppAdd:\(c.appVolumeAdd) MicAdd:\(c.micVolumeAdd)")
         logRES.append("[Get]Audio 降噪處理:\(c.enableNoiseFix) 回音處理:\(c.enableEchoFix) 自動增益:\(c.enableAGCFix) Metal:\(c.enableMetalAudio) ")
 

@@ -667,6 +667,8 @@ class SocketServer:ObservableObject {
 
             "KeyFrameInterval": userDefaults?
                 .integer(forKey: "KeyFrameInterval") ?? 2,
+            "enableRTMPLog": userDefaults?
+                .bool(forKey: "enableRTMPLog") ?? false,
 
         ]
 
