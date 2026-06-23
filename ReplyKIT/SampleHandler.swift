@@ -1456,8 +1456,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             await applyAllVideoSettings(width: dstW, height: dstH)
             sendlog(message: "預設影片尺寸: \(dstW)x\(dstH)")
         } else {
-            sendlog(message: "⚠️ 警告：未設定影片尺寸，將使用預設值 1280x720")
-            await applyAllVideoSettings(width: 1280, height: 720)
+            sendlog(message: "⚠️ 警告：未指定影片尺寸，將沿用ReplyKIT的寬高 Auto自動設置")
         }
 
     }

@@ -367,8 +367,9 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         self.hasMetalResources = false
 
 
+        let sizeStr = (dstWW > 0 && dstHH > 0) ? "\(dstWW)x\(dstHH)" : "auto(來源解析度)"
         sendlog(
-            message:"GPU Rotator init:\(dstWW)x\(dstHH) Debug:\(debug) 使用:\(qualityMode) PoolSize:\(maxPoolSize)",
+            message:"GPU Rotator init:\(sizeStr) Debug:\(debug) 使用:\(qualityMode) PoolSize:\(maxPoolSize)",
             flush: true
         )
 
