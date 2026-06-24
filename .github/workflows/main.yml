@@ -91,6 +91,13 @@ jobs:
           rm -rf ~/Library/Caches/org.swift.swiftpm/*
           rm -rf .build
 
+      # 2️⃣.5 Force resolve dependencies to locked revision
+      - name: Resolve SwiftPM dependencies
+        run: |
+          xcodebuild -resolvePackageDependencies -project liveAPP.xcodeproj
+        env:
+          scheme: ${{ steps.scheme.outputs.scheme }}
+
       - name: Fast compile 編譯檢查
         id: fast_build
         env:
