@@ -143,7 +143,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
            
 
-            Task.detached(priority: .userInitiated) {
+            Task {
                 appVolume = Float(RPConfig.shared.state.AppVolume)
                 micVolume = Float(RPConfig.shared.state.MicVolume)
 
@@ -212,7 +212,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         case "micAdd":
 
-            Task.detached(priority: .userInitiated) {
+            Task {
 
                 var newVolume = SharedDefaults.group?.double(forKey: "micAddVolume") ?? 1.0
 
@@ -253,7 +253,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             
 
-            Task.detached(priority: .userInitiated) {
+            Task {
 
                 var newVolume = SharedDefaults.group?.double(forKey: "appAddVolume") ?? 1.0
 
@@ -295,7 +295,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         case "micVolumeChanged":
             
 
-            Task.detached(priority: .userInitiated) {
+            Task {
                 var newVolume = SharedDefaults.group?.double(forKey: "micVolume") ?? 1.0
 
                 if RPConfig.shared.enableSocketLog {
@@ -337,7 +337,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         case "appVolumeChanged":
 
 
-            Task.detached(priority: .userInitiated) {
+            Task {
 
                 var newVolume = SharedDefaults.group?.double(forKey: "appVolume") ?? 1.0
 
@@ -397,7 +397,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         case "DebugRotate":
 
 
-            Task.detached(priority: .userInitiated) {
+            Task {
                 var Rlog=SharedDefaults.group?.bool(forKey: "EnableRotatelog") ?? false
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "EnableRotatelog", type: "Bool") {
@@ -427,7 +427,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         case "DebugTime":
             
 
-            Task.detached(priority: .userInitiated) {
+            Task {
 
                 var Rlog=SharedDefaults.group?.bool(forKey: "EnableTimeDebug") ?? false
                 if RPConfig.shared.enableSocketLog {
@@ -455,7 +455,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         case "DebugPipeline":
 
-            Task.detached(priority: .userInitiated) {
+            Task {
                 var Plog=SharedDefaults.group?.bool(forKey: "EnablePipelineLog") ?? false
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "EnablePipelineLog", type: "Bool") {
@@ -486,7 +486,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             
             
 
-            Task.detached(priority: .userInitiated) {
+            Task {
                 
                 var Rlog=SharedDefaults.group?.bool(
                 forKey: "RotateOriginal"
@@ -528,7 +528,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         case "Rotate":
 
-            Task.detached(priority: .userInitiated) {
+            Task {
                 var Rlog=SharedDefaults.group?.integer(forKey: "Rotate") ?? 90
 
                 if RPConfig.shared.enableSocketLog {
@@ -598,7 +598,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         case "SocketLog":
             
 
-            Task.detached(priority: .userInitiated) {
+            Task {
                 var Rlog=SharedDefaults.group?.bool(forKey: "EnableSocketlog") ?? false
 
                 
@@ -626,7 +626,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         case "ChangeBit":
             
-            Task.detached(priority: .userInitiated) {
+            Task {
 
                 var Rlog=SharedDefaults.group?.bool(forKey: "ChangeBit") ?? false
 
@@ -657,7 +657,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         case "bitRateChange":
 
-            Task.detached(priority: .userInitiated) {
+            Task {
 
                 var newBitRate = SharedDefaults.group?.integer(forKey: "bitRate") ?? 6_000_000
 
@@ -693,7 +693,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         case "logURL":
 
-            Task.detached(priority: .userInitiated) {
+            Task {
 
                 var logM=SharedDefaults.group?.string(
                     forKey: "logURL"
@@ -726,7 +726,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         case "logMode":
             
-            Task.detached(priority: .userInitiated) {
+            Task {
 
                 var logM=SharedDefaults.group?.integer(forKey: "logMode") ?? 0
                 if RPConfig.shared.enableSocketLog {
@@ -760,7 +760,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         case "onlogPage":
             
 
-            Task.detached(priority: .userInitiated) {
+            Task {
 
                 var logPage=SharedDefaults.group?.bool(forKey: "onlogPage") ?? false
 
@@ -818,7 +818,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "VideoSet":
-            Task.detached(priority: .userInitiated) {
+            Task {
                 let mediaSet = await mediaMixer.videoInputFormats
 
 
@@ -844,7 +844,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         case "OutW":
             var dstRW=SharedDefaults.group?.integer(forKey: "dstW") ?? 0
 
-            Task.detached(priority: .userInitiated) {
+            Task {
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(
                         for: "dstW",
@@ -894,7 +894,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         case "OutH":
             var dstRH=SharedDefaults.group?.integer(forKey: "dstH") ?? 0
 
-            Task.detached(priority: .userInitiated) {
+            Task {
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "dstH", type: "Int") {
 
@@ -945,7 +945,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         case "Enablelog":
             var Enablelog=SharedDefaults.group?.bool(forKey: "Enablelog") ?? false
 
-            Task.detached(priority: .userInitiated) {
+            Task {
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "Enablelog", type: "Bool") {
 
@@ -976,7 +976,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         case "onAudioPage":
             
-            Task.detached(priority: .userInitiated) {
+            Task {
                 var APage=SharedDefaults.group?.bool(forKey: "onAudioPage") ?? false
 
                 if RPConfig.shared.enableSocketLog {
@@ -1081,7 +1081,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         super.init()
 
-        Task.detached(priority: .userInitiated) {
+        Task {
             await rtmpConnection?.setOnLog { event in
                 guard RPConfig.shared.state.enableRTMPLog else { return }
                 sendlog(message: "[RTMP] \(event.level) \(event.message) \(event.detail ?? "")")
@@ -1258,7 +1258,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     //             sendlog(message: "方向Free中")
     //             #if os(iOS)
     //             guard let self else { return }
-    //             Task.detached(priority: .userInitiated) {
+    //             Task {
     //                 await self.updateVideoOrientation(from: deviceOrientation)
     //             }
     //             #endif
@@ -1279,7 +1279,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                             code: -1,
                             userInfo: [NSLocalizedDescriptionKey: message])
         // 如果 broadcastEnd 是 async
-           Task.detached(priority: .userInitiated) {
+           Task {
                sendlog(message: message)
                broadcastEnd(message: message)  // 等待清理完成
                await MainActor.run {
@@ -1298,7 +1298,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     // MARK: 斷線檢測
     func startDisconnectMonitor() {
-        disconnectMonitorTask = Task.detached(priority: .userInitiated) { [weak self, weak streamStataus] in
+        disconnectMonitorTask = Task { [weak self, weak streamStataus] in
             while !(self?.isStopping ?? true) {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 await streamStataus?.checkDisconnect(timeout: 5)
@@ -1554,7 +1554,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         await streamStataus?.refreshStatusTimestamp()
 
         await streamStataus?.setOnDisconnect { 
-            Task.detached(priority: .userInitiated) { @MainActor in
+            Task { @MainActor in
                 sendlog(message: "斷線監控觸發，由 RTMPConnection 處理重連")
             }
         }
@@ -1589,7 +1589,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     func initProcessors() {
 
-        Task.detached(priority: .userInitiated) { [weak self] in
+        Task { [weak self] in
             await self?.streamStataus?.updateVideoBitRate(to: RPConfig.shared.state.BitRate)
         }
 
@@ -1756,7 +1756,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         sendlog(message: "Socket 已重連，開始同步配置...")
 
-        Task.detached(priority: .userInitiated) {
+        Task {
             let oldRTMPURL = self.rtmpURL
             let oldRTMPKey = self.rtmpKey
 
@@ -1807,7 +1807,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         // User has requested to start the broadcast. Setup info from the UI extension can be suppdlied but optional.
 
 
-        Task.detached(priority: .userInitiated) {
+        Task {
 
         //進行Socket初始化
         SocketClient.shared.setupConnection()
@@ -1870,7 +1870,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 let enh = RPConfig.shared.state.useEnhancedRTMP
                 rtmpConnection = RTMPConnection(useEnhancedRTMP: enh)
 
-                Task.detached(priority: .userInitiated) {
+                Task {
                     await rtmpConnection?.setOnLog { event in
                         guard RPConfig.shared.state.enableRTMPLog else { return }
                         sendlog(message: "[RTMP] \(event.level) \(event.message) \(event.detail ?? "")")
@@ -1912,7 +1912,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 isInitialSyncDone = true
                 SocketClient.shared.onSocketReady = { [weak self] in
-                    Task.detached(priority: .userInitiated) { [weak self] in
+                    Task { [weak self] in
                         self?.handleSocketReconnected()
                     }
                 }
@@ -1947,7 +1947,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
 
-        Task.detached(priority: .userInitiated) {
+        Task {
 
             isStopping = true
             isBroadcasting = false
@@ -2231,7 +2231,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             if needVideoConfiguration {
                 
-                Task.detached(priority: .userInitiated) {
+                Task {
                     await self.configureVideo(sampleBuffer)
                 }
 
