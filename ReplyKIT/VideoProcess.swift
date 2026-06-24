@@ -164,7 +164,7 @@ final class VideoFrameProcessor {
             sendlog("[VideoProcessor] #\(localCount) 進入 PTS:\(String(format:"%.3f",pts.seconds))s")
         }
 
-        Task.detached(priority: .userInitiated) { [weak self] in
+        Task.detached(priority: .utility) { [weak self] in
             guard let self, self.isActive else { return }
 
             guard let rotated = await self.processorActor.processFrame(

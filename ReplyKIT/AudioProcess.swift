@@ -442,7 +442,7 @@ final class AudioProcessor : @unchecked Sendable {
         let shouldLog = enablePipeLog && (enqueueCount == 1 || enqueueCount % 300 == 0 || (now - lastEnqueueLog) > 5.0)
         let localCount = enqueueCount
 
-        Task.detached(priority: .userInitiated) { [weak self] in
+        Task.detached(priority: .utility) { [weak self] in
             guard let self, self.isActive else {
                 if shouldLog { sendlog(message: "[AudioProcessor] ⚠️ #\(localCount) 跳過: isActive=\(self?.isActive ?? false)") }
                 return
