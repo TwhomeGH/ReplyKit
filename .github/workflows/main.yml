@@ -37,7 +37,14 @@ jobs:
       - name: Get tag
         id: get_tag
         run: |
-          TAG=${GITHUB_REF#refs/tags/}
+          TAG=$(git tag --points-at HEAD | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -n1)
+          if [ -z "$TAG" ]; then
+            TAG=$(git tag --list "[0-9]*.[0-9]*.[0-9]*" | sort -V | tail -n1)
+          fi
+          if [ -z "$TAG" ]; then
+            echo "❌ No tag found"
+            exit 1
+          fi
           echo "TAG=$TAG" >> "$GITHUB_ENV"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "Using tag: $TAG"
