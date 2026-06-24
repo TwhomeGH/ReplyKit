@@ -1798,17 +1798,17 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         Task(priority: .medium) {
 
-        //進行Socket初始化
-        SocketClient.shared.setupConnection()
-        SocketClient.shared.sendLog(message: "直播開始，初始化Socket連線")
+            //進行Socket初始化
+            SocketClient.shared.setupConnection()
+            SocketClient.shared.sendLog(message: "直播開始，初始化Socket連線")
 
-        logger.info("運行通知")
+            logger.info("運行通知")
 
-        // 先關閉，等 socket 配置套用後再開啟
-        self.needVideoConfiguration = false
-        self.needAudioConfiguration = true
-        self.isBroadcasting = true
-        self.isStopping = false
+            // 先關閉，等 socket 配置套用後再開啟
+            self.needVideoConfiguration = false
+            self.needAudioConfiguration = true
+            self.isBroadcasting = true
+            self.isStopping = false
 
 
             //self.prepareCompressionSession()
