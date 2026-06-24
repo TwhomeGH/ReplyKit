@@ -5,41 +5,18 @@ import CoreMedia
 
 
 private final class FrameGate: @unchecked Sendable {
-    private let lock = NSLock()
-    private let maxConcurrent: Int
-    private var running = 0
-    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private let semaphore: DispatchSemaphore
 
-    init(max: Int) { maxConcurrent = max }
+    init(max: Int) {
+        semaphore = DispatchSemaphore(value: max)
+    }
 
-    func enter() async {
-        lock.lock()
-        if running < maxConcurrent {
-            running += 1
-            lock.unlock()
-            return
-        }
-        lock.unlock()
-        await withCheckedContinuation { cont in
-            lock.lock()
-            waiters.append(cont)
-            lock.unlock()
-        }
-        lock.lock()
-        running += 1
-        lock.unlock()
+    func enter() {
+        semaphore.wait()
     }
 
     func exit() {
-        lock.lock()
-        if let w = waiters.first {
-            waiters.removeFirst()
-            lock.unlock()
-            w.resume()
-        } else {
-            running = max(0, running - 1)
-            lock.unlock()
-        }
+        semaphore.signal()
     }
 }
 
@@ -193,16 +170,17 @@ final class VideoFrameProcessor {
         guard let imageBuffer = sampleBuffer.imageBuffer else { return }
         let pts = oringinaltime.presentationTimeStamp
         processedCount += 1
-        let isFirstFrame = processedCount == 1
+        let localCount = processedCount
+        let isFirstFrame = localCount == 1
         let enablePipeLog = RPConfig.shared.enablePipelineLog
 
-        if enablePipeLog, isFirstFrame || processedCount % 300 == 0 {
-            sendlog("[VideoProcessor] #\(processedCount) 進入 PTS:\(String(format:"%.3f",pts.seconds))s")
+        if enablePipeLog, isFirstFrame || localCount % 300 == 0 {
+            sendlog("[VideoProcessor] #\(localCount) 進入 PTS:\(String(format:"%.3f",pts.seconds))s")
         }
 
         Task.detached(priority: .userInitiated) { [weak self] in
             guard let self, self.isActive else { return }
-            await self.frameGate.enter()
+            self.frameGate.enter()
             defer { self.frameGate.exit() }
 
             guard let rotated = await self.processorActor.processFrame(
@@ -211,13 +189,13 @@ final class VideoFrameProcessor {
                 angle: self.angle
             ) else {
                 if enablePipeLog {
-                    sendlog("[VideoProcessor] ⚠️ #\(processedCount) 旋轉失敗 PTS:\(String(format:"%.3f",pts.seconds))s")
+                    sendlog("[VideoProcessor] ⚠️ #\(localCount) 旋轉失敗 PTS:\(String(format:"%.3f",pts.seconds))s")
                 }
                 return
             }
 
-            if enablePipeLog, isFirstFrame || processedCount % 300 == 0 {
-                sendlog("[VideoProcessor] #\(processedCount) 旋轉完成 PTS:\(String(format:"%.3f",pts.seconds))s")
+            if enablePipeLog, isFirstFrame || localCount % 300 == 0 {
+                sendlog("[VideoProcessor] #\(localCount) 旋轉完成 PTS:\(String(format:"%.3f",pts.seconds))s")
             }
 
             let duration: CMTime
@@ -242,13 +220,13 @@ final class VideoFrameProcessor {
 
             guard await self.mediaMixer.isRunning else {
                 if enablePipeLog {
-                    sendlog("[VideoProcessor] ⚠️ #\(processedCount) MediaMixer 未運行，跳過 PTS:\(String(format:"%.3f",pts.seconds))s")
+                    sendlog("[VideoProcessor] ⚠️ #\(localCount) MediaMixer 未運行，跳過 PTS:\(String(format:"%.3f",pts.seconds))s")
                 }
                 return
             }
-            sentCount += 1
-            if enablePipeLog, isFirstFrame || processedCount % 300 == 0 {
-                sendlog("[VideoProcessor] #\(processedCount) 送出MediaMixer PTS:\(String(format:"%.3f",pts.seconds))s")
+            self.sentCount += 1
+            if enablePipeLog, isFirstFrame || localCount % 300 == 0 {
+                sendlog("[VideoProcessor] #\(localCount) 送出MediaMixer PTS:\(String(format:"%.3f",pts.seconds))s")
             }
             if let cb = correctedBuffer {
                 await self.mediaMixer.append(cb)
