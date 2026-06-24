@@ -164,6 +164,7 @@ def analyze(ips_path, symbols_path=None):
     text = Path(ips_path).read_text(encoding="utf-8", errors="replace")
     lines = text.splitlines()
     crash = json.loads("".join(lines[1:]))
+    meta = json.loads(lines[0])
 
     resolver = SymbolResolver(symbols_path) if symbols_path else None
 
@@ -175,21 +176,32 @@ def analyze(ips_path, symbols_path=None):
     threads = crash.get("threads", [])
     images = crash.get("usedImages", [])
 
-    # 建立 imageIndex -> image info 對照
+    # image map
     img_map = {}
     for i, img in enumerate(images):
         img["_idx"] = i
         img_map[i] = img
 
-    app_base = images[0].get("base") if images else None
     app_image = images[0] if images else {}
+    app_base = app_image.get("base") if images else None
+    crash_uuid = meta.get("slice_uuid", "?")[:8]
 
-    # ── 輸出 header ──
+    # ── header ──
     label = BUG_LABEL.get(bt, "Unknown")
     has_atos = resolver and resolver.atos is not None
-    mode = "atos (行號)" if has_atos else ("symbols" if resolver else "offsets only")
-    print(f"bug_type {bt} ({label})  |  queue: {queue}  |  thread #{ft_idx}  |  mode: {mode}")
+    mode = "atos" if has_atos else ("symbols" if resolver else "offsets")
+    print(f"bug_type {bt} ({label})  |  thread #{ft_idx}  |  queue: {queue}  |  mode: {mode}")
     print(f"exception: {exc.get('type','?')}/{exc.get('signal','?')}")
+    print(f"crash UUID: {crash_uuid}")
+
+    # UUID check
+    symbol_uuid = getattr(resolver, 'symbol_uuid', None) if resolver else None
+    if symbol_uuid:
+        match = "MATCH" if symbol_uuid[:8] == crash_uuid else "MISMATCH"
+        print(f"symbol UUID: {symbol_uuid[:8]}  [{match}]")
+        if match == "MISMATCH":
+            print("  [!] 符號表與 crash binary UUID 不同，函數名可能不準確")
+    print()
 
     if "Stack Guard" in vminfo:
         stacks = re.findall(r'\[\s*(\d+K)\]\s+.*thread\s+(\d+)', vminfo)
