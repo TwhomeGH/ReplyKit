@@ -1071,7 +1071,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         let enh = RPConfig.shared.state.useEnhancedRTMP
         rtmpConnection = RTMPConnection(useEnhancedRTMP: enh)
-        rtmpConnection?.setOnLog = { [weak self] event in
+        rtmpConnection?.setOnLog { [weak self] event in
             guard RPConfig.shared.state.enableRTMPLog else { return }
             sendlog(message: "[RTMP] \(event.level) \(event.message) \(event.detail ?? "")")
         }
@@ -1867,7 +1867,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 
                 let enh = RPConfig.shared.state.useEnhancedRTMP
                 rtmpConnection = RTMPConnection(useEnhancedRTMP: enh)
-                rtmpConnection?.setOnLog = { [weak self] event in
+                rtmpConnection?.setOnLog { [weak self] event in
                     guard RPConfig.shared.state.enableRTMPLog else { return }
                     sendlog(message: "[RTMP] \(event.level) \(event.message) \(event.detail ?? "")")
                 }
