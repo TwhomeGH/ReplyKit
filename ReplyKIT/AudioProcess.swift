@@ -441,7 +441,7 @@ final class AudioProcessor : @unchecked Sendable {
         let enablePipeLog = RPConfig.shared.enablePipelineLog
         let shouldLog = enablePipeLog && (enqueueCount == 1 || enqueueCount % 300 == 0 || (now - lastEnqueueLog) > 5.0)
 
-        Task { [weak self] in
+        Task.detached(priority: .userInitiated) { [weak self] in
             guard let self, self.isActive else {
                 if shouldLog { sendlog(message: "[AudioProcessor] ⚠️ #\(enqueueCount) 跳過: isActive=\(isActive)") }
                 return

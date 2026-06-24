@@ -4,6 +4,46 @@ import ReplayKit
 import CoreMedia
 
 
+private final class FrameGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private let maxConcurrent: Int
+    private var running = 0
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    init(max: Int) { maxConcurrent = max }
+
+    func enter() async {
+        lock.lock()
+        if running < maxConcurrent {
+            running += 1
+            lock.unlock()
+            return
+        }
+        lock.unlock()
+        await withCheckedContinuation { cont in
+            lock.lock()
+            waiters.append(cont)
+            lock.unlock()
+        }
+        lock.lock()
+        running += 1
+        lock.unlock()
+    }
+
+    func exit() {
+        lock.lock()
+        if let w = waiters.first {
+            waiters.removeFirst()
+            lock.unlock()
+            w.resume()
+        } else {
+            running = max(0, running - 1)
+            lock.unlock()
+        }
+    }
+}
+
+
 final class VideoFrameProcessor {
     private actor ProcessorActor {
         private var rotator: RPVideoRotatorNV12BatchQueueOptimized?
@@ -90,6 +130,7 @@ final class VideoFrameProcessor {
     private let mediaMixer: MediaMixer
     private let sendlog: (String) -> Void
     private let processorActor: ProcessorActor
+    private let frameGate = FrameGate(max: 2)
 
     var angle = RotationAngle(
                 rawValue: UInt32(RPConfig.shared.state.Rotate)
@@ -159,8 +200,11 @@ final class VideoFrameProcessor {
             sendlog("[VideoProcessor] #\(processedCount) 進入 PTS:\(String(format:"%.3f",pts.seconds))s")
         }
 
-        Task { [weak self] in
+        Task.detached(priority: .userInitiated) { [weak self] in
             guard let self, self.isActive else { return }
+            await self.frameGate.enter()
+            defer { self.frameGate.exit() }
+
             guard let rotated = await self.processorActor.processFrame(
                 imageBuffer: imageBuffer,
                 originalTime: oringinaltime,
