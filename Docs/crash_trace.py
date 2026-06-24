@@ -17,16 +17,19 @@ if sys.platform == "win32":
 BUG_LABEL = {"309": "Stack Overflow", "288": "CPU Limit", "198": "Memory", "210": "Watchdog"}
 
 RECURSION_CAUSES = [
-    (["_WZ", "globalinit_", "vau", "supportedProtocols"],
-     "static let lazy 初始化遞迴", "把 static let 改成 computed var"),
-    (["completeTaskWithClosure", "mixerVideoContinuation", "mixerAudioContinuation", "VideoCaptureUnit", "AudioCaptureUnit"],
+    # (關鍵字, 最小匹配數, 描述, 修法)
+    (["supportedProtocols", "_WZ", "vau"], 1,
+     "supportedProtocols lazy 初始化遞迴", "把 static let 改成 computed var"),
+    (["completeTaskWithClosure", "mixerVideo", "mixerAudio"], 2,
      "AsyncStream yield() 同步鏈", "在 mixer(_:didOutput:) 用 Task { } 包 yield() 斷鏈"),
-    (["MetalRealTimeNoiseSuppressor", "runMetalKernel"],
-     "Metal noise suppressor 函數重入", "加上 isEnqueuing gate + rebuildAudio 時 explicit cleanup"),
-    (["DispatchSemaphore", "semaphore.wait"],
-     "DispatchSemaphore 阻塞 cooperative thread", "移出 cooperative pool 或換 async"),
-    (["__swift_coroFrameAllocStub"],
-     "Swift async frame alloc 遞迴", "減少深層 async call 或加節流 gate"),
+    (["MetalRealTimeNoiseSuppressor", "runMetalKernel"], 1,
+     "Metal noise suppressor 重入", "加 isEnqueuing gate + explicit cleanup"),
+    (["DispatchSemaphore", "semaphore.wait"], 1,
+     "DispatchSemaphore 阻塞 cooperative thread", "換 async 或移出 cooperative pool"),
+    (["__swift_coroFrameAllocStub"], 1,
+     "Swift async frame alloc 遞迴", "減少深層 async call / 加節流 gate"),
+    (["redacted function"], 1,
+     "符號表已 strip (redacted)", "用 symbols_text.txt 或 macOS atos"),
 ]
 
 
@@ -213,6 +216,7 @@ def analyze(ips_path, symbols_path=None):
         offset_counts[off] = offset_counts.get(off, 0) + 1
 
     all_func_names = []
+    all_raw_names = []  # 原始 mangled name，供根因檢測
 
     for i, f in enumerate(frames):
         off = f.get("imageOffset", 0)
@@ -244,6 +248,11 @@ def analyze(ips_path, symbols_path=None):
             func_name = "???"
 
         all_func_names.append(func_name)
+        # 也保留 .ips 原始 symbol 欄位 + offset（供 redacted 等模式檢測）
+        raw_sym = f.get("symbol", "")
+        if raw_sym and raw_sym != "???":
+            all_raw_names.append(raw_sym)
+        all_raw_names.append(f"+0x{off:x}")
 
         offset_str = f"+0x{off:x}"
         mark = " [!] RECUR" if offset_counts.get(off, 1) >= 3 else ""
@@ -267,7 +276,7 @@ def analyze(ips_path, symbols_path=None):
                 )
             print(f"  +0x{off:x} 出現 {count} 次  ->  {func or '?'}")
 
-        cause, fix = detect_cause(all_func_names)
+        cause, fix = detect_cause(all_func_names, all_raw_names)
         if cause:
             print(f"\n  根因: {cause}")
             print(f"  修法: {fix}")
@@ -291,13 +300,14 @@ def analyze(ips_path, symbols_path=None):
         print()
 
 
-def detect_cause(all_func_names):
+def detect_cause(all_func_names, raw_names=None):
+    """根據 frame 內容判斷遞迴根因"""
     all_text = " ".join(all_func_names)
-    for keywords, desc, fix in RECURSION_CAUSES:
+    if raw_names:
+        all_text += " " + " ".join(raw_names)  # 也搜原始 mangled name
+    for keywords, min_match, desc, fix in RECURSION_CAUSES:
         hits = [kw for kw in keywords if kw.lower() in all_text.lower()]
-        if len(hits) >= 2:
-            return desc, fix
-        if len(hits) == 1 and len(keywords) == 1:
+        if len(hits) >= min_match:
             return desc, fix
     return None, None
 
