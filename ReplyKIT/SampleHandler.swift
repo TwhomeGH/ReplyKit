@@ -1071,10 +1071,15 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         let enh = RPConfig.shared.state.useEnhancedRTMP
         rtmpConnection = RTMPConnection(useEnhancedRTMP: enh)
-        rtmpConnection?.setOnLog { [weak self] event in
-            guard RPConfig.shared.state.enableRTMPLog else { return }
-            sendlog(message: "[RTMP] \(event.level) \(event.message) \(event.detail ?? "")")
+
+        Task {
+            await rtmpConnection?.setOnLog { event in
+                guard RPConfig.shared.state.enableRTMPLog else { return }
+                sendlog(message: "[RTMP] \(event.level) \(event.message) \(event.detail ?? "")")
+            }
+
         }
+        
         rtmpStream = RTMPStream(connection: rtmpConnection!)
 
         
@@ -1867,10 +1872,15 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 
                 let enh = RPConfig.shared.state.useEnhancedRTMP
                 rtmpConnection = RTMPConnection(useEnhancedRTMP: enh)
-                rtmpConnection?.setOnLog { [weak self] event in
-                    guard RPConfig.shared.state.enableRTMPLog else { return }
-                    sendlog(message: "[RTMP] \(event.level) \(event.message) \(event.detail ?? "")")
+
+                Task {
+                    await rtmpConnection?.setOnLog { event in
+                        guard RPConfig.shared.state.enableRTMPLog else { return }
+                        sendlog(message: "[RTMP] \(event.level) \(event.message) \(event.detail ?? "")")
+                    }
+
                 }
+
                 rtmpStream = RTMPStream(connection: rtmpConnection!)
 
                 lastConfiguredSize = nil
