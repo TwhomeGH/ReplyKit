@@ -215,7 +215,7 @@ jobs:
             echo "=== Binary info ==="
             file "$APPEX"
             echo ""
-            echo "=== Full symbol map ==="
+            echo "=== Full symbol map (stripped binary) ==="
             nm -n "$APPEX" > build/symbol_map.txt 2>&1
             echo "Symbol map size: $(wc -l < build/symbol_map.txt) lines"
           else
@@ -225,6 +225,10 @@ jobs:
           if [ -f "$DSYM" ]; then
             echo "=== dSYM UUID ==="
             dwarfdump --uuid "$DSYM" 2>&1 || true
+            echo ""
+            echo "=== Non-stripped symbol map (dSYM) ==="
+            nm -n "$DSYM" > build/symbols_text.txt 2>&1
+            echo "dSYM symbol map size: $(wc -l < build/symbols_text.txt) lines"
           else
             echo "⚠️ dSYM not found at $DSYM"
           fi
@@ -235,6 +239,7 @@ jobs:
           name: crash-symbols
           path: |
             build/symbol_map.txt
+            build/symbols_text.txt
             build/liveApp.xcarchive/dSYMs/
 
       # 5️⃣ Export Unsigned IPA using external plist
