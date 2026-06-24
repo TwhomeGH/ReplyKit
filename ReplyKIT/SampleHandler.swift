@@ -1795,8 +1795,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     ) {
         // User has requested to start the broadcast. Setup info from the UI extension can be suppdlied but optional.
 
-        DispatchQueue.global(qos: .utility).async {
-            Task {
+        DispatchQueue.global(qos: .utility).async { [self] in
+            Task { [self] in
 
         //進行Socket初始化
         SocketClient.shared.setupConnection()
@@ -1805,10 +1805,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         logger.info("運行通知")
 
         // 先關閉，等 socket 配置套用後再開啟
-        needVideoConfiguration = false
-        needAudioConfiguration = true
-        isBroadcasting = true
-        isStopping = false
+        self.needVideoConfiguration = false
+        self.needAudioConfiguration = true
+        self.isBroadcasting = true
+        self.isStopping = false
 
 
             //self.prepareCompressionSession()
@@ -1830,14 +1830,14 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             guard result else {
                 let msg = "Socket 請求失敗，無法取得推流設定"
                 sendlog(message: msg)
-                stopBroadcastWithError(msg)
+                self.stopBroadcastWithError(msg)
                 return
             }
 
             // 🔹 從 Socket 拿 RTMP 設定
-            rtmpURL = RPConfig.shared.state.RTMPURL
-            rtmpKey = RPConfig.shared.state.RTMPKey
-            sendlog(message: "使用 RTMP \(rtmpURL ?? "nil") key:\(fixlogSafeKey(rtmpKey ?? "nil"))")
+            self.rtmpURL = RPConfig.shared.state.RTMPURL
+            self.rtmpKey = RPConfig.shared.state.RTMPKey
+            sendlog(message: "使用 RTMP \(self.rtmpURL ?? "nil") key:\(fixlogSafeKey(self.rtmpKey ?? "nil"))")
 
             self.setUserDefalutConfig(
                 urlString: self.rtmpURL ?? "rtmp://192.168.0.242/live",
@@ -1847,21 +1847,21 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 logger.debug("✅ RTMP設定: \(String(describing: self.rtmpURL)) \(String(describing: self.rtmpKey))")
 
-                sendlog(message:"✅App:\(appVolume)  Mic:\(micVolume) AppAdd:\(appAddVolume) MicAdd:\(micAddVolume)")
+                sendlog(message:"✅App:\(self.appVolume)  Mic:\(self.micVolume) AppAdd:\(self.appAddVolume) MicAdd:\(self.micAddVolume)")
 
                 // socket 收完所有參數後才建立連線
                 let enh = RPConfig.shared.state.useEnhancedRTMP
-                rtmpConnection = RTMPConnection(useEnhancedRTMP: enh)
-                rtmpStream = RTMPStream(connection: rtmpConnection!)
+                self.rtmpConnection = RTMPConnection(useEnhancedRTMP: enh)
+                self.rtmpStream = RTMPStream(connection: self.rtmpConnection!)
 
-                await rtmpConnection?.setOnLog { event in
+                await self.rtmpConnection?.setOnLog { event in
                     guard RPConfig.shared.state.enableRTMPLog else { return }
                     sendlog(message: "[RTMP] \(event.level) \(event.message) \(event.detail ?? "")")
                 }
 
-                lastConfiguredSize = nil
+                self.lastConfiguredSize = nil
 
-                needVideoConfiguration = true
+                self.needVideoConfiguration = true
 
                 await self.configureVideo_init()
                 await self.configureAudio()
@@ -1873,22 +1873,22 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 
                 // configureVideo_init() 已套用完整 videoSettings，此處僅 log 確認
-                let publishSize = await rtmpStream.videoSettings.videoSize
+                let publishSize = await self.rtmpStream.videoSettings.videoSize
                 sendlog(message: "RTMP Publish 前 videoSize: \(Int(publishSize.width))x\(Int(publishSize.height))")
 
                 // 先初始化 Processor，確保音視頻管線在 RTMP 連線前準備就緒
-                initProcessors()
-                processorsInitialized = true
-                sendlog(message:"✅ Processor 初始化完成 audio:\(audioProcessor != nil) video:\(videoProcessor != nil)")
+                self.initProcessors()
+                self.processorsInitialized = true
+                sendlog(message:"✅ Processor 初始化完成 audio:\(self.audioProcessor != nil) video:\(self.videoProcessor != nil)")
                 logger.info("✅ Processor 初始化完成")
 
                 // 先啟動 MediaMixer，避免連線失敗時整條管線停擺
-                await mediaMixer.startRunning()
+                await self.mediaMixer.startRunning()
                 sendlog(message:"✅ MediaMixer 已啟動，開始接收音視頻數據")
 
                 await self.startRTMP(url: self.rtmpURL , key: self.rtmpKey)
 
-                isInitialSyncDone = true
+                self.isInitialSyncDone = true
                 SocketClient.shared.onSocketReady = { [weak self] in
                     Task { [weak self] in
                         self?.handleSocketReconnected()
