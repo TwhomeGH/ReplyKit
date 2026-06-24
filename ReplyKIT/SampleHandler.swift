@@ -2260,6 +2260,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 sendlog(message: "[Video流水] #\(videoFrameCount) PTS:\(String(format:"%.3f",sinceStart))s proc:\(videoProcessor != nil ? "Y" : "N") init:\(processorsInitialized)")
             }
 
+            
             if videoProcessor != nil {
 
                 videoProcessor?.process(sampleBuffer,oringinaltime:timing )
