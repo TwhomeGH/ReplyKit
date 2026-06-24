@@ -308,7 +308,10 @@ final class MetalRealTimeNoiseSuppressor {
         vDSP_vmul(split.imagp, 1, gain, 1, split.imagp, 1, vDSP_Length(binCount))
     }
 
-    // MARK: - Async GPU kernel with timeout (Scheme A + C)
+    // MARK: - GPU kernel with timeout (Scheme A + C)
+    // Runs synchronously — caller is responsible for ensuring this is not
+    // invoked on a cooperative-thread-pool thread. AudioProcess.enqueue()
+    // throttling (isEnqueuing gate) prevents re-entrant calls.
     private func runMetalKernelWithTimeout(split: inout DSPSplitComplex) -> Bool {
         let binCount = fftSize / 2
 

@@ -1616,11 +1616,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
     func rebuildAudio() {
-        // 讓他自己使用deinit清理資源，然後重建一個新的實例
         guard let notifier = volumeNotifier else {
             sendlog(message: "⚠️ rebuildAudio: volumeNotifier 為 nil，跳過重建")
             return
         }
+        audioProcessor?.cleanup()
         audioProcessor = nil
 
         audioProcessor = AudioProcessor(
@@ -1636,7 +1636,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     }
     func rebuildVideo() {
-        // 讓他自己使用deinit清理資源，然後重建一個新的實例
+        videoProcessor?.cleanup()
         videoProcessor = nil
 
         videoProcessor = VideoFrameProcessor(
@@ -1963,7 +1963,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             _ = try? await rtmpConnection?.close()
 
             volumeNotifier=nil
+            videoProcessor?.cleanup()
             videoProcessor=nil
+            audioProcessor?.cleanup()
             audioProcessor=nil
             // AdaptiveVideoBufferManager 已停用
             // adaptiveBufferManager = nil
