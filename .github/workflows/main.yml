@@ -24,6 +24,16 @@ jobs:
           fetch-tags: true
           ref: ${{ github.event.workflow_run.head_sha }}
 
+      # 1️⃣.5 HaishinKit dependency version
+      - name: Show & inject HaishinKit revision
+        run: |
+          echo "=== HaishinKitFixSwfit (Package.resolved) ==="
+          grep -A5 "haishinkitfixswfit" liveAPP.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved | head -10
+          HASH=$(grep -A5 "haishinkitfixswfit" liveAPP.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved \
+            | grep revision | cut -d'"' -f4 | cut -c1-7)
+          echo "REVISION=$HASH" >> "$GITHUB_ENV"
+          echo "HaishinKit revision: $HASH"
+
       - name: Get tag from tag workflow
         id: get_tag
         run: |
@@ -93,9 +103,16 @@ jobs:
           scheme: ${{ steps.scheme.outputs.scheme }}
           filetype_parameter: ${{ steps.filetype_parameter.outputs.filetype_parameter }}
           file_to_build: ${{ steps.filetype_parameter.outputs.file_to_build }}
+          REVISION: ${{ env.REVISION }}
         continue-on-error: true
         run: |
           echo "Running a fast build on iOS Simulator to surface compile errors quickly"
+          # Inject revision into checked-out HaishinKit source
+          CONST_FILE=SourcePackages/checkouts/HaishinKitFixSwfit/HaishinKit/Sources/Util/Constants.swift
+          if [ -f "$CONST_FILE" ]; then
+            sed -i '' 's/kHaishinKitRevision = \".*\"/kHaishinKitRevision = \"'"$REVISION"'\"/' "$CONST_FILE"
+            echo "Injected revision $REVISION into $CONST_FILE"
+          fi
           set +e
           xcodebuild -scheme "$scheme" -"$filetype_parameter" "$file_to_build" \
             -sdk iphonesimulator -configuration Debug \
@@ -134,13 +151,20 @@ jobs:
           scheme: ${{ steps.scheme.outputs.scheme }}
           filetype_parameter: ${{ steps.filetype_parameter.outputs.filetype_parameter }}
           file_to_build: ${{ steps.filetype_parameter.outputs.file_to_build }}
+          REVISION: ${{ env.REVISION }}
 
         run: |
           mkdir -p build
           
+          CONST_FILE=SourcePackages/checkouts/HaishinKitFixSwfit/HaishinKit/Sources/Util/Constants.swift
+          if [ -f "$CONST_FILE" ]; then
+            sed -i '' 's/kHaishinKitRevision = \".*\"/kHaishinKitRevision = \"'"$REVISION"'\"/' "$CONST_FILE"
+            echo "Injected revision $REVISION into $CONST_FILE"
+          fi
+          
           xcodebuild clean -$filetype_parameter "$file_to_build" -scheme "$scheme" -configuration Release
           
-    
+     
           xcodebuild archive \
             -$filetype_parameter "$file_to_build" \
             -scheme "$scheme" \

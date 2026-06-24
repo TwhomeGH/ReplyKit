@@ -5,8 +5,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/TwhomeGH/HaishinKitFixSwfit.git",
       "state" : {
-        "revision" : "a6e170bb1f595d9c925ea9f6d2e59f974c6efe3c",
-        "version" : null
+        "branch" : "main",
+        "revision" : "3481fcee101e596c043a7753c8b1ca8210f60372"
       }
     }
   ],
