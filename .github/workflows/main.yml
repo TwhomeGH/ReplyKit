@@ -1,12 +1,14 @@
 name: iOS Archive & Release via Tag
 
 on:
-  push:
-    tags:
-      - '[0-9]*.[0-9]*.[0-9]*'
+  workflow_run:
+    workflows: ["Check Changes & Trigger Tag"]
+    types:
+      - completed
 
 jobs:
   build:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: macos-26
     env:
       FASTLANE_USER: ${{ secrets.APPID }}
@@ -20,7 +22,7 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-          ref: ${{ github.ref }}
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       # 1️⃣.5 HaishinKit dependency version
       - name: Show & inject HaishinKit revision
