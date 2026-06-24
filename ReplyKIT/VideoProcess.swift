@@ -113,6 +113,7 @@ final class VideoFrameProcessor {
     var debug = RPConfig.shared.enableRotateLog
     var processedCount: Int = 0
     var sentCount: Int = 0
+    private var isProcessing = false
 
     init(mediaMixer: MediaMixer,
         sendlog: @escaping (String) -> Void) {
@@ -153,7 +154,8 @@ final class VideoFrameProcessor {
     }
 
     func process(_ sampleBuffer: CMSampleBuffer, oringinaltime: CMSampleTimingInfo) {
-        guard let imageBuffer = sampleBuffer.imageBuffer else { return }
+        guard let imageBuffer = sampleBuffer.imageBuffer, !isProcessing else { return }
+        isProcessing = true
         let pts = oringinaltime.presentationTimeStamp
         processedCount += 1
         let localCount = processedCount
@@ -165,7 +167,8 @@ final class VideoFrameProcessor {
         }
 
         Task.detached(priority: .utility) { [weak self] in
-            guard let self, self.isActive else { return }
+            guard let self, self.isActive else { self?.isProcessing = false; return }
+            defer { self.isProcessing = false }
 
             guard let rotated = await self.processorActor.processFrame(
                 imageBuffer: imageBuffer,

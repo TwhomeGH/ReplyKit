@@ -433,8 +433,11 @@ final class AudioProcessor : @unchecked Sendable {
 
     private var enqueueCount: Int = 0
     private var lastEnqueueLog: CFTimeInterval = 0
+    private var isEnqueuing = false
 
     func enqueue(_ sampleBuffer: CMSampleBuffer, trackType: AudioTrackType, oringinaltime: CMSampleTimingInfo) {
+        guard !isEnqueuing else { return }
+        isEnqueuing = true
         enqueueCount += 1
         let pts = oringinaltime.presentationTimeStamp.seconds
         let now = CACurrentMediaTime()
@@ -443,10 +446,8 @@ final class AudioProcessor : @unchecked Sendable {
         let localCount = enqueueCount
 
         Task.detached(priority: .utility) { [weak self] in
-            guard let self, self.isActive else {
-                if shouldLog { sendlog(message: "[AudioProcessor] ⚠️ #\(localCount) 跳過: isActive=\(self?.isActive ?? false)") }
-                return
-            }
+            guard let self, self.isActive else { self?.isEnqueuing = false; return }
+            defer { self.isEnqueuing = false }
             guard await self.mediaMixer.isRunning else {
                 if shouldLog { sendlog(message: "[AudioProcessor] ⚠️ #\(localCount) MediaMixer 未運行 PTS:\(String(format:"%.3f",pts))s") }
                 return
