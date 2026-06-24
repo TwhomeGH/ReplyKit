@@ -1073,9 +1073,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         rtmpConnection = RTMPConnection(useEnhancedRTMP: enh)
 
         Task {
-            await rtmpConnection?.setOnLog { [weak self] event in
+            await rtmpConnection?.setOnLog { event in
                 guard RPConfig.shared.state.enableRTMPLog else { return }
-                self?.sendlog(message: "[RTMP] \(event.level) \(event.message) \(event.detail ?? "")")
+                // 這是全局共用件不需要捕獲
+                sendlog(message: "[RTMP] \(event.level) \(event.message) \(event.detail ?? "")")
             }
 
         }
@@ -1874,9 +1875,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 rtmpConnection = RTMPConnection(useEnhancedRTMP: enh)
 
                 Task {
-                    await rtmpConnection?.setOnLog { [weak self] event in
+                    await rtmpConnection?.setOnLog { event in
                         guard RPConfig.shared.state.enableRTMPLog else { return }
-                        self?.sendlog(message: "[RTMP] \(event.level) \(event.message) \(event.detail ?? "")")
+                        sendlog(message: "[RTMP] \(event.level) \(event.message) \(event.detail ?? "")")
                     }
 
                 }
