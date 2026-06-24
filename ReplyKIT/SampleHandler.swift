@@ -1795,8 +1795,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     ) {
         // User has requested to start the broadcast. Setup info from the UI extension can be suppdlied but optional.
 
-        DispatchQueue.global(qos: .utility).async { [self] in
-            Task { [self] in
+        Task(priority: .default) {
 
         //進行Socket初始化
         SocketClient.shared.setupConnection()
@@ -1866,6 +1865,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 await self.configureVideo_init()
                 await self.configureAudio()
                 await self.configureMediaMixer()
+                await Task.yield()
 
                 sendlog(message:"✅ MediaMixer 配置完成")
 
@@ -1883,10 +1883,18 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 logger.info("✅ Processor 初始化完成")
 
                 // 先啟動 MediaMixer，避免連線失敗時整條管線停擺
-                await self.mediaMixer.startRunning()
+                // 隔離 HaishinKit 內部 Task 的 stack 壓力
+                let mixer = self.mediaMixer
+                await Task.detached(priority: .background) {
+                    await mixer.startRunning()
+                }.value
                 sendlog(message:"✅ MediaMixer 已啟動，開始接收音視頻數據")
 
-                await self.startRTMP(url: self.rtmpURL , key: self.rtmpKey)
+                let url = self.rtmpURL
+                let key = self.rtmpKey
+                await Task.detached(priority: .background) { [self] in
+                    await self.startRTMP(url: url, key: key)
+                }.value
 
                 self.isInitialSyncDone = true
                 SocketClient.shared.onSocketReady = { [weak self] in
@@ -1899,7 +1907,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 
             }
-        }
 
 
 
