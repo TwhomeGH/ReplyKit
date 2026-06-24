@@ -1069,10 +1069,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     // MARK: 初始化
     override init() {
 
-        let enh = RPConfig.shared.state.useEnhancedRTMP
-        rtmpConnection = RTMPConnection(useEnhancedRTMP: enh)
-        rtmpStream = RTMPStream(connection: rtmpConnection!)
-
         ADWidth = RPConfig.shared.state.ADWidth
         ADHeight = RPConfig.shared.state.ADHeight
 
@@ -1080,13 +1076,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         ODHeight = RPConfig.shared.state.ODHeight
 
         super.init()
-
-        Task {
-            await rtmpConnection?.setOnLog { event in
-                guard RPConfig.shared.state.enableRTMPLog else { return }
-                sendlog(message: "[RTMP] \(event.level) \(event.message) \(event.detail ?? "")")
-            }
-        }
 
         registerObservers()
         logger.info("ReplyKit Debug")
@@ -1807,7 +1796,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         // User has requested to start the broadcast. Setup info from the UI extension can be suppdlied but optional.
 
 
-        Task {
+        Task(priority: .utility) {
 
         //進行Socket初始化
         SocketClient.shared.setupConnection()
@@ -1860,28 +1849,17 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 sendlog(message:"✅App:\(appVolume)  Mic:\(micVolume) AppAdd:\(appAddVolume) MicAdd:\(micAddVolume)")
 
-                // 重新建立 RTMP 連線物件，避免 init() 中的過期狀態導致首次連線失敗
-                _ = try? await rtmpStream.close()
-                _ = try? await rtmpConnection?.close()
-
-                rtmpConnection = nil
-                rtmpStream = nil 
-                
+                // socket 收完所有參數後才建立連線
                 let enh = RPConfig.shared.state.useEnhancedRTMP
                 rtmpConnection = RTMPConnection(useEnhancedRTMP: enh)
-
-                Task {
-                    await rtmpConnection?.setOnLog { event in
-                        guard RPConfig.shared.state.enableRTMPLog else { return }
-                        sendlog(message: "[RTMP] \(event.level) \(event.message) \(event.detail ?? "")")
-                    }
-
-                }
-
                 rtmpStream = RTMPStream(connection: rtmpConnection!)
 
+                await rtmpConnection?.setOnLog { event in
+                    guard RPConfig.shared.state.enableRTMPLog else { return }
+                    sendlog(message: "[RTMP] \(event.level) \(event.message) \(event.detail ?? "")")
+                }
+
                 lastConfiguredSize = nil
-                sendlog(message: "🔄 RTMP 連線物件已重新建立 useEnhancedRTMP:\(enh)")
 
                 needVideoConfiguration = true
 
