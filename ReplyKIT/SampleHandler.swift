@@ -2146,9 +2146,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             case 0,180:
                 avfrom = .portrait
                 sendlog(message: "[旋轉時間軸] 配置=直向(\(rotateConfig)°)")
+                break
             case 90,270:
                 avfrom = .landscapeRight
                 sendlog(message: "[旋轉時間軸] 配置=橫向(\(rotateConfig)°)")
+                break
             default:
                 avfrom = .landscapeRight
                 sendlog(message: "[旋轉時間軸] 配置=橫向預設(\(rotateConfig)°)")
@@ -2156,20 +2158,22 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         }
 
         switch avfrom {
+            
         case .portrait, .portraitUpsideDown:
             newSize = CGSize(width: CGFloat(width), height: CGFloat(height))
             sendlog(message: "[旋轉時間軸] 初始更新直向 size:\(newSize)")
             await mediaMixer.setVideoOrientation(.portrait)
+            break
         case .landscapeLeft,.landscapeRight:
             newSize = CGSize(width: CGFloat(height), height: CGFloat(width))
             sendlog(message: "[旋轉時間軸] 初始更新橫向 size:\(newSize)")
             await mediaMixer.setVideoOrientation(.landscapeRight)
-            
+            break
         default:
             newSize = CGSize(width: CGFloat(height), height: CGFloat(width))
             sendlog(message: "[旋轉時間軸] 初始更新橫向(預設) size:\(newSize)")
             await mediaMixer.setVideoOrientation(.landscapeRight)
-            
+            break
         }
 
 
