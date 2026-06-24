@@ -4,29 +4,13 @@ import ReplayKit
 import CoreMedia
 
 
-private final class FrameGate: @unchecked Sendable {
-    private let semaphore: DispatchSemaphore
-
-    init(max: Int) {
-        semaphore = DispatchSemaphore(value: max)
-    }
-
-    func enter() {
-        semaphore.wait()
-    }
-
-    func exit() {
-        semaphore.signal()
-    }
-}
-
-
 final class VideoFrameProcessor {
     private actor ProcessorActor {
         private var rotator: RPVideoRotatorNV12BatchQueueOptimized?
         private var lastKey: (useBic: Bool, dstW: Int, dstH: Int, outW: Int, outH: Int, RotateOriginal: Bool)?
         private let sendlog: (String) -> Void
         private var debug: Bool
+        private var isProcessing = false
 
         init(debug: Bool, sendlog: @escaping (String) -> Void) {
             self.debug = debug
@@ -38,6 +22,9 @@ final class VideoFrameProcessor {
             originalTime: CMSampleTimingInfo,
             angle: RotationAngle
         ) async -> CMSampleBuffer? {
+            guard !isProcessing else { return nil }
+            isProcessing = true
+            defer { isProcessing = false }
             guard let rotator = await getOrCreateRotator() else { return nil }
             return await rotator.rotateAsync(
                 pixelBuffer: imageBuffer,
@@ -107,7 +94,6 @@ final class VideoFrameProcessor {
     private let mediaMixer: MediaMixer
     private let sendlog: (String) -> Void
     private let processorActor: ProcessorActor
-    private let frameGate = FrameGate(max: 2)
 
     var angle = RotationAngle(
                 rawValue: UInt32(RPConfig.shared.state.Rotate)
@@ -180,8 +166,6 @@ final class VideoFrameProcessor {
 
         Task.detached(priority: .userInitiated) { [weak self] in
             guard let self, self.isActive else { return }
-            self.frameGate.enter()
-            defer { self.frameGate.exit() }
 
             guard let rotated = await self.processorActor.processFrame(
                 imageBuffer: imageBuffer,
