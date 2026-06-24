@@ -76,12 +76,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
     // MARK: 用戶設置輸出寬高
-    var ADWidth : Int
-    var ADHeight : Int
+    var ADWidth : Int = 0
+    var ADHeight : Int = 0
 
     // MARK: 給畫布實際輸出寬高
-    var ODWidth : Int
-    var ODHeight : Int
+    var ODWidth : Int = 0
+    var ODHeight : Int = 0
 
 
 
@@ -1071,19 +1071,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         let enh = RPConfig.shared.state.useEnhancedRTMP
         rtmpConnection = RTMPConnection(useEnhancedRTMP: enh)
-
-        Task {
-            await rtmpConnection?.setOnLog { event in
-                guard RPConfig.shared.state.enableRTMPLog else { return }
-                // 這是全局共用件不需要捕獲
-                sendlog(message: "[RTMP] \(event.level) \(event.message) \(event.detail ?? "")")
-            }
-
-        }
-
         rtmpStream = RTMPStream(connection: rtmpConnection!)
 
-        
         ADWidth = RPConfig.shared.state.ADWidth
         ADHeight = RPConfig.shared.state.ADHeight
 
@@ -1091,6 +1080,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         ODHeight = RPConfig.shared.state.ODHeight
 
         super.init()
+
+        Task {
+            await rtmpConnection?.setOnLog { event in
+                guard RPConfig.shared.state.enableRTMPLog else { return }
+                sendlog(message: "[RTMP] \(event.level) \(event.message) \(event.detail ?? "")")
+            }
+        }
 
         registerObservers()
         logger.info("ReplyKit Debug")
