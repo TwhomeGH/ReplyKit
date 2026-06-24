@@ -1795,8 +1795,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     ) {
         // User has requested to start the broadcast. Setup info from the UI extension can be suppdlied but optional.
 
-
-        Task(priority: .utility) {
+        DispatchQueue.global(qos: .utility).async {
+            Task {
 
         //進行Socket初始化
         SocketClient.shared.setupConnection()
@@ -1899,6 +1899,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 
             }
+        }
 
 
 
