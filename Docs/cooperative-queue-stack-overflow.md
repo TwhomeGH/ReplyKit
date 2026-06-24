@@ -1,10 +1,8 @@
 # Cooperative Queue Stack Overflow (bug_type 309)
 
-## 問題
+## 問題概述
 
-`VideoFrameProcessor.process()` 與 `AudioProcessor.enqueue()` 內部使用 `Task { }` 建立 unstructured task。在 iOS 27 beta 上，`Task { }` 會繼承呼叫端的 executor context，導致所有幀處理任務被派發到 `com.apple.root.user-initiated-qos.cooperative` queue。
-
-Cooperative queue 的 thread stack 僅 **544KB**，而每幀 video 處理路徑有 4 層 actor hop + `withCheckedContinuation` GPU 等待，累積後超出 stack 上限，觸發 stack guard page → `SIGBUS`。
+在 iOS 27.0 Beta 上，ReplyKIT extension 啟動後 ~400ms 內 crash，所有崩潰都是 `bug_type: 309`（Stack Overflow）。
 
 ### Crash 特徵
 
@@ -12,118 +10,184 @@ Cooperative queue 的 thread stack 僅 **544KB**，而每幀 video 處理路徑�
 |------|-----|
 | bug_type | `309`（Stack Overflow） |
 | 例外 | `EXC_BAD_ACCESS` / `SIGBUS` / `KERN_PROTECTION_FAILURE` |
-| 崩潰位址 | Stack Guard 區域內（`0x16dddbff0`） |
+| 崩潰位址 | Stack Guard 區域（`bytes after start: 16368, bytes before end: 15`） |
 | 崩潰 Queue | `com.apple.root.user-initiated-qos.cooperative` |
-| Stack 大小 | 544KB（已用盡） |
-| 發生時機 | 推流啟動後數秒內 |
+| Stack 大小 | 544KB（已用盡，撞到 guard page） |
+| 發生時機 | 推流啟動後 ~350-500ms |
 | iOS 版本 | iOS 27.0 Beta (24A5370h) |
 
-### 觸發路徑
+### Crash 時間線（2026-06-24）
 
-```
-processSampleBuffer (ReplayKit 每幀回呼, 30-60 fps)
-  └─ VideoFrameProcessor.process()
-       └─ Task { }                              ← 繼承 cooperative executor
-            └─ ProcessorActor.processFrame()    ← actor hop 1
-                 └─ getOrCreateRotator()        ← actor hop 2
-                      └─ rotateAsync()          ← actor hop 3
-                           └─ ensureMetalResources()
-                           └─ getReusableOutput()
-                           └─ renderPlaneYUV()
-                           └─ withCheckedContinuation { }  ← suspension 4
-                                └─ wrapPixelBuffer()
-                                └─ tsDebugger.log()
-            └─ mediaMixer.append()              ← actor hop 5
-```
+| 時間 | slice_uuid | 修正內容 | 結果 |
+|------|-----------|----------|------|
+| 15:58 | `eb6a822b` | 原始程式碼 | Crash |
+| 16:32 | `43e0a1af` | VideoProcess + AudioProcess → `Task.detached(.userInitiated)` | **仍 Crash** |
+| 17:08 | `43e0a1af` | 同上（SampleHandler 還原） | **仍 Crash**（同 binary） |
+| 17:35 | `8c874ad2` | 移除 DispatchSemaphore FrameGate，改用 `isProcessing` guard | **仍 Crash** |
+| 18:04 | `0db57c02` | `.userInitiated` → `.utility` | **仍 Crash** |
 
-每一幀 = **5 層 actor/continuation suspension**，全部壓在同一個 544KB stack 的 cooperative thread 上。
-
-### 與其他 Stack Overflow 的差異
-
-| 類型 | 原因 | 觸發時機 |
-|------|------|----------|
-| NWConnection 遞迴 | callback 內同步呼叫 `receive()` | Socket 大量資料交換 |
-| 泛型特化遞迴 | `withUnsafeBytes<UInt32>` 編譯器特化 | ByteArray 讀取 |
-| 協程幀遞迴 | `__swift_coroFrameAllocStub` + Metal async | GPU pipeline 初次建立 |
-| **Cooperative Queue** | **`Task { }` 繼承 cooperative executor，actor hop 過深** | **每幀處理** |
+五次修正都失敗 → 問題不在 ReplyKIT 自己的 code，而在 **HaishinKit 底層**。
 
 ---
 
-## 影響原因
+## 根本原因
 
-### 為什麼 cooperative queue stack 特別小？
+### 1. HaishinKit 內部大量使用 `Task { }`
 
-iOS 的 Swift concurrency runtime 對不同 QoS 的 executor 有不同 stack 配置：
+HaishinKit 全庫共 **98 個 `Task { }`**（無 `Task.detached`），集中在：
 
-- **Cooperative queue** (`user-initiated-qos.cooperative`)：544KB — 設計給輕量、短暫的 cooperative task，不預期深層 actor 呼叫鏈
-- **Global concurrent executor**：預設 ~1MB+ — 一般 async task 使用
+| 檔案 | `Task { }` 數量 |
+|------|----------------|
+| `RTMPStream.swift` | 16 |
+| `MediaMixer.swift` | 16 |
+| `RTMPConnection.swift` | 9 |
+| `RTMPSocket.swift` | 5 |
+| `RTMPSharedObject.swift` | 1 |
 
-### 為什麼 `Task { }` 會進 cooperative queue？
+全部都是 `Task { }`（非 `Task.detached`），會**繼承呼叫端的 executor context**。
 
-`Task { }` 是 **unstructured task**，會繼承當前 `Task` 的 executor context。由於 `processSampleBuffer` 是由 ReplayKit 在一個已綁定 cooperative executor 的 context 中呼叫，內部 `Task { }` 也繼承了這個 executor。
+### 2. broadcastStarted 呼叫鏈進入 cooperative executor
 
-### 為什麼 actor hop 會耗 stack？
+```
+MainActor Task (broadcastStarted)
+  → await configureVideo_init()
+    → HaishinKit async method call
+      → Swift runtime 切換 executor（從 MainActor → cooperative pool）
+        → HaishinKit 內部 Task { }
+          → 繼承 cooperative executor（544KB stack）
+            → 多個 Task 同時在同一 cooperative thread 上執行
+              → actor hop、continuation、遞迴...
+                → Stack Overflow 💥
+```
 
-每次 `await actor.method()` 都是一個 suspension point。Swift runtime 在 cooperative thread 上處理這些 suspension 時，continuation 的 resume 會在同一個 stack 上累積。5 層 actor hop + `withCheckedContinuation` = 同一 thread 上至少 5 次 stack frame 堆疊。
+**關鍵機制**：當 MainActor task 呼叫非 `@MainActor` 的 async method 時，Swift runtime 會 hop 到 global concurrent executor。在 iOS 27 beta 上，`userInitiated` QoS 的 work 被分配到 cooperative pool（`com.apple.root.user-initiated-qos.cooperative`），而 cooperative thread 的 stack 僅 544KB。
+
+HaishinKit 沒有標記 `@MainActor`，所以所有 HaishinKit async method 都會從 MainActor hop 到 cooperative executor。HaishinKit 內部的 `Task { }` 又繼承了這個 executor。
+
+### 3. 為什麼 `Task.detached(priority: .userInitiated)` 也無效？
+
+`Task.detached` 雖然脫離了 inheriting context，但 **QoS class 沒變**。iOS 27 beta 的 cooperative pool 是對應 `userInitiated` QoS class 的，所以 `Task.detached(priority: .userInitiated)` 仍然被分配到 cooperative thread pool。
+
+這解釋了前面四次修正都無效的原因：改的是 ReplyKIT 自己的 code，但 crash 的根源是 HaishinKit 內部的 `Task { }`。
 
 ---
 
-## 修復方式
+## 技術說明
 
-### 核心修改
+### Cooperative Queue vs Global Concurrent Executor
 
-將 `Task { }` 改為 `Task.detached(priority: .userInitiated) { }`：
+| Executor | QoS | Stack 大小 | 用途 |
+|----------|-----|-----------|------|
+| `com.apple.root.user-initiated-qos.cooperative` | `.userInitiated` | **544KB** | 輕量、短暫的 cooperative task |
+| `com.apple.root.default-qos` | `.default` | ~1MB | 一般 async task |
+| `com.apple.root.utility-qos` | `.utility` | ~1MB | 背景工作 |
+| `MainActor` | N/A | ~1MB+ | UI thread |
 
-```swift
-// ❌ 危險：繼承 cooperative executor，stack 僅 544KB
-func process(_ sampleBuffer: CMSampleBuffer, oringinaltime: CMSampleTimingInfo) {
-    Task { [weak self] in
-        await self?.processorActor.processFrame(...)
-        await self?.mediaMixer.append(...)
-    }
-}
+### `Task { }` vs `Task.detached`
 
-// ✅ 安全：detached task 使用 global concurrent executor，stack 充足
-func process(_ sampleBuffer: CMSampleBuffer, oringinaltime: CMSampleTimingInfo) {
-    Task.detached(priority: .userInitiated) { [weak self] in
-        await self?.frameGate.enter()
-        defer { self?.frameGate.exit() }
-        await self?.processorActor.processFrame(...)
-        await self?.mediaMixer.append(...)
-    }
-}
+| | `Task { }` | `Task.detached(priority:) { }` |
+|---|---|---|
+| Executor 繼承 | ✅ 繼承呼叫端 | ❌ 不繼承 |
+| **QoS class** | 繼承 | 可指定（但仍對應到該 QoS 的 pool） |
+| Actor context | 繼承 | 無 |
+| `@Sendable` 要求 | 無 | ✅ closure 必須 `@Sendable` |
+
+### QoS Class 與 Thread Pool 對應關係（iOS 27 Beta）
+
 ```
-
-### 新增 FrameGate 並行控制
-
-因為 `Task.detached` 不再受限於 cooperative queue 的序列化特性，需加入 `FrameGate` 限制同時處理的幀數上限為 2，避免 GPU 管線堆積：
-
-```swift
-private final class FrameGate: @unchecked Sendable {
-    private let lock = NSLock()
-    private let maxConcurrent: Int
-    private var running = 0
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-
-    func enter() async { /* 超過上限時 await 等待 */ }
-    func exit() { /* 釋放 slot，喚醒等待者 */ }
-}
+Task(priority: .userInitiated)     → cooperative pool (544KB stack) ← 問題所在！
+Task(priority: .utility)           → utility pool        (~1MB stack) ← 解法
+Task(priority: .default)           → default pool        (~1MB stack)
+Task(priority: .background)        → background pool     (~1MB stack)
 ```
-
-### 關鍵差異
-
-| 項目 | 修正前 | 修正後 |
-|------|--------|--------|
-| Task 類型 | `Task { }` (inherited executor) | `Task.detached(priority:)` (global executor) |
-| Executor | cooperative (544KB stack) | global concurrent (~1MB+ stack) |
-| 並行控制 | 無（依賴 cooperative 序列化） | `FrameGate(max: 2)` |
-| Stack 溢位風險 | **高**（每幀 5 層 actor hop） | **低**（stack 空間充足） |
 
 ---
 
-## 受影響檔案
+## 修復策略
 
-| 檔案 | 修改內容 |
-|------|----------|
-| `ReplyKIT/VideoProcess.swift` | `Task { }` → `Task.detached`，新增 `FrameGate` 限制並行幀數 |
-| `ReplyKIT/AudioProcess.swift` | `enqueue()` 內 `Task { }` → `Task.detached` |
+### ReplyKIT 層（我方程式碼）
+
+| 檔案 | 修改 | 原因 |
+|------|------|------|
+| `VideoProcess.swift` | `Task { }` → `Task.detached(priority: .utility)` | 每幀 GPU 旋轉脫離 cooperative |
+| `VideoProcess.swift` | FrameGate 移除，改用 `ProcessorActor.isProcessing` guard | 避免 DispatchSemaphore 阻塞 thread |
+| `AudioProcess.swift` | `enqueue()` 內 `Task { }` → `Task.detached(priority: .utility)` | 音訊處理脫離 cooperative |
+
+### HaishinKit 層（底層修正）
+
+| 檔案 | 修改內容 | `Task { }` 數量 |
+|------|----------|----------------|
+| `RTMPConnection.swift` | `Task { }` → `Task.detached(priority: .utility) { }` | 9 |
+| `RTMPStream.swift` | `Task { }` → `Task.detached(priority: .utility) { }` | 16 |
+| `MediaMixer.swift` | `Task { }` → `Task.detached(priority: .utility) { }` | 16 |
+| `RTMPSocket.swift` | `Task { }` → `Task.detached(priority: .utility) { }` | 5 |
+| `RTMPSharedObject.swift` | `Task { }` → `Task.detached(priority: .utility) { }` | 1 |
+| **合計** | | **47** |
+
+### 為什麼用 `.utility` 而非 `.userInitiated`？
+
+```
+.userInitiated → cooperative pool (544KB) ← 不能用
+.utility       → utility pool    (~1MB)   ← 安全
+```
+
+`.utility` 的 thread pool 不屬於 cooperative 體系，stack 不受 544KB 限制。Live streaming 的音視頻處理可以接受 utility QoS 的略微延遲。
+
+---
+
+## 潛在風險與注意事項
+
+### 1. 大規模 `Task { }` 的風險
+
+任何 Swift 專案若在 cooperative executor context 中大量使用 `Task { }`，都會面臨相同風險。iOS 27 的 cooperative pool 對每個 thread 配置 544KB stack，一旦 actor hop 超過 ~5-6 層就會觸發 stack overflow。
+
+**建議**：在 library 內部優先使用 `Task.detached`，明確指定 QoS class，避免依賴呼叫端的 executor context。
+
+### 2. `DispatchSemaphore` 在 Swift Concurrency 中的風險
+
+`DispatchSemaphore.wait()` 會**阻塞呼叫 thread**。在 Swift concurrency 的 cooperative thread pool 中使用會導致：
+- Thread 被永久佔用，pool 縮小
+- 其他 task 被迫擠到剩餘 thread，stack 壓力增加
+- 可能觸發 thread explosion（runtime 不斷建立新 thread）
+
+**建議**：用 actor 的序列化特性或 `AsyncSemaphore`（actor-based semaphore）取代 `DispatchSemaphore`。
+
+### 3. QoS Priority Inversion
+
+`.utility` 的 task 內部若呼叫需要 `.userInitiated` 回應速度的操作（如 UI 更新），會被系統自動提升 priority。Swift runtime 有內建的 priority escalation 機制，所以不會造成明顯的 priority inversion。
+
+### 4. `Task.detached` 的 `@Sendable` 限制
+
+`Task.detached` 要求 closure 為 `@Sendable`，在 Swift 6 語言模式下會強制所有 captured reference 必須是 `Sendable` 或使用 explicit `self.`。對於 `@unchecked Sendable` 的型別（如 `SampleHandler`），可以編譯通過但需注意執行緒安全。
+
+---
+
+## 與其他 Stack Overflow 問題的對照
+
+| 類型 | 原因 | 觸發時機 | 解法 |
+|------|------|----------|------|
+| NWConnection 遞迴 | callback 內同步呼叫 `receive()` | Socket 大量資料交換 | 改用 async/await 的 `receive()` |
+| 泛型特化遞迴 | `withUnsafeBytes<UInt32>` 編譯器特化 | ByteArray 讀取 | 避免泛型特化，用 concrete type |
+| 協程幀遞迴 | `__swift_coroFrameAllocStub` + Metal async | GPU pipeline 初次建立 | Actor 序列化 + `isProcessing` guard |
+| **Cooperative Queue** | **HaishinKit `Task { }` 繼承 cooperative executor** | **推流啟動階段** | **`Task { }` → `Task.detached(priority: .utility)`** |
+
+---
+
+## 受影響檔案總表
+
+### ReplyKIT
+
+| 檔案 | 修改 |
+|------|------|
+| `ReplyKIT/VideoProcess.swift` | `Task { }` → `Task.detached(priority: .utility)`；FrameGate 移除，改用 `isProcessing` guard |
+| `ReplyKIT/AudioProcess.swift` | `enqueue()` 內 `Task { }` → `Task.detached(priority: .utility)` |
+
+### HaishinKitFixSwfit (F:\HaishinKit.swift)
+
+| 檔案 | 修改 |
+|------|------|
+| `RTMPHaishinKit/Sources/RTMP/RTMPConnection.swift` | 9 處 `Task { }` → `Task.detached(priority: .utility)` |
+| `RTMPHaishinKit/Sources/RTMP/RTMPStream.swift` | 16 處 `Task { }` → `Task.detached(priority: .utility)` |
+| `HaishinKit/Sources/Mixer/MediaMixer.swift` | 16 處 `Task { }` → `Task.detached(priority: .utility)` |
+| `RTMPHaishinKit/Sources/RTMP/RTMPSocket.swift` | 5 處 `Task { }` → `Task.detached(priority: .utility)` |
+| `RTMPHaishinKit/Sources/RTMP/RTMPSharedObject.swift` | 1 處 `Task { }` → `Task.detached(priority: .utility)` |
