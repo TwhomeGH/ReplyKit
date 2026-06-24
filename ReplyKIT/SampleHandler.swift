@@ -1794,8 +1794,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         withSetupInfo setupInfo: [String : NSObject]?
     ) {
         // User has requested to start the broadcast. Setup info from the UI extension can be suppdlied but optional.
+        // Task已更命 priority default已棄用 -> 更名為 medium，避免在高優先級下阻塞其他任務
 
-        Task(priority: .default) {
+        Task(priority: .medium) {
 
         //進行Socket初始化
         SocketClient.shared.setupConnection()
