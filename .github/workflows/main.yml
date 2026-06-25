@@ -126,11 +126,12 @@ jobs:
           # 將 exit code 輸出到 GitHub Actions
           echo "exit_code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
 
-          # 如果失敗，顯示警告而不是失敗
+          # 如果失敗，顯示警告並以非零 exit code 退出
           if [ $EXIT_CODE -ne 0 ]; then
             echo "::warning::Fast build failed with exit code $EXIT_CODE"
             echo "--- Raw xcodebuild output (last 100 lines) ---"
             tail -100 xcodebuild.log 2>/dev/null || echo "(log file not found)"
+            exit $EXIT_CODE
           else
             echo "::notice::Fast build succeeded"
           fi
