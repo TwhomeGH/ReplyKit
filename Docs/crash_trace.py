@@ -298,7 +298,7 @@ def analyze(ips_path, symbols_path=None):
                 print(f"  遞迴函數: {sample_name}")
                 if context:
                     print(f"  調用上下文: {context}")
-                print(f"  遞迴深度: {max(rec for _, _, _, rec in recursive)} 層")
+                print(f"  遞迴深度: {max(rec for _, _, rec in recursive)} 層")
                 print("  -> 請從上面調用鏈確認呼叫關係，檢查是否有自調用或間接遞迴")
 
         # 分析3: cooperative thread 狀況
