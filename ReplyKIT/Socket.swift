@@ -725,30 +725,58 @@ class SocketClient : @unchecked Sendable {
     }
 
     func sendLog(title: String = "ReplyKitE_Sokcet", message: String) {
-        guard connection != nil else {
-            // 側載模式：connection 尚未就緒，先暫存，ready 後自動發送
-            pendingLogs.append((title, message))
-            return
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            guard self.connection != nil else {
+                self.pendingLogs.append((title, message))
+                return
+            }
+            self._sendLogPayload(title: title, message: message)
         }
-        let payload: [String: Any] = [
-            "type": "log",
-            "title": title,
-            "message": message
-        ]
-        sendPayload(payload)
     }
 
     private func flushPendingLogs() {
         let logs = pendingLogs
         pendingLogs.removeAll()
         for log in logs {
-            let payload: [String: Any] = [
-                "type": "log",
-                "title": log.title,
-                "message": log.message
-            ]
-            sendPayload(payload)
+            _sendLogPayload(title: log.title, message: log.message)
         }
+    }
+
+    private let maxLogChunkBytes = 8192
+
+    private func _sendLogPayload(title: String, message: String) {
+        guard message.utf8.count > maxLogChunkBytes else {
+            _sendSingleLog(title: title, message: message)
+            return
+        }
+        var chunks: [String] = []
+        let lines = message.split(separator: "\n", omittingEmptySubsequences: false)
+        var current = ""
+        for line in lines {
+            let candidate = current.isEmpty ? String(line) : current + "\n" + line
+            if candidate.utf8.count > maxLogChunkBytes && !current.isEmpty {
+                chunks.append(current)
+                current = String(line)
+            } else {
+                current = candidate
+            }
+        }
+        if !current.isEmpty {
+            chunks.append(current)
+        }
+        for chunk in chunks {
+            _sendSingleLog(title: title, message: chunk)
+        }
+    }
+
+    private func _sendSingleLog(title: String, message: String) {
+        let payload: [String: Any] = [
+            "type": "log",
+            "title": title,
+            "message": message
+        ]
+        sendPayload(payload)
     }
 
     func logTo(_ message:String,flush:Bool = false){

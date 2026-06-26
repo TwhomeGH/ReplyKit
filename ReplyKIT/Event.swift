@@ -292,15 +292,25 @@ final class LogManager {
 
     // MARK: 提前結束
     func forceFlush() {
-        
+        guard !localLogBuffer.isEmpty else { return }
+        let bufferCopy = localLogBuffer
+        localLogBuffer = []
+        localLogSize = 0
 
-            flushLocalLogs(forceNotify: true)
+        notifyMainAppIfNeeded(forceNotify: true)
 
-            flushTimer?.cancel()
-            flushTimer = nil
-            remoteLogger?.flush()
-            remoteLogger = nil
-            isActive = false
+        let text = bufferCopy.joined()
+        if RPConfig.shared.enableSocketLog {
+            SocketClient.shared.sendLog(title: "UseESocket", message: text)
+        } else {
+            writeLogToFile(text)
+        }
+
+        flushTimer?.cancel()
+        flushTimer = nil
+        remoteLogger?.flush()
+        remoteLogger = nil
+        isActive = false
         
     }
 
@@ -360,45 +370,42 @@ final class LogManager {
     }
 
     private func flushLocalLogs(forceNotify: Bool = false) {
+        guard !localLogBuffer.isEmpty else { return }
 
-            guard !localLogBuffer.isEmpty else { return }
+        let bufferCopy = localLogBuffer
+        localLogBuffer = []
+        localLogSize = 0
 
-            let bufferCopy = localLogBuffer.joined()
-            localLogBuffer.removeAll()
-            localLogSize = 0
+        notifyMainAppIfNeeded(forceNotify: forceNotify)
 
-            //統一這裡處理發送Socket轉送
-            if RPConfig.shared.enableSocketLog {
-                SocketClient.shared.sendLog(title:"UseESocket",message: bufferCopy)
-
-            } else {
-
-            let containerURL: URL
-
-        
-            if let groupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupID) {
-                containerURL = groupURL
-            } else {
-                containerURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        if RPConfig.shared.enableSocketLog {
+            DispatchQueue.global(qos: .utility).async {
+                let text = bufferCopy.joined()
+                SocketClient.shared.sendLog(title: "UseESocket", message: text)
             }
+        } else {
+            let text = bufferCopy.joined()
+            writeLogToFile(text)
+        }
+    }
 
-            let fileURL = containerURL.appendingPathComponent(logFileName)
-
-            if let data = bufferCopy.data(using: .utf8) {
-                if FileManager.default.fileExists(atPath: fileURL.path),
-                   let fileHandle = try? FileHandle(forWritingTo: fileURL) {
-                    defer { fileHandle.closeFile() }
-                    fileHandle.seekToEndOfFile()
-                    fileHandle.write(data)
-                } else {
-                    try? data.write(to: fileURL, options: .atomic)
-                }
-            }
-
-            }
-        
-            notifyMainAppIfNeeded(forceNotify: forceNotify)
-
+    private func writeLogToFile(_ text: String) {
+        let containerURL: URL
+        if let groupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupID) {
+            containerURL = groupURL
+        } else {
+            containerURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        }
+        let fileURL = containerURL.appendingPathComponent(logFileName)
+        guard let data = text.data(using: .utf8) else { return }
+        if FileManager.default.fileExists(atPath: fileURL.path),
+           let fileHandle = try? FileHandle(forWritingTo: fileURL) {
+            defer { fileHandle.closeFile() }
+            fileHandle.seekToEndOfFile()
+            fileHandle.write(data)
+        } else {
+            try? data.write(to: fileURL, options: .atomic)
+        }
     }
 
     // MARK: - 通知主 App（優化版）
