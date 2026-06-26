@@ -1931,9 +1931,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         // User has requested to finish the broadcast.
 
         
-
-
-
         Task {
 
             isStopping = true
@@ -1947,9 +1944,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             disconnectMonitorTask?.cancel()
             disconnectMonitorTask = nil
 
-            // 取消重連（由 RTMPConnection 內部處理，關閉連線即可）
-            _ = try? await rtmpConnection?.close()
-
             
             isSessionReady = false
 
@@ -1959,13 +1953,16 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             await mediaMixer.removeOutput(rtmpStream)
             await mediaMixer.stopRunning()
 
+            // 取消重連（由 RTMPConnection 內部處理，關閉連線即可）
 
             _ = try? await rtmpStream.close()
             _ = try? await rtmpConnection?.close()
 
             volumeNotifier=nil
+
             videoProcessor?.cleanup()
             videoProcessor=nil
+
             audioProcessor?.cleanup()
             audioProcessor=nil
             // AdaptiveVideoBufferManager 已停用
