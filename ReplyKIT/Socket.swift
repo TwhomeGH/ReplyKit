@@ -1145,7 +1145,7 @@ class SocketClient : @unchecked Sendable {
                     RPConfig.shared.onAudioPage = env.onAudioPage
                     RPConfig.shared.enableLog = env.enableLog
                     RPConfig.shared.enableSocketLog = env.enableSocketLog
-                    if RPConfig.shared.isSideload {
+                    if RPConfig.isSideload {
                         RPConfig.shared.enableSocketLog = true
                     }
                     RPConfig.shared.enableTimeDebug = env.enableTimeDebug
