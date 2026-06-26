@@ -737,7 +737,7 @@ struct LogSettingView:View {
             .padding(.bottom, 5)
 
             Toggle(isOn: Binding(
-                get: { userDefaults?.bool(forKey: "useEnhancedRTMP") ?? false },
+                get: { userDefaults?.bool(forKey: "useEnhancedRTMP") ?? true },
                 set: { userDefaults?.set($0, forKey: "useEnhancedRTMP") }
             )){
                 Text("啟用 Enhanced RTMP (E-RTMP)")

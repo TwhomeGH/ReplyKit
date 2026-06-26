@@ -475,7 +475,7 @@ final class RPConfig {
         var ChangeBit : Bool = false
 
         var isLowLatencyRateControlEnabled : Bool = true
-        var useEnhancedRTMP : Bool = false
+        var useEnhancedRTMP : Bool = true
         var isOringinAudio : Bool = true
 
         var useBic : Bool = false
@@ -722,7 +722,7 @@ final class RPConfig {
         ?? true
 
         onLogPage=SharedDefaults.group?.bool(forKey: "onlogPage")
-        ?? false
+        ?? true
 
         onAudioPage=SharedDefaults.group?.bool(forKey: "onAudioPage") ?? false
 
@@ -737,13 +737,14 @@ final class RPConfig {
             
             ChangeBit:SharedDefaults.group?.bool(forKey: "ChangeBit") ?? false,
             isLowLatencyRateControlEnabled:SharedDefaults.group?.bool(forKey: "isLowLatencyRateControlEnabled") ?? true,
-            useEnhancedRTMP:SharedDefaults.group?.bool(forKey: "useEnhancedRTMP") ?? false,
+            useEnhancedRTMP:SharedDefaults.group?.object(forKey: "useEnhancedRTMP") as? Bool ?? true,
             isOringinAudio: (SharedDefaults.group?.object(forKey: "isOringinAudio") as? Bool) ?? true,
             useBic:SharedDefaults.group?.bool(forKey: "useBic") ?? false,
             
-             // 方向處理
-            Rotate:SharedDefaults.group?.integer(forKey: "Rotate") ?? 90,
-            RotateOriginal:SharedDefaults.group?.bool(forKey: "RotateOriginal") ?? false,
+            // 方向處理
+            Rotate: (SharedDefaults.group?.object(forKey: "Rotate") as? Int) ?? 90,
+
+            RotateOriginal:SharedDefaults.group?.object(forKey: "RotateOriginal") as? Bool ?? false,
 
              // Width 給GPU處理用的寬高
             ADWidth:SharedDefaults.group?.integer(forKey: "dstW") ?? 0,

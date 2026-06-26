@@ -621,7 +621,7 @@ class SocketServer:ObservableObject {
             "BitRate": userDefaults?.integer(forKey: "bitRate") ?? 3_900_000,
             "ChangeBit": userDefaults?.bool(forKey: "ChangeBit") ?? false,
             "isLowLatencyRateControlEnabled":userDefaults?.bool(forKey:"isLowLatencyRateControlEnabled") ?? true,
-            "useEnhancedRTMP":userDefaults?.bool(forKey:"useEnhancedRTMP") ?? false,
+            "useEnhancedRTMP":userDefaults?.object(forKey:"useEnhancedRTMP") as? Bool ?? true,
             "isOringinAudio": (userDefaults?.object(forKey: "isOringinAudio") as? Bool) ?? true,
 
             "h264level": userDefaults?
@@ -644,9 +644,9 @@ class SocketServer:ObservableObject {
 
 
 
-            "Rotate": userDefaults?.integer(forKey: "Rotate") ?? 90 ,
+            "Rotate": userDefaults?.object(forKey: "Rotate") as? Int ?? 90 ,
             
-            "RotateOriginal":userDefaults?.bool(forKey: "RotateOriginal") ?? false ,
+            "RotateOriginal":userDefaults?.object(forKey: "RotateOriginal") as? Bool ?? false ,
             
             "enableEchoFix" : userDefaults?.bool(forKey: "enableEchoFix") ?? false,
             "enableNoiseFix": userDefaults?.bool(forKey: "enableNoiseFix") ?? false,
