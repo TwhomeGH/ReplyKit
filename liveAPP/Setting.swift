@@ -804,33 +804,47 @@ struct LogSettingView:View {
                     .foregroundColor(.secondary)
                     .padding(.bottom, 5)
 
-            Toggle(isOn: $EnableSocketlog){
-                Text("啟用Socket轉送日誌 ！")
-            }
-            .onChange(of:EnableSocketlog) { newValue in
-
-                if newValue {
-                    sendlog(message: "停用監聽日誌文件 已使用Socket轉送")
-                    SharedResources.shared.releaseLogReceiver()
-
-                } else {
-
-                    sendlog(message: "啟用監聽日誌文件 已停用Socket轉送")
-                    SharedResources.shared.setupLogReceiver()
-
+            if LPConfig.shared.isSideload {
+                HStack {
+                    Image(systemName: "lock.fill")
+                        .foregroundColor(.orange)
+                    Text("🔒 側載模式：Socket 日誌強制啟用")
+                        .font(.subheadline)
+                        .foregroundColor(.orange)
                 }
-
-                LPConfig.shared.SocketLog = newValue
-
-                SocketServer.shared.broadcast(type:"log",key: "Rebuild Socket", value: "OK Socket")
-
-                CFNotificationCenterPostNotification(cfCenter, CFNotificationName("SocketLog" as CFString), nil, nil, true)
-            }
-
-            Text("啟用備用Socket顯示傳遞日誌,當你處於側載時使用它代替AppGroup更新共享文件")
+                Text("側載下無 App Group，日誌透過 Socket 轉送，可在檔案 App 查看 Documents/log.txt")
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .padding(.bottom, 5)
+            } else {
+                Toggle(isOn: $EnableSocketlog){
+                    Text("啟用Socket轉送日誌 ！")
+                }
+                .onChange(of:EnableSocketlog) { newValue in
+
+                    if newValue {
+                        sendlog(message: "停用監聽日誌文件 已使用Socket轉送")
+                        SharedResources.shared.releaseLogReceiver()
+
+                    } else {
+
+                        sendlog(message: "啟用監聽日誌文件 已停用Socket轉送")
+                        SharedResources.shared.setupLogReceiver()
+
+                    }
+
+                    LPConfig.shared.SocketLog = newValue
+
+                    SocketServer.shared.broadcast(type:"log",key: "Rebuild Socket", value: "OK Socket")
+
+                    CFNotificationCenterPostNotification(cfCenter, CFNotificationName("SocketLog" as CFString), nil, nil, true)
+                }
+
+                Text("啟用備用Socket顯示傳遞日誌,當你處於側載時使用它代替AppGroup更新共享文件")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                        .padding(.bottom, 5)
+            }
 
         }
         Section(header: Text("直播計時器")) {

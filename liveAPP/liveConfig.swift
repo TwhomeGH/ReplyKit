@@ -81,6 +81,9 @@ final class LPConfig {
     
     var SocketLog:Bool = false
 
+    var isSideload: Bool {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.nuclear.liveAPP") == nil
+    }
 
     private init() {
 
@@ -96,6 +99,9 @@ final class LPConfig {
         logURL = userDefaults?.string(forKey: "logURL") ?? "http://192.168.0.242:3000/post"
         
         SocketLog = userDefaults?.bool(forKey: "EnableSocketlog") ?? false
+        if isSideload {
+            SocketLog = true
+        }
 
         FadeAlpha = userDefaults?.double(forKey: "fadeAlpha") ?? 0.08
 

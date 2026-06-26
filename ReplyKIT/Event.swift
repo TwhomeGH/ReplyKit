@@ -358,7 +358,8 @@ final class LogManager {
             guard let self = self else { return }
             if self.mode == .local || self.mode == .both {
                 // onLogPage 為 false 時只清空 buffer，不寫入檔案或 socket
-                if RPConfig.shared.onLogPage {
+                // 側載模式無 App Group，必須強制走 socket，不受 onLogPage 限制
+                if RPConfig.shared.isSideload || RPConfig.shared.onLogPage {
                     self.flushLocalLogs()
                 } else if self.localLogSize >= self.maxLogBufferSize {
                     self.localLogBuffer.removeAll()
@@ -390,6 +391,7 @@ final class LogManager {
     }
 
     private func writeLogToFile(_ text: String) {
+        guard !RPConfig.shared.isSideload else { return }
         let containerURL: URL
         if let groupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupID) {
             containerURL = groupURL
@@ -680,6 +682,10 @@ final class RPConfig {
     var enableSocketLog: Bool = false
     var enableRotateLog: Bool = false
 
+    var isSideload: Bool {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.nuclear.liveAPP") == nil
+    }
+
     var enableLog: Bool = true
     var logMode: Int = 1
     var onLogPage: Bool = false
@@ -708,7 +714,9 @@ final class RPConfig {
         enableRotateLog = SharedDefaults.group?.bool(forKey: "EnableRotatelog") ?? false
 
         enableSocketLog = SharedDefaults.group?.bool(forKey: "EnableSocketlog") ?? false
-
+        if isSideload {
+            enableSocketLog = true
+        }
 
         enableLog=SharedDefaults.group?.bool(forKey: "Enablelog")
         ?? true

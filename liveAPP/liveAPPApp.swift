@@ -108,6 +108,71 @@ final class LogBuffer {
 }
 
 
+// MARK: - Documents 日誌持久化（供檔案 App 讀取）
+final class AppLogPersister {
+    static let shared = AppLogPersister()
+    private let queue = DispatchQueue(label: "liveApp.logPersister", qos: .utility)
+    private let logFileName = "log.txt"
+
+    private var logURL: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+            .appendingPathComponent(logFileName)
+    }
+
+    func append(line: String) {
+        queue.async {
+            guard let data = (line + "\n").data(using: .utf8) else { return }
+            self.write(data)
+        }
+    }
+
+    func append(lines: [String]) {
+        guard !lines.isEmpty else { return }
+        queue.async {
+            let text = lines.joined(separator: "\n") + "\n"
+            guard let data = text.data(using: .utf8) else { return }
+            self.write(data)
+        }
+    }
+
+    func copyFromAppGroup() {
+        queue.async {
+            guard let groupURL = FileManager.default.containerURL(
+                forSecurityApplicationGroupIdentifier: "group.nuclear.liveAPP"
+            ) else { return }
+            let source = groupURL.appendingPathComponent(self.logFileName)
+            guard FileManager.default.fileExists(atPath: source.path),
+                  let data = try? Data(contentsOf: source) else { return }
+            if FileManager.default.fileExists(atPath: self.logURL.path),
+               let handle = try? FileHandle(forWritingTo: self.logURL) {
+                defer { handle.closeFile() }
+                handle.seekToEndOfFile()
+                handle.write(data)
+            } else {
+                try? data.write(to: self.logURL, options: .atomic)
+            }
+        }
+    }
+
+    func clear() {
+        queue.async {
+            try? "".write(to: self.logURL, atomically: true, encoding: .utf8)
+        }
+    }
+
+    private func write(_ data: Data) {
+        if FileManager.default.fileExists(atPath: logURL.path),
+           let handle = try? FileHandle(forWritingTo: logURL) {
+            defer { handle.closeFile() }
+            handle.seekToEndOfFile()
+            handle.write(data)
+        } else {
+            try? data.write(to: logURL, options: .atomic)
+        }
+    }
+}
+
+
 // MARK: 新日誌區塊
 final class LogModel: ObservableObject {
 
@@ -327,6 +392,7 @@ final class LogReceiver {
             self.buffer.removeAll()
 
             LogBuffer.shared.push(linesToSend)
+            AppLogPersister.shared.append(lines: linesToSend)
 
             // ✅ 批次更新 offset，降低 UserDefaults I/O
             userDefaults?.set(Int(lastReadOffset), forKey: "lastReadOffset")
@@ -530,7 +596,7 @@ func sendlog(title:String = "liveApp",message: String) {
 
     // MARK: 日誌緩衝區
     LogBuffer.shared.push(full)
-
+    AppLogPersister.shared.append(line: full)
 
     // 遠端 log 可以保留（但最好也 async）
     if LPConfig.shared.logMode == 0 || LPConfig.shared.logMode == 2 {
@@ -561,8 +627,10 @@ func receiveSocketLog(title: String = "UseESocket", message: String) {
 
     if lines.isEmpty {
         LogBuffer.shared.push("\(timeString): \(title):\(message)")
+        AppLogPersister.shared.append(line: "\(timeString): \(title):\(message)")
     } else {
         LogBuffer.shared.push(lines)
+        AppLogPersister.shared.append(lines: lines)
     }
 
     if LPConfig.shared.logMode == 0 || LPConfig.shared.logMode == 2 {
@@ -708,6 +776,8 @@ struct liveAPPApp: App {
 
         SocketServer.shared.start()
 
+        // 將 App Group 既有的 log 複製到 Documents/ 供檔案 App 讀取
+        AppLogPersister.shared.copyFromAppGroup()
 
         // MARK: - 記憶體壓力監聽
         #if os(iOS)

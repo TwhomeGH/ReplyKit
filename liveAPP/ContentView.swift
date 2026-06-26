@@ -1606,6 +1606,7 @@ struct LogView: View {
 
             Button("清除日誌") {
                 logModel.clearLogs()
+                AppLogPersister.shared.clear()
                 // 清空 log.txt 檔案
                 if let containerURL =
                     FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.nuclear.liveAPP") {

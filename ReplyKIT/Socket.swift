@@ -1145,10 +1145,13 @@ class SocketClient : @unchecked Sendable {
                     RPConfig.shared.onAudioPage = env.onAudioPage
                     RPConfig.shared.enableLog = env.enableLog
                     RPConfig.shared.enableSocketLog = env.enableSocketLog
+                    if RPConfig.shared.isSideload {
+                        RPConfig.shared.enableSocketLog = true
+                    }
                     RPConfig.shared.enableTimeDebug = env.enableTimeDebug
                     RPConfig.shared.enablePipelineLog = env.enablePipelineLog
                     RPConfig.shared.applyLogMode()
-                    self.logTo("[Get]logMode:\(env.logMode) logURL:\(env.logURL) SocketLog:\(env.enableSocketLog) TimeDebug:\(env.enableTimeDebug)")
+                    self.logTo("[Get]logMode:\(env.logMode) logURL:\(env.logURL) SocketLog:\(RPConfig.shared.enableSocketLog) TimeDebug:\(env.enableTimeDebug)")
                     self.logTo("[Get]onLog:\(env.onlogPage) onAudio:\(env.onAudioPage) EnableLog:\(env.enableLog)")
                     if !self.isProcessingBatch {
                         guard let cont = self.logContinuation else {
