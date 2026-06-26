@@ -804,7 +804,7 @@ struct LogSettingView:View {
                     .foregroundColor(.secondary)
                     .padding(.bottom, 5)
 
-            if LPConfig.shared.isSideload {
+            if LPConfig.isSideload {
                 HStack {
                     Image(systemName: "lock.fill")
                         .foregroundColor(.orange)
