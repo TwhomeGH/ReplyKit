@@ -622,7 +622,7 @@ class SocketServer:ObservableObject {
             "ChangeBit": userDefaults?.bool(forKey: "ChangeBit") ?? false,
             "isLowLatencyRateControlEnabled":userDefaults?.bool(forKey:"isLowLatencyRateControlEnabled") ?? true,
             "useEnhancedRTMP":userDefaults?.bool(forKey:"useEnhancedRTMP") ?? false,
-            "isOringinAudio":userDefaults?.bool(forKey:"isOringinAudio") ?? true,
+            "isOringinAudio": (userDefaults?.object(forKey: "isOringinAudio") as? Bool) ?? true,
 
             "h264level": userDefaults?
                 .string(forKey: "h264level") ?? "AutoHigh",

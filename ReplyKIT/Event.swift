@@ -738,7 +738,7 @@ final class RPConfig {
             ChangeBit:SharedDefaults.group?.bool(forKey: "ChangeBit") ?? false,
             isLowLatencyRateControlEnabled:SharedDefaults.group?.bool(forKey: "isLowLatencyRateControlEnabled") ?? true,
             useEnhancedRTMP:SharedDefaults.group?.bool(forKey: "useEnhancedRTMP") ?? false,
-            isOringinAudio:SharedDefaults.group?.bool(forKey: "isOringinAudio") ?? false,
+            isOringinAudio: (SharedDefaults.group?.object(forKey: "isOringinAudio") as? Bool) ?? true,
             useBic:SharedDefaults.group?.bool(forKey: "useBic") ?? false,
             
              // 方向處理
