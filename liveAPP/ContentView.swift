@@ -1609,7 +1609,6 @@ struct LogView: View {
             Button("清除日誌") {
                 logModel.clearLogs()
                 AppLogPersister.shared.clear()
-                // 清空 log.txt 檔案
                 if let containerURL =
                     FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.nuclear.liveAPP") {
                     let logURL = containerURL.appendingPathComponent("log.txt")
@@ -1619,8 +1618,6 @@ struct LogView: View {
                     } catch {
                         sendlog(message: "❌ 無法清空 log.txt：\(error)")
                     }
-                } else {
-                    sendlog(message: "❌ 無法取得 containerURL")
                 }
             }
 

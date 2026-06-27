@@ -1963,8 +1963,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 }
             }
 
-            // 確保 video processor 狀態重置
-            videoProcessor?.resetProcessing()
+            // 重建 video processor 確保 ProcessorActor 狀態乾淨（resetProcessing 無法清除 actor 內部卡死）
+            rebuildVideo()
 
             // 重啟斷線監控
             startDisconnectMonitor()
