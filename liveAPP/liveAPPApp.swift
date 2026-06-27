@@ -168,7 +168,14 @@ final class AppLogPersister {
         }
     }
 
+    /// 累積寫入位元組（供 DeviceInfo 取樣）
+    private(set) var totalWrittenBytes: UInt64 = 0
+
     private func write(_ data: Data) {
+        let newLines = data.reduce(0) { $0 + ($1 == 0x0A ? 1 : 0) }
+        estimatedLineCount += newLines
+        totalWrittenBytes += UInt64(data.count)
+
         if FileManager.default.fileExists(atPath: logURL.path),
            let handle = try? FileHandle(forWritingTo: logURL) {
             defer { handle.closeFile() }
@@ -177,7 +184,14 @@ final class AppLogPersister {
         } else {
             try? data.write(to: logURL, options: .atomic)
         }
-        trimLogFileIfNeeded()
+
+        if estimatedLineCount > maxLogFileLines + trimMargin && !trimScheduled {
+            trimScheduled = true
+            queue.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                self?.trimLogFileIfNeeded()
+                self?.trimScheduled = false
+            }
+        }
     }
 
     private func trimLogFileIfNeeded() {
@@ -187,15 +201,15 @@ final class AppLogPersister {
         handle.closeFile()
         guard let content = String(data: currentData, encoding: .utf8) else { return }
         let lines = content.split(separator: "\n", omittingEmptySubsequences: false)
-        guard lines.count > maxLogFileLines else { return }
-        
-        // 目前沒使用到的變數 excess，註解掉以避免警告
-        //let excess = lines.count - maxLogFileLines
 
+        estimatedLineCount = lines.count
+
+        guard lines.count > maxLogFileLines else { return }
 
         let trimmedLines = lines.suffix(maxLogFileLines)
         let trimmedText = trimmedLines.joined(separator: "\n") + "\n"
         try? trimmedText.write(to: logURL, atomically: true, encoding: .utf8)
+        estimatedLineCount = maxLogFileLines
     }
 }
 

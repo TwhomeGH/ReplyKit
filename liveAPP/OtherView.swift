@@ -224,13 +224,42 @@ class SystemCPU {
 }
 
 
+final class SystemDiskIO {
+    private var prevPageIns: UInt64 = 0
+    private var prevPageOuts: UInt64 = 0
+    private let pageSizeKB = Double(PAGE_SIZE) / 1024.0
+
+    func rates() -> (pageInKBps: Double, pageOutKBps: Double) {
+        var stats = vm_statistics64()
+        var count = mach_msg_type_number_t(HOST_VM_INFO64_COUNT)
+        let kr: kern_return_t = withUnsafeMutablePointer(to: &stats) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &count)
+            }
+        }
+        guard kr == KERN_SUCCESS else { return (0, 0) }
+
+        let deltaIn = stats.pageins - prevPageIns
+        let deltaOut = stats.pageouts - prevPageOuts
+        prevPageIns = stats.pageins
+        prevPageOuts = stats.pageouts
+
+        return (Double(deltaIn) * pageSizeKB, Double(deltaOut) * pageSizeKB)
+    }
+}
+
 struct DeviceView: View {
 
     let cpuInfo = SystemCPU()
+    let diskIO = SystemDiskIO()
 
     @State private var appMemoryMB: Double = 0
     @State private var cpuHistory: [DataPoint] = []
     @State private var memoryHistory: [DataPoint] = []
+    @State private var pageInHistory: [DataPoint] = []
+    @State private var pageOutHistory: [DataPoint] = []
+    @State private var appWriteHistory: [DataPoint] = []
+    @State private var prevAppWriteBytes: UInt64 = 0
 
     @AppStorage("ReplyKitWidth",store: userDefaults) var ReplyKitW: Int = 0
     @AppStorage("ReplyKitHeight",store: userDefaults) var ReplyKitH: Int = 0
@@ -320,6 +349,47 @@ struct DeviceView: View {
 
             Section(
                 header:
+                    Label("磁碟 I/O", systemImage: "internaldrive")
+            ) {
+                Chart {
+                    ForEach(pageInHistory) { pt in
+                        LineMark(
+                            x: .value("Time", pt.time),
+                            y: .value("Page In", pt.value)
+                        )
+                        .foregroundStyle(.blue)
+                    }
+                    ForEach(pageOutHistory) { pt in
+                        LineMark(
+                            x: .value("Time", pt.time),
+                            y: .value("Page Out", pt.value)
+                        )
+                        .foregroundStyle(.red)
+                    }
+                    ForEach(appWriteHistory) { pt in
+                        LineMark(
+                            x: .value("Time", pt.time),
+                            y: .value("App Write", pt.value)
+                        )
+                        .foregroundStyle(.green)
+                    }
+                }
+                .chartYAxisLabel("KB/s")
+                .frame(height: 120)
+
+                let lastIn = pageInHistory.last?.value ?? 0
+                let lastOut = pageOutHistory.last?.value ?? 0
+                let lastWrite = appWriteHistory.last?.value ?? 0
+                Text("Page In: \(lastIn, specifier: "%.1f") KB/s")
+                    .foregroundColor(.blue)
+                Text("Page Out: \(lastOut, specifier: "%.1f") KB/s")
+                    .foregroundColor(.red)
+                Text("App Write: \(lastWrite, specifier: "%.1f") KB/s")
+                    .foregroundColor(.green)
+            }
+
+            Section(
+                header:
                     Label("網路", systemImage: "network")
             ) {
                 Text("介面: \(DeviceInfo.networkInterface)")
@@ -362,7 +432,19 @@ struct DeviceView: View {
         let now = Date()
         cpuHistory.append(DataPoint(time: now, value: DeviceInfo.cpuUsagePercent))
         memoryHistory.append(DataPoint(time: now, value: appMemoryMB))
+
+        let (inKB, outKB) = diskIO.rates()
+        pageInHistory.append(DataPoint(time: now, value: inKB))
+        pageOutHistory.append(DataPoint(time: now, value: outKB))
+
+        let currentBytes = AppLogPersister.shared.totalWrittenBytes
+        appWriteHistory.append(DataPoint(time: now, value: Double(currentBytes - prevAppWriteBytes) / 1024.0))
+        prevAppWriteBytes = currentBytes
+
         if cpuHistory.count > maxHistory { cpuHistory.removeFirst() }
         if memoryHistory.count > maxHistory { memoryHistory.removeFirst() }
+        if pageInHistory.count > maxHistory { pageInHistory.removeFirst() }
+        if pageOutHistory.count > maxHistory { pageOutHistory.removeFirst() }
+        if appWriteHistory.count > maxHistory { appWriteHistory.removeFirst() }
     }
 }

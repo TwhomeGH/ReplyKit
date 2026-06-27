@@ -94,6 +94,28 @@ append("hello") → write() → trimLogFileIfNeeded()
 
 ---
 
+## 6. 設備資訊頁 — 磁碟 I/O 圖表
+
+### 新增
+`DeviceView`（`OtherView.swift`）新增「磁碟 I/O」圖表與文字顯示，包含三個指標：
+
+| 指標 | 來源 | 顏色 |
+|------|------|------|
+| **Page In**（換頁讀取） | `vm_statistics64.pageins` × page size | 🔵 藍 |
+| **Page Out**（換頁寫出） | `vm_statistics64.pageouts` × page size | 🔴 紅 |
+| **App Write**（日誌寫入） | `AppLogPersister.totalWrittenBytes` 差值 | 🟢 綠 |
+
+- 每 1 秒取樣，`SystemDiskIO` 計算差值 → KB/s
+- 使用 `LineMark` 三線疊合圖表呈現過去 60 秒的 I/O 流量
+- 圖表下方附加最新值文字
+
+### 用途
+- Page In/Out 反映**系統記憶體壓力**（swap 活動量）
+- App Write 反映**本 App 日誌寫入量**
+- 可直觀判斷 watchdog kill 是否與大量檔案 I/O 或系統 swap 相關
+
+---
+
 ## 5. RemoteLogBuffer 爆量丟棄優化
 
 ### 問題
