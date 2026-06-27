@@ -1956,7 +1956,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             if let stream = rtmpStream {
                 do {
                     let settings = await stream.videoSettings
-                    try stream.setVideoSettings(settings)
+                    try await stream.setVideoSettings(settings)
                     sendlog(message: "📹 Video encoder 已重建")
                 } catch {
                     sendlog(message: "⚠️ Video encoder 重建失敗: \(error)")
