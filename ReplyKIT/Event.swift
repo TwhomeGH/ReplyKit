@@ -209,6 +209,7 @@ final class LogManager {
     private let logFileName = "log.txt"
     private let groupID = "group.nuclear.liveAPP"
     private let maxLogFileLines = 5000
+    private let maxForceFlushLines = 200
 
     // MARK: Rem Count
     private var localLogSize: Int = 0  // 累積字元數
@@ -300,10 +301,12 @@ final class LogManager {
 
         notifyMainAppIfNeeded(forceNotify: true)
 
-        let text = bufferCopy.joined()
         if RPConfig.shared.enableSocketLog {
+            let limited = bufferCopy.suffix(maxForceFlushLines)
+            let text = limited.joined()
             SocketClient.shared.sendLog(title: "UseESocket", message: text)
         } else {
+            let text = bufferCopy.joined()
             writeLogToFile(text)
         }
 

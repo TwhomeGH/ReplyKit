@@ -844,7 +844,7 @@ class SocketClient : @unchecked Sendable {
             self?.connection = nil
             self?.retry()
         }
-        queue.asyncAfter(deadline: .now() + 10, execute: sendTimeout)
+        queue.asyncAfter(deadline: .now() + 30, execute: sendTimeout)
 
         con.send(content: data, completion: .contentProcessed({ error in
             sendTimeout.cancel()

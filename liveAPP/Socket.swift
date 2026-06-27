@@ -1055,7 +1055,7 @@ class SocketServer:ObservableObject {
             // ⚠️ 啟動 watchdog timer，使用 flag 避免 DispatchWorkItem 的 over-release
             let timeoutKey = "send_\(id)"
             self.sendTimeoutFlags[timeoutKey] = true
-            self.queue.asyncAfter(deadline: .now() + 10) { [weak self, weak conn] in
+            self.queue.asyncAfter(deadline: .now() + 30) { [weak self, weak conn] in
                 guard let self, let conn else { return }
                 guard self.sendTimeoutFlags.removeValue(forKey: timeoutKey) != nil else { return }
                 self.logTo("Send timeout, removing connection")
