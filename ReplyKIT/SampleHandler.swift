@@ -1927,15 +1927,52 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     // MARK: 直播暫停
     override func broadcastPaused() {
-
+        isBroadcastPaused = true
+        sendlog(message: "⏸️ 廣播暫停（進入背景）")
+        disconnectMonitorTask?.cancel()
+        disconnectMonitorTask = nil
     }
 
     // MARK: 直播恢復
     override func broadcastResumed() {
+        isBroadcastPaused = false
+        sendlog(message: "📹 廣播恢復（前景）")
 
+        guard isSessionReady, !isStopping else { return }
+
+        Task(priority: .medium) { [weak self] in
+            guard let self else { return }
+
+            // 確保 Socket 連線（背景時可能斷開）
+            SocketClient.shared.setupConnection()
+
+            // 重啓 MediaMixer（若被系統暫停）
+            if !(await mediaMixer.isRunning) {
+                await mediaMixer.startRunning()
+                sendlog(message: "📹 MediaMixer 已重新啟動")
+            }
+
+            // 重新套用 video settings，强迫 VideoToolbox 重建 encoder session
+            if let stream = rtmpStream {
+                do {
+                    let settings = await stream.videoSettings
+                    try stream.setVideoSettings(settings)
+                    sendlog(message: "📹 Video encoder 已重建")
+                } catch {
+                    sendlog(message: "⚠️ Video encoder 重建失敗: \(error)")
+                }
+            }
+
+            // 確保 video processor 狀態重置
+            videoProcessor?.resetProcessing()
+
+            // 重啟斷線監控
+            startDisconnectMonitor()
+        }
     }
 
     private var isBroadcasting = false
+    private var isBroadcastPaused = false
 
     // MARK: 直播結束處理
     func broadcastEnd(message:String = "正常結束")  {

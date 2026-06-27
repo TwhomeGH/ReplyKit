@@ -773,31 +773,18 @@ class SocketServer:ObservableObject {
 
     }
 
-    private static let parsingQueue = DispatchQueue(
-        label: "SocketServerParsingQueue",
-        qos: .userInitiated,
-        attributes: .concurrent
-    )
-
     let decoder = JSONDecoder()
 
+    /// 單次 dispatch：在 serial queue 上解析 + 處理，消除 parsingQueue 跳轉
     private func handleReceivedData(_ data: Data, from connection: NWConnection) {
-        SocketServer.parsingQueue.async { [weak self] in
-            guard let self = self else { return }
-
-            let base: TypePayload
+        queue.async { [weak self] in
+            guard let self else { return }
             do {
-                base = try decoder.decode(TypePayload.self, from: data)
-            } catch {
-                self.queue.async {
-                    self.removeConnection(connection)
-                }
-                self.logTo("[Socket]Decode failed ❌ \(error)")
-                return
-            }
-
-            self.queue.async { [data, connection] in
+                let base = try decoder.decode(TypePayload.self, from: data)
                 self.handleDecodedPayload(data: data, type: base.type, connection: connection)
+            } catch {
+                self.logTo("[Socket]Decode failed ❌ \(error)")
+                self.removeConnection(connection)
             }
         }
     }
@@ -969,9 +956,10 @@ class SocketServer:ObservableObject {
 
             case "logbatch":
                 let batch = try decoder.decode(LogBatchPayload.self, from: data)
-                for entry in batch.entries {
-                    receiveSocketLog(title: "UseESocket", message: entry)
-                }
+                guard LPConfig.shared.enableLog || LPConfig.shared.SocketLog else { break }
+                let prefixed = batch.entries.map { "UseESocket:\($0)" }
+                LogBuffer.shared.push(prefixed)
+                AppLogPersister.shared.append(lines: prefixed)
 
             case "reconnectStatus":
                 if let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

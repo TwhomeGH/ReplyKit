@@ -139,6 +139,11 @@ final class VideoFrameProcessor {
         processorActor = nil
     }
 
+    func resetProcessing() {
+        isProcessing = false
+        processingStartedAt = nil
+    }
+
     func setRotatorDebug(_ value: Bool) async {
         await processorActor?.updateDebug(value)
     }
