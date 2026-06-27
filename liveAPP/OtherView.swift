@@ -134,15 +134,17 @@ struct DeviceInfo {
         return 0
     }
 
-    static var freeDiskMB: Double {
-        if let attrs = try? FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory()),
-           let free = attrs[FileAttributeKey(rawValue: "NSFileSystemAvailableSize")] as? NSNumber {
-            return Double(free.int64Value) / 1024 / 1024
-        }
-        return 0
+    /// 可用空間（含可清除快取），接近裝置設定顯示值
+    static var availableDiskMB: Double {
+        let url = URL(fileURLWithPath: NSHomeDirectory())
+        guard let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
+              let capacity = values.volumeAvailableCapacityForImportantUsage
+        else { return 0 }
+        return Double(capacity) / 1024 / 1024
     }
 
-    static var trulyFreeDiskMB: Double {
+    /// 真正空閒空間（不含可清除快取）
+    static var freeDiskMB: Double {
         if let attrs = try? FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory()),
            let free = attrs[.systemFreeSize] as? NSNumber {
             return Double(free.int64Value) / 1024 / 1024
@@ -358,15 +360,15 @@ struct DeviceView: View {
                     Label("儲存空間", systemImage: "externaldrive")
             ) {
                 let total = DeviceInfo.totalDiskMB
+                let available = DeviceInfo.availableDiskMB
                 let free = DeviceInfo.freeDiskMB
-                let trulyFree = DeviceInfo.trulyFreeDiskMB
-                let used = total - free
+                let used = total - available
                 Text("總容量: \(total / 1024, specifier: "%.1f") GB")
                 Text("已使用: \(used / 1024, specifier: "%.1f") GB")
-                Text("可用（含可清除）: \(free / 1024, specifier: "%.1f") GB")
-                    .foregroundColor(free < 1024 ? .orange : .primary)
-                Text("空閒（真正）: \(trulyFree / 1024, specifier: "%.1f") GB")
-                    .foregroundColor(trulyFree < 512 ? .orange : .secondary)
+                Text("可用（含可清除）: \(available / 1024, specifier: "%.1f") GB")
+                    .foregroundColor(available < 1024 ? .orange : .primary)
+                Text("空閒（真正）: \(free / 1024, specifier: "%.1f") GB")
+                    .foregroundColor(free < 512 ? .orange : .secondary)
             }
 
             Section(
