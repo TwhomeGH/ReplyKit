@@ -113,6 +113,7 @@ final class AppLogPersister {
     static let shared = AppLogPersister()
     private let queue = DispatchQueue(label: "liveApp.logPersister", qos: .utility)
     private let logFileName = "log.txt"
+    private let maxLogFileLines = 5000
 
     private var logURL: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
@@ -151,6 +152,7 @@ final class AppLogPersister {
             } else {
                 try? data.write(to: self.logURL, options: .atomic)
             }
+            self.trimLogFileIfNeeded()
         }
     }
 
@@ -169,6 +171,21 @@ final class AppLogPersister {
         } else {
             try? data.write(to: logURL, options: .atomic)
         }
+        trimLogFileIfNeeded()
+    }
+
+    private func trimLogFileIfNeeded() {
+        guard let handle = try? FileHandle(forReadingFrom: logURL),
+              let currentData = try? handle.readToEnd()
+        else { return }
+        handle.closeFile()
+        guard let content = String(data: currentData, encoding: .utf8) else { return }
+        let lines = content.split(separator: "\n", omittingEmptySubsequences: false)
+        guard lines.count > maxLogFileLines else { return }
+        let excess = lines.count - maxLogFileLines
+        let trimmedLines = lines.suffix(maxLogFileLines)
+        let trimmedText = trimmedLines.joined(separator: "\n") + "\n"
+        try? trimmedText.write(to: logURL, atomically: true, encoding: .utf8)
     }
 }
 
