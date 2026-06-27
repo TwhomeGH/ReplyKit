@@ -205,15 +205,12 @@ final class LogManager {
     )
 
     private var localLogBuffer: [String] = []
+    private let maxRingBufferEntries = 1000
 
     private let logFileName = "log.txt"
     private let groupID = "group.nuclear.liveAPP"
     private let maxLogFileLines = 5000
     private let maxForceFlushLines = 200
-
-    // MARK: Rem Count
-    private var localLogSize: Int = 0  // 累積字元數
-    private let maxLogBufferSize = 100_000  // 約 100KB 上限
 
     // MARK: flush寫入間隔
     var flushInterval: TimeInterval = 1.0
@@ -281,7 +278,9 @@ final class LogManager {
             guard let self = self else { return }
 
             self.localLogBuffer.append(logMessage)
-            self.localLogSize += logMessage.utf8.count
+            if self.localLogBuffer.count > self.maxRingBufferEntries {
+                self.localLogBuffer.removeFirst(self.localLogBuffer.count - self.maxRingBufferEntries)
+            }
 
             logger.debug("LogBuffer:\(msg)")
         }
@@ -297,14 +296,13 @@ final class LogManager {
         guard !localLogBuffer.isEmpty else { return }
         let bufferCopy = localLogBuffer
         localLogBuffer = []
-        localLogSize = 0
 
         notifyMainAppIfNeeded(forceNotify: true)
 
         if RPConfig.shared.enableSocketLog {
-            let limited = bufferCopy.suffix(maxForceFlushLines)
-            let text = limited.joined()
-            SocketClient.shared.sendLog(title: "UseESocket", message: text)
+            let limited = Array(bufferCopy.suffix(maxForceFlushLines))
+            SocketClient.shared.sendLogBatch(entries: limited)
+            SocketClient.shared.forceFlushBatch()
         } else {
             let text = bufferCopy.joined()
             writeLogToFile(text)
@@ -330,8 +328,10 @@ final class LogManager {
             switch self.mode {
             case .local:
                 self.localLogBuffer.append(logMessage)
-                self.localLogSize += logMessage.utf8.count
-                if flushImmediately || self.localLogSize >= self.maxLogBufferSize {
+                if self.localLogBuffer.count > self.maxRingBufferEntries {
+                    self.localLogBuffer.removeFirst(self.localLogBuffer.count - self.maxRingBufferEntries)
+                }
+                if flushImmediately {
                     self.flushLocalLogs()
                 }
 
@@ -340,8 +340,10 @@ final class LogManager {
 
             case .both:
                 self.localLogBuffer.append(logMessage)
-                self.localLogSize += logMessage.utf8.count
-                if flushImmediately || self.localLogSize >= self.maxLogBufferSize {
+                if self.localLogBuffer.count > self.maxRingBufferEntries {
+                    self.localLogBuffer.removeFirst(self.localLogBuffer.count - self.maxRingBufferEntries)
+                }
+                if flushImmediately {
                     self.flushLocalLogs()
                 }
                 self.remoteLogger?.log(title: title, message: message)
@@ -363,11 +365,11 @@ final class LogManager {
             if self.mode == .local || self.mode == .both {
                 // onLogPage 為 false 時只清空 buffer，不寫入檔案或 socket
                 // 側載模式無 App Group，必須強制走 socket，不受 onLogPage 限制
+                // ring buffer 自動 drop 最舊的，overflow 不累積
                 if RPConfig.isSideload || RPConfig.shared.onLogPage {
                     self.flushLocalLogs()
-                } else if self.localLogSize >= self.maxLogBufferSize {
+                } else {
                     self.localLogBuffer.removeAll()
-                    self.localLogSize = 0
                 }
             }
         }
@@ -379,14 +381,12 @@ final class LogManager {
 
         let bufferCopy = localLogBuffer
         localLogBuffer = []
-        localLogSize = 0
 
         notifyMainAppIfNeeded(forceNotify: forceNotify)
 
         if RPConfig.shared.enableSocketLog {
             DispatchQueue.global(qos: .utility).async {
-                let text = bufferCopy.joined()
-                SocketClient.shared.sendLog(title: "UseESocket", message: text)
+                SocketClient.shared.sendLogBatch(entries: bufferCopy)
             }
         } else {
             let text = bufferCopy.joined()

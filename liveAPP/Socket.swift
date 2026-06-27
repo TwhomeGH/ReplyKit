@@ -480,6 +480,9 @@ class SocketServer:ObservableObject {
         let title:String
         let message:String
     }
+    struct LogBatchPayload: Codable {
+        let entries: [String]
+    }
     struct UPSet:Codable {
         let key:String
         let ValueType:String
@@ -963,6 +966,12 @@ class SocketServer:ObservableObject {
             case "log":
                 let dict = try decoder.decode(SLogMessage.self, from: data)
                 receiveSocketLog(title: dict.title, message: dict.message)
+
+            case "logbatch":
+                let batch = try decoder.decode(LogBatchPayload.self, from: data)
+                for entry in batch.entries {
+                    receiveSocketLog(title: "UseESocket", message: entry)
+                }
 
             case "reconnectStatus":
                 if let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

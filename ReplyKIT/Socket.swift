@@ -110,6 +110,14 @@ class SocketClient : @unchecked Sendable {
     // 側載模式緩衝日誌：connection 尚未就緒時先暫存，ready 後自動發送
     private var pendingLogs: [(title: String, message: String)] = []
 
+    // MARK: - Batch Log Transport
+    private var pendingBatchEntries: [String] = []
+    private let maxBatchEntries = 50
+    private let maxBatchBytes = 4096
+    private var inFlightBatches = 0
+    private let maxInflightBatches = 3
+    private var batchTimer: DispatchSourceTimer?
+
     // 心跳相關 專用 Queue 和 Timer
     private let queueHeart = DispatchQueue(label: "SocketClientQueueHeartbeat")
 
@@ -230,9 +238,11 @@ class SocketClient : @unchecked Sendable {
 
         stopHeartbeat()
         stopReceiveLoop()
+        stopBatchTimer()
 
         receiveBuffer.removeAll()  // ✅ 清空累積 buffer
-
+        pendingBatchEntries.removeAll()
+        inFlightBatches = 0
 
         self.logTo("SocketClient connection closed")
 
@@ -735,11 +745,100 @@ class SocketClient : @unchecked Sendable {
         }
     }
 
+    // MARK: - Batch Log Transport
+    func sendLogBatch(entries: [String]) {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            self.pendingBatchEntries.append(contentsOf: entries)
+            self.checkBatch()
+        }
+    }
+
+    private func checkBatch() {
+        let totalBytes = pendingBatchEntries.reduce(0) { $0 + $1.utf8.count }
+        if pendingBatchEntries.count >= maxBatchEntries || totalBytes >= maxBatchBytes {
+            flushBatch()
+        }
+        if pendingBatchEntries.isEmpty {
+            stopBatchTimer()
+        } else {
+            startBatchTimer()
+        }
+    }
+
+    private func flushBatch() {
+        guard !pendingBatchEntries.isEmpty else { return }
+        guard inFlightBatches < maxInflightBatches else {
+            let dropCount = min(pendingBatchEntries.count, maxBatchEntries)
+            pendingBatchEntries.removeFirst(dropCount)
+            return
+        }
+        guard connection != nil else { return }
+
+        let entries = pendingBatchEntries
+        pendingBatchEntries.removeAll()
+        stopBatchTimer()
+        _sendBatch(entries)
+    }
+
+    func forceFlushBatch() {
+        queue.sync { [weak self] in
+            guard let self = self else { return }
+            guard !self.pendingBatchEntries.isEmpty else { return }
+            let entries = self.pendingBatchEntries
+            self.pendingBatchEntries.removeAll()
+            self.stopBatchTimer()
+            let payload: [String: Any] = [
+                "type": "logbatch",
+                "entries": entries
+            ]
+            self.sendPayload(payload)
+        }
+    }
+
+    private func _sendBatch(_ entries: [String]) {
+        inFlightBatches += 1
+        let payload: [String: Any] = [
+            "type": "logbatch",
+            "entries": entries
+        ]
+        sendPayload(payload) { [weak self] _ in
+            guard let self = self else { return }
+            self.queue.async {
+                self.inFlightBatches -= 1
+                self.checkBatch()
+            }
+        }
+    }
+
+    private func startBatchTimer() {
+        guard batchTimer == nil else { return }
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + 0.25, repeating: 0.25, leeway: .milliseconds(50))
+        timer.setEventHandler { [weak self] in
+            guard let self = self else { return }
+            self.flushBatch()
+        }
+        timer.resume()
+        batchTimer = timer
+    }
+
+    private func stopBatchTimer() {
+        batchTimer?.cancel()
+        batchTimer = nil
+    }
+
     private func flushPendingLogs() {
         let logs = pendingLogs
         pendingLogs.removeAll()
         for log in logs {
             _sendLogPayload(title: log.title, message: log.message)
+        }
+        if !pendingBatchEntries.isEmpty {
+            let entries = pendingBatchEntries
+            pendingBatchEntries.removeAll()
+            stopBatchTimer()
+            _sendBatch(entries)
         }
     }
 
