@@ -620,14 +620,19 @@ func sendlog(title:String = "liveApp",message: String) {
 func receiveSocketLog(title: String = "UseESocket", message: String) {
     guard LPConfig.shared.enableLog || LPConfig.shared.SocketLog else { return }
 
-    let timeString = formatTime()
+    //let timeString = formatTime()
+    // 已經有時間戳了，避免重複
+
     let lines = message
         .split(separator: "\n", omittingEmptySubsequences: true)
-        .map { "\(timeString): \(title):\($0)" }
+        .map { "\(title):\($0)" }
 
     if lines.isEmpty {
-        LogBuffer.shared.push("\(timeString): \(title):\(message)")
-        AppLogPersister.shared.append(line: "\(timeString): \(title):\(message)")
+        
+        LogBuffer.shared.push("\(title):\(message)")
+
+
+        AppLogPersister.shared.append(line: "\(title):\(message)")
     } else {
         LogBuffer.shared.push(lines)
         AppLogPersister.shared.append(lines: lines)
