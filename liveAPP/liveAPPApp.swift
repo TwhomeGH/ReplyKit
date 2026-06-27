@@ -426,13 +426,12 @@ final class RemoteLogBuffer {
         ]
 
         queue.async {
-            if self.buffer.count >= self.maxBufferSize {
-                if self.buffer.count % 100 == 0 {
-                    logger.debug("⚠️ RemoteLogBuffer 已滿 (\(self.maxBufferSize))，丟棄最舊日誌")
-                }
-                self.buffer.removeFirst()
-            }
             self.buffer.append(item)
+            if self.buffer.count > self.maxBufferSize {
+                let excess = self.buffer.count - self.maxBufferSize
+                self.buffer.removeFirst(excess)
+                logger.debug("⚠️ RemoteLogBuffer 已滿，丟棄 \(excess) 條最舊日誌")
+            }
         }
     }
 
