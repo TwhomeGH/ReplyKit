@@ -114,6 +114,11 @@ final class AppLogPersister {
     private let queue = DispatchQueue(label: "liveApp.logPersister", qos: .utility)
     private let logFileName = "log.txt"
     private let maxLogFileLines = 5000
+    private let trimMargin = 2000
+
+    /// 記憶體中估算行數，避免每次寫入都讀檔
+    private var estimatedLineCount = 5000
+    private var trimScheduled = false
 
     private var logURL: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
@@ -159,6 +164,7 @@ final class AppLogPersister {
     func clear() {
         queue.async {
             try? "".write(to: self.logURL, atomically: true, encoding: .utf8)
+            self.estimatedLineCount = 0
         }
     }
 

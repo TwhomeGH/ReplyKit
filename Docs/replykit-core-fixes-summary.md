@@ -59,18 +59,38 @@ GPU 旋轉卡死時（驅動錯誤、Metal 內部 hang），`isProcessing = true
 
 ---
 
-## 4. AppLogPersister 日誌檔無限制增長
+## 4. AppLogPersister 日誌檔 I/O 爆炸與無限制增長
 
 ### 問題
-`liveAPPApp.swift:112-173` 僅不斷 append 日誌到檔案，**完全沒有限制** → 日誌檔隨時間無限增大。
+`liveAPPApp.swift:112-173` 存在**兩層問題**：
+
+**第一層（容量）**：僅不斷 append，完全沒有限制 → 日誌檔隨時間無限增大。
+
+**第二層（效能，更嚴重）**：初始修正加入 `trimLogFileIfNeeded()` 後，**每一行 log 寫入都觸發全檔讀取 + 分割 + 可能全檔寫回**：
+
+```
+append("hello") → write() → trimLogFileIfNeeded()
+  → FileHandle.readToEnd() (讀完整個 5000 行檔案)
+  → content.split(separator: "\n")
+  → lines.count > 5000? 是 → suffix(5000) → 寫回完整檔案
+```
+
+重複此流程的次數等於日誌寫入次數。100 lines/sec 下，這等於 **100 次/秒完整讀寫 ~500KB 檔案**。serial queue 上的 I/O 積壓可能導致：
+- **App 被 watchdog 判定主執行緒 hang → 強制終止 → 直播斷流**
+- **寫入延遲疊加 → 寫一行 log 要數百毫秒完成**
 
 ### 修正
-- 每次寫入後檢查行數，超過 **5000 行**時保留最後 5000 行
-- 使用 `removeFirst(linesToRemove)` 一次性移除，避免逐行 shift
+- **記憶體行數計數器**：`estimatedLineCount` 追蹤檔案行數，**不讀檔不 trim**
+- **寬容閾值**：超過 `5000 + 2000`（即 7000 行）才安排 trim，減少 trim 頻率
+- **Debounce 延遲**：超過閾值後延遲 **1 秒**才執行 trim，同批 burst 只觸發一次
+- **trim 後更新計數器**：避免下次 trim 又全檔讀取
 
 ### 預期改善
-- **日誌檔大小穩定**：保持約 5000 行，不再無限膨脹
-- **避免磁碟空間耗盡**
+| 場景 | 改前 | 改後 |
+|------|------|------|
+| 一般寫入（99.9% 情況） | 每行都全檔讀寫 | O(1) append only，trim 不執行 |
+| 超過 7000 行時 | 每行都 trim（可能持續數百次） | 1 秒內只 trim 一次，回到 5000 行 |
+| 大 burst（數千行瞬間湧入） | 數千次全檔讀寫，App 可能被 watchdog 殺 | 一次 trim + 安全邊界
 
 ---
 
@@ -96,5 +116,7 @@ GPU 旋轉卡死時（驅動錯誤、Metal 內部 hang），`isProcessing = true
 | Socket 連線穩定性 | burst log → timeout → 斷線重連 loop | batch 限流，連線保持不斷 |
 | GPU 使用率 | ~30-40%（串行等待） | ~60-80%（3 幀 pipeline） |
 | GPU hang 復原 | 永久卡死 | ≤2 秒自動重置 |
-| 日誌檔大小 | 無限增長 | ≤5000 行 |
-| Log burst 時 CPU | O(n) 逐條 shift + N 次 sendlog | O(1) amortized + 1 次 sendlog |
+| 日誌檔大小 | 無限增長 | ≤~7000 行（trim 後回 5000） |
+| Log burst 時 CPU（陣列層） | O(n) 逐條 shift + N 次 sendlog | O(1) amortized + 1 次 sendlog |
+| AppLogPersister 寫入開銷 | 每筆寫入都全檔讀寫（O(N)） | O(1) append only，trim debounce 1s |
+| 檔案 I/O 導致的 watchdog kill | 高風險（大量 log 時累積延遲） | 低風險（無 trim 時等同 0 I/O） |
