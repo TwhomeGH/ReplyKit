@@ -302,3 +302,36 @@ private func trimIfNeededLocked() {
 | 背景 → 前景 video 恢復 | video 永久中斷，永不恢復 | 2-3 秒內重建 encoder，恢復推流 |
 | 頁面切換穩定性 | 快速切換 onLogPage/onAudioPage 高機率崩潰 | window nil 檢查，安全防護 |
 | 背景串流 LogBuffer 記憶體 | 無上限，長時間背景高機率 OOM | 上限 5000 條，自動截斷 |
+
+---
+
+## 10. broadcastResumed 視訊管線重建 + 側載清除日誌優化
+
+### 問題
+
+**視訊管線**：`broadcastResumed()` 只呼叫 `videoProcessor?.resetProcessing()` 重設外層 `VideoFrameProcessor.isProcessing` gate flag，但未處理 `ProcessorActor`（actor）內部的 `isProcessing`。若 actor 在暫停前已因 GPU hang 卡死，`resetProcessing()` 將外層 `isProcessing` 歸零 → 外層 watchdog 不再觸發 → actor 永遠卡在 `guard !isProcessing else { return nil }` → 恢復後所有 video frame 被無聲丟棄。
+
+**清除日誌**：側載模式下無 App Group container，`「清除日誌」` 按鈕總是落入 `else` 印出 `❌ 無法取得 containerURL`。
+
+### 修正
+
+**視訊管線**（`SampleHandler.swift:1966`）：
+```swift
+// 改前
+videoProcessor?.resetProcessing()
+
+// 改後：重建整個 VideoFrameProcessor（含新 ProcessorActor）
+rebuildVideo()
+```
+
+**清除日誌**（`ContentView.swift:1609-1622`）：
+```swift
+// 改前：else 印 "❌ 無法取得 containerURL"
+// 改後：無 App Group container 時直接跳過，不報錯誤
+```
+
+### 預期改善
+| 場景 | 改前 | 改後 |
+|------|------|------|
+| 背景恢復後 video 狀態 | resetProcessing 無效，actor 卡死 → video 靜默失敗 | 重建整個 processor → actor 乾淨啟動 |
+| 側載清除日誌 | 每次顯示「無法取得 containerURL」錯誤 | 跳過共享容器，正常完成 |
