@@ -225,19 +225,19 @@ class SystemCPU {
 
 
 final class SystemDiskIO {
-    private var prevPageIns: UInt64 = 0
-    private var prevPageOuts: UInt64 = 0
+    private var prevPageIns: natural_t = 0
+    private var prevPageOuts: natural_t = 0
     private let pageSizeKB: Double = {
         let pagesize = Int(sysconf(_SC_PAGESIZE))
         return pagesize > 0 ? Double(pagesize) / 1024.0 : 16.0
     }()
 
     func rates() -> (pageInKBps: Double, pageOutKBps: Double) {
-        var stats = vm_statistics64()
-        var count = mach_msg_type_number_t(HOST_VM_INFO64_COUNT)
+        var stats = vm_statistics()
+        var count = mach_msg_type_number_t(MemoryLayout<vm_statistics_data_t>.size / MemoryLayout<integer_t>.size)
         let kr: kern_return_t = withUnsafeMutablePointer(to: &stats) {
             $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &count)
+                host_statistics(mach_host_self(), HOST_VM_INFO, $0, &count)
             }
         }
         guard kr == KERN_SUCCESS else { return (0, 0) }
