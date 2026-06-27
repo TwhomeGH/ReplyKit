@@ -208,6 +208,7 @@ final class LogManager {
 
     private let logFileName = "log.txt"
     private let groupID = "group.nuclear.liveAPP"
+    private let maxLogFileLines = 5000
 
     // MARK: Rem Count
     private var localLogSize: Int = 0  // 累積字元數
@@ -408,6 +409,21 @@ final class LogManager {
         } else {
             try? data.write(to: fileURL, options: .atomic)
         }
+        trimLogFileIfNeeded(fileURL: fileURL)
+    }
+
+    private func trimLogFileIfNeeded(fileURL: URL) {
+        guard let fileHandle = try? FileHandle(forReadingFrom: fileURL),
+              let currentData = try? fileHandle.readToEnd()
+        else { return }
+        fileHandle.closeFile()
+        guard let content = String(data: currentData, encoding: .utf8) else { return }
+        let lines = content.split(separator: "\n", omittingEmptySubsequences: false)
+        guard lines.count > maxLogFileLines else { return }
+        let hasSuffixNewline = content.hasSuffix("\n")
+        let trimmedLines = lines.suffix(maxLogFileLines)
+        let trimmedText = trimmedLines.joined(separator: "\n") + (hasSuffixNewline ? "\n" : "")
+        try? trimmedText.write(to: fileURL, atomically: true, encoding: .utf8)
     }
 
     // MARK: - 通知主 App（優化版）
