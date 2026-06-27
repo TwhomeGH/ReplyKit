@@ -379,21 +379,24 @@ struct DeviceView: View {
                     ForEach(pageInHistory) { pt in
                         LineMark(
                             x: .value("Time", pt.time),
-                            y: .value("Page In", pt.value)
+                            y: .value("KB/s", pt.value),
+                            series: .value("Series", "Page In")
                         )
                         .foregroundStyle(.blue)
                     }
                     ForEach(pageOutHistory) { pt in
                         LineMark(
                             x: .value("Time", pt.time),
-                            y: .value("Page Out", pt.value)
+                            y: .value("KB/s", pt.value),
+                            series: .value("Series", "Page Out")
                         )
                         .foregroundStyle(.red)
                     }
                     ForEach(appWriteHistory) { pt in
                         LineMark(
                             x: .value("Time", pt.time),
-                            y: .value("App Write", pt.value)
+                            y: .value("KB/s", pt.value),
+                            series: .value("Series", "App Write")
                         )
                         .foregroundStyle(.green)
                     }
