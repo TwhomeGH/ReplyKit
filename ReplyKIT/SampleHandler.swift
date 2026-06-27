@@ -1541,6 +1541,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         )
 
         await streamStataus?.refreshStatusTimestamp()
+        await streamStataus?.resetDisconnectCheck()
 
         await streamStataus?.setOnDisconnect { 
             Task { @MainActor in
@@ -1666,6 +1667,16 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 sendlog(message: "🎉 RTMP 重連成功")
                 self.isSessionReady = true
                 self.notifyReconnectStatus(.success)
+                await streamStataus?.resetDisconnectCheck()
+                // 重連後需重新 publish stream，否則音影數據無法送出
+                if let key = self.rtmpKey {
+                    do {
+                        _ = try await self.rtmpStream.publish(key)
+                        sendlog(message: "🎉 RTMP 重連後重新推流成功")
+                    } catch {
+                        sendlog(message: "⚠️ RTMP 重連後推流失敗: \(error)")
+                    }
+                }
                 await self.mediaMixer.startRunning()
 
                 self.startDisconnectMonitor()

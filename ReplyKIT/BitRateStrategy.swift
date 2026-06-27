@@ -91,11 +91,19 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
         return Int(Double(bytes * 8) / 1000.0)
     }
 
-    // 新增：檢查超時，超過 threshold 就呼叫 onDisconnect
+    private var disconnectFired = false
+
+    // 檢查超時，超過 threshold 就呼叫 onDisconnect（最多觸發一次）
     func checkDisconnect(timeout: TimeInterval) async {
+        guard !disconnectFired else { return }
         if let last = lastStatusTimestamp, Date().timeIntervalSince(last) > timeout {
+            disconnectFired = true
             onDisconnect?()
         }
+    }
+
+    func resetDisconnectCheck() {
+        disconnectFired = false
     }
 
 
