@@ -50,14 +50,15 @@ final class LogBuffer {
     private var flushWorkItem: DispatchWorkItem?
     private let flushDelay: TimeInterval = 0.05
     private let batchLimit = 100
+    private let maxBufferSize = 5000
 
     var onNewLog: (([String]) -> Void)?
 
     func push(_ msg: String) {
         queue.async {
             self.buffer.append(msg)
+            self.trimIfNeededLocked()
             self.scheduleFlushLocked()
-
         }
     }
 
@@ -66,8 +67,15 @@ final class LogBuffer {
 
         queue.async {
             self.buffer.append(contentsOf: messages)
+            self.trimIfNeededLocked()
             self.scheduleFlushLocked()
         }
+    }
+
+    private func trimIfNeededLocked() {
+        guard buffer.count > maxBufferSize else { return }
+        let excess = buffer.count - maxBufferSize
+        buffer.removeFirst(excess)
     }
 
     private func scheduleFlushLocked() {

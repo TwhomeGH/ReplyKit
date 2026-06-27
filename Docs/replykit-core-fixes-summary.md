@@ -232,6 +232,59 @@ override func broadcastResumed() {
 
 ---
 
+## 9. LogTextView 頁面切換崩潰 + LogBuffer 記憶體上限
+
+### 問題
+在 `onLogPage` ↔ `onAudioPage` 之間快速切換時，存在**兩層問題疊加**導致崩潰：
+
+**第一層（UITextView detached view 操作）**：
+- `LogView.onDisappear` 設 `isVisible=false` 並呼叫 `cancelPendingWork()` 取消尚未執行的 `DispatchWorkItem`
+- 但已排入 main queue 且正在執行中的 `DispatchWorkItem` 無法取消
+- 此時 `UITextView` 已被 SwiftUI 從 window 階層移除，但 `textView` 參考仍非 nil
+- `tv.layoutIfNeeded()` / `tv.scrollRangeToVisible()` 在 detached view 上執行觸發 `EXC_BREAKPOINT` / `SIGTRAP`
+
+**第二層（背景串流時 LogBuffer 無上限）**：
+- `LogBuffer.buffer` 原先沒有任何上限
+- 背景模式下主線程被節流，`flushLocked()` → `onNewLog` 消化不及
+- socket 持續湧入 `logbatch`（RTMP debug log），buffer 無限制增長
+- 最終觸發記憶體壓力 → OOM / 系統終止
+
+### 修正
+
+**Coordinator 防護**（`ContentView.swift:1270,1404`）：
+```swift
+// appendMessages DispatchWorkItem 內
+guard let self = self, let tv = self.textView, tv.window != nil else {
+    self?.appendWorkItem = nil
+    return
+}
+
+// scrollToBottomUsingRange
+guard let tv = textView, tv.window != nil else { return }
+```
+所有對 `UITextView` 的 layout / scrolling 操作前先檢查 `tv.window != nil`，視圖已脫離 window 時直接放棄。
+
+**LogBuffer 上限**（`liveAPPApp.swift:53,60,70,75-79`）：
+```swift
+private let maxBufferSize = 5000
+
+private func trimIfNeededLocked() {
+    guard buffer.count > maxBufferSize else { return }
+    let excess = buffer.count - maxBufferSize
+    buffer.removeFirst(excess)
+}
+```
+每次 `push` 後呼叫 `trimIfNeededLocked()`，超出 5000 條即丟棄最舊。
+
+### 預期改善
+| 場景 | 改前 | 改後 |
+|------|------|------|
+| 快速切換 onLogPage/onAudioPage | detached UITextView 操作 → EXC_BREAKPOINT 崩潰 | `tv.window != nil` 檢查，安全跳過 |
+| 背景串流大量 log 寫入 | LogBuffer 無上限增長 → 記憶體壓力 → OOM | 上限 5000 條，超出自動 drop 最舊 |
+| 背景主線程節流時 | buffer 持續膨脹無節制 | buffer 固定上限，不累積 |
+
+---
+
 ## 整體性能預期
 
 | 指標 | 改前 | 改後 |
@@ -247,3 +300,5 @@ override func broadcastResumed() {
 | Socket 接收 dispatch（50 條 logbatch） | 100 次 dispatch + 50 次 push + 50 次 append | 1 次 dispatch + 1 次 push + 1 次 append |
 | 背景模式下 watchdog 終止風險 | 高（大量小 dispatch + 小 I/O 超逾背景配額） | 低（單次批次處理快速完成） |
 | 背景 → 前景 video 恢復 | video 永久中斷，永不恢復 | 2-3 秒內重建 encoder，恢復推流 |
+| 頁面切換穩定性 | 快速切換 onLogPage/onAudioPage 高機率崩潰 | window nil 檢查，安全防護 |
+| 背景串流 LogBuffer 記憶體 | 無上限，長時間背景高機率 OOM | 上限 5000 條，自動截斷 |

@@ -1267,8 +1267,10 @@ struct LogTextView: UIViewRepresentable {
             // 延遲批量 append，避免每條都操作 UITextView
             if appendWorkItem == nil {
                 let workItem = DispatchWorkItem { [weak self] in
-                    guard let self = self, let tv = self.textView else { return }
-
+                    guard let self = self, let tv = self.textView, tv.window != nil else {
+                        self?.appendWorkItem = nil
+                        return
+                    }
 
                     let pendingMessages = self.appendQueue
                     self.appendQueue.removeAll()
@@ -1399,7 +1401,7 @@ struct LogTextView: UIViewRepresentable {
         }
 
         func scrollToBottomUsingRange(animated: Bool = true) {
-            guard let tv = textView else { return }
+            guard let tv = textView, tv.window != nil else { return }
 
             // 確保 layout / contentSize 是最新的
             tv.layoutIfNeeded()
