@@ -93,7 +93,7 @@ final class VideoFrameProcessor {
 
     private let mediaMixer: MediaMixer
     private let sendlog: (String) -> Void
-    private let processorActor: ProcessorActor
+    private var processorActor: ProcessorActor?
 
     var angle = RotationAngle(
                 rawValue: UInt32(RPConfig.shared.state.Rotate)
@@ -114,6 +114,8 @@ final class VideoFrameProcessor {
     var processedCount: Int = 0
     var sentCount: Int = 0
     private var isProcessing = false
+    private var processingStartedAt: Date?
+    private let processingTimeout: TimeInterval = 2.0
 
     init(mediaMixer: MediaMixer,
         sendlog: @escaping (String) -> Void) {
@@ -133,19 +135,20 @@ final class VideoFrameProcessor {
 
     func cleanup() {
         isActive = false
-        Task { await processorActor.cleanup() }
+        Task { await processorActor?.cleanup() }
+        processorActor = nil
     }
 
     func setRotatorDebug(_ value: Bool) async {
-        await processorActor.updateDebug(value)
+        await processorActor?.updateDebug(value)
     }
 
     func setRotatorTsDebug(_ value: Bool) async {
-        await processorActor.updateTsDebug(value)
+        await processorActor?.updateTsDebug(value)
     }
 
     func setRotatorDestination(width: Int, height: Int) async {
-        await processorActor.updateDestination(width: width, height: height)
+        await processorActor?.updateDestination(width: width, height: height)
     }
 
     deinit {
@@ -154,8 +157,22 @@ final class VideoFrameProcessor {
     }
 
     func process(_ sampleBuffer: CMSampleBuffer, oringinaltime: CMSampleTimingInfo) {
-        guard let imageBuffer = sampleBuffer.imageBuffer, !isProcessing else { return }
+        guard let imageBuffer = sampleBuffer.imageBuffer else { return }
+
+        // Watchdog: 偵測 GPU 旋轉逾時，重置整個管線
+        if isProcessing, let startedAt = processingStartedAt {
+            if Date().timeIntervalSince(startedAt) > processingTimeout {
+                isProcessing = false
+                processingStartedAt = nil
+                processorActor = nil
+                sendlog("[VideoProcessor] ⚠️ #\(processedCount) GPU 處理逾時 (\(Int(processingTimeout))s)，重置旋轉器管線")
+            }
+        }
+
+        guard !isProcessing else { return }
         isProcessing = true
+        processingStartedAt = Date()
+
         let pts = oringinaltime.presentationTimeStamp
         processedCount += 1
         let localCount = processedCount
@@ -166,11 +183,28 @@ final class VideoFrameProcessor {
             sendlog("[VideoProcessor] #\(localCount) 進入 PTS:\(String(format:"%.3f",pts.seconds))s")
         }
 
-        Task.detached(priority: .utility) { [weak self] in
-            guard let self, self.isActive else { self?.isProcessing = false; return }
-            defer { self.isProcessing = false }
+        // 確保 actor 存在（可能被 watchdog 清掉了）
+        if processorActor == nil {
+            processorActor = ProcessorActor(
+                debug: RPConfig.shared.enableRotateLog,
+                sendlog: sendlog
+            )
+        }
+        guard let actor = processorActor else {
+            isProcessing = false
+            processingStartedAt = nil
+            return
+        }
 
-            guard let rotated = await self.processorActor.processFrame(
+        Task.detached(priority: .utility) { [weak self] in
+            guard let self else { return }
+            defer {
+                self.isProcessing = false
+                self.processingStartedAt = nil
+            }
+            guard self.isActive else { return }
+
+            guard let rotated = await actor.processFrame(
                 imageBuffer: imageBuffer,
                 originalTime: oringinaltime,
                 angle: self.angle

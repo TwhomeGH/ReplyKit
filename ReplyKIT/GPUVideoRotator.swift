@@ -305,9 +305,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     }
 
 
-    private let gpuSemaphore = AsyncSemaphore(value: 5)
-
-    private let NGPUSemaphore = DispatchSemaphore(value: 10)
+    private let gpuSemaphore = AsyncSemaphore(value: 3)
     
 
     func cleanup() async {
@@ -489,15 +487,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
 
 
-    func asyncWait(_ semaphore: DispatchSemaphore, timeout: DispatchTime) async -> DispatchTimeoutResult {
-        await withCheckedContinuation { continuation in
-            DispatchQueue.global().async {
-                let result = semaphore.wait(timeout: timeout)
-                continuation.resume(returning: result)
-            }
-        }
-    }
-
 
     // MARK: - Enqueue Frame
     func rotateAsync(pixelBuffer: CVPixelBuffer, originalTime: CMSampleTimingInfo, angle: RotationAngle) async -> CMSampleBuffer? {
@@ -506,6 +495,8 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         guard ensureMetalResources() else {
             return nil
         }
+
+        await gpuSemaphore.wait()
 
         timing = originalTime
 
@@ -594,14 +585,11 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                     )
                 }
 
-                cont.resume(returning: wrapped)
+                    cont.resume(returning: wrapped)
 
-                // ✅ semaphore 一定要在 GPU 真完成後 signal（現在位置正確）
-                // Task {
-                //     await self.gpuSemaphore.signal()
-                // }
-
-                
+                Task {
+                    await self.gpuSemaphore.signal()
+                }
 
                 self.recycleOutput(frameC.outSet)
                 self.logTo("GPU Frame down :\(frameC.timing.presentationTimeStamp)s")
