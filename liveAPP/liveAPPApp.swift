@@ -416,7 +416,7 @@ final class RemoteLogBuffer {
     private var buffer: [[String: String]] = []
 
     /// 最多暫存幾筆，超過就丟
-    private let maxBufferSize = 300
+    private let maxBufferSize = 500
 
     func push(title: String, message: String) {
         let item = [
@@ -427,8 +427,8 @@ final class RemoteLogBuffer {
 
         queue.async {
             if self.buffer.count >= self.maxBufferSize {
-                if self.buffer.count % 50 == 0 {
-                    sendlog(message:"⚠️ RemoteLogBuffer 已滿 (\(self.maxBufferSize))，丟棄最舊日誌")
+                if self.buffer.count % 100 == 0 {
+                    logger.debug("⚠️ RemoteLogBuffer 已滿 (\(self.maxBufferSize))，丟棄最舊日誌")
                 }
                 self.buffer.removeFirst()
             }
@@ -455,8 +455,8 @@ final class RemoteLogSender {
     private var timer: DispatchSourceTimer?
     private let session = URLSession(configuration: .ephemeral)
 
-    private let flushInterval: TimeInterval = 2.0
-    private let batchLimit = 50
+    private let flushInterval: TimeInterval = 1.0
+    private let batchLimit = 150
 
     private var started = false
 
