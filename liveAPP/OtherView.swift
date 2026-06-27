@@ -227,7 +227,10 @@ class SystemCPU {
 final class SystemDiskIO {
     private var prevPageIns: UInt64 = 0
     private var prevPageOuts: UInt64 = 0
-    private let pageSizeKB = Double(PAGE_SIZE) / 1024.0
+    private let pageSizeKB: Double = {
+        let pagesize = Int(sysconf(_SC_PAGESIZE))
+        return pagesize > 0 ? Double(pagesize) / 1024.0 : 16.0
+    }()
 
     func rates() -> (pageInKBps: Double, pageOutKBps: Double) {
         var stats = vm_statistics64()
