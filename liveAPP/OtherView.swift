@@ -136,7 +136,7 @@ struct DeviceInfo {
 
     static var freeDiskMB: Double {
         if let attrs = try? FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory()),
-           let free = attrs[FileAttributeKey.systemAvailableSize] as? NSNumber {
+           let free = attrs[FileAttributeKey(rawValue: "NSFileSystemAvailableSize")] as? NSNumber {
             return Double(free.int64Value) / 1024 / 1024
         }
         return 0
