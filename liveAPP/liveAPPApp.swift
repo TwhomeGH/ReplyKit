@@ -182,7 +182,11 @@ final class AppLogPersister {
         guard let content = String(data: currentData, encoding: .utf8) else { return }
         let lines = content.split(separator: "\n", omittingEmptySubsequences: false)
         guard lines.count > maxLogFileLines else { return }
-        let excess = lines.count - maxLogFileLines
+        
+        // 目前沒使用到的變數 excess，註解掉以避免警告
+        //let excess = lines.count - maxLogFileLines
+
+
         let trimmedLines = lines.suffix(maxLogFileLines)
         let trimmedText = trimmedLines.joined(separator: "\n") + "\n"
         try? trimmedText.write(to: logURL, atomically: true, encoding: .utf8)
