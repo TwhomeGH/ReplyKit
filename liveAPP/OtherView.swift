@@ -227,6 +227,7 @@ class SystemCPU {
 final class SystemDiskIO {
     private var prevPageIns: natural_t = 0
     private var prevPageOuts: natural_t = 0
+    private var firstSample = true
     private let pageSizeKB: Double = {
         let pagesize = Int(sysconf(_SC_PAGESIZE))
         return pagesize > 0 ? Double(pagesize) / 1024.0 : 16.0
@@ -241,6 +242,13 @@ final class SystemDiskIO {
             }
         }
         guard kr == KERN_SUCCESS else { return (0, 0) }
+
+        if firstSample {
+            firstSample = false
+            prevPageIns = stats.pageins
+            prevPageOuts = stats.pageouts
+            return (0, 0)
+        }
 
         let deltaIn = stats.pageins - prevPageIns
         let deltaOut = stats.pageouts - prevPageOuts
