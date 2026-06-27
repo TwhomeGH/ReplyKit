@@ -114,6 +114,17 @@ append("hello") → write() → trimLogFileIfNeeded()
 - App Write 反映**本 App 日誌寫入量**
 - 可直觀判斷 watchdog kill 是否與大量檔案 I/O 或系統 swap 相關
 
+### 儲存空間 - 可用 vs 空閒
+
+iOS 的 `FileManager` 提供兩種容量查詢：
+
+| API | 標籤 | 含義 |
+|-----|------|------|
+| `.systemAvailableSize` | 可用（含可清除） | 系統顯示的「可用空間」= 真正空閒 + 可 purge 的快取（iCloud、暫存檔等） |
+| `.systemFreeSize` | 空閒（真正） | 純粹未使用的磁區空間，不包含可自動清除的資料 |
+
+原始碼之前誤用了 `.systemFreeSize` 並標為「可用」，導致比裝置設定顯示的數字少一大截。修正後**兩者並列**，方便比對。差距大代表系統快取正在佔用可觀空間。
+
 ---
 
 ## 5. RemoteLogBuffer 爆量丟棄優化

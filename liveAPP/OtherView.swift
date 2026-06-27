@@ -136,6 +136,14 @@ struct DeviceInfo {
 
     static var freeDiskMB: Double {
         if let attrs = try? FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory()),
+           let free = attrs[.systemAvailableSize] as? NSNumber {
+            return Double(free.int64Value) / 1024 / 1024
+        }
+        return 0
+    }
+
+    static var trulyFreeDiskMB: Double {
+        if let attrs = try? FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory()),
            let free = attrs[.systemFreeSize] as? NSNumber {
             return Double(free.int64Value) / 1024 / 1024
         }
@@ -351,11 +359,14 @@ struct DeviceView: View {
             ) {
                 let total = DeviceInfo.totalDiskMB
                 let free = DeviceInfo.freeDiskMB
+                let trulyFree = DeviceInfo.trulyFreeDiskMB
                 let used = total - free
                 Text("總容量: \(total / 1024, specifier: "%.1f") GB")
                 Text("已使用: \(used / 1024, specifier: "%.1f") GB")
-                Text("可用: \(free / 1024, specifier: "%.1f") GB")
+                Text("可用（含可清除）: \(free / 1024, specifier: "%.1f") GB")
                     .foregroundColor(free < 1024 ? .orange : .primary)
+                Text("空閒（真正）: \(trulyFree / 1024, specifier: "%.1f") GB")
+                    .foregroundColor(trulyFree < 512 ? .orange : .secondary)
             }
 
             Section(
