@@ -2299,10 +2299,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             }
 
             
-            if videoProcessor != nil {
-
-                videoProcessor?.process(sampleBuffer,oringinaltime:timing )
-
+            if let vp = videoProcessor {
+                if vp.isActive {
+                    vp.process(sampleBuffer,oringinaltime:timing )
+                } else if !isStopping {
+                    sendlog(message: "[Video] ⚠️ videoProcessor 已標記重建 (GPU 連續逾時)，觸發 rebuild")
+                    rebuildVideo()
+                }
             } else if processorsInitialized {
                 if lastTimestamp.seconds > lastlogTime + logInterval  {
                     sendlog(message: "[Video] ⚠️ 進程不存在！ count:\(videoFrameCount)")

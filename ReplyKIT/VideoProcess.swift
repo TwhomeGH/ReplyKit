@@ -116,6 +116,7 @@ final class VideoFrameProcessor {
     private var isProcessing = false
     private var processingStartedAt: Date?
     private let processingTimeout: TimeInterval = 2.0
+    private var watchdogResetCount: Int = 0
 
     init(mediaMixer: MediaMixer,
         sendlog: @escaping (String) -> Void) {
@@ -142,6 +143,7 @@ final class VideoFrameProcessor {
     func resetProcessing() {
         isProcessing = false
         processingStartedAt = nil
+        watchdogResetCount = 0
     }
 
     func setRotatorDebug(_ value: Bool) async {
@@ -170,8 +172,16 @@ final class VideoFrameProcessor {
                 isProcessing = false
                 processingStartedAt = nil
                 processorActor = nil
-                sendlog("[VideoProcessor] ⚠️ #\(processedCount) GPU 處理逾時 (\(Int(processingTimeout))s)，重置旋轉器管線")
+                watchdogResetCount += 1
+                sendlog("[VideoProcessor] ⚠️ #\(processedCount) GPU 處理逾時 (\(Int(processingTimeout))s)，重置旋轉器管線 (#\(watchdogResetCount))")
             }
+        }
+
+        // 連續逾時重置超過上限，標記需要重建
+        if watchdogResetCount > 3 {
+            isActive = false
+            sendlog("[VideoProcessor] ❌ 連續 GPU 逾時超過上限，標記重建")
+            return
         }
 
         guard !isProcessing else { return }
@@ -223,6 +233,9 @@ final class VideoFrameProcessor {
             if enablePipeLog, isFirstFrame || localCount % 300 == 0 {
                 sendlog("[VideoProcessor] #\(localCount) 旋轉完成 PTS:\(String(format:"%.3f",pts.seconds))s")
             }
+
+            // 成功處理，重置逾時計數
+            self.watchdogResetCount = 0
 
             let duration: CMTime
             if oringinaltime.duration.isValid, oringinaltime.duration.seconds > 0 {
