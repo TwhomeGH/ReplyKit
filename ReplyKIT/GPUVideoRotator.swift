@@ -304,8 +304,8 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         }
     }
 
-
-    private let gpuSemaphore = AsyncSemaphore(value: 3)
+    // 已停用 已經是withCheckedContinuation的方式，不需要額外的semaphore
+    // private let gpuSemaphore = AsyncSemaphore(value: 3)
     
 
     func cleanup() async {
@@ -496,8 +496,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             return nil
         }
 
-        await gpuSemaphore.wait()
-
         timing = originalTime
 
         let inBuffer = pixelBuffer
@@ -586,10 +584,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                 }
 
                     cont.resume(returning: wrapped)
-
-                Task {
-                    await self.gpuSemaphore.signal()
-                }
 
                 self.recycleOutput(frameC.outSet)
                 self.logTo("GPU Frame down :\(frameC.timing.presentationTimeStamp)s")

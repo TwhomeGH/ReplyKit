@@ -1432,6 +1432,16 @@ struct LogTextView: UIViewRepresentable {
             appendQueue.removeAll()
         }
 
+        func clearText() {
+            cancelPendingWork()
+            messageLines.removeAll()
+            appendedUUIDs.removeAll()
+            currentLineCount = 0
+            if let tv = textView {
+                tv.text = ""
+            }
+        }
+
         func textViewDidChangeSelection(_ textView: UITextView) {
 
             guard let range = textView.selectedTextRange else {
@@ -1608,6 +1618,7 @@ struct LogView: View {
 
             Button("清除日誌") {
                 logModel.clearLogs()
+                coordinator?.clearText()
                 AppLogPersister.shared.clear()
                 if let containerURL =
                     FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.nuclear.liveAPP") {
