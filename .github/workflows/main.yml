@@ -95,7 +95,6 @@ jobs:
       - name: Resolve SwiftPM dependencies
         run: |
           swift package clean
-          swift package update
           echo "Resolving Swift Package Manager dependencies to locked revisions"
           xcodebuild -resolvePackageDependencies -project liveAPP.xcodeproj
         env:
