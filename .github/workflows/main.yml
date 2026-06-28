@@ -25,14 +25,14 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
 
       # 1️⃣.5 HaishinKit dependency version
-      - name: Show & inject HaishinKit revision
-        run: |
-          echo "=== HaishinKitFixSwfit (Package.resolved) ==="
-          grep -A5 "haishinkitfixswfit" liveAPP.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved | head -10
-          HASH=$(grep -A5 "haishinkitfixswfit" liveAPP.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved \
-            | grep revision | cut -d'"' -f4 | cut -c1-7)
-          echo "REVISION=$HASH" >> "$GITHUB_ENV"
-          echo "HaishinKit revision: $HASH"
+      # - name: Show & inject HaishinKit revision
+      #   run: |
+      #     echo "=== HaishinKitFixSwfit (Package.resolved) ==="
+      #     grep -A5 "haishinkitfixswfit" liveAPP.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved | head -10
+      #     HASH=$(grep -A5 "haishinkitfixswfit" liveAPP.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved \
+      #       | grep revision | cut -d'"' -f4 | cut -c1-7)
+      #     echo "REVISION=$HASH" >> "$GITHUB_ENV"
+      #     echo "HaishinKit revision: $HASH"
 
       - name: Get tag
         id: get_tag
@@ -94,7 +94,7 @@ jobs:
       # 2️⃣.5 Force resolve dependencies to locked revision
       - name: Resolve SwiftPM dependencies
         run: |
-          swift package clean
+          swift package update
           echo "Resolving Swift Package Manager dependencies to locked revisions"
           xcodebuild -resolvePackageDependencies -project liveAPP.xcodeproj
         env:
