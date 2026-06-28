@@ -441,6 +441,7 @@ MetalContext.shared.rebuildQueue()
 | 連續旋轉失敗 | 無聲丟幀，永不重建 | 60 幀後 isActive=false → rebuildVideo |
 | GPU 逾時掛死 | 2s watchdog 重置 actor（但 isActive 卡死時無效） | 3 次逾時後 isActive=false → rebuildVideo |
 | Metal resource 敗壞修復 | cleanupResources 設 isActive=false 後永不恢復 | 只清 Metal 資源，isActive 保持 true，下幀自動重建管線 |
+| AsyncSemaphore | signal 放 Task{} 異步，延遲致下幀 wait() 永久阻塞 | 移除 wait/signal（isProcessing gate 已序列化） |
 
 ---
 
@@ -452,3 +453,52 @@ MetalContext.shared.rebuildQueue()
 ### 修正
 - `Coordinator` 新增 `clearText()`：清空 `messageLines`、`appendedUUIDs`、`appendQueue`、`currentLineCount` 及 `tv.text`
 - 「清除日誌」按鈕呼叫 `coordinator?.clearText()`
+
+---
+
+## 14. GPU Texture Cache 隔離 + cleanup 時序修正
+
+### 問題
+三層連鎖導致前景恢復後 video 斷流：
+
+1. **共用 Texture Cache 衝突**：`ensureMetalResources()` 從 `MetalContext.shared.ensureTextureCache()` 取得共用 cache。`cleanupResources()` 執行 `CVMetalTextureCacheFlush` + `textureCache = nil` 時，因所有 rotator 實例共享同一份 cache，舊 rotator 的 flush 會將新 rotator 正在使用的 texture 一併沖掉。
+
+2. **cleanup() actor 未正確清理**：`VideoFrameProcessor.cleanup()` 先 `Task { await processorActor?.cleanup() }` 再 `processorActor = nil`。Task closure 捕獲的是 `self.processorActor` 參照（非值捕獲），執行時已是 nil → 舊 actor 的 GPU 資源從未釋放。
+
+3. **前景恢復觸發雙重重建**：`broadcastResumed()` → `rebuildVideo()` 建新 processor。舊 processor cleanup 的 Task 沖掉共用 cache → 新 processor 的 rotator texture 失效 → video 永久斷流。
+
+### 修正
+
+**Texture Cache 隔離**（`GPUVideoRotator.swift:396-402`）：
+```swift
+// 改前：共用 MetalContext.shared 的 cache
+textureCache = ctx.ensureTextureCache()
+
+// 改後：每個 rotator 獨立建立
+var cache: CVMetalTextureCache?
+CVMetalTextureCacheCreate(nil, nil, ctx.device, nil, &cache)
+textureCache = cache
+```
+
+**移除 cache flush**（`GPUVideoRotator.swift:319-340`）：`cleanupResources()` 不再執行 `CVMetalTextureCacheFlush` 或 `textureCache = nil`，僅清理 output pool / pipeline。
+
+**cleanup 時序修正**（`VideoProcess.swift:139-142`）：
+```swift
+// 改前：Task 捕獲參照，後 nil，Task 內已無法存取 actor
+Task { await processorActor?.cleanup() }
+processorActor = nil
+
+// 改後：先存 local，再 nil，再 Task cleanup
+let oldActor = processorActor
+processorActor = nil
+Task { await oldActor?.cleanup() }
+```
+
+**MetalContext**（`MetalContext.swift:33`）：新增 `rebuildQueue()` 供 `handleMetalFailure()` 調用。
+
+### 預期改善
+| 場景 | 改前 | 改後 |
+|------|------|------|
+| 前景恢復後 video | 共用 cache 被 flush → 新 rotator texture 失效 → 斷流 | 獨立 cache，舊 cleanup 不影響新 rotator |
+| 舊 actor GPU 資源 | Task 無法存取（已 nil）→ 從未釋放 | 值捕獲先存 local → 正確 cleanup |
+| 多次 rebuildVideo | 第二次起共用 cache 已被前次沖掉 | 每次獨立建 cache，互不影響 |

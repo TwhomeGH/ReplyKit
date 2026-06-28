@@ -138,8 +138,9 @@ final class VideoFrameProcessor {
 
     func cleanup() {
         isActive = false
-        Task { await processorActor?.cleanup() }
+        let oldActor = processorActor
         processorActor = nil
+        Task { await oldActor?.cleanup() }
     }
 
     func resetProcessing() {

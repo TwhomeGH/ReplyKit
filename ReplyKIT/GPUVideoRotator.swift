@@ -329,11 +329,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     outputPool.removeAll()
     outputPoolLock.unlock()
 
-    if let cache = textureCache {
-        CVMetalTextureCacheFlush(cache, 0)
-    }
-    textureCache = nil
-
     pipelineBilinear = nil
     pipelineBicubic = nil
     sharpenPipeline = nil
@@ -398,9 +393,11 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
         let ctx = MetalContext.shared
 
-        // 1️⃣ TextureCache（共用 MetalContext）
+        // 1️⃣ TextureCache（每個 rotator 獨立，避免 flush 時互相干擾）
         if textureCache == nil {
-            textureCache = ctx.ensureTextureCache()
+            var cache: CVMetalTextureCache?
+            CVMetalTextureCacheCreate(nil, nil, ctx.device, nil, &cache)
+            textureCache = cache
             if textureCache == nil {
                 logTo("建立 TextureCache 失敗")
                 return false
