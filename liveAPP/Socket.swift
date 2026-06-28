@@ -924,7 +924,7 @@ class SocketServer:ObservableObject {
             case "audioLive":
                 let dict = try decoder.decode(AudioLive.self, from: data)
                 LiveVolumeModel.shared.updateVolumes(mic: dict.micVol, app: dict.appVol, persist: dict.persist)
-                logTo("Updated UserVol APP:\(dict.appVol) Mic:\(dict.micVol)) Persist:\(dict.persist)")
+                logTo("Updated UserVol APP:\(dict.appVol) Mic:\(dict.micVol) Persist:\(dict.persist)")
 
             case "settings":
                 let dict = try decoder.decode([String: JSONValue].self, from: data)
