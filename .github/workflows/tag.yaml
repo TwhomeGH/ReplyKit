@@ -8,6 +8,7 @@ on:
       - "ReplyKIT/**"
       - "ReplyKITNotifications/**"
       - "Package.resolved"
+      - "liveAPP.xcodeproj/**"
 
 jobs:
   detect-changes:
