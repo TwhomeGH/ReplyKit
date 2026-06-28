@@ -95,8 +95,6 @@ jobs:
       - name: Resolve SwiftPM dependencies
         run: |
           echo "Resolving Swift Package Manager dependencies to locked revisions"
-          swift package update --package-path . || true
-          
           xcodebuild -resolvePackageDependencies -project liveAPP.xcodeproj
         env:
           scheme: ${{ steps.scheme.outputs.scheme }}
