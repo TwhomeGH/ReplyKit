@@ -310,14 +310,13 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     func cleanup() async {
         guard isActive else { return }
-        isActive = false   // 先阻止新 GPU 任務進來
+        isActive = false
         cleanupResources()
     }
 
 
     // MARK: - Cleanup
-    func cleanupResources() {
-    isActive = false
+    private func cleanupResources() {
     hasMetalResources = false
 
     outputPoolLock.lock()
@@ -384,8 +383,9 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         consecutiveMetalFailures += 1
         logTo("Metal 失敗[\(consecutiveMetalFailures)/\(maxConsecutiveMetalFailures)]: \(reason)")
         if consecutiveMetalFailures >= maxConsecutiveMetalFailures {
-            logTo("Metal 連續失敗次數過多，自動重建管線")
+            logTo("Metal 連續失敗次數過多，重建管線與 command queue")
             cleanupResources()
+            MetalContext.shared.rebuildQueue()
             consecutiveMetalFailures = 0
         }
     }

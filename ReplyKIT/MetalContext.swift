@@ -5,7 +5,7 @@ final class MetalContext: @unchecked Sendable {
     static let shared = MetalContext()
 
     let device: MTLDevice
-    let queue: MTLCommandQueue
+    private(set) var queue: MTLCommandQueue
     let library: MTLLibrary
     var textureCache: CVMetalTextureCache?
 
@@ -29,5 +29,10 @@ final class MetalContext: @unchecked Sendable {
             textureCache = cache
         }
         return textureCache
+    }
+
+    func rebuildQueue() {
+        queue = device.makeCommandQueue()!
+        sendlog(message: "MetalContext: 重建 command queue")
     }
 }

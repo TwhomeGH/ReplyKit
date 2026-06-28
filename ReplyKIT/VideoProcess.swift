@@ -117,6 +117,8 @@ final class VideoFrameProcessor {
     private var processingStartedAt: Date?
     private let processingTimeout: TimeInterval = 2.0
     private var watchdogResetCount: Int = 0
+    private var consecutiveDropCount: Int = 0
+    private let maxConsecutiveDrops = 60
 
     init(mediaMixer: MediaMixer,
         sendlog: @escaping (String) -> Void) {
@@ -144,6 +146,7 @@ final class VideoFrameProcessor {
         isProcessing = false
         processingStartedAt = nil
         watchdogResetCount = 0
+        consecutiveDropCount = 0
     }
 
     func setRotatorDebug(_ value: Bool) async {
@@ -224,18 +227,17 @@ final class VideoFrameProcessor {
                 originalTime: oringinaltime,
                 angle: self.angle
             ) else {
-                if enablePipeLog {
-                    sendlog("[VideoProcessor] ⚠️ #\(localCount) 旋轉失敗 PTS:\(String(format:"%.3f",pts.seconds))s")
+                self.consecutiveDropCount += 1
+                if self.consecutiveDropCount >= self.maxConsecutiveDrops {
+                    self.isActive = false
+                    sendlog("[VideoProcessor] ❌ 連續 \(self.consecutiveDropCount) 幀旋轉失敗，標記重建")
                 }
                 return
             }
 
-            if enablePipeLog, isFirstFrame || localCount % 300 == 0 {
-                sendlog("[VideoProcessor] #\(localCount) 旋轉完成 PTS:\(String(format:"%.3f",pts.seconds))s")
-            }
-
-            // 成功處理，重置逾時計數
+            // 成功處理，重置所有計數
             self.watchdogResetCount = 0
+            self.consecutiveDropCount = 0
 
             let duration: CMTime
             if oringinaltime.duration.isValid, oringinaltime.duration.seconds > 0 {
