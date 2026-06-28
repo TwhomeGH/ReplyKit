@@ -85,15 +85,18 @@ jobs:
       
 
       # 2️⃣ Clean caches
-      - name: Clean DerivedData and SwiftPM cache
-        run: |
-          rm -rf ~/Library/Developer/Xcode/DerivedData/*
-          rm -rf ~/Library/Caches/org.swift.swiftpm/*
-          rm -rf .build
+      # - name: Clean DerivedData and SwiftPM cache
+      #   run: |
+      #     rm -rf ~/Library/Developer/Xcode/DerivedData/*
+      #     rm -rf ~/Library/Caches/org.swift.swiftpm/*
+      #     rm -rf .build
 
       # 2️⃣.5 Force resolve dependencies to locked revision
       - name: Resolve SwiftPM dependencies
         run: |
+          echo "Resolving Swift Package Manager dependencies to locked revisions"
+          swift package update --package-path . || true
+          
           xcodebuild -resolvePackageDependencies -project liveAPP.xcodeproj
         env:
           scheme: ${{ steps.scheme.outputs.scheme }}
