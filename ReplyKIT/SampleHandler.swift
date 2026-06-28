@@ -1700,14 +1700,16 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             sendlog(message: "🔄 RTMP connect \(url)")
             let connectResult = try await rtmpConnection?.connect(url)
             sendlog(message: "🔄 RTMP connect 完成: \(connectResult?.description ?? "nil")")
-            sendlog(message: "🔄 RTMP publish \(fixlogSafeKey(key))")
-            _ = try await rtmpStream.publish(key)
+            
 
             sendlog(message:"🎉 RTMP:\(url)/ KEY:\(fixlogSafeKey(key)) 連線成功",flush: true)
             // step 4: 標記 session ready
             await MainActor.run {
                 // Add output
                 self.isSessionReady = true
+
+                sendlog(message: "🔄 RTMP publish \(fixlogSafeKey(key))")
+                _ = try await rtmpStream.publish(key)
 
                 sendlog(message:"🎉 RTMP 推流成功",flush: true)
                 logger.info("🎉 RTMP 推流成功")
