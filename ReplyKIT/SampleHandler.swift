@@ -1709,7 +1709,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 self.isSessionReady = true
 
                 sendlog(message: "🔄 RTMP publish \(fixlogSafeKey(key))")
-                _ = try await rtmpStream.publish(key)
+
+                Task {
+                _ = try? await rtmpStream.publish(key)
+
+                }
 
                 sendlog(message:"🎉 RTMP 推流成功",flush: true)
                 logger.info("🎉 RTMP 推流成功")
