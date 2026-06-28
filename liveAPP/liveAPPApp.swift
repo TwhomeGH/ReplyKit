@@ -133,6 +133,8 @@ final class AppLogPersister {
             .appendingPathComponent(logFileName)
     }
 
+    
+
     func append(line: String) {
         queue.async {
             guard let data = (line + "\n").data(using: .utf8) else { return }
