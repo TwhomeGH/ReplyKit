@@ -383,3 +383,72 @@ func updateVolume(volume: Float, track: Int) {
 | dispatch hop 數 | ReplayKit → Task.detached → VolumeNotifier.queue → SocketClient.queue（4 層） | ReplayKit → Task.detached → SocketClient.queue（3 層） |
 | volume 值時效性 | closure 捕獲凍結舊值（Mic 初始為 0） | 直接讀最新累積值 |
 | CPU 開銷 (RMS SIMD) | 每 0.2s | 每 1.0s |
+
+---
+
+## 12. Video 管線連續失敗偵測與自動重建
+
+### 問題
+Video 管線在初始幾十幀後停止產出（`append(video)` 不再出現），但 `videoProcessor` 非 nil、外層 watchdog 未觸發、無任何警告日誌。原因是兩層失效路徑皆未被覆蓋：
+
+1. **`processFrame` 快速返回 nil**（Metal resource 敗壞但不掛死）：外層 `isProcessing` 正常循環，watchdog 永不觸發
+2. **`GPUVideoRotator.cleanupResources()` 誤設 `isActive = false`**：`handleMetalFailure()` 連續 5 次 Metal 失敗後調用 `cleanupResources()` → `isActive` 永久變 false → `getReusableOutput()` 永遠 return nil → 所有後續 video frame 無聲丟棄
+
+### 修正
+
+**雙重失敗計數**（`VideoProcess.swift:119-121,230-234`）：
+```swift
+private var watchdogResetCount: Int = 0      // GPU 掛死 >2s
+private var consecutiveDropCount: Int = 0     // processFrame nil 返回
+private let maxConsecutiveDrops = 60          // ~1 秒 @60fps
+
+// 旋轉失敗時：
+self.consecutiveDropCount += 1
+if self.consecutiveDropCount >= self.maxConsecutiveDrops {
+    self.isActive = false   // 標記重建
+}
+
+// 成功時歸零
+self.watchdogResetCount = 0
+self.consecutiveDropCount = 0
+```
+
+**SampleHandler 重建檢查**（`SampleHandler.swift:2303-2308`）：
+```swift
+if let vp = videoProcessor {
+    if vp.isActive {
+        vp.process(sampleBuffer, ...)
+    } else if !isStopping {
+        rebuildVideo()  // isActive=false → 觸發重建
+    }
+}
+```
+
+**GPU Rotator 修復**（`GPUVideoRotator.swift:319,386`）：
+```swift
+// cleanupResources() 不再設 isActive = false（只清 Metal 資源）
+// handleMetalFailure() 加 rebuildQueue()
+MetalContext.shared.rebuildQueue()
+```
+
+**MetalContext**（`MetalContext.swift:33`）：新增 `rebuildQueue()` 重建 command queue。
+
+**AsyncSemaphore 移除**（`GPUVideoRotator.swift:499,588`）：`VideoFrameProcessor.isProcessing` gate 已確保單一幀序列化，semaphore 多餘。且 signal 放在 `Task { }` 內異步執行，延遲可能導致下一幀 `wait()` 永久阻塞。
+
+### 預期改善
+| 場景 | 改前 | 改後 |
+|------|------|------|
+| 連續旋轉失敗 | 無聲丟幀，永不重建 | 60 幀後 isActive=false → rebuildVideo |
+| GPU 逾時掛死 | 2s watchdog 重置 actor（但 isActive 卡死時無效） | 3 次逾時後 isActive=false → rebuildVideo |
+| Metal resource 敗壞修復 | cleanupResources 設 isActive=false 後永不恢復 | 只清 Metal 資源，isActive 保持 true，下幀自動重建管線 |
+
+---
+
+## 13. 清除日誌按鈕修復
+
+### 問題
+`logModel.clearLogs()` 只清 `LogModel.messages`，但 `LogTextView.Coordinator` 有自己的 `messageLines`、`appendedUUIDs` 和 UITextView 文字內容未被清除，頁面上的日誌仍顯示。
+
+### 修正
+- `Coordinator` 新增 `clearText()`：清空 `messageLines`、`appendedUUIDs`、`appendQueue`、`currentLineCount` 及 `tv.text`
+- 「清除日誌」按鈕呼叫 `coordinator?.clearText()`
