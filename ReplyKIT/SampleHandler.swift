@@ -1862,7 +1862,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 // socket 收完所有參數後才建立連線
                 let enh = RPConfig.shared.state.useEnhancedRTMP
-                self.rtmpConnection = RTMPConnection(useEnhancedRTMP: enh,minimumLogLevel: RPConfig.shared.state.enableRTMPLog ? .debug : .warning)
+                self.rtmpConnection = RTMPConnection(useEnhancedRTMP: enh,minimumLogLevel: RPConfig.shared.state.enableRTMPLog ? .debug : .warn)
                 self.rtmpStream = RTMPStream(connection: self.rtmpConnection!)
 
                 await self.rtmpConnection?.setOnLog { event in
