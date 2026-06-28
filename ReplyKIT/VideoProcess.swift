@@ -170,6 +170,15 @@ final class VideoFrameProcessor {
     func process(_ sampleBuffer: CMSampleBuffer, oringinaltime: CMSampleTimingInfo) {
         guard let imageBuffer = sampleBuffer.imageBuffer else { return }
 
+        let pts = oringinaltime.presentationTimeStamp
+        processedCount += 1
+        let localCount = processedCount
+
+        // ✅ 強制診斷：每 60 幀輸出，確認 process() 有被呼叫
+        if localCount == 1 || localCount % 60 == 0 {
+            sendlog("[VProc] #\(localCount) PTS:\(String(format:"%.3f",pts.seconds))s active:\(isActive) processing:\(isProcessing)")
+        }
+
         // Watchdog: 偵測 GPU 旋轉逾時，重置整個管線
         if isProcessing, let startedAt = processingStartedAt {
             if Date().timeIntervalSince(startedAt) > processingTimeout {
@@ -192,9 +201,6 @@ final class VideoFrameProcessor {
         isProcessing = true
         processingStartedAt = Date()
 
-        let pts = oringinaltime.presentationTimeStamp
-        processedCount += 1
-        let localCount = processedCount
         let isFirstFrame = localCount == 1
         let enablePipeLog = RPConfig.shared.enablePipelineLog
 

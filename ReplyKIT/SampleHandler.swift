@@ -2293,6 +2293,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             videoFrameCount += 1
 
+            // ✅ 強制診斷日誌：每 60 幀或首幀輸出，不依賴 enablePipelineLog
+            if videoFrameCount == 1 || videoFrameCount % 60 == 0 {
+                let sinceStart = timestamp.seconds
+                sendlog(message: "[VFrame] #\(videoFrameCount) PTS:\(String(format:"%.3f",sinceStart))s ready:\(sampleBuffer.dataReadiness == .ready) vp:\(videoProcessor != nil ? (videoProcessor!.isActive ? "Y" : "INACTIVE") : "N") init:\(processorsInitialized)")
+            }
+
             if RPConfig.shared.enablePipelineLog, videoFrameCount == 1 || videoFrameCount % 300 == 0 {
                 let sinceStart = timestamp.seconds
                 sendlog(message: "[Video流水] #\(videoFrameCount) PTS:\(String(format:"%.3f",sinceStart))s proc:\(videoProcessor != nil ? "Y" : "N") init:\(processorsInitialized)")
