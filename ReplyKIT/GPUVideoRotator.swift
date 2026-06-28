@@ -135,8 +135,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     /// 暫時的 Y texture，用於 sharpen post-pass（避免讀寫同一 texture）
     private var tempYTexture: MTLTexture?
 
-    private(set) var textureCache: CVMetalTextureCache?
-
     private var isActive = true
 
     var dstWW: Int = 0
@@ -391,20 +389,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             return true
         }
 
-        let ctx = MetalContext.shared
-
-        // 1️⃣ TextureCache（每個 rotator 獨立，避免 flush 時互相干擾）
-        if textureCache == nil {
-            var cache: CVMetalTextureCache?
-            CVMetalTextureCacheCreate(nil, nil, ctx.device, nil, &cache)
-            textureCache = cache
-            if textureCache == nil {
-                logTo("建立 TextureCache 失敗")
-                return false
-            }
-        }
-
-        // 2️⃣ 初始化 ComputePipeline（bilinear、bicubic、sharpen）
+        // 1️⃣ 初始化 ComputePipeline（bilinear、bicubic、sharpen）
         if pipelineBilinear == nil || pipelineBicubic == nil || sharpenPipeline == nil {
             if !buildComputePipeline() {
                 logTo("建立 ComputePipeline 失敗")
@@ -665,7 +650,7 @@ private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
 
 
     func makeTexture(from pixelBuffer: CVPixelBuffer, planeIndex: Int) -> (cv: CVMetalTexture, tex: MTLTexture)? {
-        guard let cache = textureCache else { return nil }
+        guard let cache = MetalContext.shared.ensureTextureCache() else { return nil }
         let width = CVPixelBufferGetWidthOfPlane(pixelBuffer, planeIndex)
         let height = CVPixelBufferGetHeightOfPlane(pixelBuffer, planeIndex)
         let pixelFormat: MTLPixelFormat = (planeIndex == 0) ? .r8Unorm : .rg8Unorm

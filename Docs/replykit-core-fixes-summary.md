@@ -496,9 +496,11 @@ Task { await oldActor?.cleanup() }
 
 **MetalContext**（`MetalContext.swift:33`）：新增 `rebuildQueue()` 供 `handleMetalFailure()` 調用。
 
+**Texture Cache 精簡**（`GPUVideoRotator.swift:138,396-404,653`）：移除每個 rotator 自建 cache 的邏輯。`CVMetalTextureCache` 的 key 綁定 pixel buffer 指標，每幀都是不同的 `CVPixelBuffer`，幀幀 cache miss，建了也用不到。改回 `MetalContext.shared.ensureTextureCache()` 單一共享 cache，不再每實例重複建立。
+
 ### 預期改善
 | 場景 | 改前 | 改後 |
 |------|------|------|
-| 前景恢復後 video | 共用 cache 被 flush → 新 rotator texture 失效 → 斷流 | 獨立 cache，舊 cleanup 不影響新 rotator |
+| 前景恢復後 video | 共用 cache 被 flush → 新 rotator texture 失效 → 斷流 | 共享 cache 不 flush，各 rotator 直接取用 |
 | 舊 actor GPU 資源 | Task 無法存取（已 nil）→ 從未釋放 | 值捕獲先存 local → 正確 cleanup |
-| 多次 rebuildVideo | 第二次起共用 cache 已被前次沖掉 | 每次獨立建 cache，互不影響 |
+| 多次 rebuildVideo | 第二次起舊 cache 已被前次沖掉 | 單一共享 cache，不掉不重建 |
