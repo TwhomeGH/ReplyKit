@@ -142,8 +142,6 @@ final class VolumeNotifier {
     private var pendingMicVolume: Float = 0
     private var lastSendTime: TimeInterval = 0
     private let minInterval: TimeInterval = 1.0
-    private let queue = DispatchQueue(label: "com.liveapp.volumeNotifier")
-    private var hasPendingSend = false
 
     var isActive = true
 
@@ -164,27 +162,22 @@ final class VolumeNotifier {
         }
 
         let now = CACurrentMediaTime()
-        if now - lastSendTime >= minInterval {
-            lastSendTime = now
-            hasPendingSend = true
-            queue.asyncAfter(deadline: .now() + minInterval) { [weak self] in
-                guard let self, self.isActive, self.hasPendingSend else { return }
-                self.hasPendingSend = false
-                let app = self.pendingAppVolume
-                let mic = self.pendingMicVolume
+        guard now - lastSendTime >= minInterval else { return }
+        lastSendTime = now
 
-                if RPConfig.shared.enableSocketLog {
-                    SocketClient.shared.sendAudioLive(appVol: app, micVol: mic)
-                } else {
-                    SharedDefaults.group?.set(app, forKey: "appVolumeLive")
-                    SharedDefaults.group?.set(mic, forKey: "micVolumeLive")
-                    CFNotificationCenterPostNotification(
-                        CFNotificationCenterGetDarwinNotifyCenter(),
-                        CFNotificationName("LiveVolumeUpdated" as CFString),
-                        nil, nil, true
-                    )
-                }
-            }
+        let app = pendingAppVolume
+        let mic = pendingMicVolume
+
+        if RPConfig.shared.enableSocketLog {
+            SocketClient.shared.sendAudioLive(appVol: app, micVol: mic)
+        } else {
+            SharedDefaults.group?.set(app, forKey: "appVolumeLive")
+            SharedDefaults.group?.set(mic, forKey: "micVolumeLive")
+            CFNotificationCenterPostNotification(
+                CFNotificationCenterGetDarwinNotifyCenter(),
+                CFNotificationName("LiveVolumeUpdated" as CFString),
+                nil, nil, true
+            )
         }
     }
 }

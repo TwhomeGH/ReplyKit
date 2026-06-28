@@ -338,43 +338,48 @@ rebuildVideo()
 
 ---
 
-## 11. 音量頁即時 RMS 節流合併（防 socket 洪流斷線）
+## 11. 音量頁即時 RMS 節流（防 socket 洪流斷線）
 
 ### 問題
 停留在音量頁（`onAudioPage=true`）時，`processRMS` 對每幀音訊進行 SIMD 頻譜運算 + `VolumeNotifier.updateVolume` 觸發 socket `sendAudioLive`。`rmsInterval = 0.2s` 和 `minInterval = 0.2s` 雙重節流實質合併成一道，產生 **5Hz socket 寫入洪流**，與 RTMP 的 `logbatch`（每 0.25s 一批）疊加，NWConnection 內部 send queue 積壓 → 系統主動關閉連線 → 管線崩潰。
 
-從 `log.txt` 可見：07:43:58 切至音量頁後 12 秒內生成 **54 筆** `Updated UserVol`，07:44:10 連線斷開（`Connection removed` / `StreamEnded`）。
+從 `log.txt` 可見：07:43:58 切至音量頁後 12 秒內生成 **54 筆** `Updated UserVol`，07:44:10 連線斷開。
 
 ### 修正
 
-**節流降頻**（`AudioProcess.swift:249,144`）：
+**節流降頻**（`AudioProcess.swift`）：
 | 屬性 | 改前 | 改後 |
 |------|------|------|
 | `AudioProcessor.rmsInterval` | 0.2s (5Hz) | 1.0s (1Hz) |
 | `VolumeNotifier.minInterval` | 0.2s (5Hz) | 1.0s (1Hz) |
 
-**累積合併發送**（`AudioProcess.swift:159-189`）：
+**VolumeNotifier 精簡**（`AudioProcess.swift:140-183`）：
 ```swift
-// 改前：closure 捕獲凍結舊值 → 立即 send → 每 0.2s 一條 socket msg
-queue.async { [weak self, pendingAppVolume, pendingMicVolume] in
-    SocketClient.shared.sendAudioLive(appVol: pendingAppVolume, micVol: pendingMicVolume)
+// 改前：自有 queue + closure 捕獲凍結舊值 + 雙重 dispatch
+private let queue = DispatchQueue(label: "com.liveapp.volumeNotifier")
+func updateVolume(volume: Float, track: Int) {
+    ...
+    queue.async { [weak self, pendingAppVolume, pendingMicVolume] in
+        SocketClient.shared.sendAudioLive(appVol: pendingAppVolume, micVol: pendingMicVolume)
+    }
 }
 
-// 改後：延遲合併 → 讀取最新累積值 → 1.0s 內多筆 update 只發 1 次
-hasPendingSend = true
-queue.asyncAfter(deadline: .now() + minInterval) { [weak self] in
-    guard let self, self.isActive, self.hasPendingSend else { return }
-    self.hasPendingSend = false
-    let app = self.pendingAppVolume   // 讀最新值，非凍結舊值
-    let mic = self.pendingMicVolume
+// 改後：caller 已在 Task.detached (global executor)，直接發送，零多餘 dispatch
+func updateVolume(volume: Float, track: Int) {
+    ...
+    guard now - lastSendTime >= minInterval else { return }
+    lastSendTime = now
+    let app = pendingAppVolume    // 讀最新累積值
+    let mic = pendingMicVolume
     SocketClient.shared.sendAudioLive(appVol: app, micVol: mic)
 }
 ```
+移除 `queue`、`hasPendingSend` flag、`asyncAfter` 延遲合併——`sendAudioLive` → `sendPayload` 內部已自行 dispatch 到 `SocketClient.queue`。
 
 ### 預期改善
 | 場景 | 改前 | 改後 |
 |------|------|------|
-| 音量頁 socket 寫入頻率 | 5Hz（與 logbatch 重疊致 send queue 積壓） | 1Hz 合併發送 |
-| volume 值時效性 | closure 捕獲凍結舊值（Mic 初始為 0） | 讀取最新累積值 |
-| 停留音量頁時的連線穩定性 | 12 秒內斷線 | 無 socket 洪流，連線穩定 |
-| CPU 開銷 (RMS SIMD) | 每 0.2s 完整頻譜計算 | 每 1.0s 計算 |
+| 音量頁 socket 寫入頻率 | 5Hz（與 logbatch 重疊致 send queue 積壓） | 1Hz 即時發送 |
+| dispatch hop 數 | ReplayKit → Task.detached → VolumeNotifier.queue → SocketClient.queue（4 層） | ReplayKit → Task.detached → SocketClient.queue（3 層） |
+| volume 值時效性 | closure 捕獲凍結舊值（Mic 初始為 0） | 直接讀最新累積值 |
+| CPU 開銷 (RMS SIMD) | 每 0.2s | 每 1.0s |
