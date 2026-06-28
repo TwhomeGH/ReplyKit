@@ -94,6 +94,8 @@ jobs:
       # 2️⃣.5 Force resolve dependencies to locked revision
       - name: Resolve SwiftPM dependencies
         run: |
+          swift package clean
+          swift package update
           echo "Resolving Swift Package Manager dependencies to locked revisions"
           xcodebuild -resolvePackageDependencies -project liveAPP.xcodeproj
         env:
