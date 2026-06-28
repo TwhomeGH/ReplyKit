@@ -1898,7 +1898,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                     let url = self.rtmpURL
                     let key = self.rtmpKey
-                    
+
                     await self.startRTMP(url: url, key: key)
                 
                 }
@@ -1907,6 +1907,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 
 
                 self.isInitialSyncDone = true
+                
                 SocketClient.shared.onSocketReady = { [weak self] in
                     Task { [weak self] in
                         self?.handleSocketReconnected()
