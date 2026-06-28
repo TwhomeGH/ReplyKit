@@ -1892,17 +1892,19 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 // 先啟動 MediaMixer，避免連線失敗時整條管線停擺
                 // 隔離 HaishinKit 內部 Task 的 stack 壓力
-                let mixer = self.mediaMixer
-                await Task.detached(priority: .medium) {
-                    await mixer.startRunning()
-                }.value
-                sendlog(message:"✅ MediaMixer 已啟動，開始接收音視頻數據")
+                Task {
+                    await mediaMixer.startRunning()
+                    sendlog(message:"✅ MediaMixer 已啟動")
 
-                let url = self.rtmpURL
-                let key = self.rtmpKey
-                await Task.detached(priority: .medium) { [self] in
+                    let url = self.rtmpURL
+                    let key = self.rtmpKey
+                    
                     await self.startRTMP(url: url, key: key)
-                }.value
+                
+                }
+                
+
+                
 
                 self.isInitialSyncDone = true
                 SocketClient.shared.onSocketReady = { [weak self] in

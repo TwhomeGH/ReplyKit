@@ -527,10 +527,10 @@ final class RPConfig {
         var enableMetalAudio : Bool = false
 
         // 關鍵幀間隔（秒），0=編碼器自動，>0=固定
-        var KeyFrameInterval : Int = 2
+        var KeyFrameInterval : Int = 0
 
         // RTMP 內部日誌
-        var enableRTMPLog : Bool = false
+        var enableRTMPLog : Bool = true
 
     }
 
