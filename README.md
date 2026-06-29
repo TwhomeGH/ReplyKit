@@ -513,6 +513,16 @@ Extension 端原本的處理方式：
 如果到後面完全處理不過來 會嘗試原始音訊傳送
 確保系統在某些異常負載下 能夠保持音訊正常
 
+### 原始音訊管線效能優化 (2026/06)
+
+當使用原始音訊模式（無降噪/回音消除/AGC）時，先前因以下問題導致音訊斷斷續續：
+
+| 問題 | 修復 | 預期效果 |
+|------|------|---------|
+| `amplifySIMD` 每次呼叫 heap alloc Float buffer（每秒近百次 malloc/free） | 改用 per-track 預分配 `[Float]` buffer 重用 | 零 heap alloc，消除碎片化 |
+| `retimeAudioBuffer` 每秒百次 shallow copy，但 99% 只用於 RMS（每秒才觸發一次） | 移入 `processRMS` 內部，只在真正需要時建立 | 每秒節省 ~99 次 CMSampleBuffer 物件建立 |
+| Drop gate `isEnqueuing*` 跨線程無同步 data race | 加 `os_unfair_lock` 保護讀寫 | 消除誤掉幀，乾淨的 gate 語意 |
+
 
 ## 修復音訊 Metal/CPU 反覆切換與 iOS 26 Beta Crash
 

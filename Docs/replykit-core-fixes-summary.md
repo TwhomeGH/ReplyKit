@@ -504,3 +504,35 @@ Task { await oldActor?.cleanup() }
 | 前景恢復後 video | 共用 cache 被 flush → 新 rotator texture 失效 → 斷流 | 共享 cache 不 flush，各 rotator 直接取用 |
 | 舊 actor GPU 資源 | Task 無法存取（已 nil）→ 從未釋放 | 值捕獲先存 local → 正確 cleanup |
 | 多次 rebuildVideo | 第二次起舊 cache 已被前次沖掉 | 單一共享 cache，不掉不重建 |
+
+---
+
+## 8. 原始音訊管線效能優化（AudioProcessor original path）
+
+### 問題
+使用原始音訊管線 (`UseOringin = true`) 時，音訊出現斷斷續續（stutter）。根因有三：
+
+1. **每秒 ~100 次 heap allocation**：`amplifySIMD()` 原本是自由函數，每次呼叫都 `UnsafeMutablePointer<Float>.allocate(capacity:)` / `deallocate()`。app + mic 雙軌合計每秒近百次 malloc/free，造成 heap 碎片化與 GC 壓力。
+
+2. **每秒百次 CMSampleBuffer shallow copy**：`retimeAudioBuffer()` 在 `processRMS()` 外部呼叫，每次 buffer 入隊都建立一份 shallow copy。但 `processRMS()` 受 1 秒間隔節流保護 — 99% 的呼叫中這份 copy 是浪費的。CMSampleBuffer 的淺拷貝雖然不複製音訊資料，但仍需分配新物件並 retain block buffer。
+
+3. **Drop gate 無同步 data race**：`isEnqueuingApp` / `isEnqueuingMic` 在 ReplayKit callback thread 設為 `true`，在 `Task.detached` 的 utility thread 設為 `false`，跨執行緒讀寫無任何同步保護，可能導致不必要的掉幀。
+
+### 修正
+
+| 項目 | 改前 | 改後 |
+|------|------|------|
+| **Gain buffer** | `UnsafeMutablePointer<Float>.allocate(capacity:)` 每次分配/釋放 | `_appGainBuffer` / `_micGainBuffer` 兩個 per-track 預分配 `[Float]`，只在 buffer 不足時擴容一次，後續全部重用 |
+| **retimeAudioBuffer** | `enqueue()` 內每次都呼叫 → 傳入 `processRMS()` | `retimeAudioBuffer()` 移入 `processRMS()` 內部，只在一秒間隔 RMS 真正觸發時建立 shallow copy |
+| **Drop gate** | 裸 `Bool` 跨線程無保護讀寫 | 新增 `os_unfair_lock` (`_enqueueLock`)，讀寫經 `setEnqueuing()` helper 統一保護 |
+
+### 預期改善
+| 場景 | 改前 | 改後 |
+|------|------|------|
+| 原始音訊（增益 > 1.0） | 每秒 ~100 次 heap alloc + 每秒 ~100 次 CMSampleBuffer 淺拷貝 + 可能因 data race 誤掉幀 → 音訊斷續 | 零 heap alloc（buffer 重用）、99% 跳過 shallow copy、無 data race → 音訊流暢 |
+| 原始音訊（增益 ≤ 1.0） | 每秒 ~100 次 shallow copy + data race 掉幀 | 每秒 1 次 shallow copy（僅 RMS），其餘跳過 |
+| 專用 DSP 管線 | 同上（retimeAudioBuffer + data race） | shallow copy 同樣移入 RMS 內部，drop gate 同步保護 |
+
+### 記憶體影響
+- **改前**：無持久 buffer，每秒 ~2KB × 100 = ~200KB heap churn
+- **改後**：兩個 per-track `[Float]` buffer，常駐約 8KB（4KB each @ 1024 samples），只在 buffer 不足時一次性擴容
