@@ -1089,6 +1089,10 @@ HaishinKit 的 TCP timeout 為 15 秒，在這段期間 frame 持續積累，可
 
 - 總RAM量
 - App使用RAM量
+   
+### 圖表凍結修復 (2026/06)
+
+CPU / RAM / Disk I/O 三個即時圖表在長時間開啟或反覆切頁後會停止更新。修正：`DataPoint` ID 從 `UUID()` 改為遞增整數（Charts diff 穩定）、計時器改為 `onAppear`/`onDisappear` 顯式管理、切頁時清空歷史陣列。詳見 `Docs/replykit-core-fixes-summary.md` §10。
   
 
 

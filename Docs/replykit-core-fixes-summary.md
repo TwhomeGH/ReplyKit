@@ -586,3 +586,31 @@ iOS 永遠優先保障前景 App 的 GPU 時間。當遊戲吃滿 GPU，螢幕�
 ### 可觀測指標
 
 RTMP 吞吐量 log 中的 `videoInputFrames` 是最直接的指標。若此值持續低於 20 且 `[VProc]` 無異常（`active:true processing:false`），即為 ReplayKit 被系統節流。我們不該對此觸發 rebuild 或 watchdog。
+
+---
+
+## 10. 設備資訊圖表凍結修復（DeviceView Charts）
+
+### 問題
+設備資訊頁（`OtherView.swift`）的三個圖表（CPU、RAM、Disk I/O）開啟一段時間後全部卡住不更新。兩個疊加問題：
+
+1. **`DataPoint.id = UUID()`** — 每秒為 5 個資料點各產生新 UUID。Swift Charts 的 `ForEach` 依賴 `Identifiable` 做 diff，ID 每秒全換 → Charts 每次視為全新資料集重繪，失去動畫更新能力，且無效的 diff 計算浪費 CPU。
+
+2. **`Timer.publish(...).autoconnect()`** — 使用 SwiftUI `.onReceive` 模式。在 `List` + `TabView` 的組合下，SwiftUI 的訂閱管理可能中途斷線（例如頁面切換後重建），且無恢復機制，timer 永久停止。
+
+3. **切頁未清理** — 從設備資訊頁切到其他分頁時，歷史陣列未清空。回來後 `onAppear` 直接接續舊資料，圖表瞬間從 60 秒前的資料跳到最新，視覺上是「卡住」後突然更新。
+
+### 修正
+
+| 項目 | 改前 | 改後 |
+|------|------|------|
+| **DataPoint ID** | `let id = UUID()` 每秒新生 | `let id: Int` 配合 `dataPointCounter &+= 1` 遞增，跨秒穩定 |
+| **Timer 生命週期** | `.onReceive(Timer.publish(...).autoconnect())` | `onAppear` 手建 `Timer` + `RunLoop.main.add(..., forMode: .common)`，`onDisappear` invalidate |
+| **切頁清理** | 無 | `onDisappear` 內 `removeAll()` 五個 history 陣列 + invalidate timer |
+
+### 預期改善
+| 場景 | 改前 | 改後 |
+|------|------|------|
+| 圖表更新 | Charts diff 全失效（UUID 全換）→ 無動畫、卡頓 | 穩定 Int ID → Charts 正確識別新增/移除點，平滑動畫 |
+| 長時間開啟 | Timer 訂閱隨機斷線 → 圖表凍結 | Timer 由 onAppear/onDisappear 顯式管理，不依賴 SwiftUI 訂閱 |
+| 頁面切換 | 回來後舊資料殘留 → 瞬間跳到最新秒 | 清空重來，每次進入都是乾淨的 60 秒累積

@@ -15,7 +15,7 @@ import UIKit
 import SystemConfiguration
 
 struct DataPoint: Identifiable {
-    let id = UUID()
+    let id: Int
     let time: Date
     let value: Double
 }
@@ -286,6 +286,8 @@ struct DeviceView: View {
     @State private var pageOutHistory: [DataPoint] = []
     @State private var appWriteHistory: [DataPoint] = []
     @State private var prevAppWriteBytes: UInt64 = 0
+    @State private var dataPointCounter = 0
+    @State private var sampleTimer: Timer?
 
     @AppStorage("ReplyKitWidth",store: userDefaults) var ReplyKitW: Int = 0
     @AppStorage("ReplyKitHeight",store: userDefaults) var ReplyKitH: Int = 0
@@ -445,9 +447,20 @@ struct DeviceView: View {
         }
         .onAppear {
             sample()
+            let t = Timer(timeInterval: 1.0, repeats: true) { [self] _ in
+                sample()
+            }
+            RunLoop.main.add(t, forMode: .common)
+            sampleTimer = t
         }
-        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
-            sample()
+        .onDisappear {
+            sampleTimer?.invalidate()
+            sampleTimer = nil
+            cpuHistory.removeAll()
+            memoryHistory.removeAll()
+            pageInHistory.removeAll()
+            pageOutHistory.removeAll()
+            appWriteHistory.removeAll()
         }
     }
 
@@ -460,17 +473,19 @@ struct DeviceView: View {
     }
 
     private func sample() {
+        dataPointCounter &+= 1
+        let id = dataPointCounter
         appMemoryMB = DeviceInfo.appMemoryMB
         let now = Date()
-        cpuHistory.append(DataPoint(time: now, value: DeviceInfo.cpuUsagePercent))
-        memoryHistory.append(DataPoint(time: now, value: appMemoryMB))
+        cpuHistory.append(DataPoint(id: id, time: now, value: DeviceInfo.cpuUsagePercent))
+        memoryHistory.append(DataPoint(id: id, time: now, value: appMemoryMB))
 
         let (inKB, outKB) = diskIO.rates()
-        pageInHistory.append(DataPoint(time: now, value: inKB))
-        pageOutHistory.append(DataPoint(time: now, value: outKB))
+        pageInHistory.append(DataPoint(id: id, time: now, value: inKB))
+        pageOutHistory.append(DataPoint(id: id, time: now, value: outKB))
 
         let currentBytes = AppLogPersister.shared.totalWrittenBytes
-        appWriteHistory.append(DataPoint(time: now, value: Double(currentBytes - prevAppWriteBytes) / 1024.0))
+        appWriteHistory.append(DataPoint(id: id, time: now, value: Double(currentBytes - prevAppWriteBytes) / 1024.0))
         prevAppWriteBytes = currentBytes
 
         if cpuHistory.count > maxHistory { cpuHistory.removeFirst() }
