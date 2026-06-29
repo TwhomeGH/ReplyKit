@@ -40,12 +40,13 @@ struct DeviceInfo {
         var totalUsage: Double = 0
 
         for i in 0..<Int(threadCount) {
+            let thread = threadList[i]
             var info = thread_basic_info()
             var infoCount = mach_msg_type_number_t(THREAD_INFO_MAX)
 
             let kr = withUnsafeMutablePointer(to: &info) {
                 $0.withMemoryRebound(to: integer_t.self, capacity: Int(infoCount)) {
-                    thread_info(threadList[i],
+                    thread_info(thread,
                                 thread_flavor_t(THREAD_BASIC_INFO),
                                 $0,
                                 &infoCount)
@@ -57,6 +58,8 @@ struct DeviceInfo {
                     totalUsage += Double(info.cpu_usage) / Double(TH_USAGE_SCALE) * 100.0
                 }
             }
+
+            mach_port_deallocate(mach_task_self_, thread)
         }
 
         vm_deallocate(
@@ -152,18 +155,20 @@ struct DeviceInfo {
         return 0
     }
 
-    static var networkInterface: String {
+    static let networkInterface: String = {
         #if targetEnvironment(simulator)
         return "Simulator"
         #else
-        let reachability = SCNetworkReachabilityCreateWithName(nil, "apple.com")
+        guard let reachability = SCNetworkReachabilityCreateWithName(nil, "apple.com") else {
+            return "No Connection"
+        }
         var flags = SCNetworkReachabilityFlags()
-        SCNetworkReachabilityGetFlags(reachability!, &flags)
+        SCNetworkReachabilityGetFlags(reachability, &flags)
         if flags.contains(.isWWAN) { return "Cellular" }
         if flags.contains(.reachable) { return "WiFi" }
         return "No Connection"
         #endif
-    }
+    }()
 
     static var batteryLevel: Int {
         UIDevice.current.isBatteryMonitoringEnabled = true

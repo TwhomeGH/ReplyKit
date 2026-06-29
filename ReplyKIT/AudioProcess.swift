@@ -18,43 +18,7 @@ enum AudioTrackType: UInt8 {
     case mic = 1
 }
 
-private func amplifySIMD(_ sampleBuffer: CMSampleBuffer, gain: Float) -> CMSampleBuffer {
-    guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { return sampleBuffer }
 
-    var length = 0
-    var dataPointer: UnsafeMutablePointer<Int8>?
-
-    guard CMBlockBufferGetDataPointer(blockBuffer,
-                                      atOffset: 0,
-                                      lengthAtOffsetOut: nil,
-                                      totalLengthOut: &length,
-                                      dataPointerOut: &dataPointer) == noErr,
-          let ptr = dataPointer else { return sampleBuffer }
-
-    let sampleCount = length / MemoryLayout<Int16>.size
-    let int16Ptr = ptr.withMemoryRebound(to: Int16.self, capacity: sampleCount) { $0 }
-
-    // ⚡ 使用 stack buffer 避免 heap allocation
-    let floatSamplesPtr = UnsafeMutablePointer<Float>.allocate(capacity: sampleCount)
-    defer { floatSamplesPtr.deallocate() }
-
-    // 轉換 Int16 -> Float
-    vDSP_vflt16(int16Ptr, 1, floatSamplesPtr, 1, vDSP_Length(sampleCount))
-
-    // 放大
-    var g = gain
-    vDSP_vsmul(floatSamplesPtr, 1, &g, floatSamplesPtr, 1, vDSP_Length(sampleCount))
-
-    // clamp 到 Int16 範圍
-    var minVal: Float = Float(Int16.min)
-    var maxVal: Float = Float(Int16.max)
-    vDSP_vclip(floatSamplesPtr, 1, &minVal, &maxVal, floatSamplesPtr, 1, vDSP_Length(sampleCount))
-
-    // 轉回 Int16
-    vDSP_vfix16(floatSamplesPtr, 1, int16Ptr, 1, vDSP_Length(sampleCount))
-
-    return sampleBuffer
-}
 private func rmsSIMD(from sampleBuffer: CMSampleBuffer) -> Float? {
     guard let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer),
           let asbdPointer = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc),
@@ -233,6 +197,9 @@ final class AudioProcessor : @unchecked Sendable {
 
     private var audioEngine: AudioEngine? = nil
 
+    private var _appGainBuffer: [Float] = []
+    private var _micGainBuffer: [Float] = []
+
 
     var rmsInterval: CFTimeInterval = 1.0
     
@@ -378,6 +345,43 @@ final class AudioProcessor : @unchecked Sendable {
     }
 
     // MARK: 舊增益管線
+    private func amplifySIMD(_ sampleBuffer: CMSampleBuffer, gain: Float, trackType: AudioTrackType) -> CMSampleBuffer {
+        guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { return sampleBuffer }
+        var length = 0
+        var dataPointer: UnsafeMutablePointer<Int8>?
+        guard CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0, lengthAtOffsetOut: nil, totalLengthOut: &length, dataPointerOut: &dataPointer) == noErr,
+              let ptr = dataPointer else { return sampleBuffer }
+        let sampleCount = length / MemoryLayout<Int16>.size
+        let int16Ptr = ptr.withMemoryRebound(to: Int16.self, capacity: sampleCount) { $0 }
+
+        if trackType == .app {
+            if _appGainBuffer.count < sampleCount { _appGainBuffer = [Float](repeating: 0, count: sampleCount) }
+            _appGainBuffer.withUnsafeMutableBufferPointer { floatSamplesPtr in
+                guard let base = floatSamplesPtr.baseAddress else { return }
+                vDSP_vflt16(int16Ptr, 1, base, 1, vDSP_Length(sampleCount))
+                var g = gain
+                vDSP_vsmul(base, 1, &g, base, 1, vDSP_Length(sampleCount))
+                var minVal: Float = Float(Int16.min)
+                var maxVal: Float = Float(Int16.max)
+                vDSP_vclip(base, 1, &minVal, &maxVal, base, 1, vDSP_Length(sampleCount))
+                vDSP_vfix16(base, 1, int16Ptr, 1, vDSP_Length(sampleCount))
+            }
+        } else {
+            if _micGainBuffer.count < sampleCount { _micGainBuffer = [Float](repeating: 0, count: sampleCount) }
+            _micGainBuffer.withUnsafeMutableBufferPointer { floatSamplesPtr in
+                guard let base = floatSamplesPtr.baseAddress else { return }
+                vDSP_vflt16(int16Ptr, 1, base, 1, vDSP_Length(sampleCount))
+                var g = gain
+                vDSP_vsmul(base, 1, &g, base, 1, vDSP_Length(sampleCount))
+                var minVal: Float = Float(Int16.min)
+                var maxVal: Float = Float(Int16.max)
+                vDSP_vclip(base, 1, &minVal, &maxVal, base, 1, vDSP_Length(sampleCount))
+                vDSP_vfix16(base, 1, int16Ptr, 1, vDSP_Length(sampleCount))
+            }
+        }
+        return sampleBuffer
+    }
+
     private func applyGain(
         _ buffer: CMSampleBuffer,
         trackType: AudioTrackType
@@ -387,7 +391,7 @@ final class AudioProcessor : @unchecked Sendable {
         let safeGain = gain.isFinite ? gain : 1.0
 
         if safeGain > 1.0 {
-            return amplifySIMD(buffer, gain: safeGain)
+            return amplifySIMD(buffer, gain: safeGain, trackType: trackType)
         }
 
         return buffer
@@ -395,40 +399,49 @@ final class AudioProcessor : @unchecked Sendable {
 
 
     // MARK: 音量統計
-    private func processRMS(_ buffer: CMSampleBuffer, trackType: AudioTrackType) {
+    private func processRMS(_ buffer: CMSampleBuffer, trackType: AudioTrackType, originalTime: CMSampleTimingInfo) {
 
         let now = CACurrentMediaTime()
 
-        if self.onAudioPage, now - self.lastRMSUpdateTime > self.rmsInterval {
-            self.lastRMSUpdateTime = now
+        guard self.onAudioPage, now - self.lastRMSUpdateTime > self.rmsInterval else { return }
+        self.lastRMSUpdateTime = now
 
-            if let rms = rmsSIMD(from: buffer) {
+        let retimed = retimeAudioBuffer(buffer, originalTime: originalTime)
 
-                let userVolume = (trackType == .app) ? self.appVolume : self.micVolume
-                let safeUserVolume = userVolume.isFinite ? userVolume : 1.0
+        if let rms = rmsSIMD(from: retimed) {
 
-                var adjustedRMS = rms * safeUserVolume
-                if !adjustedRMS.isFinite { adjustedRMS = 0 }
+            let userVolume = (trackType == .app) ? self.appVolume : self.micVolume
+            let safeUserVolume = userVolume.isFinite ? userVolume : 1.0
 
-                self.volumeNotifier.updateVolume(
-                    volume: adjustedRMS,
-                    track: Int(trackType.rawValue)
-                )
-            }
+            var adjustedRMS = rms * safeUserVolume
+            if !adjustedRMS.isFinite { adjustedRMS = 0 }
+
+            self.volumeNotifier.updateVolume(
+                volume: adjustedRMS,
+                track: Int(trackType.rawValue)
+            )
         }
     }
 
 
     private var enqueueCount: Int = 0
     private var lastEnqueueLog: CFTimeInterval = 0
-    private var isEnqueuingApp = false
-    private var isEnqueuingMic = false
+    private var _isEnqueuingApp = false
+    private var _isEnqueuingMic = false
+    private var _enqueueLock = os_unfair_lock()
 
     func enqueue(_ sampleBuffer: CMSampleBuffer, trackType: AudioTrackType, oringinaltime: CMSampleTimingInfo) {
+        os_unfair_lock_lock(&_enqueueLock)
         switch trackType {
-        case .app: guard !isEnqueuingApp else { return }; isEnqueuingApp = true
-        case .mic: guard !isEnqueuingMic else { return }; isEnqueuingMic = true
+        case .app:
+            guard !_isEnqueuingApp else { os_unfair_lock_unlock(&_enqueueLock); return }
+            _isEnqueuingApp = true
+        case .mic:
+            guard !_isEnqueuingMic else { os_unfair_lock_unlock(&_enqueueLock); return }
+            _isEnqueuingMic = true
         }
+        os_unfair_lock_unlock(&_enqueueLock)
+
         enqueueCount += 1
         let pts = oringinaltime.presentationTimeStamp.seconds
         let now = CACurrentMediaTime()
@@ -438,11 +451,11 @@ final class AudioProcessor : @unchecked Sendable {
 
         Task.detached(priority: .utility) { [weak self] in
             guard let self, self.isActive else {
-                switch trackType { case .app: self?.isEnqueuingApp = false; case .mic: self?.isEnqueuingMic = false }
+                if let self { self.setEnqueuing(false, trackType: trackType) }
                 return
             }
             defer {
-                switch trackType { case .app: self.isEnqueuingApp = false; case .mic: self.isEnqueuingMic = false }
+                self.setEnqueuing(false, trackType: trackType)
             }
             guard await self.mediaMixer.isRunning else {
                 if shouldLog { sendlog(message: "[AudioProcessor] ⚠️ #\(localCount) MediaMixer 未運行 PTS:\(String(format:"%.3f",pts))s") }
@@ -457,8 +470,7 @@ final class AudioProcessor : @unchecked Sendable {
             if self.UseOringin {
 
                 let RSample = self.applyGain(sampleBuffer, trackType: trackType)
-                let retimed = self.retimeAudioBuffer(RSample, originalTime: oringinaltime)
-                self.processRMS(retimed, trackType: trackType)
+                self.processRMS(RSample, trackType: trackType, originalTime: oringinaltime)
 
                 if shouldLog { sendlog(message: "[AudioProcessor] #\(localCount) 送出MediaMixer track:\(trackType.rawValue)") }
                 await self.mediaMixer.append(RSample, track: trackType.rawValue)
@@ -469,13 +481,21 @@ final class AudioProcessor : @unchecked Sendable {
                     audioEngine.process(sampleBuffer, track: trackType)
                 }
 
-                let retimed = self.retimeAudioBuffer(sampleBuffer, originalTime: oringinaltime)
-                self.processRMS(retimed, trackType: trackType)
+                self.processRMS(sampleBuffer, trackType: trackType, originalTime: oringinaltime)
 
                 if shouldLog { sendlog(message: "[AudioProcessor] #\(localCount) 送出MediaMixer track:\(trackType.rawValue)") }
                 await self.mediaMixer.append(sampleBuffer, track: trackType.rawValue)
             }
         }
+    }
+
+    private func setEnqueuing(_ value: Bool, trackType: AudioTrackType) {
+        os_unfair_lock_lock(&_enqueueLock)
+        switch trackType {
+        case .app: _isEnqueuingApp = value
+        case .mic: _isEnqueuingMic = value
+        }
+        os_unfair_lock_unlock(&_enqueueLock)
     }
 
 
