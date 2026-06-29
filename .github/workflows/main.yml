@@ -277,7 +277,7 @@ jobs:
           GITHUB_API="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases"
           
           # 抓取最近 10 次 commit 訊息
-          COMMITS=$(git log -n 10 --pretty=format:"- %s (%h)")
+          COMMITS=$(git log -n 10 --pretty=format:"- %s (%h)" | sed 's/@unknown/`@unknown`/g')
 
 
           NEW_MESSAGE="Automated unsigned iOS build ${TAG_NAME}
