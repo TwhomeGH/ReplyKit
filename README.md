@@ -523,6 +523,15 @@ Extension 端原本的處理方式：
 | `retimeAudioBuffer` 每秒百次 shallow copy，但 99% 只用於 RMS（每秒才觸發一次） | 移入 `processRMS` 內部，只在真正需要時建立 | 每秒節省 ~99 次 CMSampleBuffer 物件建立 |
 | Drop gate `isEnqueuing*` 跨線程無同步 data race | 加 `os_unfair_lock` 保護讀寫 | 消除誤掉幀，乾淨的 gate 語意 |
 
+### GPU 密集型遊戲導致直播掉幀（已知 iOS 系統限制）
+
+> [!NOTE]
+> 測試遊戲：第五人格（活動子頁面 / 內嵌小遊戲場景）
+
+當 GPU 密集型遊戲開啟高負載子頁面時，直播幀數可能瞬崩至 2-10 fps，遊戲本身不受影響，關閉子頁面立刻恢復。這是 iOS 系統級 GPU 排程行為：**前景 App 的 GPU 優先權永遠高於 ReplayKit 廣播擴展**。
+
+`videoInputFrames`（RTMP 吞吐量 log）是 ReplayKit 交給我們的原始幀數。若此值持續低於 20 且 video processor 無異常（`[VProc] active:true processing:false`），即為系統節流，非本專案 bug。GPU 旋轉降級到 CPU 或降低碼率都無法改善（瓶頸在擷取端螢幕合成器，不在後處理）。詳見 `Docs/replykit-core-fixes-summary.md` §9。
+
 
 ## 修復音訊 Metal/CPU 反覆切換與 iOS 26 Beta Crash
 
