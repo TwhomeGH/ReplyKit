@@ -1,4 +1,4 @@
-import SwiftUI
+﻿import SwiftUI
 import AVKit
 import CoreVideo
 import CoreImage
@@ -1154,6 +1154,18 @@ final class PIPService: NSObject, @unchecked Sendable {
         }
 
         PIPLogTo("回到前景，已釋放 background task")
+    }
+
+    func releaseNonCriticalMemory() {
+        Task { await PiPImageCache.shared.clear() }
+        guard !didStartPiP else { return }
+        renderTimer?.cancel()
+        renderTimer = nil
+        renderPipeline = nil
+        pixelBufferPool = nil
+        messagesLayer?.canncel()
+        messagesLayer = nil
+        cleanupMessageslayer()
     }
 
     // 在 render 循環中保護 displayLayer 不被系統移除

@@ -614,3 +614,52 @@ RTMP 吞吐量 log 中的 `videoInputFrames` 是最直接的指標。若此值�
 | 圖表更新 | Charts diff 全失效（UUID 全換）→ 無動畫、卡頓 | 穩定 Int ID → Charts 正確識別新增/移除點，平滑動畫 |
 | 長時間開啟 | Timer 訂閱隨機斷線 → 圖表凍結 | Timer 由 onAppear/onDisappear 顯式管理，不依賴 SwiftUI 訂閱 |
 | 頁面切換 | 回來後舊資料殘留 → 瞬間跳到最新秒 | 清空重來，每次進入都是乾淨的 60 秒累積
+
+---
+
+## 11. 背景記憶體釋放（降低 App 被 Kill 風險）
+
+### 背景
+
+iOS 的 Jetsam 機制會在記憶體緊張時優先終止背景 App。主動在進入背景時釋放非關鍵記憶體能降低被終止的機率。
+
+### 既有處理
+
+Memory Warning 時已有：
+- `PIPService.handleMemoryWarning()`：清除訊息圖層、降 FPS、釋放 `pixelBufferPool`
+- `logModel.clearLogs()`：清空日誌緩衝
+- `SocketServer.shared.releaseMemory()`：清空 socket 發送佇列
+
+### 缺口分析
+
+| 資源 | 檔案 | 大小（估） | 原有釋放時機 | 風險 |
+|------|------|-----------|------------|------|
+| PiP 圖片快取 `NSCache` | `PIPContent.swift` | ~20MB | ❌ 從未釋放 | 即使 PiP inactive 仍佔 20MB |
+| PiP `pixelBufferPool` (3× CVPixelBuffer) | `PIPService.swift` | ~9MB | 僅 Memory Warning | PiP inactive 時不釋放 |
+| PiP render timer / pipeline | `PIPService.swift` | ~1MB | 僅 `stopPiP()` | PiP inactive 時繼續運轉 |
+| PiP 訊息 CoreAnimation 圖層 | `PIPContent.swift` | ~2-5MB | 僅 Memory Warning | PiP inactive 仍佔 |
+| LogModel 日誌 (1000 條) | `liveAPPApp.swift` | ~300KB | 僅 Memory Warning | 可提前釋放 |
+| Socket 佇列 | `Socket.swift` | 動態 | 僅 Memory Warning | 可提前釋放 |
+
+### 修正
+
+| 檔案 | 新增內容 | 行為 |
+|------|---------|------|
+| `PIPContent.swift:62` | `PiPImageCache.clear()` | 清除 `NSCache` 所有物件 + 取消進行中的圖片下載 |
+| `PIPService.swift:1159` | `releaseNonCriticalMemory()` | 若 `didStartPiP == false`：取消 render timer、釋放 pipeline、`pixelBufferPool = nil`、清除 messagesLayer。無論 PiP 狀態：清除圖片快取 |
+| `liveAPPApp.swift:939` | scenePhase → `.background` | 呼叫 `releaseNonCriticalMemory()` + `logModel.clearLogs()` |
+
+### 保留資源
+
+進入背景時**不釋放**的資源：
+- **SocketServer**：由 background task chain 保護，log 管線需要持續運作
+- **PiP 渲染管線**（當 `didStartPiP == true`）：使用者正在觀看子母畫面中，須保持 pixel buffer pool 和 display layer
+
+### 預期改善
+
+| 指標 | 改前 | 改後 |
+|------|------|------|
+| 背景常駐記憶體（PiP inactive） | ~40+ MB | ~10+ MB，可回收 ~30MB |
+| 背景被 Jetsam 終止機率 | 高（~30MB 非關鍵記憶體佔用） | 較低（非關鍵記憶體已釋放） |
+| PiP inactive 時背景行為 | render timer 繼續跑、GPU 持續消耗 | render timer 停止、GPU 空閒 |
+| 恢復前景後行為 | pixelBufferPool 可能仍為 nil 無重建 | `appWillEnterForeground()` 自動重建 pool |

@@ -118,6 +118,14 @@ actor PiPImageCache {
         currentDownloads += 1
     }
 
+    func clear() {
+        cache.removeAllObjects()
+        inFlightTasks.values.forEach { $0.cancel() }
+        inFlightTasks.removeAll()
+        waitingQueue.removeAll()
+        currentDownloads = 0
+    }
+
     private func finishDownload(urlString: String) {
         currentDownloads = max(0, currentDownloads - 1)
         inFlightTasks[urlString] = nil

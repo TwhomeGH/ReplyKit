@@ -1,4 +1,4 @@
-﻿//
+//
 //  liveAPPApp.swift
 //  liveAPP
 //
@@ -935,10 +935,6 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
 
                         // 通知 PIPService 進入背景
                         PIPService.shared.appDidEnterBackground()
-
-                        // 釋放非關鍵記憶體，降低被 kill 風險
-                        PIPService.shared.releaseNonCriticalMemory()
-                        logModel.clearLogs()
 
                         // 註冊 background task 保護 SocketServer（chain 模式續命）
                         #if os(iOS)

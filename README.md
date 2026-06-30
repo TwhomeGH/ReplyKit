@@ -1332,6 +1332,20 @@ CPU / RAM / Disk I/O 三個即時圖表在長時間開啟或反覆切頁後會�
             time.sleep(30)  # 每 30 秒發送一次
         ```
 
+# **背景記憶體管理**
+
+iOS 的 Jetsam 機制在記憶體緊張時會終止背景 App。本專案在進入背景時自動釋放非關鍵資源以降低被終止機率。
+
+| 背景釋放項目 | 檔案 | 回收量 |
+|-------------|------|-------|
+| PiP 圖片快取 | `PIPContent.swift` | ~20MB |
+| PiP pixel buffer pool | `PIPService.swift` | ~9MB |
+| PiP render timer + pipeline | `PIPService.swift` | ~1MB |
+| PiP 訊息圖層 | `PIPContent.swift` | ~2-5MB |
+| LogModel 日誌緩衝 | `liveAPPApp.swift` | ~300KB |
+
+**保留資源：** SocketServer（log 管線）、PiP 渲染管線（若子母畫面 active）。詳見 `Docs/replykit-core-fixes-summary.md` §11。
+
         
 
 
