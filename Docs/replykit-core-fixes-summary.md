@@ -678,3 +678,32 @@ Memory Warning 時已有：
 | 日誌頁文字緩衝 | ~6-7MB（永不釋放） | ~0MB（背景自動清除） |
 | 總背景常駐記憶體 | ~90-100MB | ~55-65MB |
 | Jetsam 終止相對風險 | 高 | 中低（同等記憶體壓力下優先權降低） |
+
+---
+
+## 12. GPU 視訊管線瘦身（移除預設開啓的 Sharpen、懶載入 Pipeline）
+
+### 問題
+
+`GPUVideoRotator.swift` 的視訊旋轉管線存在三個效能浪費：
+
+1. **永遠開啓的 Sharpen Post-Pass**：`renderPlaneYUV()` 無論 `.live` 還是 `.quality` 模式都在旋轉後加上 unsharp mask 銳化（`.live` 用 0.15、`.quality` 用 0.25），這使每幀 GPU 從 1 個 dispatch 變成 2 個 dispatch，對遊戲直播的畫面沒有任何肉眼可辨的改善（遊戲畫面本身已經夠銳利），反而可能引入 ringing artifacts。
+
+2. **多餘的 Pipeline 編譯**：`buildComputePipeline()` 每次初始化都編譯三條 pipeline（`rotateNV12_bilinear`、`rotateNV12_bicubic`、`unsharpY`），即使使用者只使用 `.live` 模式，bicubic 和 unsharp 的 GPU shader 仍被編譯並佔用記憶體。
+
+3. **閒置的暫存 Y Texture**：為了 sharpen post-pass 準備的 `tempYTexture`（1920×1080 R8Unorm）額外佔用 GPU 記憶體。
+
+### 修正
+
+| 項目 | 改前 | 改後 |
+|------|------|------|
+| **Sharpen Post-Pass** | `qualityMode == .live` 時 `sharpenAmount = 0.15`，`.quality` 時 `0.25`，永遠 >0 永遠開啓 | 完全移除 `sharpenPipeline`、`tempYTexture`、`useSharpen` 相關程式碼 |
+| **Pipeline 編譯** | 每次初始化編譯 3 條 pipeline | 根據 `qualityMode` 只編譯對應的 1 條（`ensureMetalResources()` 中用 switch 選取） |
+| **shader 載入策略** | 全部載入 | 使用者選哪個載哪個，切換模式時重建 rotator 後重新編譯 |
+| **GPU dispatch / 幀** | 2 次（旋轉 + sharpen） | 1 次（僅旋轉） |
+
+### 功能影響
+
+- **畫質不變**：移除 sharpen 對遊戲直播畫面無負面影響（遊戲 rendering 本身已含銳化）
+- **GPU 負擔**：每幀從 2 dispatches → 1 dispatch，在 60fps 下相當於每秒減少 60 次 GPU 編碼器啓動
+- **編譯時間**：首次初始化 Metal pipeline 的時間約縮減 60%（只編譯 1 個 kernel 而非 3 個）

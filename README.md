@@ -583,6 +583,10 @@ Crash 路徑：`RPBroadcastSampleHandler _processPayloadWithAudioSample:` → Au
 | `baseAddress` 為 nil | `EXC_BREAKPOINT` crash | 安全跳過該 frame 處理，音訊 passthrough |
 | ReplayKit buffer pool | 被 Task 長時間佔用 | 提早回收，減少 buffer 競爭 |
 
+### GPU 管線瘦身 (2026/07)
+
+`GPUVideoRotator` 原先每幀執行 2 次 GPU dispatch（旋轉 + 始終開啟的 unsharpen mask 銳化），且初始化時編譯 3 條 shader pipeline。整理後僅編譯使用者選擇的 1 條 pipeline，移除多餘的 sharpen post-pass。每幀 GPU 從 2 dispatches → 1 dispatch，畫質不變。詳見 `Docs/replykit-core-fixes-summary.md` §12。
+
 ## 修復 VFR 造成的 PTS 異常與畫面速率抖動
 
 ### 問題發現

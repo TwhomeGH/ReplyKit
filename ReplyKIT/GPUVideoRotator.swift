@@ -130,10 +130,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     private var pipelineBilinear: MTLComputePipelineState?
     private var pipelineBicubic: MTLComputePipelineState?
-    private var sharpenPipeline: MTLComputePipelineState?
-
-    /// 暫時的 Y texture，用於 sharpen post-pass（避免讀寫同一 texture）
-    private var tempYTexture: MTLTexture?
 
     private var isActive = true
 
@@ -329,9 +325,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     pipelineBilinear = nil
     pipelineBicubic = nil
-    sharpenPipeline = nil
-
-    tempYTexture = nil
 
     let poolCount = outputPool.count
     let bufferCount = outputPool.values.reduce(0) { $0 + $1.count }
@@ -389,42 +382,31 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             return true
         }
 
-        // 1️⃣ 初始化 ComputePipeline（bilinear、bicubic、sharpen）
-        if pipelineBilinear == nil || pipelineBicubic == nil || sharpenPipeline == nil {
-            if !buildComputePipeline() {
-                logTo("建立 ComputePipeline 失敗")
+        // 只編譯目前選擇的管線（.live = bilinear，.quality = bicubic）
+        switch qualityMode {
+        case .live where pipelineBilinear == nil:
+            guard buildComputePipeline(functionName: "rotateNV12_bilinear", store: &pipelineBilinear) else {
+                logTo("建立 Bilinear ComputePipeline 失敗")
                 return false
             }
+        case .quality where pipelineBicubic == nil:
+            guard buildComputePipeline(functionName: "rotateNV12_bicubic", store: &pipelineBicubic) else {
+                logTo("建立 Bicubic ComputePipeline 失敗")
+                return false
+            }
+        default:
+            break
         }
 
         hasMetalResources = true
         return true
 
     }
-    
 
-    private func buildComputePipeline() -> Bool {
+    private func buildComputePipeline(functionName: String, store: inout MTLComputePipelineState?) -> Bool {
         do {
-            let lib = MetalContext.shared.library
-
-            // --- Pipeline A：直播（bilinear）---
-            if pipelineBilinear == nil {
-                guard let fn = lib.makeFunction(name: "rotateNV12_bilinear") else { return false }
-                pipelineBilinear = try MetalContext.shared.device.makeComputePipelineState(function: fn)
-            }
-
-            // --- Pipeline B：高品質（bicubic）---
-            if pipelineBicubic == nil {
-                guard let fn = lib.makeFunction(name: "rotateNV12_bicubic") else { return false }
-                pipelineBicubic = try MetalContext.shared.device.makeComputePipelineState(function: fn)
-            }
-
-            // --- Pipeline C：unsharp mask（sharpen）---
-            if sharpenPipeline == nil {
-                guard let fn = lib.makeFunction(name: "unsharpY") else { return false }
-                sharpenPipeline = try MetalContext.shared.device.makeComputePipelineState(function: fn)
-            }
-
+            guard let fn = MetalContext.shared.library.makeFunction(name: functionName) else { return false }
+            store = try MetalContext.shared.device.makeComputePipelineState(function: fn)
             return true
         } catch {
             return false
@@ -760,37 +742,13 @@ private func fallbackSampleBuffer(
                         dstY: MTLTexture, dstUV: MTLTexture,
                         angle: RotationAngle) {
 
-        let sharpenAmount: Float = (qualityMode == .quality) ? 0.25 : 0.15
-        let useSharpen = sharpenAmount > 0 && sharpenPipeline != nil
-
-        // 決定 rotation pass 輸出的 Y texture
-        let rotateOutY: MTLTexture
-        if useSharpen {
-            let w = dstY.width
-            let h = dstY.height
-            let needNew = tempYTexture == nil ||
-                          tempYTexture!.width != w ||
-                          tempYTexture!.height != h
-            if needNew {
-                let desc = MTLTextureDescriptor.texture2DDescriptor(
-                    pixelFormat: .r8Unorm,
-                    width: w, height: h, mipmapped: false
-                )
-                desc.usage = [.shaderRead, .shaderWrite]
-                tempYTexture = MetalContext.shared.device.makeTexture(descriptor: desc)
-            }
-            rotateOutY = tempYTexture ?? dstY
-        } else {
-            rotateOutY = dstY
-        }
-
         guard let compute = (qualityMode == .live ? pipelineBilinear : pipelineBicubic),
             let encoder = cmd.makeComputeCommandEncoder() else { return }
 
         encoder.setComputePipelineState(compute)
         encoder.setTexture(srcY, index: 0)
         encoder.setTexture(srcUV, index: 1)
-        encoder.setTexture(rotateOutY, index: 2)
+        encoder.setTexture(dstY, index: 2)
         encoder.setTexture(dstUV, index: 3)
 
         let tgWidth = min(compute.threadExecutionWidth, 32)
@@ -820,25 +778,6 @@ private func fallbackSampleBuffer(
         }
 
         encoder.endEncoding()
-
-        // --- Sharpen post-pass ---
-        if useSharpen, let sp = sharpenPipeline, rotateOutY !== dstY {
-            guard let enc2 = cmd.makeComputeCommandEncoder() else { return }
-            enc2.setComputePipelineState(sp)
-            enc2.setTexture(rotateOutY, index: 0)
-            enc2.setTexture(dstY, index: 1)
-
-            var amount = sharpenAmount
-            enc2.setBytes(&amount, length: MemoryLayout<Float>.stride, index: 0)
-
-            let tgW2 = min(sp.threadExecutionWidth, 32)
-            let tgH2 = max(1, sp.maxTotalThreadsPerThreadgroup / tgW2)
-            enc2.dispatchThreads(MTLSize(width: dstY.width, height: dstY.height, depth: 1),
-                                threadsPerThreadgroup: MTLSize(width: tgW2, height: tgH2, depth: 1))
-            enc2.endEncoding()
-
-            logTo("sharpen post-pass applied (amount=\(sharpenAmount))")
-        }
     }
 
 
