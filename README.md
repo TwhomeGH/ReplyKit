@@ -7,13 +7,6 @@
 [愛發電 快樂大松鼠](https://ifdian.net/a/coffee0709)
 
 
-> [!WARNING]
-> 從版本 **9.2.4** 之後 屬於**極度不穩定**狀況
-> 
-> 目前正在對底層做大改動修繕 可用性待平估
->
-> 正在盡快完成**穩定修繕**
-
 <p float="left">
   <img src="Docs/main.png" width="45%" />
   <img src="Docs/main2.png" width="45%" />
