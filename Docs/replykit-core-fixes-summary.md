@@ -663,3 +663,18 @@ Memory Warning 時已有：
 | 背景被 Jetsam 終止機率 | 高（~30MB 非關鍵記憶體佔用） | 較低（非關鍵記憶體已釋放） |
 | PiP inactive 時背景行為 | render timer 繼續跑、GPU 持續消耗 | render timer 停止、GPU 空閒 |
 | 恢復前景後行為 | pixelBufferPool 可能仍為 nil 無重建 | `appWillEnterForeground()` 自動重建 pool |
+
+### 後續補充：日誌頁文字緩衝（2026/06）
+
+背景釋放仍遺漏 **LogView 的 Coordinator**：該物件持有 `messageLines: [String]`（最多 10000 行）及 `UITextView.textStorage`（NSAttributedString），即使 `logModel.clearLogs()` 已清除 model 陣列，text view 的介面文字仍佔 ~6-7MB。
+
+**修正：** `LogView` 加入 `@Environment(\.scenePhase)` 監聽，在 `scenePhase == .background` 時同時 call `logModel.clearLogs()` + `coordinator?.clearText()`，完整釋放日誌文字記憶體。
+
+### 預期改善總結
+
+| 指標 | 改前（預估） | 改後（預估） |
+|------|------------|------------|
+| PiP inactive 時背景常駐記憶體 | ~40-50MB | ~10-15MB |
+| 日誌頁文字緩衝 | ~6-7MB（永不釋放） | ~0MB（背景自動清除） |
+| 總背景常駐記憶體 | ~90-100MB | ~55-65MB |
+| Jetsam 終止相對風險 | 高 | 中低（同等記憶體壓力下優先權降低） |

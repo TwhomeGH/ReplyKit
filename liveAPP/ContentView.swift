@@ -1555,6 +1555,7 @@ struct LogTextView: UIViewRepresentable {
 
 struct LogView: View {
     @EnvironmentObject var logModel: LogModel
+    @Environment(\.scenePhase) private var scenePhase
 
 
     @AppStorage("logMode",store:userDefaults) private var logMode = 1
@@ -1660,6 +1661,12 @@ struct LogView: View {
                     coordinator.isVisible = false
                     coordinator.shouldAutoScroll = false
                     coordinator.cancelPendingWork()
+                }
+                .onChange(of: scenePhase) { newPhase in
+                    if newPhase == .background {
+                        logModel.clearLogs()
+                        coordinator?.clearText()
+                    }
                 }
 
 

@@ -1343,8 +1343,9 @@ iOS 的 Jetsam 機制在記憶體緊張時會終止背景 App。本專案在進�
 | PiP render timer + pipeline | `PIPService.swift` | ~1MB |
 | PiP 訊息圖層 | `PIPContent.swift` | ~2-5MB |
 | LogModel 日誌緩衝 | `liveAPPApp.swift` | ~300KB |
+| LogView 文字緩衝 | `ContentView.swift` | ~6-7MB |
 
-**保留資源：** SocketServer（log 管線）、PiP 渲染管線（若子母畫面 active）。詳見 `Docs/replykit-core-fixes-summary.md` §11。
+**預期：** 背景常駐記憶體從 ~90-100MB 降至 ~55-65MB，Jetsam 終止風險顯著降低。**保留資源：** SocketServer（log 管線）、PiP 渲染管線（若子母畫面 active）。詳見 `Docs/replykit-core-fixes-summary.md` §11。
 
         
 
