@@ -117,7 +117,7 @@ failed → retry() → backoff 2s → failed → retry() → backoff 4s → ...
 | `retry()` + 指數退避（2s → 30s） | 伺服器不在時，重連永遠不會成功 |
 | 斷路器（circuit breaker, 5次→60s cooldown） | 不需要 — 沒有重連就不需要斷路器 |
 | 狀態機（SocketState: disconnected/connecting/connected/reconnecting/circuitBreakerOpen） | 連線生命周期簡化為「有 / 沒有」 |
-| 心跳（heartbeat, 50s 間隔） | 連線短暫存活，不需要保活 |
+| 心跳（heartbeat, 50s 間隔） | ❌ 已移除 — 按需連線不再需要發送心跳保活 |
 | `onSocketReady` 回呼 | 不再需要 reconnect callback |
 | `pendingLogs` + `flushPendingLogs()` | reconnect 不再存在，暫存無意義 |
 | `sendReconnectStatus`（向 Server 回報重連狀態） | PiP 不再顯示 socket 重連狀態 |
@@ -149,7 +149,7 @@ flushBatch() (onLogPage=true 時) → connect() (若無連線) → 發送 logbat
 | **log 串流延遲** | 連線已就緒，log batch 即時送達 | 首次 flushBatch 需等待連線建立（TCP localhost ~1-2ms），後續批次立即送達 |
 | **requestSet 延遲** | 連線已就緒，立即發送 | 需建立新連線 + waitForReady (~1-5ms localhost TCP) |
 | **sendStreamEnd 延遲** | 連線已就緒，立即發送 Ended | 需建立新連線 + 等待 ready (~1-5ms) |
-| **CPU 開銷（背景）** | 重連嘗試 + 心跳 + circuit breaker timer | 零 |
+| **CPU 開銷（背景）** | 重連嘗試 + 心跳\(已移除\) + circuit breaker timer | 零 |
 | **連線可靠性** | 連線中斷後自動重連（但主 App 被殺後永遠失敗） | 不自動重連，下個操作按需建立新連線 |
 | **PiP reconnect status** | Extension 向 Server 回報重連狀態 | 不再回報（Server 端 LPConfig.isReconnecting 維持 false） |
 

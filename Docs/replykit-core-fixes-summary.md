@@ -185,7 +185,7 @@ App 進入背景後，SocketServer 透過 `UIBackgroundTask` 保持運作，但�
 | `retry()`、`reconnectDelay()`、`maxReconnectAttempts` | 無 — 連線斷開即放棄，不自動重連 |
 | 斷路器（`circuitBreaker*`） | 無 — 沒有重連就不需要斷路器 |
 | 狀態機（`SocketState` enum） | 無 — 簡化為連線存在/不存在 |
-| 心跳（`startHearbeat`、`stopHeartbeat`、50s timer） | 無 — 連線短暫存活，不需要保活 |
+| 心跳（`startHearbeat`、`stopHeartbeat`、50s timer） | ❌ 已移除 — 按需連線不再需要發送心跳保活 |
 | `onSocketReady` / `handleSocketReconnected()` | 無 — 不再有 reconnect callback |
 | `pendingLogs` + `flushPendingLogs()` | 無 — reconnect 不存在，layer 不再需要 |
 | `sendReconnectStatus` | 無 — PiP 不再顯示 socket 重連狀態 |
@@ -198,7 +198,7 @@ App 進入背景後，SocketServer 透過 `UIBackgroundTask` 保持運作，但�
 |------|------|------|
 | 主 App 背景被殺 | 無限重連迴圈，浪費 CPU/Mach port | 連線無聲斷開，零背景活動 |
 | 主 App 重啟後恢復 | 重連卡在 30s 退避 + 斷路器 | 下次操作（requestSet/sendLogBatch）按需建立新連線 |
-| CPU 開銷（背景） | 心跳 timer + 重連嘗試 + circuit breaker timer | 零 |
+| CPU 開銷（背景） | 心跳 timer\(已移除\) + 重連嘗試 + circuit breaker timer | 零 |
 | log 串流首次延遲 | 0ms（連線已就緒） | ~1-5ms（TCP localhost handshake） |
 | requestSet/sendStreamEnd | 0ms（連線已就緒） | ~1-5ms（每次建立新連線） |
 
