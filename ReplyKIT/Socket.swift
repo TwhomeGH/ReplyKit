@@ -99,7 +99,7 @@ class SocketClient : @unchecked Sendable {
 
     private var isConnection: Bool = false
 
-    var onSocketReady: (() -> Void)?
+
 
     private var connection: NWConnection?
 
@@ -107,8 +107,7 @@ class SocketClient : @unchecked Sendable {
 
     private let queue = DispatchQueue(label: "SocketClientQueue")
 
-    // 側載模式緩衝日誌：connection 尚未就緒時先暫存，ready 後自動發送
-    private var pendingLogs: [(title: String, message: String)] = []
+
 
     // MARK: - Batch Log Transport
     private var pendingBatchEntries: [String] = []
@@ -118,47 +117,7 @@ class SocketClient : @unchecked Sendable {
     private let maxInflightBatches = 3
     private var batchTimer: DispatchSourceTimer?
 
-    // 心跳相關 專用 Queue 和 Timer
-    private let queueHeart = DispatchQueue(label: "SocketClientQueueHeartbeat")
 
-    private var HeartbeatTimer: DispatchSourceTimer?
-
-    func startHearbeat(interval: TimeInterval = 50.0) {
-        guard HeartbeatTimer == nil else {
-            sendLog(message: "已啟用心跳!")
-            return
-        }
-
-        logTo("啟用Socket心跳")
-
-        let timer = DispatchSource.makeTimerSource(queue: queueHeart)
-        timer.schedule(
-            deadline: .now() + interval,
-            repeating: interval,
-            leeway: .milliseconds(10)
-        )
-
-        timer.setEventHandler { [weak self] in
-            self?.sendHeartbeat()
-        }
-
-        timer.resume()
-        self.HeartbeatTimer = timer
-    }
-
-    func stopHeartbeat() {
-        HeartbeatTimer?.cancel()
-        HeartbeatTimer = nil
-
-        logTo("關閉Socket心跳")
-    }
-
-
-    private func sendHeartbeat() {
-        let payload: [String: Any] = ["type": "heartbeat"]
-        sendPayload(payload)
-        logTo("ReplyKit Socket保活心跳訊息")
-    }
 
 
 
@@ -174,21 +133,34 @@ class SocketClient : @unchecked Sendable {
 
     
     // MARK: - 連線初始化
-    func setupConnection(host: String = "localhost" , port: UInt16 = 9322) {
-            if connection != nil {
-                closeConnection()
+    func connect(host: String = "localhost" , port: UInt16 = 9322) {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            self._connect(host: host, port: port)
+        }
+    }
+
+    private func _connect(host: String, port: UInt16) {
+        dispatchPrecondition(condition: .onQueue(queue))
+
+        if let conn = connection {
+            switch conn.state {
+            case .ready, .preparing, .waiting:
+                return
+            default:
+                _closeConnection()
             }
+        }
 
-            connection = NWConnection(
-                host: NWEndpoint.Host(host),
-                port: NWEndpoint.Port(rawValue: port)!,
-                using: .tcp
-            )
-            start()
+        connection = NWConnection(
+            host: NWEndpoint.Host(host),
+            port: NWEndpoint.Port(rawValue: port)!,
+            using: .tcp
+        )
+        start()
 
-            isConnection = false
-            isProcessingBatch = false
-            isReconnecting = false
+        isConnection = false
+        isProcessingBatch = false
 
     }
 
@@ -215,10 +187,17 @@ class SocketClient : @unchecked Sendable {
     }
 
     func closeConnection() {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            self._closeConnection()
+        }
+    }
+
+    private func _closeConnection() {
+        dispatchPrecondition(condition: .onQueue(queue))
 
         isConnection = false
         isProcessingBatch = false
-        isReconnecting = false
 
         connection?.stateUpdateHandler = nil
         connection?.cancel()
@@ -227,7 +206,6 @@ class SocketClient : @unchecked Sendable {
         readyContinuation?.resume(returning: false)
         readyContinuation = nil
 
-        // 取消所有 pending continuation 避免洩漏（同步執行，避免死鎖）
         rtmpContinuation?.resume(returning: false)
         rtmpContinuation = nil
         logContinuation?.resume(returning: false)
@@ -236,47 +214,30 @@ class SocketClient : @unchecked Sendable {
         rtmpBatchContinuation = nil
         Task { await continuationStore.cancelAll() }
 
-        stopHeartbeat()
         stopReceiveLoop()
         stopBatchTimer()
 
-        receiveBuffer.removeAll()  // ✅ 清空累積 buffer
+        receiveBuffer.removeAll()
         pendingBatchEntries.removeAll()
         inFlightBatches = 0
 
         self.logTo("SocketClient connection closed")
 
-
     }
 
 
     func start() {
-
-
         connection?.stateUpdateHandler = { [weak self] state in
             guard let self = self else { return }
             switch state {
              case .ready:
                 logTo("SocketClient connected")
                 isConnection = true
-                reconnectAttempt = 0
-                circuitBreakerFailCount = 0
-                circuitBreakerOpen = false
-                if self.socketState.canTransition(to: .connected) {
-                    self.socketState = .connected
-                }
-                sendReconnectStatus(.success)
 
                 self.queue.async {
                     self.readyContinuation?.resume(returning: true)
                     self.readyContinuation = nil
                 }
-
-                startHearbeat()
-                flushPendingLogs()
-                sendLog(message:"Socket連接成功 擴展端通信")
-
-                self.onSocketReady?()
 
                 self.startReceiveLoop()
              case .failed(let error):
@@ -285,168 +246,32 @@ class SocketClient : @unchecked Sendable {
                     self.readyContinuation?.resume(returning: false)
                     self.readyContinuation = nil
                 }
-                connection?.cancel()
-                connection = nil
-                isConnection = false
-                if self.socketState.canTransition(to: .disconnected) {
-                    self.socketState = .disconnected
-                }
-
-                // Circuit breaker: track consecutive failures
-                self.circuitBreakerFailCount += 1
-                if self.circuitBreakerFailCount >= self.circuitBreakerThreshold {
-                    self.circuitBreakerOpen = true
-                    self.logTo("🔒 電路斷路器開啟，冷卻 \(Int(self.circuitBreakerCooldown))s")
-                    self.sendReconnectStatus(.exhausted)
-                    self.queue.asyncAfter(deadline: .now() + self.circuitBreakerCooldown) { [weak self] in
-                        guard let self = self else { return }
-                        self.circuitBreakerOpen = false
-                        self.circuitBreakerFailCount = 0
-                        self.logTo("🔓 電路斷路器關閉，恢復重連")
-                        self.retry()
-                    }
-                    return
-                }
-
-                self.retry()
+                cleanupConnection()
              case .cancelled:
-
-
                 logTo("SocketClient cancelled")
                 self.queue.async {
                     self.readyContinuation?.resume(returning: false)
                     self.readyContinuation = nil
                 }
-                connection = nil
-
-                isConnection = false
-                if self.socketState.canTransition(to: .disconnected) {
-                    self.socketState = .disconnected
-                }
-
-                guard !self.circuitBreakerOpen else {
-                    self.logTo("⚠️ 電路斷路器已開啟，取消重連")
-                    return
-                }
-                self.retry()
+                cleanupConnection()
             default:
                 break
             }
         }
-        
+
         connection?.start(queue: queue)
     }
 
-    private var isReconnecting = false
-    private var reconnectAttempt = 0
-    private let maxReconnectAttempts = 10
-
-    // MARK: - Circuit Breaker
-    private var circuitBreakerOpen = false
-    private var circuitBreakerFailCount = 0
-    private let circuitBreakerThreshold = 5
-    private let circuitBreakerCooldown: TimeInterval = 60
-    private var circuitBreakerTimer: DispatchSourceTimer?
-
-    // MARK: - Connection State Machine
-    private enum SocketState {
-        case disconnected
-        case connecting
-        case connected
-        case reconnecting
-        case circuitBreakerOpen
-
-        func canTransition(to newState: SocketState) -> Bool {
-            switch (self, newState) {
-            case (.disconnected, .connecting),
-                 (.connecting, .connected),
-                 (.connecting, .disconnected),
-                 (.connected, .disconnected),
-                 (.reconnecting, .connecting),
-                 (.reconnecting, .disconnected),
-                 (.disconnected, .circuitBreakerOpen),
-                 (.circuitBreakerOpen, .connecting),
-                 (_, .disconnected):
-                return true
-            default:
-                return false
-            }
-        }
+    private func cleanupConnection() {
+        isConnection = false
+        connection?.stateUpdateHandler = nil
+        connection?.cancel()
+        connection = nil
+        receiveBuffer.removeAll()
+        stopReceiveLoop()
     }
 
-    private var socketState: SocketState = .disconnected
 
-    private func reconnectDelay() -> TimeInterval {
-        let base = min(pow(2.0, Double(reconnectAttempt)), 30.0)
-        let jitter = Double.random(in: 0...base * 0.5)
-        return base + jitter
-    }
-
-    func retry() {
-        queue.async {
-            self.stopHeartbeat()
-            if self.circuitBreakerOpen {
-                self.logTo("⚠️ 電路斷路器已開啟，跳過重連")
-                self.sendReconnectStatus(.exhausted)
-                return
-            }
-            guard !self.isReconnecting else { return }
-            guard self.socketState.canTransition(to: .reconnecting) else { return }
-            self.socketState = .reconnecting
-            self.isReconnecting = true
-            self.reconnectAttempt += 1
-
-            let delay: TimeInterval
-            if self.reconnectAttempt > self.maxReconnectAttempts {
-                self.logTo("Max reconnect attempts (\(self.maxReconnectAttempts)) reached, continuing with 30s interval")
-                self.sendReconnectStatus(.exhausted)
-                delay = 30.0
-            } else {
-                delay = self.reconnectDelay()
-                self.logTo("Reconnect attempt \(self.reconnectAttempt)/\(self.maxReconnectAttempts) in \(String(format: "%.1f", delay))s")
-                self.sendReconnectStatus(.attempting)
-            }
-
-            self.queue.asyncAfter(deadline: .now() + delay) {
-                [weak self] in
-                guard let self = self else { return }
-
-                self.isReconnecting = false
-
-                self.connection?.stateUpdateHandler = nil
-                self.connection?.cancel()
-                self.connection = nil
-
-                self.receiveBuffer.removeAll()
-
-                self.setupConnection()
-            }
-        }
-    }
-
-    private enum ReconnectPhase {
-        case attempting
-        case success
-        case failed
-        case exhausted
-    }
-
-    private func sendReconnectStatus(_ phase: ReconnectPhase) {
-        let status: String
-        switch phase {
-        case .attempting: status = "attempting"
-        case .success: status = "success"
-        case .failed: status = "failed"
-        case .exhausted: status = "exhausted"
-        }
-        let payload: [String: Any] = [
-            "type": "reconnectStatus",
-            "status": status,
-            "attempt": reconnectAttempt,
-            "maxAttempts": maxReconnectAttempts
-        ]
-        sendPayload(payload)
-    }
 
 
 
@@ -460,6 +285,7 @@ class SocketClient : @unchecked Sendable {
 
     func requestSet(for key: String, type: String) async throws -> Any? {
 
+        connect()
         guard await waitForReady() else {
             return nil
         }
@@ -525,7 +351,8 @@ class SocketClient : @unchecked Sendable {
 
     private func _requestRTMPKEYAndLog() async throws -> Bool {
 
-        // 等待連線 ready，避免發送失敗或 timeout
+        // 自動連線（on-demand）
+        connect()
         let ready = await waitForReady()
         guard ready else {
             throw TimeoutError.timedOut
@@ -619,6 +446,7 @@ class SocketClient : @unchecked Sendable {
 
     private func _requestRTMPKEY() async throws -> Bool {
 
+        connect()
         let ready = await waitForReady()
         guard ready else { throw TimeoutError.timedOut }
    
@@ -663,6 +491,7 @@ class SocketClient : @unchecked Sendable {
 
     func _requestLogConfig() async throws -> Bool {
 
+        connect()
         let ready = await waitForReady()
         guard ready else { throw TimeoutError.timedOut }
 
@@ -701,6 +530,8 @@ class SocketClient : @unchecked Sendable {
         queue.async { [weak self] in
             guard let self = self else { return }
 
+            self._connect(host: "localhost", port: 9322)
+
             let group = DispatchGroup()
             group.enter()
 
@@ -709,7 +540,7 @@ class SocketClient : @unchecked Sendable {
             }
 
             group.notify(queue: self.queue) {
-                self.closeConnection()
+                self._closeConnection()
             }
         }
     }
@@ -737,8 +568,7 @@ class SocketClient : @unchecked Sendable {
     func sendLog(title: String = "ReplyKitE_Sokcet", message: String) {
         queue.async { [weak self] in
             guard let self = self else { return }
-            guard self.connection != nil else {
-                self.pendingLogs.append((title, message))
+            guard self.connection?.state == .ready else {
                 return
             }
             self._sendLogPayload(title: title, message: message)
@@ -773,7 +603,11 @@ class SocketClient : @unchecked Sendable {
             pendingBatchEntries.removeFirst(dropCount)
             return
         }
-        guard connection != nil else { return }
+
+        if connection?.state != .ready {
+            _connect(host: "localhost", port: 9322)
+            return
+        }
 
         let entries = pendingBatchEntries
         pendingBatchEntries.removeAll()
@@ -788,6 +622,7 @@ class SocketClient : @unchecked Sendable {
             let entries = self.pendingBatchEntries
             self.pendingBatchEntries.removeAll()
             self.stopBatchTimer()
+            _connect(host: "localhost", port: 9322)
             let payload: [String: Any] = [
                 "type": "logbatch",
                 "entries": entries
@@ -828,19 +663,7 @@ class SocketClient : @unchecked Sendable {
         batchTimer = nil
     }
 
-    private func flushPendingLogs() {
-        let logs = pendingLogs
-        pendingLogs.removeAll()
-        for log in logs {
-            _sendLogPayload(title: log.title, message: log.message)
-        }
-        if !pendingBatchEntries.isEmpty {
-            let entries = pendingBatchEntries
-            pendingBatchEntries.removeAll()
-            stopBatchTimer()
-            _sendBatch(entries)
-        }
-    }
+
 
     private let maxLogChunkBytes = 8192
 
@@ -891,31 +714,37 @@ class SocketClient : @unchecked Sendable {
 
 
     func cancelPendingRTMP() {
-        queue.async {
+        queue.async { [weak self] in
+            guard let self = self else { return }
             guard let cont = self.rtmpContinuation else { return }
             self.logTo("取消RTMP請求")
             self.rtmpContinuation = nil
             cont.resume(returning: false)
+            self._closeConnection()
         }
     }
 
     func cancelPendingLog() {
-        queue.async {
+        queue.async { [weak self] in
+            guard let self = self else { return }
             guard let cont = self.logContinuation else { return }
             self.logTo("取消LogConfig請求")
             self.logContinuation = nil
             self.isProcessingBatch = false
             cont.resume(returning: false)
+            self._closeConnection()
         }
     }
 
     func cancelPendingRTMPBatch() {
-        queue.async {
+        queue.async { [weak self] in
+            guard let self = self else { return }
             guard let cont = self.rtmpBatchContinuation else { return }
             self.logTo("取消Batch請求")
             self.rtmpBatchContinuation = nil
             self.isProcessingBatch = false
             cont.resume(returning: false)
+            self._closeConnection()
         }
     }
 
@@ -938,10 +767,9 @@ class SocketClient : @unchecked Sendable {
         data.append(0x0A)
 
         let sendTimeout = DispatchWorkItem { [weak self] in
-            self?.logTo("Send timeout, triggering reconnect")
+            self?.logTo("Send timeout, closing connection")
             self?.connection?.cancel()
             self?.connection = nil
-            self?.retry()
         }
         queue.asyncAfter(deadline: .now() + 30, execute: sendTimeout)
 
@@ -1087,6 +915,7 @@ class SocketClient : @unchecked Sendable {
             }
             self.rtmpContinuation = nil
             cont.resume(returning: true)
+            self._closeConnection()
         }
     }
 
@@ -1203,6 +1032,7 @@ class SocketClient : @unchecked Sendable {
                 self.logTo("Batch Get All Req")
                 guard let cont = self.rtmpBatchContinuation else {
                     self.logTo("[rtmpBatch] no pending continuation, ignore")
+                    self._closeConnection()
                     return
                 }
                 self.rtmpBatchContinuation = nil
@@ -1210,6 +1040,7 @@ class SocketClient : @unchecked Sendable {
                 updateLogFixState()
                 updateONLogFixState()
                 cont.resume(returning: true)
+                self._closeConnection()
 
             case "UPSet":
                 logger.debug("DATA:\(data, privacy: .public)")
@@ -1218,14 +1049,10 @@ class SocketClient : @unchecked Sendable {
                    let key = resultValue["key"]?.rawValue as? String,
                    let rawValue = resultValue["value"]?.rawValue {
                    let safeValue: Any? = {
-                        if rawValue is NSNull { return nil }
-                        return rawValue
+                         if rawValue is NSNull { return nil }
+                         return rawValue
                    }()
 
-
-
-
-                    
                     logTo("UPGet -> \(String(describing:key)) \(String(describing: safeValue))")
 
 
@@ -1235,6 +1062,7 @@ class SocketClient : @unchecked Sendable {
                         }
                     }
                 }
+                self._closeConnection()
 
             case "logConfig":
                 if let env = try? decoder.decode(LogConfig.self, from: data) {
@@ -1255,19 +1083,25 @@ class SocketClient : @unchecked Sendable {
                     if !self.isProcessingBatch {
                         guard let cont = self.logContinuation else {
                             self.logTo("[LogConfig] no pending continuation, ignore")
+                            self._closeConnection()
                             return
                         }
                         self.logContinuation = nil
                         cont.resume(returning: true)
+                        self._closeConnection()
                     }
                 } else {
                     self.logTo("[Socket] logConfig decode failed")
-                    guard let cont = self.logContinuation else {
-                        self.logTo("[LogConfig] no pending continuation, ignore")
-                        return
+                    if !self.isProcessingBatch {
+                        guard let cont = self.logContinuation else {
+                            self.logTo("[LogConfig] no pending continuation, ignore")
+                            self._closeConnection()
+                            return
+                        }
+                        self.logContinuation = nil
+                        cont.resume(returning: false)
+                        self._closeConnection()
                     }
-                    self.logContinuation = nil
-                    cont.resume(returning: false)
                 }
 
             case "RTMP":
@@ -1278,10 +1112,12 @@ class SocketClient : @unchecked Sendable {
                     if !self.isProcessingBatch {
                         guard let cont = self.rtmpContinuation else {
                             self.logTo("[RTMP] no pending continuation, ignore")
+                            self._closeConnection()
                             return
                         }
                         self.rtmpContinuation = nil
                         cont.resume(returning: true)
+                        self._closeConnection()
                     }
                 }
 
@@ -1376,7 +1212,7 @@ class SocketClient : @unchecked Sendable {
 
                 if self.receiveBuffer.count > SocketClient.maxBufferSize {
                     self.logTo("Buffer exceeded \(SocketClient.maxBufferSize) bytes, closing connection")
-                    self.retry()
+                    self.cleanupConnection()
                     return
                 }
 
@@ -1384,7 +1220,7 @@ class SocketClient : @unchecked Sendable {
             }
 
             if let error = result.error {
-                self.logTo("Socket receive error: \(error)")
+                self.logTo("Socket receive error: \(error), closing connection")
 
                 CFNotificationCenterPostNotification(
                     CFNotificationCenterGetDarwinNotifyCenter(),
@@ -1394,7 +1230,7 @@ class SocketClient : @unchecked Sendable {
                     true
                 )
 
-                self.retry()
+                self.cleanupConnection()
                 return
             }
 

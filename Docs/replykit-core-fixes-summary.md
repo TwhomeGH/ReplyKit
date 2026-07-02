@@ -172,7 +172,39 @@ App 進入背景後，SocketServer 透過 `UIBackgroundTask` 保持運作，但�
 
 ---
 
-## 8. 廣播暫停/恢復 — VideoToolbox encoder 重建與前景復原
+## 8. Socket 連線改為按需連線（On-Demand），移除永久連線 + 自動重連
+
+### 問題
+
+主 App 被 iOS 殺後台後，SocketServer 停止運行，但 Extension 的 `SocketClient` 仍在背景執行無限重連迴圈：指數退避（2s→30s）→ 斷路器 5 次後 60s 冷卻 → 再試。每次重連消耗 CPU 與 Mach port 配額，永遠不會成功。
+
+### 修正
+
+| 移除項目 | 替代方案 |
+|---------|---------|
+| `retry()`、`reconnectDelay()`、`maxReconnectAttempts` | 無 — 連線斷開即放棄，不自動重連 |
+| 斷路器（`circuitBreaker*`） | 無 — 沒有重連就不需要斷路器 |
+| 狀態機（`SocketState` enum） | 無 — 簡化為連線存在/不存在 |
+| 心跳（`startHearbeat`、`stopHeartbeat`、50s timer） | 無 — 連線短暫存活，不需要保活 |
+| `onSocketReady` / `handleSocketReconnected()` | 無 — 不再有 reconnect callback |
+| `pendingLogs` + `flushPendingLogs()` | 無 — reconnect 不存在，layer 不再需要 |
+| `sendReconnectStatus` | 無 — PiP 不再顯示 socket 重連狀態 |
+
+**新流程**：每個需要 socket 的操作獨立管理自己的連線生命周期。`connect()` 是冪等的（已有連線時返回），`_closeConnection()` 在每個回應處理完後自動呼叫。
+
+### 預期改善
+
+| 場景 | 改前 | 改後 |
+|------|------|------|
+| 主 App 背景被殺 | 無限重連迴圈，浪費 CPU/Mach port | 連線無聲斷開，零背景活動 |
+| 主 App 重啟後恢復 | 重連卡在 30s 退避 + 斷路器 | 下次操作（requestSet/sendLogBatch）按需建立新連線 |
+| CPU 開銷（背景） | 心跳 timer + 重連嘗試 + circuit breaker timer | 零 |
+| log 串流首次延遲 | 0ms（連線已就緒） | ~1-5ms（TCP localhost handshake） |
+| requestSet/sendStreamEnd | 0ms（連線已就緒） | ~1-5ms（每次建立新連線） |
+
+---
+
+## 9. 廣播暫停/恢復 — VideoToolbox encoder 重建與前景復原
 
 ### 問題
 `SampleHandler.swift` 的 `broadcastPaused()` 與 `broadcastResumed()` 原始碼**都是空的**。當 App 進入背景 → ReplayKit 暫停廣播 → 返回前景時，系統會 invalidate VideoToolbox encoder session，但沒有任何程式碼負責重建。
@@ -201,8 +233,8 @@ override func broadcastPaused() {
 override func broadcastResumed() {
     isBroadcastPaused = false
     
-    // 1. 重建 Socket 連線（背景可能斷開）
-    SocketClient.shared.setupConnection()
+    // 1. 按需重建 Socket 連線（背景可能斷開）
+    SocketClient.shared.connect()
     
     // 2. 重啟 MediaMixer（若被系統暫停）
     if !(await mediaMixer.isRunning) {
@@ -227,12 +259,12 @@ override func broadcastResumed() {
 | 背景 → 前景後的 video 恢復 | 完全中斷，永久不恢復 | 2-3 秒內重建 encoder，恢復推流 |
 | Audio 持續性 | 正常（不受影響） | 正常（不受影響） |
 | GPU encoder session | 被系統 invalidated，永不重建 | `setVideoSettings` 強制重建新 session |
-| Socket 連線 | 背景斷開後無人處理 | `setupConnection()` 主動重連 |
+| Socket 連線 | 背景斷開後無人處理 | `connect()` 按需建立新連線 |
 | 斷線監控 | 背景時 Task 被 cancel 不重啟 | `startDisconnectMonitor()` 重啟 |
 
 ---
 
-## 9. LogTextView 頁面切換崩潰 + LogBuffer 記憶體上限
+## 10. LogTextView 頁面切換崩潰 + LogBuffer 記憶體上限
 
 ### 問題
 在 `onLogPage` ↔ `onAudioPage` 之間快速切換時，存在**兩層問題疊加**導致崩潰：
@@ -289,7 +321,7 @@ private func trimIfNeededLocked() {
 
 | 指標 | 改前 | 改後 |
 |------|------|------|
-| Socket 連線穩定性 | burst log → timeout → 斷線重連 loop | batch 限流，連線保持不斷 |
+| Socket 連線穩定性 | burst log → timeout → 斷線重連 loop | batch 限流，連線穩定；主 App 被殺後零重連浪費 |
 | GPU 使用率 | ~30-40%（串行等待） | ~60-80%（3 幀 pipeline） |
 | GPU hang 復原 | 永久卡死 | ≤2 秒自動重置 |
 | 日誌檔大小 | 無限增長 | ≤~7000 行（trim 後回 5000） |
@@ -305,7 +337,7 @@ private func trimIfNeededLocked() {
 
 ---
 
-## 10. broadcastResumed 視訊管線重建 + 側載清除日誌優化
+## 11. broadcastResumed 視訊管線重建 + 側載清除日誌優化
 
 ### 問題
 
@@ -338,7 +370,7 @@ rebuildVideo()
 
 ---
 
-## 11. 音量頁即時 RMS 節流（防 socket 洪流斷線）
+## 12. 音量頁即時 RMS 節流（防 socket 洪流斷線）
 
 ### 問題
 停留在音量頁（`onAudioPage=true`）時，`processRMS` 對每幀音訊進行 SIMD 頻譜運算 + `VolumeNotifier.updateVolume` 觸發 socket `sendAudioLive`。`rmsInterval = 0.2s` 和 `minInterval = 0.2s` 雙重節流實質合併成一道，產生 **5Hz socket 寫入洪流**，與 RTMP 的 `logbatch`（每 0.25s 一批）疊加，NWConnection 內部 send queue 積壓 → 系統主動關閉連線 → 管線崩潰。
@@ -386,7 +418,7 @@ func updateVolume(volume: Float, track: Int) {
 
 ---
 
-## 12. Video 管線連續失敗偵測與自動重建
+## 13. Video 管線連續失敗偵測與自動重建
 
 ### 問題
 Video 管線在初始幾十幀後停止產出（`append(video)` 不再出現），但 `videoProcessor` 非 nil、外層 watchdog 未觸發、無任何警告日誌。原因是兩層失效路徑皆未被覆蓋：
@@ -445,7 +477,7 @@ MetalContext.shared.rebuildQueue()
 
 ---
 
-## 13. 清除日誌按鈕修復
+## 14. 清除日誌按鈕修復
 
 ### 問題
 `logModel.clearLogs()` 只清 `LogModel.messages`，但 `LogTextView.Coordinator` 有自己的 `messageLines`、`appendedUUIDs` 和 UITextView 文字內容未被清除，頁面上的日誌仍顯示。
@@ -456,7 +488,7 @@ MetalContext.shared.rebuildQueue()
 
 ---
 
-## 14. GPU Texture Cache 隔離 + cleanup 時序修正
+## 15. GPU Texture Cache 隔離 + cleanup 時序修正
 
 ### 問題
 三層連鎖導致前景恢復後 video 斷流：
