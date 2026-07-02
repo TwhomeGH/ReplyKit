@@ -226,6 +226,37 @@ queue 執行順序:
 
 同步簡化了 state handler：移除 `self.queue.async { ... }`（handler 已在 `queue` 上），改為直接同步呼叫 `readyContinuation?.resume()`。
 
+### 追修：`sendAudioLive` / `sendSettings` 未建立連線（音量即時更新失效）
+
+**問題**：`sendAudioLive()` 和 `sendSettings()` 直接呼叫 `sendPayload()`，但 `sendPayload()` 檢查 `guard let con = connection` — 在 on-demand 架構下，每個操作用完就關閉連線，所以 `connection` 通常是 `nil`，音量資料被靜默丟棄。
+
+**修正**：兩者都改為先 dispatch 到 `queue`，若 `connection?.state != .ready` 則呼叫 `_connect()` 建立新連線，再送出 payload。連線不會主動關閉，由後續 volume data（每 1 秒來自 `VolumeNotifier`）維持活性；離開 audio page 後 server idle timeout 自動清理。
+
+| 場景 | 改前 | 改後 |
+|------|------|------|
+| 切到 audioPage | 無任何音量資料送達 | 每秒自動建立連線、即時更新音量 |
+| audioPage 停留期間 | 無任何音量資料送達 | 連線由持續 volume data 維持，零中斷 |
+
+### 追修：`sendPayload` 的 30s DispatchWorkItem 造成 libdispatch over-release（Crash）
+
+**問題**：`sendPayload` 使用 `DispatchWorkItem` + `queue.asyncAfter(deadline: .now() + 30)` 實作 send timeout。此 `DispatchWorkItem` 同時被三個持有者強引用：
+1. `asyncAfter`（30s 到期前保持）
+2. `.contentProcessed` closure（NWConnection send completion 回呼）
+3. 區域變數（`sendPayload` 返回後釋放）
+
+當 `asyncAfter` 在 30s 到期觸發（執行關閉連線），然後 `.contentProcessed` 才在同一條 serial queue 被調度時，三方交叉持有造成 `libdispatch` runtime 檢測到 `API MISUSE: Over-release of an object`（`liveAPP-2026-07-03-060542.ips`）。
+
+**修正**：完全移除 30s `DispatchWorkItem`。在 on-demand 架構下：
+- 連線短暫，成功就送出，失敗則由 state handler（`.failed`）清理
+- 上層已有 `withTimeout`（15s for `requestRTMPKEYAndLog`）和 Task cancellation 保護
+- `con.send(content:completion:)` 的 `.contentProcessed` callback 是唯一的 completion 通知機制，不再經過 dispatch 物件
+
+| 改善 | 說明 |
+|------|------|
+| 移除 dispatch 物件 | 不再有 `DispatchWorkItem` 被三方交叉持有 |
+| Crash 風險 | 消除 libdispatch over-release 的可能路徑 |
+| 行為不變 | 網路超時由 NWConnection 本身處理，無需額外 timer |
+
 ---
 
 ## 9. 廣播暫停/恢復 — VideoToolbox encoder 重建與前景復原

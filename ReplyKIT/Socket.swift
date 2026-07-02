@@ -531,22 +531,34 @@ class SocketClient : @unchecked Sendable {
 
     // MARK: 負責發送當前音訊指標
     func sendAudioLive(appVol:Float = 1.0, micVol:Float = 1.0,persist:Bool = false) {
-        let payload: [String: Any] = [
-            "type": "audioLive",
-            "appVol": appVol,
-            "micVol": micVol,
-            "persist":persist
-        ]
-        sendPayload(payload)
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            if self.connection?.state != .ready {
+                self._connect()
+            }
+            let payload: [String: Any] = [
+                "type": "audioLive",
+                "appVol": appVol,
+                "micVol": micVol,
+                "persist":persist
+            ]
+            self.sendPayload(payload)
+        }
     }
 
     func sendSettings(key: String, value: Any) {
-        let payload: [String: Any] = [
-            "type": "settings",
-            "key": key,
-            "value": safeJSONValue(value)
-        ]
-        sendPayload(payload)
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            if self.connection?.state != .ready {
+                self._connect()
+            }
+            let payload: [String: Any] = [
+                "type": "settings",
+                "key": key,
+                "value": self.safeJSONValue(value)
+            ]
+            self.sendPayload(payload)
+        }
     }
 
     func sendLog(title: String = "ReplyKitE_Sokcet", message: String) {
@@ -750,15 +762,7 @@ class SocketClient : @unchecked Sendable {
         }
         data.append(0x0A)
 
-        let sendTimeout = DispatchWorkItem { [weak self] in
-            self?.logTo("Send timeout, closing connection")
-            self?.connection?.cancel()
-            self?.connection = nil
-        }
-        queue.asyncAfter(deadline: .now() + 30, execute: sendTimeout)
-
         con.send(content: data, completion: .contentProcessed({ error in
-            sendTimeout.cancel()
             if let error = error {
                 self.logTo("Socket Send error: \(error.localizedDescription)")
             }
