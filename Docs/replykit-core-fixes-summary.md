@@ -315,7 +315,34 @@ private func trimIfNeededLocked() {
 | 背景串流大量 log 寫入 | LogBuffer 無上限增長 → 記憶體壓力 → OOM | 上限 5000 條，超出自動 drop 最舊 |
 | 背景主線程節流時 | buffer 持續膨脹無節制 | buffer 固定上限，不累積 |
 
+### 記憶體優化：Coordinator 三層重複儲存
+
+**問題**：`LogTextView.Coordinator` 存在三層重複儲存：
+```
+LogModel.messages (1000 條)
+  → Coordinator.messageLines (10000 條)    ← 問題①
+  → UITextView.textStorage (NSAttributedString)  ← 問題②
+  → appendedUUIDs (20000 個 UUID)          ← 問題③
+```
+- **問題①**：`messageLines: [String]` 保存 10000-15000 條訊息字串，與 `tv.text` 內容完全重複
+- **問題②**：NSAttributedString 在逐條 append 時產生大量 attribute runs，每個字元都攜帶 font/color metadata，10000 行時開銷巨大
+- **問題③**：`appendedUUIDs: Set<UUID>` 最多存 20000 個 UUID 純粹為了去重，但 LogModel 本身已有 `removeFirst` 管理，從未命中過
+
+**修正**（`ContentView.swift:1192-1290`）：
+
+| 項目 | 改前 | 改後 | 節省（估） |
+|------|------|------|-----------|
+| `maxLines` | 10000（trim 時 15000） | **3000** | ~7-10 MB |
+| `messageLines` | 獨立陣列 + tv.text 雙重儲存 | **移除**，僅用 `currentLineCount` 計數，trim 直接解析 tv.text | ~2-3 MB |
+| `appendedUUIDs` | 20000 個 UUID（~800KB） | **移除** | ~800 KB |
+| NSAttributedString attributes | 每批 append 自建 font/color dictionary | 移除 attributes，繼承 UITextView 預設樣式 | 微量 |
+| Trim 時重建 | 遍歷 15000 條做 `"\(i): \(line)"` 字串拼接 | 從 tv.text 解析行數，`suffix(3000)` 後重新編號 | CPU 降 |
+
+**合計節省約 10-14 MB**（主要來自 NSAttributedString 行數減少 70%）。
+
 ---
+
+## 整體性能預期
 
 ## 整體性能預期
 
@@ -332,6 +359,7 @@ private func trimIfNeededLocked() {
 | Socket 接收 dispatch（50 條 logbatch） | 100 次 dispatch + 50 次 push + 50 次 append | 1 次 dispatch + 1 次 push + 1 次 append |
 | 背景模式下 watchdog 終止風險 | 高（大量小 dispatch + 小 I/O 超逾背景配額） | 低（單次批次處理快速完成） |
 | 背景 → 前景 video 恢復 | video 永久中斷，永不恢復 | 2-3 秒內重建 encoder，恢復推流 |
+| **LogTextView 日誌頁記憶體** | **~12-18 MB**（10000 行 NSAttributedString + 10000 條 messageLines + 20000 UUIDs） | **~2-4 MB**（3000 行 NSAttributedString，無重複陣列） |
 | 頁面切換穩定性 | 快速切換 onLogPage/onAudioPage 高機率崩潰 | window nil 檢查，安全防護 |
 | 背景串流 LogBuffer 記憶體 | 無上限，長時間背景高機率 OOM | 上限 5000 條，自動截斷 |
 

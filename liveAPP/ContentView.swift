@@ -1189,10 +1189,8 @@ struct LogTextView: UIViewRepresentable {
 
         var textView: UITextView?
 
-        private var bufferedMessages: [LogItem] = []
-
         var currentLineCount = 0
-        let maxLines = 10000
+        let maxLines = 3000
 
         var hasInitialLoad = false
 
@@ -1214,55 +1212,32 @@ struct LogTextView: UIViewRepresentable {
 
 
         private func trimTextStorageIfNeeded(_ tv: UITextView) {
-            guard currentLineCount > maxLines else { return }
+            guard let text = tv.text else { return }
+            let lines = text.components(separatedBy: "\n")
+                .filter { !$0.hasPrefix("目前最多保留") }
+            guard lines.count > maxLines else { return }
 
-            let excessLines = currentLineCount - maxLines
-            guard excessLines > 0 else { return }
-
-            if let text = tv.text {
-                let lines = text.components(separatedBy: "\n")
-
-                var trimmedLines = lines
-
-                if lines.count > maxLines {
-                       trimmedLines = Array(lines.suffix(maxLines))
-                   }
-
-                let newText = trimmedLines.joined(separator: "\n") + "\n目前最多保留:\(maxLines)行日誌\n"
-
-                tv.text =  newText
-
-                currentLineCount = trimmedLines.count
+            let trimmed = Array(lines.suffix(maxLines))
+            var rebuilt = ""
+            for (i, line) in trimmed.enumerated() {
+                rebuilt += "\(i + 1): \(line)\n"
             }
+            rebuilt += "目前最多保留:\(maxLines)行日誌\n"
+            tv.text = rebuilt
+            currentLineCount = maxLines
         }
         
 
 
 
-        // 新增訊息
-        private var messageLines: [String] = []
-
         private var appendQueue = [LogItem]()
-        private var appendedUUIDs: Set<UUID> = []
 
         private var appendWorkItem: DispatchWorkItem?
 
         func appendMessages(_ newMessages: [LogItem]) {
             guard isVisible, !newMessages.isEmpty else { return }
 
-            // 過濾掉已經 append 過的
-            let uniqueMessages = newMessages.filter { appendedUUIDs.insert($0.id).inserted }
-            guard !uniqueMessages.isEmpty else { return }
-
-            // 緩存到 queue
-            appendQueue.append(contentsOf: uniqueMessages)
-
-
-            if appendedUUIDs.count > maxLines * 2 {
-                let excess = appendedUUIDs.count - maxLines * 2
-                appendedUUIDs = Set(appendedUUIDs.dropFirst(excess))
-            }
-
+            appendQueue.append(contentsOf: newMessages)
 
             // 延遲批量 append，避免每條都操作 UITextView
             if appendWorkItem == nil {
@@ -1277,8 +1252,8 @@ struct LogTextView: UIViewRepresentable {
 
                     var appendedText = ""
                     for msg in pendingMessages {
-                        self.messageLines.append(msg.message)
-                        appendedText += "\(self.messageLines.count): \(msg.message)\n"
+                        self.currentLineCount += 1
+                        appendedText += "\(self.currentLineCount): \(msg.message)\n"
                     }
 
                     guard !appendedText.isEmpty else {
@@ -1291,45 +1266,21 @@ struct LogTextView: UIViewRepresentable {
                     CATransaction.setCompletionBlock { [weak self] in
                         guard let self = self else { return }
 
-                        // 再下一 runloop 滾到底
                         DispatchQueue.main.async {
-
                             if self.shouldAutoScroll {
                                 self.scrollToBottomUsingRange(animated: false)
                             }
                         }
                     }
 
-                    if self.messageLines.count >= self.maxLines {
-                        let trimCount = max(1, self.messageLines.count - self.maxLines + (self.maxLines / 2))
-                        self.messageLines.removeFirst(min(trimCount, self.messageLines.count))
-
-                        var rebuiltText = ""
-                        rebuiltText.reserveCapacity(tv.textStorage.length)
-                        for (index, line) in self.messageLines.enumerated() {
-                            rebuiltText += "\(index + 1): \(line)\n"
-                        }
-                        rebuiltText += "目前最多保留:\(self.maxLines)行日誌\n"
-                        tv.text = rebuiltText
-                    } else {
-                        var attributes: [NSAttributedString.Key: Any] = [:]
-                        if let font = tv.font {
-                            attributes[.font] = font
-                        }
-                        if let textColor = tv.textColor {
-                            attributes[.foregroundColor] = textColor
-                        }
-                        tv.textStorage.append(NSAttributedString(string: appendedText, attributes: attributes))
-                    }
+                    tv.textStorage.append(NSAttributedString(string: appendedText))
                     tv.layoutIfNeeded()
 
                     CATransaction.commit()
 
-                    self.currentLineCount = self.messageLines.count
+                    self.trimTextStorageIfNeeded(tv)
 
                     self.appendWorkItem = nil
-
-                    
                 }
 
                 appendWorkItem = workItem
@@ -1434,8 +1385,6 @@ struct LogTextView: UIViewRepresentable {
 
         func clearText() {
             cancelPendingWork()
-            messageLines.removeAll()
-            appendedUUIDs.removeAll()
             currentLineCount = 0
             if let tv = textView {
                 tv.text = ""
