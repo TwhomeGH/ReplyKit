@@ -534,7 +534,7 @@ class SocketClient : @unchecked Sendable {
         queue.async { [weak self] in
             guard let self = self else { return }
             if self.connection?.state != .ready {
-                self._connect()
+                self._connect(host: "localhost", port: 9322)
             }
             let payload: [String: Any] = [
                 "type": "audioLive",
@@ -550,7 +550,7 @@ class SocketClient : @unchecked Sendable {
         queue.async { [weak self] in
             guard let self = self else { return }
             if self.connection?.state != .ready {
-                self._connect()
+                self._connect(host: "localhost", port: 9322)
             }
             let payload: [String: Any] = [
                 "type": "settings",
