@@ -1273,7 +1273,14 @@ struct LogTextView: UIViewRepresentable {
                         }
                     }
 
-                    tv.textStorage.append(NSAttributedString(string: appendedText))
+                    var attributes: [NSAttributedString.Key: Any] = [:]
+                    if let font = tv.font {
+                        attributes[.font] = font
+                    }
+                    if let textColor = tv.textColor {
+                        attributes[.foregroundColor] = textColor
+                    }
+                    tv.textStorage.append(NSAttributedString(string: appendedText, attributes: attributes))
                     tv.layoutIfNeeded()
 
                     CATransaction.commit()
