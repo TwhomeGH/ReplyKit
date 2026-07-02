@@ -202,6 +202,30 @@ App 進入背景後，SocketServer 透過 `UIBackgroundTask` 保持運作，但�
 | log 串流首次延遲 | 0ms（連線已就緒） | ~1-5ms（TCP localhost handshake） |
 | requestSet/sendStreamEnd | 0ms（連線已就緒） | ~1-5ms（每次建立新連線） |
 
+### 追修：`waitForReady()` 時序競爭（Race Condition）
+
+**問題**：`waitForReady()` 先把 `_connect()` dispatch 到 serial queue，再 dispatch 自己到同一條 queue 設定 `readyContinuation`。但 NWConnection 的 `.ready` 回呼也跑在同一條 queue 上，且因為 `connection.start()` 的 async callback 排隊比 `waitForReady` 的 dispatch **更早**，所以順序變成：
+
+```
+queue 執行順序:
+  1. _connect() → 建立 NWConnection、呼叫 start()、return
+  2. (NWConnection async callback) state handler 觸發 .ready
+     → 此時 readyContinuation 還是 nil → 錯過
+  3. waitForReady 的 dispatch → 設定 readyContinuation
+     → .ready 已錯過 → 10s timeout → 重試 → 再次 timeout → 推流失敗
+```
+
+**修正**（`Socket.swift:167`）：將 `waitForReady` 從 **continuation 通知**改為 **polling 模式** — 每 100ms 檢查 `connection?.state`：
+
+| 狀態 | 結果 |
+|------|------|
+| `.ready` | 立即返回 true |
+| `.failed` / `.cancelled` | 立即返回 false |
+| `nil`（尚未建立）/ `.preparing` / `.waiting` | 繼續等待 |
+| 10s 無變化 | 返回 false |
+
+同步簡化了 state handler：移除 `self.queue.async { ... }`（handler 已在 `queue` 上），改為直接同步呼叫 `readyContinuation?.resume()`。
+
 ---
 
 ## 9. 廣播暫停/恢復 — VideoToolbox encoder 重建與前景復原

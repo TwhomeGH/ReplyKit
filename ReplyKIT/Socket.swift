@@ -165,25 +165,17 @@ class SocketClient : @unchecked Sendable {
     }
 
     func waitForReady(timeout: TimeInterval = 10.0) async -> Bool {
-        if connection?.state == .ready { return true }
-        return await withCheckedContinuation { cont in
-            queue.async { [weak self] in
-                guard let self = self else { cont.resume(returning: false); return }
-                if self.connection?.state == .ready {
-                    cont.resume(returning: true)
-                } else {
-                    self.readyContinuation = cont
-                    // 安全 timeout，防止永遠等不到
-                    self.queue.asyncAfter(deadline: .now() + timeout) { [weak self] in
-                        guard let self = self else { return }
-                        if self.readyContinuation != nil {
-                            self.readyContinuation = nil
-                            cont.resume(returning: false)
-                        }
-                    }
-                }
+        let deadline = DispatchTime.now() + timeout
+        repeat {
+            switch connection?.state {
+            case .ready: return true
+            case .failed, .cancelled: return false
+            case .none, .preparing, .waiting: break
+            default: break
             }
-        }
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        } while DispatchTime.now() < deadline
+        return false
     }
 
     func closeConnection() {
@@ -233,26 +225,18 @@ class SocketClient : @unchecked Sendable {
              case .ready:
                 logTo("SocketClient connected")
                 isConnection = true
-
-                self.queue.async {
-                    self.readyContinuation?.resume(returning: true)
-                    self.readyContinuation = nil
-                }
-
-                self.startReceiveLoop()
+                readyContinuation?.resume(returning: true)
+                readyContinuation = nil
+                startReceiveLoop()
              case .failed(let error):
                 logTo("SocketClient failed: \(String(describing: error))")
-                self.queue.async {
-                    self.readyContinuation?.resume(returning: false)
-                    self.readyContinuation = nil
-                }
+                readyContinuation?.resume(returning: false)
+                readyContinuation = nil
                 cleanupConnection()
              case .cancelled:
                 logTo("SocketClient cancelled")
-                self.queue.async {
-                    self.readyContinuation?.resume(returning: false)
-                    self.readyContinuation = nil
-                }
+                readyContinuation?.resume(returning: false)
+                readyContinuation = nil
                 cleanupConnection()
             default:
                 break
