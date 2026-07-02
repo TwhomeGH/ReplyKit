@@ -208,8 +208,10 @@ final class LogManager {
     private let maxRingBufferEntries = 1000
 
     private let logFileName = "log.txt"
+    private let earlyLogFileName = "early-log.txt"
     private let groupID = "group.nuclear.liveAPP"
     private let maxLogFileLines = 5000
+    private let maxEarlyLogLines = 2000
     private let maxForceFlushLines = 200
 
     // MARK: flush寫入間隔
@@ -282,6 +284,7 @@ final class LogManager {
                 self.localLogBuffer.removeFirst(self.localLogBuffer.count - self.maxRingBufferEntries)
             }
 
+            self.writeEarlyLogToFile(logMessage)
             logger.debug("LogBuffer:\(msg)")
         }
         
@@ -348,6 +351,7 @@ final class LogManager {
                 }
                 self.remoteLogger?.log(title: title, message: message)
             }
+            self.writeEarlyLogToFile(logMessage)
         }
     }
 
@@ -425,6 +429,41 @@ final class LogManager {
         guard lines.count > maxLogFileLines else { return }
         let hasSuffixNewline = content.hasSuffix("\n")
         let trimmedLines = lines.suffix(maxLogFileLines)
+        let trimmedText = trimmedLines.joined(separator: "\n") + (hasSuffixNewline ? "\n" : "")
+        try? trimmedText.write(to: fileURL, atomically: true, encoding: .utf8)
+    }
+
+    private func writeEarlyLogToFile(_ text: String) {
+        let fileURL = earlyLogFileURL()
+        guard let data = text.data(using: .utf8) else { return }
+        if FileManager.default.fileExists(atPath: fileURL.path),
+           let fileHandle = try? FileHandle(forWritingTo: fileURL) {
+            defer { fileHandle.closeFile() }
+            fileHandle.seekToEndOfFile()
+            fileHandle.write(data)
+        } else {
+            try? data.write(to: fileURL, options: .atomic)
+        }
+        trimEarlyLogFileIfNeeded(fileURL: fileURL)
+    }
+
+    private func earlyLogFileURL() -> URL {
+        if let groupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupID) {
+            return groupURL.appendingPathComponent(earlyLogFileName)
+        }
+        return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!.appendingPathComponent(earlyLogFileName)
+    }
+
+    private func trimEarlyLogFileIfNeeded(fileURL: URL) {
+        guard let fileHandle = try? FileHandle(forReadingFrom: fileURL),
+              let currentData = try? fileHandle.readToEnd()
+        else { return }
+        fileHandle.closeFile()
+        guard let content = String(data: currentData, encoding: .utf8) else { return }
+        let lines = content.split(separator: "\n", omittingEmptySubsequences: false)
+        guard lines.count > maxEarlyLogLines else { return }
+        let hasSuffixNewline = content.hasSuffix("\n")
+        let trimmedLines = lines.suffix(maxEarlyLogLines)
         let trimmedText = trimmedLines.joined(separator: "\n") + (hasSuffixNewline ? "\n" : "")
         try? trimmedText.write(to: fileURL, atomically: true, encoding: .utf8)
     }
