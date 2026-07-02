@@ -822,3 +822,35 @@ Memory Warning 時已有：
 - **畫質不變**：移除 sharpen 對遊戲直播畫面無負面影響（遊戲 rendering 本身已含銳化）
 - **GPU 負擔**：每幀從 2 dispatches → 1 dispatch，在 60fps 下相當於每秒減少 60 次 GPU 編碼器啓動
 - **編譯時間**：首次初始化 Metal pipeline 的時間約縮減 60%（只編譯 1 個 kernel 而非 3 個）
+
+---
+
+## 13. Extension 早期日誌檔案（Early-Log）
+
+### 問題
+
+Extension 的除錯日誌（`sendlog()`）在 socket 就緒前只寫入 ring buffer（1000 行），無法從外部讀取。當 socket 連線失敗時，無法獲得連線階段的日誌來診斷問題。
+
+### 設計
+
+| 項目 | 說明 |
+|------|------|
+| **檔案名稱** | `early-log.txt` |
+| **儲存位置** | App Group 共享目錄 `group.nuclear.liveAPP`（無 App Group 時 fallback 到 extension 的 `documentDirectory`） |
+| **寫入時機** | 每個 `sendlog()` / `addDebugLog()` 呼叫即時寫入（無關 socket 是否就緒） |
+| **行數上限** | 2000 行，超過時保留最新 2000 行 |
+| **是否跳過 Sideload** | **不跳過** — 不同於 `writeLogToFile`（`enableLog` 為 `false` 時 socket 路徑用），early-log 永遠寫入 |
+| **讀取方式** | 生產環境：主 App 可讀取共享目錄；側載：Xcode → Devices → Download Container 或工具讀取 |
+
+### 實作變更（`Event.swift`）
+
+- 新增 `writeEarlyLogToFile()`：無 `isSideload` guard 的檔案寫入
+- 新增 `trimEarlyLogFileIfNeeded()`：以 `maxEarlyLogLines（2000）` 為上限裁剪
+- 在 `log()` 及 `addDebugLog()` 的 `logQueue.async(flags: .barrier)` 區塊內加入 `writeEarlyLogToFile(logMessage)`
+
+### 用途
+
+- 診斷 socket 初期連線問題（`requestSet` timeout、`waitForReady` 失敗）
+- 觀察 `onAudioPage` 等事件是否確實觸發
+- 確認 `audioProcessor?.updatePage(status:)` 是否被呼叫
+- 追蹤 `_closeConnection()` 與 `liveAPP.SocketRestart` 之間的因果關係
