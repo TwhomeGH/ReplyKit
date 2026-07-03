@@ -10,6 +10,9 @@ import SwiftUI
 import UserNotifications
 import AVFoundation
 import Combine
+#if os(iOS)
+import BackgroundTasks
+#endif
 
 #if os(iOS)
 import UIKit
@@ -831,6 +834,9 @@ struct liveAPPApp: App {
 
         SocketServer.shared.start()
 
+        // 註冊 BGTaskScheduler 處理常式
+        BackgroundTaskManager.shared.registerTasks()
+
         // 將 App Group 既有的 log 複製到 Documents/ 供檔案 App 讀取
         AppLogPersister.shared.copyFromAppGroup()
 
@@ -918,9 +924,6 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
 
     @Environment(\.scenePhase) private var scenePhase
 
-    // MARK: - Background Task
-    @State private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
-
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -931,7 +934,7 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
                         break
 
                     case .background:
-                        sendlog(message: "App 進入背景，保持 SocketServer 運作中")
+                        sendlog(message: "App 進入背景，排程 BGTaskScheduler 保持 SocketServer 運作")
 
                         // 通知 PIPService 進入背景
                         PIPService.shared.appDidEnterBackground()
@@ -940,23 +943,9 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
                         PIPService.shared.releaseNonCriticalMemory()
                         logModel.clearLogs()
 
-                        // 註冊 background task 保護 SocketServer（chain 模式續命）
+                        // 使用 BGTaskScheduler 排程背景處理任務，取代舊的 beginBackgroundTask chain
                         #if os(iOS)
-                        if backgroundTaskID == .invalid {
-                            backgroundTaskID = UIApplication.shared.beginBackgroundTask {
-                                sendlog(message: "Socket background task 即將到期，重新註冊續命")
-                                // 到期時重新註冊新的 background task，延長存活時間
-                                UIApplication.shared.endBackgroundTask(self.backgroundTaskID)
-                                self.backgroundTaskID = .invalid
-                                // 重新註冊（如同 PiP 的 chain 模式）
-                                self.backgroundTaskID = UIApplication.shared.beginBackgroundTask {
-                                    UIApplication.shared.endBackgroundTask(self.backgroundTaskID)
-                                    self.backgroundTaskID = .invalid
-                                }
-                                sendlog(message: "Socket background task 已續命")
-                            }
-                            sendlog(message: "Socket background task 已註冊，ID: \(backgroundTaskID)")
-                        }
+                        BackgroundTaskManager.shared.scheduleSocketKeepAlive()
                         #endif
 
                     case .active:
@@ -966,13 +955,9 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
                         // 通知 PIPService 回到前景
                         PIPService.shared.appWillEnterForeground()
 
-                        // 結束 background task
+                        // 取消 BGTaskScheduler 任務（前景不需要）
                         #if os(iOS)
-                        if backgroundTaskID != .invalid {
-                            UIApplication.shared.endBackgroundTask(backgroundTaskID)
-                            backgroundTaskID = .invalid
-                            sendlog(message: "Background task 已結束")
-                        }
+                        BackgroundTaskManager.shared.cancelAll()
                         #endif
 
                     @unknown default:

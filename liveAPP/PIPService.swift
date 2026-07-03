@@ -1,4 +1,4 @@
-﻿import SwiftUI
+import SwiftUI
 import AVKit
 import CoreVideo
 import CoreImage
@@ -88,7 +88,6 @@ actor PIPRenderPipeline {
 final class PIPService: NSObject, @unchecked Sendable {
     static let shared = PIPService()
 
-    private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
     private var isInBackground = false
 
     private override init() {
@@ -1049,8 +1048,6 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         cleanupMessageslayer()
 
-        endBackgroundTask()
-
         if !(userDefaults?.bool(forKey: "TTSEnabled") ?? false) {
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         }
@@ -1065,11 +1062,6 @@ final class PIPService: NSObject, @unchecked Sendable {
             // displayLayer 可能被系統移除，嘗試重新 attach
             ensureDisplayLayerAttached()
             return false
-        }
-
-        // PiP active 時註冊 background task 保護 render 執行緒
-        if didStartPiP && isInBackground {
-            beginBackgroundTaskIfNeeded()
         }
 
         // 1️⃣ 驅動動畫（取代舊的 CADisplayLink）
@@ -1115,36 +1107,15 @@ final class PIPService: NSObject, @unchecked Sendable {
         return true
     }
 
-    // MARK: - Background Task
-    func beginBackgroundTaskIfNeeded() {
-        guard backgroundTaskID == .invalid else { return }
-        backgroundTaskID = UIApplication.shared.beginBackgroundTask { [weak self] in
-            PIPLogTo("PiP background task 即將到期")
-            // 到期時重新註冊新的 background task，延長存活時間
-            self?.endBackgroundTask()
-            self?.beginBackgroundTaskIfNeeded()
-        }
-        PIPLogTo("PiP background task 已註冊")
-    }
-
-    func endBackgroundTask() {
-        guard backgroundTaskID != .invalid else { return }
-        UIApplication.shared.endBackgroundTask(backgroundTaskID)
-        backgroundTaskID = .invalid
-        PIPLogTo("PiP background task 已結束")
-    }
-
     func appDidEnterBackground() {
         isInBackground = true
         if didStartPiP {
-            beginBackgroundTaskIfNeeded()
-            PIPLogTo("PiP active 進入背景，已註冊 background task")
+            PIPLogTo("PiP active 進入背景（audio mode 保持存活）")
         }
     }
 
     func appWillEnterForeground() {
         isInBackground = false
-        endBackgroundTask()
         reAttachDisplayLayerIfNeeded()
 
         // 如果 pixelBufferPool 被 memory warning 釋放，重建它
@@ -1153,7 +1124,7 @@ final class PIPService: NSObject, @unchecked Sendable {
             PIPLogTo("重建 pixelBufferPool: \(OframeSize)")
         }
 
-        PIPLogTo("回到前景，已釋放 background task")
+        PIPLogTo("回到前景")
     }
 
     func releaseNonCriticalMemory() {
