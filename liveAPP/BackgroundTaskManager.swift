@@ -20,7 +20,7 @@ final class BackgroundTaskManager {
 
     func scheduleSocketKeepAlive() {
         #if os(iOS)
-        cancelSocketKeepAlive()
+        BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: socketKeepAliveTaskID)
         let request = BGProcessingTaskRequest(identifier: socketKeepAliveTaskID)
         request.requiresNetworkConnectivity = true
         request.earliestBeginDate = Date(timeIntervalSinceNow: 5)
