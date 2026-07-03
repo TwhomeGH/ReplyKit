@@ -391,6 +391,7 @@ final class LogManager {
         if RPConfig.shared.enableSocketLog {
             DispatchQueue.global(qos: .utility).async {
                 SocketClient.shared.sendLogBatch(entries: bufferCopy)
+                SocketClient.shared.forceFlushBatch()
             }
         } else {
             let text = bufferCopy.joined()

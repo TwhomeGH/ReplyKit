@@ -581,13 +581,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
                 sendlog(message: "RVideoSET:\(vset)")
+                sendlog(message:"[Rotate變換]  \(Rlog)")
 
                 try await rtmpStream.setVideoSettings(vset)
 
 
                 RPConfig.shared.updateState(Rotate:Rlog)
-
-                sendlog(message:"[Rotate變換]  \(Rlog)")
 
 
             }
@@ -1920,9 +1919,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     // MARK: 直播結束處理
     func broadcastEnd(message:String = "正常結束")  {
-        // User has requested to finish the broadcast.
+        sendlog(message:"[RTMP] \(message)")
 
-        
         Task {
 
             isStopping = true
@@ -1958,9 +1956,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             audioProcessor=nil
             // AdaptiveVideoBufferManager 已停用
             // adaptiveBufferManager = nil
-
-            sendlog(message:"[RTMP] \(message)")
-            
 
         }
 
