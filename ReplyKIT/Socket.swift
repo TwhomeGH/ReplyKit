@@ -572,11 +572,14 @@ class SocketClient : @unchecked Sendable {
     }
 
     // MARK: - Batch Log Transport
-    func sendLogBatch(entries: [String]) {
+    func sendLogBatch(entries: [String], force: Bool = false) {
         queue.async { [weak self] in
             guard let self = self else { return }
             self.pendingBatchEntries.append(contentsOf: entries)
             self.checkBatch()
+            if force {
+                self.flushBatch()
+            }
         }
     }
 

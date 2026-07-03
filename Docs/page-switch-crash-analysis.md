@@ -54,28 +54,36 @@ flushBatch() → JSONSerialization ← 此處讀取字串 buffer，若已被 cor
 
 ## 修改內容
 
-### 1. `ReplyKIT/Event.swift` — `flushLocalLogs()`（主要修復）
+### 1. `ReplyKIT/Socket.swift` — `sendLogBatch(force:)`（主要修復）
 
-在 `sendLogBatch` 之後立即呼叫 `forceFlushBatch()`，將 log 字串同步 JSON 序列化，消除 batch 定時器的等待窗口。
+新增 `force` 參數，在追加條目後立即呼叫 `flushBatch()`。不同於 `forceFlushBatch()`（會先刪條目再嘗試連線，失敗則靜默丟失），`flushBatch()` 在連線不就緒時只呼叫 `_connect()` 就 return，條目保留在 `pendingBatchEntries`，由 batch 定時器 retry。
 
 ```swift
-// Before
-DispatchQueue.global(qos: .utility).async {
-    SocketClient.shared.sendLogBatch(entries: bufferCopy)
-}
-
-// After
-DispatchQueue.global(qos: .utility).async {
-    SocketClient.shared.sendLogBatch(entries: bufferCopy)
-    SocketClient.shared.forceFlushBatch()           // ← 立即序列化
+func sendLogBatch(entries: [String], force: Bool = false) {
+    queue.async { [weak self] in
+        guard let self = self else { return }
+        self.pendingBatchEntries.append(contentsOf: entries)
+        self.checkBatch()
+        if force {
+            self.flushBatch()   // ← 連線就緒則立即序列化，否則保留條目
+        }
+    }
 }
 ```
 
-`forceFlushBatch()` 使用 `queue.sync` 阻塞直到序列化完成，確保 JSON 封包建立後原始的 `String` buffer 不再被參照。
+### 2. `ReplyKIT/Event.swift` — `flushLocalLogs()`（呼叫端傳入 force）
 
-注意：此函數原先在 `forceFlush()` 中已有相同模式（`sendLogBatch` + `forceFlushBatch`），唯 `flushLocalLogs()` 遺漏。
+```swift
+// Before
+SocketClient.shared.sendLogBatch(entries: bufferCopy)
 
-### 2. `ReplyKIT/SampleHandler.swift` — Rotate handler
+// After
+SocketClient.shared.sendLogBatch(entries: bufferCopy, force: true)
+```
+
+注意：`forceFlushBatch()` 仍保留用於 `forceFlush()`（廣播結束時的 shutdown flush），該處丟失少量條目是可接受的。
+
+### 3. `ReplyKIT/SampleHandler.swift` — Rotate handler
 
 將 `sendlog` 呼叫移至 `setVideoSettings`（會觸發 `MediaMixer.stopRunning`）之前，讓 log 字串在 media operation 前就加入 buffer。
 
@@ -92,7 +100,7 @@ try await rtmpStream.setVideoSettings(vset)
 RPConfig.shared.updateState(Rotate:Rlog)
 ```
 
-### 3. `ReplyKIT/SampleHandler.swift` — `broadcastEnd()`
+### 4. `ReplyKIT/SampleHandler.swift` — `broadcastEnd()`
 
 將 `sendlog` 從 `Task {}` 內部移到外部（Task 建立之前），確保 log 在 `mediaMixer.stopRunning()` 執行之前就安全進入 buffer。
 
@@ -125,10 +133,25 @@ func broadcastEnd(message: String) {
 2. `flushLocalLogs()` 中 `sendLogBatch` 後應跟隨 `forceFlushBatch()`（已建立 project rule）
 3. 若該特定 HaishinKit build 更新，可嘗試測試是否仍有相同 crash
 
+### 5. `ReplyKIT/Event.swift` — 側載 early-log 修正
+
+側載時 `writeLogToFile()` 已被跳過（extension documentDirectory 不可見），但 `writeEarlyLogToFile()` 還留著。補上相同的 `isSideload` guard：
+
+```swift
+private func writeEarlyLogToFile(_ text: String) {
+    guard !RPConfig.isSideload else { return }    // ← 側載時跳過
+    ...
+}
+```
+
+側載的日誌完全依賴 socket 傳送（`enableSocketLog` 強制為 true），寫入不可見的檔案只是浪費 I/O。
+
 ## 相關檔案
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `ReplyKIT/Event.swift` | 392-395 | `flushLocalLogs` 加入 `forceFlushBatch` |
+| `ReplyKIT/Socket.swift` | 575-584 | `sendLogBatch` 新增 `force` 參數 |
+| `ReplyKIT/Event.swift` | 391-398 | `flushLocalLogs` 傳入 `force: true` |
+| `ReplyKIT/Event.swift` | 437 | `writeEarlyLogToFile` 側載 guard |
 | `ReplyKIT/SampleHandler.swift` | 583-586 | Rotate handler 重排 `sendlog` 順序 |
 | `ReplyKIT/SampleHandler.swift` | 1922-1963 | `broadcastEnd` 將 `sendlog` 移至 Task 外 |

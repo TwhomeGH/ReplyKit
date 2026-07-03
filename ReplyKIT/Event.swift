@@ -390,8 +390,7 @@ final class LogManager {
 
         if RPConfig.shared.enableSocketLog {
             DispatchQueue.global(qos: .utility).async {
-                SocketClient.shared.sendLogBatch(entries: bufferCopy)
-                SocketClient.shared.forceFlushBatch()
+                SocketClient.shared.sendLogBatch(entries: bufferCopy, force: true)
             }
         } else {
             let text = bufferCopy.joined()
@@ -435,6 +434,7 @@ final class LogManager {
     }
 
     private func writeEarlyLogToFile(_ text: String) {
+        guard !RPConfig.isSideload else { return }
         let fileURL = earlyLogFileURL()
         guard let data = text.data(using: .utf8) else { return }
         if FileManager.default.fileExists(atPath: fileURL.path),
