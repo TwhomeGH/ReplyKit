@@ -834,9 +834,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             break
 
         case "OutW":
-            var dstRW=SharedDefaults.group?.integer(forKey: "dstW") ?? 0
+            
 
             Task {
+                var dstRW=SharedDefaults.group?.integer(forKey: "dstW") ?? 0
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(
                         for: "dstW",
@@ -884,9 +885,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "OutH":
-            var dstRH=SharedDefaults.group?.integer(forKey: "dstH") ?? 0
+            
 
             Task {
+                var dstRH=SharedDefaults.group?.integer(forKey: "dstH") ?? 0
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "dstH", type: "Int") {
 
