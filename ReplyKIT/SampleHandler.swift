@@ -804,8 +804,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 } else {
                     LogManager.shared.forceFlush()
-                    LogManager.shared.invalidateFlushTimer()
-                    sendlog(message: "非LOG")
+                    
                 }
 
             }
@@ -834,7 +833,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             break
 
         case "OutW":
-            
+
 
             Task {
                 var dstRW=SharedDefaults.group?.integer(forKey: "dstW") ?? 0
