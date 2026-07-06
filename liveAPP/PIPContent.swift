@@ -7,6 +7,8 @@
 
 import SwiftUI
 import UIKit
+import AVFoundation
+
 
 
 struct ChatMessage: Identifiable, Equatable {
