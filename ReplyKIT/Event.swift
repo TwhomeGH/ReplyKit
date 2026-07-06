@@ -864,150 +864,150 @@ func sendlog(title: String = "ReplyKit", message: String, flush: Bool = false) {
 
 
 
-//MARK: CFPort
+//MARK: CFPort 已停用 目前已由Socket為主
 
-final class ExtensionMessagePort {
-    static let shared = ExtensionMessagePort()
+// final class ExtensionMessagePort {
+//     static let shared = ExtensionMessagePort()
 
-    private var localPort: CFMessagePort?
-    private var remotePort: CFMessagePort?
+//     private var localPort: CFMessagePort?
+//     private var remotePort: CFMessagePort?
 
-    var endP : CFString?
+//     var endP : CFString?
 
-    private init() {
-        setupReceiver()
-    }
+//     private init() {
+//         setupReceiver()
+//     }
 
-    func teardown() {
+//     func teardown() {
 
-        if let lp = localPort {
-            CFMessagePortInvalidate(lp)
-            localPort = nil
-        }
+//         if let lp = localPort {
+//             CFMessagePortInvalidate(lp)
+//             localPort = nil
+//         }
 
-        if let rp = remotePort {
-            CFMessagePortInvalidate(rp)
-            remotePort = nil
-        }
+//         if let rp = remotePort {
+//             CFMessagePortInvalidate(rp)
+//             remotePort = nil
+//         }
 
-        endP = nil
+//         endP = nil
 
-        LogManager.shared.log(message: "🧹 Extension CFMessagePort 停用")
-    }
+//         LogManager.shared.log(message: "🧹 Extension CFMessagePort 停用")
+//     }
 
-    private func setupReceiver() {
+//     private func setupReceiver() {
 
-        teardown()
-
-
-        var context = CFMessagePortContext(
-            version: 0,
-            info: UnsafeMutableRawPointer(Unmanaged.passRetained(self).toOpaque()),
-            retain: { info in
-                let unmanaged = Unmanaged<ExtensionMessagePort>.fromOpaque(info!)
-                _ = unmanaged.retain()
-                return info
-            },
-            release: { info in
-                Unmanaged<ExtensionMessagePort>.fromOpaque(info!).release()
-            },
-            copyDescription: nil
-
-        )
-
-        let callback: CFMessagePortCallBack = { port, msgid, cfData, info -> Unmanaged<CFData>? in
-
-            if let data = cfData as Data?,
-               let obj = try? JSONSerialization.jsonObject(with: data),
-               let pretty = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted]),
-               let str = String(data: pretty, encoding: .utf8) {
-
-                LogManager.shared
-                    .log(message:"📨 Extension 收到來自 App 的訊息:\n\(str)")
-
-            } else {
-                LogManager.shared
-                    .log(message:"📨 Extension Not Get 來自 App 的訊息")
+//         teardown()
 
 
-            }
-            return nil
-        }
+//         var context = CFMessagePortContext(
+//             version: 0,
+//             info: UnsafeMutableRawPointer(Unmanaged.passRetained(self).toOpaque()),
+//             retain: { info in
+//                 let unmanaged = Unmanaged<ExtensionMessagePort>.fromOpaque(info!)
+//                 _ = unmanaged.retain()
+//                 return info
+//             },
+//             release: { info in
+//                 Unmanaged<ExtensionMessagePort>.fromOpaque(info!).release()
+//             },
+//             copyDescription: nil
 
-        guard let lp = CFMessagePortCreateLocal(
-            nil,
-            "group.nuclear.liveAPP.ExtPort" as CFString,
-            callback,
-            &context,
-            nil
-        ) else {
-            LogManager.shared.log(message: "❌ Extension Port 建立失敗")
-            return
-        }
+//         )
 
-        localPort = lp
-        endP = CFMessagePortGetName(lp)
+//         let callback: CFMessagePortCallBack = { port, msgid, cfData, info -> Unmanaged<CFData>? in
 
-        if let localPort {
-            let rl = CFMessagePortCreateRunLoopSource(nil, localPort, 0)
-            CFRunLoopAddSource(CFRunLoopGetMain(), rl, .defaultMode)
-        }
+//             if let data = cfData as Data?,
+//                let obj = try? JSONSerialization.jsonObject(with: data),
+//                let pretty = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted]),
+//                let str = String(data: pretty, encoding: .utf8) {
 
-        LogManager.shared
-            .log(message:"Port Add Ext \(String(describing: endP))")
-    }
+//                 LogManager.shared
+//                     .log(message:"📨 Extension 收到來自 App 的訊息:\n\(str)")
 
-    func connectToApp() {
-        disconnectFromApp()
+//             } else {
+//                 LogManager.shared
+//                     .log(message:"📨 Extension Not Get 來自 App 的訊息")
+
+
+//             }
+//             return nil
+//         }
+
+//         guard let lp = CFMessagePortCreateLocal(
+//             nil,
+//             "group.nuclear.liveAPP.ExtPort" as CFString,
+//             callback,
+//             &context,
+//             nil
+//         ) else {
+//             LogManager.shared.log(message: "❌ Extension Port 建立失敗")
+//             return
+//         }
+
+//         localPort = lp
+//         endP = CFMessagePortGetName(lp)
+
+//         if let localPort {
+//             let rl = CFMessagePortCreateRunLoopSource(nil, localPort, 0)
+//             CFRunLoopAddSource(CFRunLoopGetMain(), rl, .defaultMode)
+//         }
+
+//         LogManager.shared
+//             .log(message:"Port Add Ext \(String(describing: endP))")
+//     }
+
+//     func connectToApp() {
+//         disconnectFromApp()
         
-        guard let rp = CFMessagePortCreateRemote(
-            nil,
-            "group.nuclear.liveAPP.AppPort" as CFString
-        ) else {
-            LogManager.shared.log(message: "❌ 無法連接 App Port")
-            return
-        }
+//         guard let rp = CFMessagePortCreateRemote(
+//             nil,
+//             "group.nuclear.liveAPP.AppPort" as CFString
+//         ) else {
+//             LogManager.shared.log(message: "❌ 無法連接 App Port")
+//             return
+//         }
 
-        remotePort = rp
+//         remotePort = rp
 
-        LogManager.shared
-            .log(message:"App連接建立!")
-        ExtensionMessagePort.shared.send(toApp: ["test":"ok"])
+//         LogManager.shared
+//             .log(message:"App連接建立!")
+//         ExtensionMessagePort.shared.send(toApp: ["test":"ok"])
 
-    }
+//     }
 
-    func disconnectFromApp() {
-        if remotePort != nil {
-            CFMessagePortInvalidate(remotePort)
-            remotePort = nil
-            LogManager.shared.log(message: "App連接已取消")
-        }
-    }
+//     func disconnectFromApp() {
+//         if remotePort != nil {
+//             CFMessagePortInvalidate(remotePort)
+//             remotePort = nil
+//             LogManager.shared.log(message: "App連接已取消")
+//         }
+//     }
 
-    func send(toApp dict: [String: Any]) {
-        guard
-            let remote = remotePort,
-            let data = try? JSONSerialization.data(withJSONObject: dict)
-        else { return }
+//     func send(toApp dict: [String: Any]) {
+//         guard
+//             let remote = remotePort,
+//             let data = try? JSONSerialization.data(withJSONObject: dict)
+//         else { return }
 
-        let status = CFMessagePortSendRequest(
-            remote,
-            100,
-            data as CFData,
-            1,
-            1,
-            nil,
-            nil
-        )
+//         let status = CFMessagePortSendRequest(
+//             remote,
+//             100,
+//             data as CFData,
+//             1,
+//             1,
+//             nil,
+//             nil
+//         )
 
-        if status != kCFMessagePortSuccess {
-            LogManager.shared.log(message: "❌ Send 失敗 \(status)，斷線")
-            disconnectFromApp()
-        }
+//         if status != kCFMessagePortSuccess {
+//             LogManager.shared.log(message: "❌ Send 失敗 \(status)，斷線")
+//             disconnectFromApp()
+//         }
 
-    }
+//     }
 
-}
+// }
 
 
 // MARK:日誌內容保護StreamKey不全顯示
