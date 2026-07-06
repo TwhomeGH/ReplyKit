@@ -119,6 +119,7 @@ final class VideoFrameProcessor {
     private var watchdogResetCount: Int = 0
     private var consecutiveDropCount: Int = 0
     private let maxConsecutiveDrops = 60
+    private var processingGeneration: UInt64 = 0
 
     init(mediaMixer: MediaMixer,
         sendlog: @escaping (String) -> Void) {
@@ -136,10 +137,26 @@ final class VideoFrameProcessor {
         self.updateRotateFixState()
     }
 
+    private func makeProcessorActor() -> ProcessorActor {
+        ProcessorActor(
+            debug: RPConfig.shared.enableRotateLog,
+            sendlog: sendlog
+        )
+    }
+
+    private func resetProcessorActor(reason: String) {
+        let oldActor = processorActor
+        processorActor = nil
+        processingGeneration &+= 1
+        Task { await oldActor?.cleanup() }
+        sendlog(reason)
+    }
+
     func cleanup() {
         isActive = false
         let oldActor = processorActor
         processorActor = nil
+        processingGeneration &+= 1
         Task { await oldActor?.cleanup() }
     }
 
@@ -148,6 +165,7 @@ final class VideoFrameProcessor {
         processingStartedAt = nil
         watchdogResetCount = 0
         consecutiveDropCount = 0
+        processingGeneration &+= 1
     }
 
     func setRotatorDebug(_ value: Bool) async {
@@ -184,9 +202,10 @@ final class VideoFrameProcessor {
             if Date().timeIntervalSince(startedAt) > processingTimeout {
                 isProcessing = false
                 processingStartedAt = nil
-                processorActor = nil
                 watchdogResetCount += 1
-                sendlog("[VideoProcessor] ⚠️ #\(processedCount) GPU 處理逾時 (\(Int(processingTimeout))s)，重置旋轉器管線 (#\(watchdogResetCount))")
+                resetProcessorActor(
+                    reason: "[VideoProcessor] ⚠️ #\(processedCount) GPU 處理逾時 (\(Int(processingTimeout))s)，重置旋轉器管線 (#\(watchdogResetCount))"
+                )
             }
         }
 
@@ -200,6 +219,8 @@ final class VideoFrameProcessor {
         guard !isProcessing else { return }
         isProcessing = true
         processingStartedAt = Date()
+        processingGeneration &+= 1
+        let taskGeneration = processingGeneration
 
         let isFirstFrame = localCount == 1
         let enablePipeLog = RPConfig.shared.enablePipelineLog
@@ -210,10 +231,7 @@ final class VideoFrameProcessor {
 
         // 確保 actor 存在（可能被 watchdog 清掉了）
         if processorActor == nil {
-            processorActor = ProcessorActor(
-                debug: RPConfig.shared.enableRotateLog,
-                sendlog: sendlog
-            )
+            processorActor = makeProcessorActor()
         }
         guard let actor = processorActor else {
             isProcessing = false
@@ -224,8 +242,10 @@ final class VideoFrameProcessor {
         Task.detached(priority: .utility) { [weak self] in
             guard let self else { return }
             defer {
-                self.isProcessing = false
-                self.processingStartedAt = nil
+                if self.processingGeneration == taskGeneration {
+                    self.isProcessing = false
+                    self.processingStartedAt = nil
+                }
             }
             guard self.isActive else { return }
 

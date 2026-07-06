@@ -363,6 +363,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     /// 連續 Metal 操作失敗計數，達到閾值時自動重建管線
     private var consecutiveMetalFailures = 0
     private let maxConsecutiveMetalFailures = 5
+    private let commandBufferTimeout: TimeInterval = 1.8
 
     /// 偵測 Metal 操作失敗，自動 cleanup 讓下一幀重新初始化
     private func handleMetalFailure(_ reason: String) {
@@ -449,6 +450,35 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     }
 
+    private final class CommandCompletionState: @unchecked Sendable {
+        private let lock = NSLock()
+        private var didResume = false
+        private var timedOut = false
+
+        func markCompletion() -> (shouldResume: Bool, completedAfterTimeout: Bool) {
+            lock.lock()
+            defer { lock.unlock() }
+
+            let completedAfterTimeout = timedOut
+            guard !didResume else {
+                return (false, completedAfterTimeout)
+            }
+
+            didResume = true
+            return (true, completedAfterTimeout)
+        }
+
+        func markTimeout() -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+
+            guard !didResume else { return false }
+            didResume = true
+            timedOut = true
+            return true
+        }
+    }
+
 
 
 
@@ -513,14 +543,18 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             return nil
         }
 
-        renderPlaneYUV(cmd: cmd, srcY: ycvTexIn.tex, srcUV: uvcvTexIn.tex,
-                        dstY: outSet.yTex, dstUV: outSet.uvTex, angle: angle)
+        guard renderPlaneYUV(cmd: cmd, srcY: ycvTexIn.tex, srcUV: uvcvTexIn.tex,
+                        dstY: outSet.yTex, dstUV: outSet.uvTex, angle: angle) else {
+            recycleOutput(outSet)
+            handleMetalFailure("renderPlaneYUV 建立 encoder 失敗")
+            return nil
+        }
 
 
-        // Add a timeout to prevent hanging if cmd.addCompletedHandler is never called
+        // 防止 GPU command buffer 永久不回 completion，讓外層 actor 可以被 watchdog 重建。
         return await withCheckedContinuation { (cont: CheckedContinuation<CMSampleBuffer?, Never>) in
 
-            var didResume = false
+            let completionState = CommandCompletionState()
             
 
             let frameC = FrameContext(timing: originalTime, outSet: outSet,
@@ -528,32 +562,44 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             )
 
             cmd.addCompletedHandler { [self] _ in
-                guard !didResume else { return }
-                didResume = true
+                let completion = completionState.markCompletion()
 
-                self.consecutiveMetalFailures = 0
 
                 frameC.inY = nil
                 frameC.inUV = nil
 
-                let wrapped = self.wrapPixelBuffer(
-                    frameC.outPB, timing: frameC.timing
-                )
+                let isCompleted = cmd.status == .completed && cmd.error == nil
+                let wrapped = isCompleted
+                    ? self.wrapPixelBuffer(frameC.outPB, timing: frameC.timing)
+                    : nil
 
-                if let wrapped {
+                if isCompleted, let wrapped {
+                    self.consecutiveMetalFailures = 0
+
                     self.tsDebugger.log(
                         originalTime: frameC.timing,
                         wrapped: wrapped
                     )
+                } else if !completion.completedAfterTimeout {
+                    let errorText = cmd.error?.localizedDescription ?? "\(cmd.status.rawValue)"
+                    self.handleMetalFailure("commandBuffer 完成失敗 status:\(errorText)")
                 }
 
-                    cont.resume(returning: wrapped)
-
                 self.recycleOutput(frameC.outSet)
+                if completion.shouldResume {
+                    cont.resume(returning: wrapped)
+                }
                 self.logTo("GPU Frame down :\(frameC.timing.presentationTimeStamp)s")
             }
 
             cmd.commit()
+
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + commandBufferTimeout) { [self] in
+                guard completionState.markTimeout() else { return }
+
+                self.handleMetalFailure("commandBuffer 逾時 \(String(format: "%.1f", commandBufferTimeout))s")
+                cont.resume(returning: nil)
+            }
         }
     }
 
@@ -740,10 +786,10 @@ private func fallbackSampleBuffer(
     func renderPlaneYUV(cmd: MTLCommandBuffer,
                         srcY: MTLTexture, srcUV: MTLTexture,
                         dstY: MTLTexture, dstUV: MTLTexture,
-                        angle: RotationAngle) {
+                        angle: RotationAngle) -> Bool {
 
         guard let compute = (qualityMode == .live ? pipelineBilinear : pipelineBicubic),
-            let encoder = cmd.makeComputeCommandEncoder() else { return }
+            let encoder = cmd.makeComputeCommandEncoder() else { return false }
 
         encoder.setComputePipelineState(compute)
         encoder.setTexture(srcY, index: 0)
@@ -778,6 +824,7 @@ private func fallbackSampleBuffer(
         }
 
         encoder.endEncoding()
+        return true
     }
 
 
