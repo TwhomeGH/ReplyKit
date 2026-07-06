@@ -1542,7 +1542,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         await streamStataus?.resetDisconnectCheck()
 
         await streamStataus?.setOnDisconnect { 
-            Task { @MainActor in
+            Task { 
                 sendlog(message: "斷線監控觸發，由 RTMPConnection 處理重連")
             }
         }
