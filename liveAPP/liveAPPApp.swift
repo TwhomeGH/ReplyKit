@@ -506,6 +506,7 @@ final class RemoteLogSender {
     static let shared = RemoteLogSender()
 
     private var timer: DispatchSourceTimer?
+    private let timerQueue = DispatchQueue(label: "RemoteLogSenderTimerQueue", qos: .utility)
     private let session = URLSession(configuration: .ephemeral)
 
     private let flushInterval: TimeInterval = 1.0
@@ -515,25 +516,27 @@ final class RemoteLogSender {
 
 
     func stop() {
-        guard started else { return }
-
-            timer?.cancel()
-            timer = nil
-            started = false
+        timerQueue.async { [weak self] in
+            guard let self, self.started else { return }
+            self.timer?.cancel()
+            self.timer = nil
+            self.started = false
         }
+    }
 
     func start() {
+        timerQueue.async { [weak self] in
+            guard let self, !self.started else { return }
+            self.started = true
 
-        guard !started else { return }
-             started = true
-
-        let t = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
-        t.schedule(deadline: .now() + flushInterval, repeating: flushInterval)
-        t.setEventHandler {
-            self.flush()
+            let t = DispatchSource.makeTimerSource(queue: self.timerQueue)
+            t.schedule(deadline: .now() + self.flushInterval, repeating: self.flushInterval)
+            t.setEventHandler { [weak self] in
+                self?.flush()
+            }
+            self.timer = t
+            t.resume()
         }
-        t.resume()
-        timer = t
     }
 
     private func flush() {
@@ -566,7 +569,11 @@ final class RemoteLogSender {
     }
 
     deinit {
-        timer?.cancel()
+        timerQueue.sync {
+            timer?.cancel()
+            timer = nil
+            started = false
+        }
     }
 }
 
@@ -934,7 +941,7 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
                         break
 
                     case .background:
-                        sendlog(message: "App 進入背景，排程 BGTaskScheduler 保持 SocketServer 運作")
+                        sendlog(message: "App 進入背景，啟動短背景視窗並排程 Socket refresh")
 
                         // 通知 PIPService 進入背景
                         PIPService.shared.appDidEnterBackground()
@@ -943,9 +950,10 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
                         PIPService.shared.releaseNonCriticalMemory()
                         logModel.clearLogs()
 
-                        // 使用 BGTaskScheduler 排程背景處理任務，取代舊的 beginBackgroundTask chain
+                        // beginBackgroundTask 只能提供短時間背景窗口；BGTaskScheduler 是機會型 refresh，不保證常駐。
                         #if os(iOS)
-                        BackgroundTaskManager.shared.scheduleSocketKeepAlive()
+                        BackgroundTaskManager.shared.beginSocketBackgroundWindow()
+                        BackgroundTaskManager.shared.scheduleSocketRefresh()
                         #endif
 
                     case .active:
@@ -955,7 +963,7 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
                         // 通知 PIPService 回到前景
                         PIPService.shared.appWillEnterForeground()
 
-                        // 取消 BGTaskScheduler 任務（前景不需要）
+                        // 取消背景窗口與 BGTaskScheduler 任務（前景不需要）
                         #if os(iOS)
                         BackgroundTaskManager.shared.cancelAll()
                         #endif

@@ -8,14 +8,6 @@
 import SwiftUI
 import UIKit
 
-import CoreVideo
-
-import AVFoundation
-
-import AVKit
-
-
-
 
 struct ChatMessage: Identifiable, Equatable {
     let id = UUID()       // 唯一識別符
@@ -139,105 +131,6 @@ enum MessageType {
     case secondary
 }
 
-
-
-final class PixelBufferPool {
-
-    private var pool: CVPixelBufferPool!
-
-    init(size: CGSize) {
-
-        let pixelAttrs: [String: Any] = [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferWidthKey as String: Int(size.width),
-            kCVPixelBufferHeightKey as String: Int(size.height),
-            kCVPixelBufferMetalCompatibilityKey as String: true,
-            kCVPixelBufferIOSurfacePropertiesKey as String: [:]
-        ]
-
-        let poolAttrs: [String: Any] = [
-            kCVPixelBufferPoolMinimumBufferCountKey as String: 3
-        ]
-
-        CVPixelBufferPoolCreate(
-            nil,
-            poolAttrs as CFDictionary,
-            pixelAttrs as CFDictionary,
-            &pool
-        )
-    }
-
-    func makePixelBuffer() -> CVPixelBuffer {
-        var buffer: CVPixelBuffer?
-        CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
-        return buffer!
-    }
-}
-
-final class MessageGPURenderer {
-
-    private let device = MTLCreateSystemDefaultDevice()!
-
-
-    private var ciContext: CIContext
-    private var pool: PixelBufferPool?
-
-
-    init(size: CGSize,ciText:CIContext) {
-        ciContext = ciText
-        pool = PixelBufferPool(size: size)
-
-    }
-
-    deinit {
-        pool = nil
-    }
-
-
-
-    func render(time:CIImage? = nil,containerSize:CGSize) -> CVPixelBuffer? {
-
-        guard let pixelBuffer = pool?.makePixelBuffer() else { return nil }
-        CVPixelBufferLockBaseAddress(pixelBuffer, [])
-
-        let width = CVPixelBufferGetWidth(pixelBuffer)
-        let height = CVPixelBufferGetHeight(pixelBuffer)
-
-
-
-        if let time = time {
-
-            ciContext.render(
-                time,
-                to: pixelBuffer,
-                bounds: CGRect(
-                    x: 0,
-                    y: 0,
-                    width: width,
-                    height: height)
-                ,
-                colorSpace: CGColorSpaceCreateDeviceRGB()
-            )
-
-            CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
-            return pixelBuffer
-
-        }
-
-        // 如果沒有 time，則回傳空透明
-        let blank = CIImage(color: .clear).cropped(to: CGRect(x: 0, y: 0, width: width, height: height))
-
-        ciContext.render(blank, to: pixelBuffer, bounds: blank.extent, colorSpace: CGColorSpaceCreateDeviceRGB())
-
-
-
-
-        CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
-
-        return pixelBuffer
-    }
-
-}
 
 
 // MARK: Message Model

@@ -817,7 +817,7 @@ Memory Warning 時已有：
 ### 保留資源
 
 進入背景時**不釋放**的資源：
-- **SocketServer**：由 background task chain 保護，log 管線需要持續運作
+- **SocketServer**：背景當下只由 `beginBackgroundTask` 提供短時間窗口；BGTaskScheduler 僅作為機會型 socket refresh，不保證常駐保活
 - **PiP 渲染管線**（當 `didStartPiP == true`）：使用者正在觀看子母畫面中，須保持 pixel buffer pool 和 display layer
 
 ### 預期改善
@@ -843,6 +843,60 @@ Memory Warning 時已有：
 | 日誌頁文字緩衝 | ~6-7MB（永不釋放） | ~0MB（背景自動清除） |
 | 總背景常駐記憶體 | ~90-100MB | ~55-65MB |
 | Jetsam 終止相對風險 | 高 | 中低（同等記憶體壓力下優先權降低） |
+
+---
+
+## 17. PiP 自訂子母畫面 CPU 渲染性能瘦身
+
+### 問題
+
+PiP 自訂子母畫面主要內容是文字、CoreAnimation layer、頭貼/禮物圖片與時間 overlay。這類 workload 不適合再混入 CoreImage / Metal 路徑，因為會多出 BGRA pixel buffer、CI render、texture 相容性與同步成本；實際主路徑仍是 `CGContext` + `CALayer.render(in:)` 的 CPU 渲染。
+
+原本存在幾個效能浪費：
+
+1. **殘留 GPU/CI 類別**：`PIPContent.swift` 保留未使用的 `MessageGPURenderer` / `PixelBufferPool`，並建立 `kCVPixelBufferMetalCompatibilityKey` buffer，容易誤導後續維護，也可能增加不必要的相容性成本。
+2. **每幀建立 format description**：`PIPService.createSampleBuffer()` 每次 frame 都呼叫 `CMVideoFormatDescriptionCreateForImageBuffer()`。
+3. **每幀建立繪圖物件**：時間 overlay 每幀建立 `CGColorSpace` 與 SF Symbol icon。
+4. **背壓後仍先渲染再丟棄**：`displayLayer.isReadyForMoreMediaData` 原本在 pixel buffer 與 sample buffer 都建立後才檢查，display layer 塞滿時整張 frame 仍白畫。
+5. **FPS 對純文字 overlay 偏高**：動畫 30fps、活動 15fps 對 PiP 聊天小窗偏重，尤其背景或直播同時進行時會與主直播管線搶 CPU。
+
+### 修正
+
+**回全 CPU 渲染路徑**：
+
+- 移除 `PIPContent.swift` 中未使用的 `MessageGPURenderer` / `PixelBufferPool`。
+- 移除 `PIPService.swift` 的 `CoreImage` import 與未使用 `CIContext` debug 路徑。
+- PiP pixel buffer pool 改為明確的 CG/CGBitmap compatible BGRA buffer，保留 `IOSurface` 供 `AVSampleBufferDisplayLayer` 使用。
+
+**重複物件快取**（`PIPService.swift`）：
+
+- `CMVideoFormatDescription` 依 pixel size 快取，只有尺寸變更或 pool 重建時才重建。
+- `CGColorSpaceCreateDeviceRGB()` 改為 service-level cache。
+- `clock.fill`、`person.2.fill`、`antenna.radiowaves.left.and.right` icon 改為 service-level cache。
+- memory warning / stop / release 時同步清除 format cache。
+
+**背壓優先跳過**：
+
+- `renderIncremental()` 先檢查 `displayLayer.isReadyForMoreMediaData`。
+- display layer 不可接收時直接 `decayFPSIfNeeded()` 並返回，不再建立 pixel buffer / CGContext / sample buffer。
+
+**FPS 下修**：
+
+| 狀態 | 改前 | 改後 |
+|------|------|------|
+| 動畫中 | 30fps | 24fps |
+| 有活動但無動畫 | 15fps | 8fps |
+| 閒置 | 1fps | 1fps |
+
+### 預期改善
+
+| 場景 | 改前 | 改後 |
+|------|------|------|
+| PiP 主渲染路徑 | CPU render，但保留未使用 GPU/CI 類別與 Metal-compatible pool | 純 CPU CGContext + CoreAnimation render，路徑更單純 |
+| 每幀 sample buffer 建立 | 每幀重建 `CMVideoFormatDescription` | 尺寸不變時重用 |
+| 每幀 overlay | 重建 color space / SF Symbol | 重用 cached object |
+| display layer 背壓 | 先畫整張 frame，再可能不 enqueue | 直接跳過渲染 |
+| 聊天動畫 CPU 壓力 | 30/15fps | 24/8fps，降低主直播互搶 |
 
 ---
 

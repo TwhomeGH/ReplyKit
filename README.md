@@ -682,18 +682,21 @@ frameCount += 1
 ### 背景存活修復
 - **PIPService**: 放寬 `attachToForegroundWindow` 綁定條件，接受任何已連接的 Scene
 - **PIPService**: 新增 `handleMemoryWarning()`、background task 生命週期、app 前景/背景切換時自動重連 displayLayer
-- **liveAPPApp.swift**: scenePhase `.background` 時註冊 `beginBackgroundTask`，`init()` 時監聽 Memory Warning 通知
+- **liveAPPApp.swift**: scenePhase `.background` 時啟動短 background window，並排程 BGTaskScheduler 機會型 socket refresh；BGTask 不再被視為常駐保活機制
 - **Socket.swift**: 新增 `suspend()` / `resume()` / `releaseMemory()`，背景時釋放緩衝區、前景恢復運作
 
 ### 動畫迴圈重構
 - 移除 `CADisplayLink`，改由 PIPService render timer 統一驅動，消除雙 loop 不同步
 - 以 `tickAnimation()` 狀態機取代舊的 step 方法，動畫進行中持續回呼
-- 穩定 FPS 策略：動畫中 30fps、有訊息/活動 15fps、閒置 1fps，取代舊的跳 60→衰減機制，消除 FPS 震盪
+- 穩定 FPS 策略：動畫中 24fps、有訊息/活動 8fps、閒置 1fps，取代舊的跳 60→衰減機制，消除 FPS 震盪並降低 CPU 壓力
 
 ### Render Pipeline 最佳化
 - 跳過 `UIGraphicsImageRenderer` → `CGImage` → `CIImage` → `CIContext.render()` 的兩次 round-trip
 - 改為 `CVPixelBufferPool` + 直接 `CGContext(data:)` 將 CALayer tree 渲染到 pixel buffer 記憶體
-- 移除不再使用的 GPU renderer、Metal device、CIContext 等 dead code
+- 回全 CPU 渲染：移除不再使用的 GPU renderer、Metal-compatible PiP pool、Metal device、CIContext 等 dead code
+- `CMVideoFormatDescription`、`CGColorSpace`、時間/觀眾/重連 SF Symbol 改為快取，不再每幀重建
+- `AVSampleBufferDisplayLayer` 背壓時先跳過，不再先畫完整 frame 再丟棄
+- 詳細紀錄見 `Docs/replykit-core-fixes-summary.md` §17
 
 
 ## AltStore 測試
@@ -940,7 +943,7 @@ HaishinKit 的 TCP timeout 為 15 秒，在這段期間 frame 持續積累，可
 - **子母畫面聊天室**  
     - [x] 實現聊天室畫面以 PiP (Picture-in-Picture) 方式呈現
     - [x] 確保聊天室訊息即時更新與渲染
-    - [ ] 改善子母聊天室性能 目前性能似乎還是偏異常待改進
+    - [x] 改善子母聊天室性能：回全 CPU 渲染、移除未使用 GPU/CI 路徑、快取 frame metadata 並降低活動 FPS
 
 - **App Group 的替代方案**  
     - [x] 使用 Socket 同步擴展之間的參數變化

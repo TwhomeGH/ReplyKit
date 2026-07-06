@@ -41,10 +41,26 @@ class SocketServer:ObservableObject {
                                       label: "SocketServerQueue",
                                       qos:.utility
                           )
+    private let queueKey = DispatchSpecificKey<Void>()
 
     private var idleTimers: [ObjectIdentifier: DispatchSourceTimer] = [:]
 
+    private func performOnQueue(_ block: @escaping () -> Void) {
+        if DispatchQueue.getSpecific(key: queueKey) != nil {
+            block()
+        } else {
+            queue.async(execute: block)
+        }
+    }
+
     private func resetIdleTimer(for conn: NWConnection) {
+        if DispatchQueue.getSpecific(key: queueKey) == nil {
+            queue.async { [weak self] in
+                self?.resetIdleTimer(for: conn)
+            }
+            return
+        }
+
         let id = ObjectIdentifier(conn)
 
         if let timer = idleTimers.removeValue(forKey: id) {
@@ -73,30 +89,33 @@ class SocketServer:ObservableObject {
     private var idleTimerActivity: DispatchSourceTimer?
 
     func stopActivityIdleTimer() {
-        idleTimerActivity?.cancel()
-        idleTimerActivity = nil
+        performOnQueue { [weak self] in
+            self?.idleTimerActivity?.cancel()
+            self?.idleTimerActivity = nil
+        }
     }
 
     func startActivityIdleTimer(
         _ idleTime:TimeInterval = 3600,
         reason:IdleReason = .lastClientDisconnected
     ) {
-        idleTimerActivity?.cancel()
-        idleTimerActivity = nil
-
-        let timer = DispatchSource.makeTimerSource(queue: .global())
-        timer.schedule(deadline: .now() + idleTime, repeating: idleTime)
-
-        timer.setEventHandler { [weak self] in
+        performOnQueue { [weak self] in
             guard let self else { return }
+            self.idleTimerActivity?.cancel()
+            self.idleTimerActivity = nil
 
-            self.logTo("Idle timeout reached, shutting down socket Reason:\(reason)")
-                self.stop()
+            let timer = DispatchSource.makeTimerSource(queue: self.queue)
+            timer.schedule(deadline: .now() + idleTime)
 
+            timer.setEventHandler { [weak self] in
+                guard let self else { return }
+                self.logTo("Idle timeout reached, shutting down socket Reason:\(reason)")
+                self.stopInternal()
+            }
+
+            self.idleTimerActivity = timer
+            timer.resume()
         }
-
-        idleTimerActivity = timer
-        timer.resume()
     }
 
 
@@ -139,6 +158,7 @@ class SocketServer:ObservableObject {
 
 
     init() {
+        queue.setSpecific(key: queueKey, value: ())
 
         CFNotificationCenterAddObserver(
             CFNotificationCenterGetDarwinNotifyCenter(),
@@ -226,6 +246,12 @@ class SocketServer:ObservableObject {
     
     // MARK: - start
     func start(port: UInt16 = 9322) {
+        if DispatchQueue.getSpecific(key: queueKey) == nil {
+            queue.async { [weak self] in
+                self?.start(port: port)
+            }
+            return
+        }
 
         cleanupStaleListener()
 
@@ -287,9 +313,12 @@ class SocketServer:ObservableObject {
     }
 
     func ensureRunning() {
-        if listener == nil {
-            logTo("Listener missing, restarting")
-            scheduleRestart(delay: 1.0)
+        performOnQueue { [weak self] in
+            guard let self else { return }
+            if self.listener == nil {
+                self.logTo("Listener missing, restarting")
+                self.scheduleRestart(delay: 1.0)
+            }
         }
     }
 
@@ -1121,6 +1150,13 @@ class SocketServer:ObservableObject {
     private var pendingFailedPayloads: [ObjectIdentifier: [[String: Any]]] = [:]
 
     private func removeConnection(_ connection: NWConnection) {
+        if DispatchQueue.getSpecific(key: queueKey) == nil {
+            queue.async { [weak self] in
+                self?.removeConnection(connection)
+            }
+            return
+        }
+
         let id = ObjectIdentifier(connection)
 
         guard connections[id] != nil else { return } // 已被移除
@@ -1161,11 +1197,11 @@ class SocketServer:ObservableObject {
     }
 
     func stop() {
-        isStopping = true
-
-        stopActivityIdleTimer()
-        queue.async { [weak self] in
-            self?.stopInternal()
+        performOnQueue { [weak self] in
+            guard let self else { return }
+            self.isStopping = true
+            self.stopActivityIdleTimer()
+            self.stopInternal()
         }
     }
 
@@ -1189,8 +1225,11 @@ class SocketServer:ObservableObject {
 
     func resume() {
         logTo("SocketServer 恢復（重新監聽）")
-        if listener == nil {
-            start()
+        performOnQueue { [weak self] in
+            guard let self else { return }
+            if self.listener == nil {
+                self.start()
+            }
         }
     }
 
@@ -1210,6 +1249,9 @@ class SocketServer:ObservableObject {
 
 
     func stopInternal() {
+        idleTimerActivity?.cancel()
+        idleTimerActivity = nil
+
         for (_, conn) in connections {
             conn.stateUpdateHandler = nil
             conn.cancel()

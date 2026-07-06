@@ -85,12 +85,12 @@
 
 ---
 
-## 7. UIBackgroundTaskIdentifier chain 背景續命失效
+## 7. 背景 Socket 保活語意修正
 
-**檔案**: 
-- `liveAPP/liveAPPApp.swift`（移除 `@State backgroundTaskID` + `beginBackgroundTask` chain）
-- `liveAPP/PIPService.swift`（移除 `backgroundTaskID`、`beginBackgroundTaskIfNeeded()`、`endBackgroundTask()`）
-- `liveAPP/BackgroundTaskManager.swift`（新增，BGTaskScheduler 封裝）
+**檔案**:
+- `liveAPP/liveAPPApp.swift`（背景時啟動短 background window + 排程 socket refresh）
+- `liveAPP/PIPService.swift`（移除舊 background task chain）
+- `liveAPP/BackgroundTaskManager.swift`（封裝短 background window 與 BGTaskScheduler refresh）
 - `liveAPP/Info.plist`（新增 `BGTaskSchedulerPermittedIdentifiers`）
 
 **問題**: 原有使用 `UIApplication.beginBackgroundTask(expirationHandler:)` 搭配 chain 模式嘗試讓 app 在背景持續存活，但有兩個根本缺陷：
@@ -98,22 +98,21 @@
 1. **Chain 只延一次就斷**：內層 expiration handler 沒有再包一層，最多延一次（總共 30s~3min），之後 app 被 suspend。
 2. **不檢查 `.invalid`**：`beginBackgroundTask` 在系統無法給予時間時回傳 `UIBackgroundTaskInvalid`，但程式碼未檢查就直接使用，導致後續 `endBackgroundTask` 行為異常。
 
-此外 PiP 場景下 `beginBackgroundTask` 是完全冗餘的——`AVAudioSession.Category.playback` + `audio` background mode 就足以讓 app 持續在背景存活。
+此外，`BGTaskScheduler` 不是 socket 常駐保活機制。系統不保證 5 秒後執行，也不保證固定週期；它只能作為機會型 refresh。PiP 場景仍主要依靠 `AVAudioSession.Category.playback` + `audio` background mode。
 
-**修復**: 
-1. **改用 `BGTaskScheduler`**（iOS 13+）：以 `BGProcessingTask`（identifier: `com.nuclear.liveAPP.socket.keepalive`）排程週期性背景任務。每次任務約有 10~15 分鐘執行時間，到期前自動排程下一次，形成循環。
-2. **新增 `BackgroundTaskManager` 單例**：統一管理註冊、排程、取消、handler 執行。
-3. **PiP 完全移除 `beginBackgroundTask`**：仰賴 audio background mode 即可。
+**修復**:
+1. **保留短 background window**：進背景時呼叫 `beginSocketBackgroundWindow()`，只期待系統允許的短時間收尾窗口，不做 chain。
+2. **BGTaskScheduler 改為 refresh**：以 `BGProcessingTask`（identifier: `com.nuclear.liveAPP.socket.keepalive`）排程下一次機會型喚醒；handler 只 `SocketServer.shared.start()`，2 秒後完成。
+3. **新增 `BackgroundTaskManager` 單例**：統一管理註冊、排程、短背景窗口、取消與 handler 完成。
 4. **`AppDelegate` 不存在問題**：因為專案使用 SwiftUI `@main` App 結構，沒有 `AppDelegate`；所有初始化在 `liveAPPApp.init()` 中完成。
 
 **運作流程**:
 ```
-App 進背景 → scheduleSocketKeepAlive() 排程 BGProcessingTask（5秒後）
-  → 系統執行 handler
-    → 再排下一次任務
+App 進背景 → beginSocketBackgroundWindow() 取得短背景窗口
+  → scheduleSocketRefresh() 排程 BGProcessingTask（最早約 15 分鐘，實際由系統決定）
+  → 若系統執行 handler
+    → 再排下一次 refresh
     → SocketServer.shared.start()
-    → 等待 expirationHandler（約 10~15 分鐘）
-    → 到期 → setTaskCompleted → app suspend
-    → 5 秒後下一次任務觸發 → 重複
-App 回前景 → cancelAll()
+    → 2 秒後 setTaskCompleted
+App 回前景 → cancelAll() + endSocketBackgroundWindow()
 ```
