@@ -622,6 +622,56 @@ Task { await oldActor?.cleanup() }
 
 ---
 
+## 16. GPU command buffer 逾時與 actor generation 防護
+
+### 問題
+某些直播啟動或 GPU 短暫異常情境下，`MTLCommandBuffer.addCompletedHandler` 可能長時間不回呼。原本外層 `VideoFrameProcessor` 的 watchdog 會把 `processorActor` 設為 `nil`，但沒有同步清理舊 actor / rotator；同時舊任務若稍後返回，仍可能把新管線的 `isProcessing` 狀態清掉。
+
+結果會出現以下狀態：
+
+1. **actor 內部卡死**：`rotateAsync()` 的 continuation 不返回，`ProcessorActor.isProcessing` 永遠保持 `true`。
+2. **watchdog 只換外殼**：外層設 `processorActor = nil`，但舊 actor 的 rotator 仍握著 GPU 資源。
+3. **舊任務干擾新任務**：重建後舊 Task 的 `defer` 仍可能執行，錯誤重置新一代處理狀態。
+4. **空 command buffer 被視為成功**：`renderPlaneYUV()` 取得不到 pipeline / encoder 時直接 `return`，外層仍 commit 並包裝輸出，造成異常幀進入後續管線。
+
+### 修正
+
+**VideoFrameProcessor generation guard**（`VideoProcess.swift`）：
+
+- 新增 `processingGeneration`，每次開始處理、reset、cleanup、watchdog 重建時遞增。
+- Task 啟動時保存當前 generation；Task 結束時只有 generation 仍相同，才允許清除 `isProcessing` / `processingStartedAt`。
+- watchdog 重建改為 `resetProcessorActor(reason:)`，先值捕獲舊 actor，再 `processorActor = nil`，最後非同步 cleanup 舊 rotator。
+
+```swift
+let oldActor = processorActor
+processorActor = nil
+processingGeneration &+= 1
+Task { await oldActor?.cleanup() }
+```
+
+**GPU command buffer timeout**（`GPUVideoRotator.swift`）：
+
+- 新增 `commandBufferTimeout = 1.8s`。
+- `rotateAsync()` 在 commit 後排程 timeout；若 completed handler 不回，先 resume `nil`，讓 actor 釋放並交由外層 watchdog / drop counter 重建。
+- 使用 `CommandCompletionState` + `NSLock` 保護 completion 與 timeout 競態，避免 `CheckedContinuation` double resume。
+- completed handler 檢查 `cmd.status == .completed && cmd.error == nil`，失敗時進入 `handleMetalFailure()`。
+
+**renderPlaneYUV 顯式失敗**（`GPUVideoRotator.swift`）：
+
+- `renderPlaneYUV()` 從 `Void` 改為 `Bool`。
+- 拿不到 compute pipeline 或 command encoder 時回傳 `false`，外層回收 output buffer 並記錄 Metal failure，不再 commit 空 command buffer。
+
+### 預期改善
+
+| 場景 | 改前 | 改後 |
+|------|------|------|
+| GPU command buffer 卡住 | continuation 永不返回，actor 內部卡死 | 1.8s timeout 回 nil，外層可繼續 watchdog / rebuild |
+| watchdog 重建 | 只把 actor 設 nil，舊 rotator 未必釋放 | 值捕獲舊 actor 並 cleanup，下一幀建立乾淨 actor |
+| 舊任務晚回來 | 可能清掉新管線的 processing 狀態 | generation 不一致時不改新狀態 |
+| pipeline / encoder 建立失敗 | 空 command buffer 可能被當成功幀 | 立即失敗、回收 buffer、累計 Metal failure |
+
+---
+
 ## 8. 原始音訊管線效能優化（AudioProcessor original path）
 
 ### 問題

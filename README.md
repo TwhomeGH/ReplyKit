@@ -587,6 +587,12 @@ Crash 路徑：`RPBroadcastSampleHandler _processPayloadWithAudioSample:` → Au
 
 `GPUVideoRotator` 原先每幀執行 2 次 GPU dispatch（旋轉 + 始終開啟的 unsharpen mask 銳化），且初始化時編譯 3 條 shader pipeline。整理後僅編譯使用者選擇的 1 條 pipeline，移除多餘的 sharpen post-pass。每幀 GPU 從 2 dispatches → 1 dispatch，畫質不變。詳見 `Docs/replykit-core-fixes-summary.md` §12。
 
+### GPU 管線逾時重建強化 (2026/07)
+
+針對直播啟動或 GPU 短暫異常時 `MTLCommandBuffer.addCompletedHandler` 不回呼的情境，`GPUVideoRotator` 加入 command buffer 逾時保護：1.8 秒未完成即讓 `rotateAsync()` 回傳 `nil`，避免 `ProcessorActor` 永久卡在 `isProcessing = true`。同時 `VideoFrameProcessor` 加入 `processingGeneration`，watchdog 重建後舊任務若延遲返回，不會誤清新管線的處理狀態。
+
+另外，watchdog 重建現在會先值捕獲舊 actor 再非同步 cleanup 舊 rotator，確保不是只把 `processorActor` 設成 `nil`。`renderPlaneYUV()` 也改為回傳成功/失敗，拿不到 compute pipeline 或 command encoder 時會立即回收 buffer 並累計 Metal failure，不再 commit 空 command buffer。詳見 `Docs/replykit-core-fixes-summary.md` §16。
+
 ## 修復 VFR 造成的 PTS 異常與畫面速率抖動
 
 ### 問題發現
