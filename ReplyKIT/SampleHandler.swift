@@ -804,8 +804,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 } else {
                     LogManager.shared.forceFlush()
-                    SocketClient.shared.closeConnection()
-
+                    LogManager.shared.invalidateFlushTimer()
                     sendlog(message: "非LOG")
                 }
 
@@ -828,11 +827,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 sendlog(message: "FrameRate:\(fps) \nmediaSet:\(mediaSet) \nVTrack:\(track)\nVideoSet:\(videoSet)")
 
-                ExtensionMessagePort.shared.send(toApp: [
-                    "FPS": "\(fps)",
-                    "VideoSet":"\(videoSet)"
-                                                        ]
-                )
 
 
             }
@@ -941,9 +935,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "Enablelog":
-            var Enablelog=SharedDefaults.group?.bool(forKey: "Enablelog") ?? false
-
+            
             Task {
+                var Enablelog=SharedDefaults.group?.bool(forKey: "Enablelog") ?? false
+
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "Enablelog", type: "Bool") {
 
@@ -996,41 +991,16 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 RPConfig.shared.onAudioPage = APage
                 sendlog(message: "AudioPage:\(String(describing: RPConfig.shared.onAudioPage)) processorInit:\(processorsInitialized)")
 
-                if audioProcessor != nil {
+                if audioProcessor != nil && processorsInitialized == true {
 
                     audioProcessor?.updatePage(status: RPConfig.shared.onAudioPage)
                     sendlog(
                         message:"[Audio] Page \(String(describing: RPConfig.shared.onAudioPage))"
                     )
 
-                } else if processorsInitialized {
+                }  else {
 
-                    sendlog(message:"[Audio] ⚠️ audioProcessor 為 nil 但 processorsInitialized=true，呼叫 rebuildAudio")
-                    rebuildAudio()
-                    audioProcessor?.updatePage(status: RPConfig.shared.onAudioPage)
-
-                } else {
-
-                    sendlog(message:"[Audio] ⚠️ audioProcessor 為 nil，processorsInitialized=false，排程延遲重試")
-                    Task.detached { [weak self] in
-                        try? await Task.sleep(nanoseconds: 2_000_000_000)
-                        guard let self else { return }
-                        let isInit = await MainActor.run { self.processorsInitialized }
-                        guard isInit else {
-                            await MainActor.run { sendlog(message:"[Audio] ⚠️ 延遲重試逾時或已停止，跳過") }
-                            return
-                        }
-                        await MainActor.run {
-                            sendlog(message:"[Audio] 延遲重試: processors 已就緒，套用 onAudioPage=\(RPConfig.shared.onAudioPage)")
-                            if self.audioProcessor != nil {
-                                self.audioProcessor?.updatePage(status: RPConfig.shared.onAudioPage)
-                            } else {
-                                self.rebuildAudio()
-                                self.audioProcessor?.updatePage(status: RPConfig.shared.onAudioPage)
-                            }
-                        }
-                    }
-
+                    sendlog(message:"[Audio] ⚠️ audioProcessor 為 nil 且 processorsInitialized=false，暫時無法更新 Page，等待初始化完成")
                 }
 
             }
@@ -1224,35 +1194,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 #endif
 
-
-
-
-    // MARK: 設定方向偵測 已棄用
-    // func configureOrientation() {
-    //     let manager = DeviceOrientationManager.shared   // 使用單例
-    //     let lockedValue = SharedDefaults.group?.bool(forKey: "LockIN") ?? false
-    //     if  lockedValue {
-    //         sendlog(message:"\(lockedValue)不偵測 初始化一次")
-    //         manager.isEnabled = false
-    //         manager.stopUpdates()
-    //     } else {
-    //         // 解鎖方向 → 啟動 Motion 偵測
-    //         manager.isEnabled = true
-    //         sendlog(message:"偵測開啟")
-    //         manager.startUpdates()
-    //         manager.orientationChanged = { [weak self] deviceOrientation in
-
-    //             sendlog(message: "方向Free中")
-    //             #if os(iOS)
-    //             guard let self else { return }
-    //             Task {
-    //                 await self.updateVideoOrientation(from: deviceOrientation)
-    //             }
-    //             #endif
-
-    //         }
-    //     }
-    // }
 
     var isStopping = false
     private var processorsInitialized = false
