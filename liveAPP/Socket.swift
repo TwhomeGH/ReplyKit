@@ -504,6 +504,23 @@ class SocketServer:ObservableObject {
         var isMain:Bool?
         let userNum: Int?
         let userList: [String]?
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            user = try container.decode(String.self, forKey: .user)
+            message = try container.decode(String.self, forKey: .message)
+            img = try container.decodeIfPresent(String.self, forKey: .img)
+            giftImg = try container.decodeIfPresent(String.self, forKey: .giftImg)
+            isMain = try container.decodeIfPresent(Bool.self, forKey: .isMain)
+            userList = try container.decodeIfPresent([String].self, forKey: .userList)
+            if let intVal = try? container.decodeIfPresent(Int.self, forKey: .userNum) {
+                userNum = intVal
+            } else if let strVal = try container.decodeIfPresent(String.self, forKey: .userNum) {
+                userNum = Int(strVal)
+            } else {
+                userNum = nil
+            }
+        }
     }
     struct SLogMessage:Codable {
         let title:String
