@@ -1139,7 +1139,6 @@ final class PIPServiceMessages {
     // MARK: - 從 pending 補到 visible（Chunk 修正版）
 
     func populateVisibleMessagesIfNeeded() {
-        _ = relayoutTargetsOnly(updateTargetY: true)
         var visibleBottom = currentVisibleBottom()
 
         while let first = pendingSegments.first {
@@ -1601,7 +1600,7 @@ final class PIPServiceMessages {
 
         }
 
-
+        _ = relayoutTargetsOnly(updateTargetY: true)
         populateVisibleMessagesIfNeeded()
     }
 

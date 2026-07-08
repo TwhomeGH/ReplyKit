@@ -61,22 +61,20 @@ final class PIPService: NSObject, @unchecked Sendable {
     @objc func handleMemoryWarning() {
         PIPLogTo("收到 Memory Warning，釋放 PiP 快取")
 
+        // 清空累積訊息與動畫狀態，降低記憶體
         messagesLayer?.clearAllMessages()
+        // 降為閒置 FPS 減少渲染負擔
         currentFPS = idleFPS
         rescheduleRenderTimer(fps: idleFPS)
 
         pixelBufferPool = nil
         cachedFormatDescription = nil
         cachedFormatSize = .zero
-        setNeedsRedraw()
     }
 
     var lastFPS = 1.0
 
     var isAnimatingMessages = false
-    private var needsRedraw = true
-    private var lastPeriodicRedraw: CFTimeInterval = CACurrentMediaTime()
-    private let periodicRedrawInterval: CFTimeInterval = 30.0
 
     private var pixelBufferPool: CVPixelBufferPool?
     private let pixelBufferPoolSize = 3  // 可根據 FPS 調整
@@ -89,12 +87,6 @@ final class PIPService: NSObject, @unchecked Sendable {
     )
     private let viewerIcon = UIImage(systemName: "person.2.fill")
     private let reconnectIcon = UIImage(systemName: "antenna.radiowaves.left.and.right")
-    private var cachedTimeString: String?
-    private var cachedElapsedString: String?
-    private var lastOverlayStreamEnded: Bool = false
-    private var lastOverlayStreamEndMes: String = ""
-    private var lastOverlayViewerCount: Int? = nil
-    private var lastOverlayIsReconnecting: Bool = false
 
     private let renderQueue = DispatchQueue(
         label: "com.pip.render",
@@ -238,7 +230,6 @@ final class PIPService: NSObject, @unchecked Sendable {
         guard abs(currentFPS - newFPS) > 0.1 else { return }
         currentFPS = newFPS
         rescheduleRenderTimer(fps: currentFPS)
-        setNeedsRedraw()
         PIPLogTo("🎬 animation fps -> \(currentFPS)")
         lastFPS = currentFPS
     }
@@ -247,7 +238,6 @@ final class PIPService: NSObject, @unchecked Sendable {
     func markOverlayDirty() {
         currentFPS = max(currentFPS, activeFPS)
         rescheduleRenderTimer(fps: currentFPS)
-        setNeedsRedraw()
     }
 
     /// 閒置時降低 FPS
@@ -359,10 +349,6 @@ final class PIPService: NSObject, @unchecked Sendable {
 
 
 
-    func setNeedsRedraw() {
-        needsRedraw = true
-    }
-
     func addMessage(
         user: String = "測試",
         msg: String,
@@ -379,7 +365,7 @@ final class PIPService: NSObject, @unchecked Sendable {
                 imgURL: imgURL,
                 giftURL: giftURL,isMain:isMain
             )
-        setNeedsRedraw()
+
 
     }
 
@@ -470,10 +456,15 @@ final class PIPService: NSObject, @unchecked Sendable {
         return f.string(from: Date())
     }
 
-    // MARK: 時間顯示（快取版）
+    // MARK: 時間顯示
     private func drawTimeOverlay(in cg: CGContext, size: CGSize) {
 
-        let timeText = currentTimeString()
+        cg.saveGState()
+
+        // 在這裡翻轉座標系統
+        cg.translateBy(x: 0, y: size.height)
+        cg.scaleBy(x: 1.0, y: -1.0)
+
         var elapsedSeconds: Double = 0
 
         if let start = LPConfig.shared.streamStartTime {
@@ -483,58 +474,77 @@ final class PIPService: NSObject, @unchecked Sendable {
             }
         }
 
+
         let totalSeconds = Int(LPConfig.shared.lastStreamTime)
+
         let hours = totalSeconds / 3600
         let minutes = (totalSeconds % 3600) / 60
         let seconds = totalSeconds % 60
+
+        // 格式化成 04:00:00
         let elapsedString = String(format: "%02d:%02d:%02d", hours, minutes, seconds)
 
-        // 快取檢查：只有當相關資料有變化時才重新繪製
-        let ended = LPConfig.shared.StreamEnded
-        let endMes = LPConfig.shared.StreamEndMes
-        let viewerCount = LPConfig.shared.streamViewerCount
-        let isReconnecting = LPConfig.shared.isReconnecting
 
-        if cachedTimeString == timeText
-            && cachedElapsedString == elapsedString
-            && lastOverlayStreamEnded == ended
-            && lastOverlayStreamEndMes == endMes
-            && lastOverlayViewerCount == viewerCount
-            && lastOverlayIsReconnecting == isReconnecting {
-            return // 快取命中，不需重繪
-        }
+        // 建立字串屬性
 
-        cachedTimeString = timeText
-        cachedElapsedString = elapsedString
-        lastOverlayStreamEnded = ended
-        lastOverlayStreamEndMes = endMes
-        lastOverlayViewerCount = viewerCount
-        lastOverlayIsReconnecting = isReconnecting
+        let elapsedFont = UIFont.monospacedDigitSystemFont(
+            ofSize: 14,
+            weight: .regular
+        )
 
-        cg.saveGState()
-        cg.translateBy(x: 0, y: size.height)
-        cg.scaleBy(x: 1.0, y: -1.0)
+        let elapsedLabelFont = UIFont.systemFont(
+            ofSize: 14
+            , weight: .medium
+        )
 
-        let elapsedFont = UIFont.monospacedDigitSystemFont(ofSize: 14, weight: .regular)
-        let elapsedLabelFont = UIFont.systemFont(ofSize: 14, weight: .medium)
-
-        let imageHeight: CGFloat = elapsedLabelFont.lineHeight
+        let imageHeight: CGFloat = elapsedLabelFont.lineHeight  // 用文字高度一致
         let imageWidth: CGFloat = imageHeight
-        let elapsedPoint = CGPoint(x: 50, y: 20)
+
+        let elapsedPoint = CGPoint(
+            x: 50 ,
+            y: 20
+        )
+
+
+        let timeText = currentTimeString()
 
         let fontSize: CGFloat = 16
-        let timeFont = UIFont.monospacedDigitSystemFont(ofSize: fontSize, weight: .regular)
-        let labelFont = UIFont.systemFont(ofSize: fontSize, weight: .medium)
 
+        let timeFont = UIFont.monospacedDigitSystemFont(
+            ofSize: fontSize ,
+            weight: .regular
+        )
+
+        let labelFont = UIFont.systemFont(
+            ofSize: fontSize ,
+            weight: .medium
+        )
+
+        // 組 attributed string：同一行
         let fullLine = NSMutableAttributedString()
-        fullLine.append(NSAttributedString(string: "現在時間 ", attributes: [.font: labelFont, .foregroundColor: UIColor.systemCyan]))
-        fullLine.append(NSAttributedString(string: timeText, attributes: [.font: timeFont, .foregroundColor: UIColor.white]))
+        fullLine.append(NSAttributedString(
+            string: "現在時間 ",
+            attributes: [
+                .font: labelFont,
+                .foregroundColor: UIColor.systemCyan
+            ]
+        ))
+        fullLine.append(NSAttributedString(
+            string: timeText,
+            attributes: [
+                .font: timeFont,
+                .foregroundColor: UIColor.white
+            ]
+        ))
 
         let textSize = fullLine.size()
+
         let paddingX: CGFloat = 6
         let paddingY: CGFloat = 4
-        let spacingY: CGFloat = 20
 
+        let spacingY: CGFloat = 20   // 你要的上下間距
+
+        // 背景矩形：置中 + 與 elapsedPoint 保持間距
         let bgRect = CGRect(
             x: (size.width - textSize.width) / 2 - paddingX,
             y: elapsedPoint.y + spacingY,
@@ -542,67 +552,109 @@ final class PIPService: NSObject, @unchecked Sendable {
             height: textSize.height + paddingY * 2
         )
 
+        // 畫背景
         cg.setFillColor(UIColor.black.withAlphaComponent(0.45).cgColor)
         cg.fill(bgRect)
 
-        let textPoint = CGPoint(x: bgRect.minX + paddingX, y: bgRect.maxY - paddingY - textSize.height)
+
+        // 文字定位：從底部往上算，避免上下反
+        let textPoint = CGPoint(
+            x: bgRect.minX + paddingX,
+            y: bgRect.maxY - paddingY - textSize.height
+        )
+
+
 
         UIGraphicsPushContext(cg)
 
-        clockIcon?.draw(in: CGRect(
-            x: elapsedPoint.x,
-            y: elapsedPoint.y + (elapsedFont.capHeight - imageHeight) * 0.5,
-            width: imageWidth,
-            height: imageHeight
-        ))
 
+
+        // clockImage 與時間字串對齊：用 capHeight 對齊文字中線
+        clockIcon?.draw(
+            in: CGRect(
+                x: elapsedPoint.x,
+                y: elapsedPoint.y + (elapsedFont.capHeight - imageHeight) * 0.5,
+                width: imageWidth,
+                height: imageHeight
+            )
+        )
+
+        // 讓文字 baseline 與圖片中心對齊
         let timeTextPoint = CGPoint(
             x: elapsedPoint.x + imageWidth + 4,
             y: elapsedPoint.y + (elapsedFont.capHeight - elapsedFont.lineHeight) * 0.5
         )
 
-        (elapsedString as NSString).draw(at: timeTextPoint, withAttributes: [.font: elapsedFont, .foregroundColor: UIColor.white])
+        (elapsedString as NSString).draw(
+            at: timeTextPoint,
+            withAttributes: [
+                .font: elapsedFont,
+                .foregroundColor: UIColor.white
+            ]
+        )
 
         let elapsedTextSize = (elapsedString as NSString).size(withAttributes: [.font: elapsedFont])
         var badgeX = timeTextPoint.x + elapsedTextSize.width + 8
+        // 改成：跟 timeTextPoint 對齊 baseline
         let badgeY = timeTextPoint.y + (elapsedFont.capHeight - elapsedLabelFont.lineHeight) * 0.5
 
-        if !endMes.isEmpty {
+        if !LPConfig.shared.StreamEndMes.isEmpty {
             var endColor = #colorLiteral(red: 1, green: 0.4538183808, blue: 0.1835401952, alpha: 1)
-            if ended { endColor = #colorLiteral(red: 0.2549019754, green: 0.2745098174, blue: 0.3019607961, alpha: 1) }
+            if LPConfig.shared.StreamEnded {
+                endColor = #colorLiteral(red: 0.2549019754, green: 0.2745098174, blue: 0.3019607961, alpha: 1)
+            }
 
-            let statusWidth = drawBadge(in: cg, text: endMes, font: elapsedLabelFont,
-                                        origin: CGPoint(x: badgeX, y: badgeY),
-                                        textColor: .white, bgColor: endColor,
-                                        padding: UIEdgeInsets(top: 2, left: 8, bottom: 2, right: 8))
+            let statusWidth = drawBadge(
+                in: cg,
+                text: LPConfig.shared.StreamEndMes,
+                font: elapsedLabelFont,
+                origin: CGPoint(x: badgeX, y: badgeY),
+                textColor: .white,
+                bgColor: endColor,
+                padding: UIEdgeInsets(top: 2, left: 8, bottom: 2, right: 8)
+            )
             badgeX += statusWidth + 6
         }
 
-        if let viewerCount = viewerCount {
-            _ = drawBadge(in: cg, text: "\(viewerCount)", font: elapsedLabelFont,
-                          origin: CGPoint(x: badgeX, y: badgeY),
-                          textColor: UIColor(white: 0.16, alpha: 1.0),
-                          bgColor: UIColor(white: 0.83, alpha: 1.0),
-                          icon: viewerIcon,
-                          iconTintColor: UIColor(white: 0.22, alpha: 1.0),
-                          padding: UIEdgeInsets(top: 2, left: 8, bottom: 2, right: 8))
+        if let viewerCount = LPConfig.shared.streamViewerCount {
+            _ = drawBadge(
+                in: cg,
+                text: "\(viewerCount)",
+                font: elapsedLabelFont,
+                origin: CGPoint(x: badgeX, y: badgeY),
+                textColor: UIColor(white: 0.16, alpha: 1.0),
+                bgColor: UIColor(white: 0.83, alpha: 1.0),
+                icon: viewerIcon,
+                iconTintColor: UIColor(white: 0.22, alpha: 1.0),
+                padding: UIEdgeInsets(top: 2, left: 8, bottom: 2, right: 8)
+            )
         }
 
-        if isReconnecting {
+        // 重連狀態 badge（放在時間背景下方，避免重疊）
+        if LPConfig.shared.isReconnecting {
             let reconnectBadgeY = bgRect.maxY + 8
             badgeX = timeTextPoint.x + elapsedTextSize.width + 8
-            _ = drawBadge(in: cg, text: LPConfig.shared.reconnectStatus, font: elapsedLabelFont,
-                          origin: CGPoint(x: badgeX, y: reconnectBadgeY),
-                          textColor: .white,
-                          bgColor: #colorLiteral(red: 1, green: 0.6, blue: 0, alpha: 1),
-                          icon: reconnectIcon, iconTintColor: .white,
-                          padding: UIEdgeInsets(top: 2, left: 8, bottom: 2, right: 8))
+            _ = drawBadge(
+                in: cg,
+                text: LPConfig.shared.reconnectStatus,
+                font: elapsedLabelFont,
+                origin: CGPoint(x: badgeX, y: reconnectBadgeY),
+                textColor: .white,
+                bgColor: #colorLiteral(red: 1, green: 0.6, blue: 0, alpha: 1),
+                icon: reconnectIcon,
+                iconTintColor: .white,
+                padding: UIEdgeInsets(top: 2, left: 8, bottom: 2, right: 8)
+            )
         }
 
         fullLine.draw(at: textPoint)
 
-        UIGraphicsPopContext()
+
         cg.restoreGState()
+
+        UIGraphicsPopContext()
+
+
     }
 
 
@@ -934,6 +986,7 @@ final class PIPService: NSObject, @unchecked Sendable {
     func renderIncremental() async -> Bool {
 
         guard let displayLayer = displayLayer else {
+            // displayLayer 可能被系統移除，嘗試重新 attach
             ensureDisplayLayerAttached()
             return false
         }
@@ -944,24 +997,12 @@ final class PIPService: NSObject, @unchecked Sendable {
         }
 
         // 1️⃣ 驅動動畫（取代舊的 CADisplayLink）
-        let wasAnimating = messagesLayer?.tickAnimation() == true
-        if wasAnimating {
+        if messagesLayer?.tickAnimation() == true {
+            // 動畫還在進行中，確保高 FPS
             requestAnimationFPS()
         }
 
-        // 2️⃣ 無變化時跳過 pixel buffer 渲染
-        let now = CACurrentMediaTime()
-        let periodicRedraw = !needsRedraw && !wasAnimating && (now - lastPeriodicRedraw) >= periodicRedrawInterval
-        if periodicRedraw { needsRedraw = true }
-
-        guard needsRedraw || wasAnimating else {
-            decayFPSIfNeeded()
-            return false
-        }
-        needsRedraw = false
-        if periodicRedraw { lastPeriodicRedraw = now }
-
-        // 3️⃣ 生成 PixelBuffer
+        // 2️⃣ 生成 PixelBuffer
         var pixelBuffer: CVPixelBuffer?
 
         pixelBuffer = renderIfNeeded()
@@ -978,7 +1019,7 @@ final class PIPService: NSObject, @unchecked Sendable {
             return false
         }
 
-        // 4️⃣ enqueue
+        // 3️⃣ enqueue
         displayLayer.enqueue(sampleBuffer)
         self.frameCount += 1
 
@@ -989,7 +1030,7 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         lastRenderTime = CACurrentMediaTime()
 
-        // 5️⃣ 渲染完成後調整 FPS
+        // 4️⃣ 渲染完成後調整 FPS
         decayFPSIfNeeded()
 
         return true
