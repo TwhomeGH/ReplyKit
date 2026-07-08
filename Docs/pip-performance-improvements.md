@@ -6,7 +6,6 @@
 
 - 移除不必要的 async hop（actor → Task → MainActor）
 - 加入 dirty flag 避免無變化時仍每秒產生 pixel buffer
-- 時間疊加層（overlay）加入快取，不再每幀重新計算 Core Text
 - 消除配置（layout）重複計算
 
 ---
@@ -27,7 +26,7 @@
 | 問題 | 原因 | 修正 |
 |------|------|------|
 | idle 1 FPS 時仍每秒產 pixel buffer | render timer 固定間隔觸發，不問畫面是否變化 | 新增 `needsRedraw` flag：`addMessage()`／`requestAnimationFPS()`／`markOverlayDirty()` 設為 true，`renderIncremental()` 在 `!needsRedraw && !wasAnimating` 時直接 return |
-| 時間疊加層久未更新 | 無變化時完全停止渲染，overlay 時間停留 | 每 30 秒強制一次 periodic redraw（`lastPeriodicRedraw`） |
+| 時間疊加層久未更新 | 無變化時完全停止渲染，overlay 時間停留 | 每 1 秒強制一次 periodic redraw（`lastPeriodicRedraw`）；移除 overlay cache early-return 避免同一秒內疊加層閃爍 |
 
 ### 資料流對比
 
@@ -40,13 +39,14 @@
   [新訊息] → setNeedsRedraw() → timer → tickAnimation() → needsRedraw? → (true) → render → enqueue
 ```
 
-## 3. 時間疊加層快取
+## 3. 時間疊加層繪製
 
 ### `liveAPP/PIPService.swift`
 
 | 問題 | 原因 | 修正 |
 |------|------|------|
-| overlay 每幀重新計算 Core Text | `drawTimeOverlay()` 每次都建立 NSAttributedString、計算 text size、繪製 badge | 快取 timeString / elapsedString / streamEnded / viewerCount / isReconnecting，只有值變化時才實際執行繪圖 |
+| overlay 每幀重新計算 Core Text | `drawTimeOverlay()` 每次都建立 NSAttributedString、計算 text size、繪製 badge | 快取 timeString / elapsedString / streamEnded / viewerCount / isReconnecting 用於參考，不再依此跳過繪製 |
+| overlay 同一秒內閃爍消失 | 快取命中時疊加層整個不繪製，同一秒內多則訊息讓時間消失 | 移除 cache early-return，每幀均繪製疊加層；文字與 badge 繪製成本在 1 FPS idle 下可忽略 |
 
 ## 5. Memory Warning 分級釋放
 
