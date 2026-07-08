@@ -48,26 +48,41 @@ final class PIPService: NSObject, @unchecked Sendable {
 
     private override init() {
         super.init()
-        #if os(iOS)
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleMemoryWarning),
-            name: UIApplication.didReceiveMemoryWarningNotification,
-            object: nil
-        )
-        #endif
     }
 
-    @objc func handleMemoryWarning() {
-        PIPLogTo("收到 Memory Warning，釋放 PiP 快取")
+    private var memoryWarningLevel = 0
+    private var lastMemoryWarningTime: CFTimeInterval = 0
+    private let memoryWarningCooldown: CFTimeInterval = 10.0
 
-        messagesLayer?.clearAllMessages()
+    @objc func handleMemoryWarning() {
+        let now = CACurrentMediaTime()
+
+        if now - lastMemoryWarningTime < memoryWarningCooldown {
+            memoryWarningLevel += 1
+        } else {
+            memoryWarningLevel = 1
+        }
+        lastMemoryWarningTime = now
+
+        PIPLogTo("Memory Warning level \(memoryWarningLevel)")
+
+        // Level 1: 釋放快取、降低 FPS（輕度）
+        Task { await PiPImageCache.shared.clear() }
         currentFPS = idleFPS
         rescheduleRenderTimer(fps: idleFPS)
 
-        pixelBufferPool = nil
-        cachedFormatDescription = nil
-        cachedFormatSize = .zero
+        // Level 2: 釋放 pixel buffer pool（中度）
+        if memoryWarningLevel >= 2 {
+            pixelBufferPool = nil
+            cachedFormatDescription = nil
+            cachedFormatSize = .zero
+        }
+
+        // Level 3: 清空訊息層（重度）
+        if memoryWarningLevel >= 3 {
+            messagesLayer?.clearAllMessages()
+        }
+
         setNeedsRedraw()
     }
 
@@ -361,6 +376,13 @@ final class PIPService: NSObject, @unchecked Sendable {
 
     func setNeedsRedraw() {
         needsRedraw = true
+    }
+
+    func forceRender() {
+        setNeedsRedraw()
+        Task { @MainActor in
+            await self.renderIncremental()
+        }
     }
 
     func addMessage(
@@ -821,6 +843,7 @@ final class PIPService: NSObject, @unchecked Sendable {
 
     // MARK: - Safe Start PiP
     private var didStartPiP = false
+    var isPiPActive: Bool { didStartPiP }
     private func safeTryStartPiP() {
         guard !didStartPiP else { return }
         DispatchQueue.main.async {
@@ -1006,12 +1029,13 @@ final class PIPService: NSObject, @unchecked Sendable {
         isInBackground = false
         reAttachDisplayLayerIfNeeded()
 
-        // 如果 pixelBufferPool 被 memory warning 釋放，重建它
         if pixelBufferPool == nil && OframeSize.width > 0 && OframeSize.height > 0 {
             setupPixelBufferPool(size: OframeSize)
             PIPLogTo("重建 pixelBufferPool: \(OframeSize)")
         }
 
+        setNeedsRedraw()
+        forceRender()
         PIPLogTo("回到前景")
     }
 

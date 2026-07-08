@@ -1212,18 +1212,23 @@ struct LogTextView: UIViewRepresentable {
 
 
         private func trimTextStorageIfNeeded(_ tv: UITextView) {
-            guard let text = tv.text else { return }
-            let lines = text.components(separatedBy: "\n")
-                .filter { !$0.hasPrefix("目前最多保留") }
-            guard lines.count > maxLines else { return }
+            guard currentLineCount > maxLines else { return }
+            let excess = currentLineCount - maxLines
+            let storage = tv.textStorage
+            let nsString = storage.string as NSString
 
-            let trimmed = Array(lines.suffix(maxLines))
-            var rebuilt = ""
-            for (i, line) in trimmed.enumerated() {
-                rebuilt += "\(i + 1): \(line)\n"
+            // 計算前 excess 行的字元範圍
+            var deleteEnd = 0
+            var lineStart = 0
+            for _ in 0..<excess {
+                let range = nsString.lineRange(for: NSRange(location: lineStart, length: 0))
+                deleteEnd = range.upperBound
+                lineStart = range.upperBound
+                if lineStart >= nsString.length { break }
             }
-            rebuilt += "目前最多保留:\(maxLines)行日誌\n"
-            tv.text = rebuilt
+
+            guard deleteEnd > 0 else { return }
+            storage.replaceCharacters(in: NSRange(location: 0, length: deleteEnd), with: "")
             currentLineCount = maxLines
         }
         
@@ -1261,18 +1266,6 @@ struct LogTextView: UIViewRepresentable {
                         return
                     }
 
-                    CATransaction.begin()
-                    CATransaction.setDisableActions(true)
-                    CATransaction.setCompletionBlock { [weak self] in
-                        guard let self = self else { return }
-
-                        DispatchQueue.main.async {
-                            if self.shouldAutoScroll {
-                                self.scrollToBottomUsingRange(animated: false)
-                            }
-                        }
-                    }
-
                     var attributes: [NSAttributedString.Key: Any] = [:]
                     if let font = tv.font {
                         attributes[.font] = font
@@ -1283,9 +1276,11 @@ struct LogTextView: UIViewRepresentable {
                     tv.textStorage.append(NSAttributedString(string: appendedText, attributes: attributes))
                     tv.layoutIfNeeded()
 
-                    CATransaction.commit()
-
                     self.trimTextStorageIfNeeded(tv)
+
+                    if self.shouldAutoScroll {
+                        self.scrollToBottomUsingRange(animated: false)
+                    }
 
                     self.appendWorkItem = nil
                 }

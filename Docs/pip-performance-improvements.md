@@ -48,7 +48,49 @@
 |------|------|------|
 | overlay 每幀重新計算 Core Text | `drawTimeOverlay()` 每次都建立 NSAttributedString、計算 text size、繪製 badge | 快取 timeString / elapsedString / streamEnded / viewerCount / isReconnecting，只有值變化時才實際執行繪圖 |
 
-## 4. 消除重複 layout 計算
+## 5. Memory Warning 分級釋放
+
+### `liveAPP/PIPService.swift`
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| 短暫 memory pressure 就清空所有快取 | `handleMemoryWarning()` 每次全量釋放 | 分三級：L1=image cache + 降 FPS，L2=丟 pixelBufferPool，L3=清訊息；10 秒內連續觸發才升級 |
+| 同一個 warning 觸發兩次 | `liveAPPApp` 和 `PIPService` 各自註冊 observer | 移除 `PIPService.init()` 的 observer，由 `liveAPPApp` 統一呼叫 `handleMemoryWarning()` |
+
+## 6. Log 頁卡頓改善
+
+### `liveAPP/liveAPPApp.swift` — LogModel
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| `removeFirst` O(1000) memmove 每批 log 都發生 | 超過 `maxMessages` 就立刻 trim | 改為 `maxMessages * 2` 才 trim，降低 main thread 阻塞頻率 |
+
+### `liveAPP/ContentView.swift` — Coordinator
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| `trimTextStorageIfNeeded` 5-pass 全量文字重建 | `components(separatedBy:)` + filter + suffix + concat + `tv.text=` | 改用 `textStorage.replaceCharacters(in:)` 範圍刪除，跳過全部 copy |
+| 每批 append 兩次 `layoutIfNeeded` | CATransaction block 內外各一次 | 移除 CATransaction wrapper，只保留一次 `layoutIfNeeded`，scroll 直接呼叫 |
+
+## 7. PiP 活躍時跳過 bgTask
+
+### `liveAPP/BackgroundTaskManager.swift`
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| PiP 使用時仍啟動 `beginBackgroundTask` + `BGTaskScheduler` | 不檢查 PiP 狀態 | `scheduleSocketRefresh()` / `beginSocketBackgroundWindow()` 開頭檢查 `PIPService.shared.isPiPActive`，跳過多餘背景任務 |
+
+## 8. 前景重建 + 強制重繪
+
+### `liveAPP/PIPService.swift`
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| 通知欄/控制中心關閉後 PiP 黑畫面 | `appWillEnterForeground()` 非同步 re-attach 與 render timer 有 window | 結束前呼叫 `forceRender()`（setNeedsRedraw + 立即 `Task { @MainActor in renderIncremental() }`） |
+
+---
+
+## 檔案變更
 
 ### `liveAPP/PIPContent.swift`
 
@@ -65,5 +107,8 @@
 
 | 檔案 | 行數變化 |
 |------|----------|
-| `liveAPP/PIPService.swift` | -46 (actor) +80 (dirty flag, overlay cache, periodic redraw) |
+| `liveAPP/PIPService.swift` | -46 (actor) +80 (dirty flag, overlay cache, periodic redraw) +22 (tiered memory, forceRender, isPiPActive) |
 | `liveAPP/PIPContent.swift` | -1 (redundant layout) +1 (reloadPending guard) |
+| `liveAPP/ContentView.swift` | ~30 (trimTextStorage → range deletion, remove CATransaction/layout duplication) |
+| `liveAPP/liveAPPApp.swift` | ~5 (LogModel lazy trimming, memory warning 不強制清 logs) |
+| `liveAPP/BackgroundTaskManager.swift` | +8 (PiP 活躍時跳過 bgTask/BGTaskScheduler) |

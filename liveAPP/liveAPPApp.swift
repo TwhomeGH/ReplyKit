@@ -251,7 +251,7 @@ final class LogModel: ObservableObject {
             guard let self else { return }
             let items = logs.map { LogItem(message: $0) }
             self.messages.append(contentsOf: items)
-            if self.messages.count > self.maxMessages {
+            if self.messages.count > self.maxMessages * 2 {
                 self.messages.removeFirst(self.messages.count - self.maxMessages)
             }
             self.newMessages.send(items)
@@ -855,15 +855,12 @@ struct liveAPPApp: App {
             queue: .main
         ) { [self] _ in
 
-            sendlog(message: "⚠️ 收到 Memory Warning，釋放快取")
+            sendlog(message: "⚠️ 收到 Memory Warning")
 
-            // 清 log buffer
-            logModel.clearLogs()
-
-            // 清 PiP 快取
+            // PiP 分級釋放（內部依 warning 次數遞增釋放力度）
             PIPService.shared.handleMemoryWarning()
 
-            // 通知 SocketServer 釋放閒置 buffer
+            // 只釋放 Socket 閒置 buffer（輕量）
             SocketServer.shared.releaseMemory()
         }
         #endif
