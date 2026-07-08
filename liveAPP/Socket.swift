@@ -68,7 +68,7 @@ class SocketServer:ObservableObject {
         }
 
         let timer = DispatchSource.makeTimerSource(queue: queue)
-        timer.schedule(deadline: .now() + 60) // 60 秒沒動靜就踢
+        timer.schedule(deadline: .now() + 60)
         timer.setEventHandler { [weak self] in
             self?.logTo("[\(id)] Idle timeout, closing connection")
             self?.removeConnection(conn)
@@ -84,40 +84,6 @@ class SocketServer:ObservableObject {
     @Published private(set) var isStopping = false
 
     private var lastRestartTime: Date?
-
-    // MARK: Socket 最後一次活動時間Timer
-    private var idleTimerActivity: DispatchSourceTimer?
-
-    func stopActivityIdleTimer() {
-        performOnQueue { [weak self] in
-            self?.idleTimerActivity?.cancel()
-            self?.idleTimerActivity = nil
-        }
-    }
-
-    func startActivityIdleTimer(
-        _ idleTime:TimeInterval = 3600,
-        reason:IdleReason = .lastClientDisconnected
-    ) {
-        performOnQueue { [weak self] in
-            guard let self else { return }
-            self.idleTimerActivity?.cancel()
-            self.idleTimerActivity = nil
-
-            let timer = DispatchSource.makeTimerSource(queue: self.queue)
-            timer.schedule(deadline: .now() + idleTime)
-
-            timer.setEventHandler { [weak self] in
-                guard let self else { return }
-                self.logTo("Idle timeout reached, shutting down socket Reason:\(reason)")
-                self.stopInternal()
-            }
-
-            self.idleTimerActivity = timer
-            timer.resume()
-        }
-    }
-
 
     private func scheduleRestart(delay: TimeInterval = 1.5) {
         guard !isStopping else { return }
@@ -260,8 +226,6 @@ class SocketServer:ObservableObject {
             return
         }
 
-        startActivityIdleTimer(reason: .noClientSinceStart)
-
         do {
             listener = try NWListener(using: .tcp, on: NWEndpoint.Port(rawValue: port)!)
             isStopping = false
@@ -281,12 +245,12 @@ class SocketServer:ObservableObject {
                 case .failed(let error):
                     self.logTo("Listener failed: \(error)")
                     self.listener?.cancel()
-                    self.listener = nil   // ✅ 強制清掉
+                    self.listener = nil
                     self.scheduleRestart()
 
                 case .cancelled:
                     self.logTo("Listener cancelled")
-                    self.listener = nil   // ✅ 強制清掉
+                    self.listener = nil
 
                 default:
                     break
@@ -336,9 +300,6 @@ class SocketServer:ObservableObject {
         
         logTo("New connection added. Total connections: \(self.connections.count)")
 
-        stopActivityIdleTimer()
-
-
         connection.stateUpdateHandler = { [weak self] state in
             guard let self = self else { return }
 
@@ -371,7 +332,7 @@ class SocketServer:ObservableObject {
         }
 
 
-        receiveBuffers[id] = Data()       // ✅ 為該連線創建專屬 buffer
+        receiveBuffers[id] = Data()
 
         connection.start(queue: queue)
         startReceiveLoop(for: connection)
@@ -488,7 +449,6 @@ class SocketServer:ObservableObject {
         let Message:String
     }
 
-    // 1️⃣ 定義 batch request 結構
     struct BatchRequest: Codable {
         let requests: [String]
         let data: [String: String?]?
@@ -608,8 +568,6 @@ class SocketServer:ObservableObject {
                 giftURL: giftImg,
                 isMain: isMain
             )
-
-
 
 
 
@@ -821,7 +779,6 @@ class SocketServer:ObservableObject {
 
     let decoder = JSONDecoder()
 
-    /// 單次 dispatch：在 serial queue 上解析 + 處理，消除 parsingQueue 跳轉
     private func handleReceivedData(_ data: Data, from connection: NWConnection) {
         queue.async { [weak self] in
             guard let self else { return }
@@ -1085,7 +1042,7 @@ class SocketServer:ObservableObject {
             self.sendQueues[id] = queue
 
             guard let data = try? JSONSerialization.data(withJSONObject: payload, options: []) else {
-                self.sendNextPayload(for: conn) // 跳過錯誤 payload
+                self.sendNextPayload(for: conn)
                 return
             }
 
@@ -1095,7 +1052,6 @@ class SocketServer:ObservableObject {
             self.resetIdleTimer(for: conn)
 
 
-            // ⚠️ 啟動 watchdog timer，使用 flag 避免 DispatchWorkItem 的 over-release
             let timeoutKey = "send_\(id)"
             self.sendTimeoutFlags[timeoutKey] = true
             self.queue.asyncAfter(deadline: .now() + 30) { [weak self, weak conn] in
@@ -1116,7 +1072,7 @@ class SocketServer:ObservableObject {
                     return
                 }
 
-                self.sendNextPayload(for: conn) // 完成後再發下一個
+                self.sendNextPayload(for: conn)
             })
         }
     }
@@ -1136,7 +1092,7 @@ class SocketServer:ObservableObject {
 
         if let conn = connection {
             logTo("使用單一廣播")
-            sendTo(conn, payload: payload) // ← 只回應發送請求的 client
+            sendTo(conn, payload: payload)
         } else {
 
             logTo("廣播給所有已連線")
@@ -1176,7 +1132,7 @@ class SocketServer:ObservableObject {
 
         let id = ObjectIdentifier(connection)
 
-        guard connections[id] != nil else { return } // 已被移除
+        guard connections[id] != nil else { return }
 
         idleTimers[id]?.cancel()
         idleTimers[id] = nil
@@ -1195,11 +1151,6 @@ class SocketServer:ObservableObject {
         sendQueues[id] = nil
         sendingFlags[id] = nil
 
-        if connections.isEmpty {
-            startActivityIdleTimer()
-            self.logTo("已經沒有連線 啟動活動idleTimer")
-        }
-
         logTo("Connection removed. Remaining: \(self.connections.count)")
     }
 
@@ -1217,7 +1168,6 @@ class SocketServer:ObservableObject {
         performOnQueue { [weak self] in
             guard let self else { return }
             self.isStopping = true
-            self.stopActivityIdleTimer()
             self.stopInternal()
         }
     }
@@ -1259,16 +1209,11 @@ class SocketServer:ObservableObject {
             self.sendQueues.removeAll()
             self.sendingFlags.removeAll()
             self.pendingFailedPayloads.removeAll()
-            self.idleTimers.values.forEach { $0.cancel() }
-            self.idleTimers.removeAll()
         }
     }
 
 
     func stopInternal() {
-        idleTimerActivity?.cancel()
-        idleTimerActivity = nil
-
         for (_, conn) in connections {
             conn.stateUpdateHandler = nil
             conn.cancel()
@@ -1321,23 +1266,14 @@ func fixlogSafeKey(_ str:String) -> String{
     let endIndex = g.index(g.endIndex, offsetBy: -replaceCount)
     let prefix = String(g[..<endIndex])
 
-    // 保留前 (replaceCount - 2) 個字，再補 "00"
     if replaceCount > 2 {
         let startOfReplace = g.index(g.endIndex, offsetBy: -replaceCount)
         let midEnd = g.index(g.endIndex, offsetBy: -2)
         let middle = g[startOfReplace..<midEnd]
         g = prefix + middle + "00"
     } else {
-        // 如果總長小於等於2，就全部換成0
         g = String(repeating: "0", count: g.count)
     }
 
     return g
 }
-
-
-
-
-
-
-

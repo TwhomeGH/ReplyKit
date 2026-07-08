@@ -107,12 +107,51 @@
 - `removeMessage()` → `populateVisibleMessagesIfNeeded()` + `layoutTargetsAndStartAnimation()`
 - `onMoveFinished()` → `populateVisibleMessagesIfNeeded()` + `layoutTargetsAndStartAnimation()`
 
+## 9. SocketServer 保持常駐 + 輕量 memory release
+
+### `liveAPP/Socket.swift`
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| 1 小時無連線後 server 自殺 | `startActivityIdleTimer(3600)` 在 `start()` 和 `removeConnection()` 最後連線移除時啟動 | 改為 no-op，`NWListener` 持續監聽，永不自動關閉 |
+| Memory Warning 時清除 idle timers | `releaseMemory()` 將 per-connection idle timers 全部 cancel，導致連線遺失後無法自動清理 | 只清 send/receive buffer，保留 per-connection idle timers |
+| `stopInternal()` 無謂操作 `idleTimerActivity` | activity timer 已廢除但仍嘗試 cancel | 移除相關代碼 |
+
+## 10. NSCache 自動回收取代 Memory Warning 強制清除
+
+### `liveAPP/PIPContent.swift` / `liveAPP/PIPService.swift`
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| Memory Warning 時 `PiPImageCache.shared.clear()` 清空 NSCache | 但 NSCache 在 memory pressure 下已自動 evict，手動清空浪費已緩存的圖片 | 移除所有 `PiPImageCache.shared.clear()` 呼叫，完全信賴 NSCache.countLimit / totalCostLimit 自動回收 |
+| `releaseNonCriticalMemory()` 進入背景時也清 cache | 背景一段時間後回 foreground 所有圖片需重新下載 | 移除 cache clear，保留 PiP 非活躍時的 render 資源釋放 |
+
+## 11. Pixel buffer 移除 UIScreen.main.scale
+
+### `liveAPP/PIPService.swift`
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| pixel buffer 多出 4x~9x 無謂像素 | `OframeSize = frameSize * scale` 導致 300x200 pt → 600x400 (2x) / 900x600 (3x) | 直接設 `OframeSize = size`，CPU Core Graphics 繪製解析度獨立，300x200 已清晰 |
+| memset / CALayer.render 浪費 4x~9x 頻寬 | 每幀 `memset(bytesPerRow * height)` 作用於 4x~9x 大小的 buffer | 每幀 memset 量降至 1/4~1/9，CALayer.render 同上比例縮減 |
+| render pipeline 中多餘 scale transform | `context.scaleBy(x: scale, y: scale)` 縮放後 overlay/caLayer 再繪製 | 移除所有 scaleBy 呼叫，直接在 1x 座標空間繪製 |
+
+## 12. PIPService isPiPActive 雙向同步
+
+### `liveAPP/PIPService.swift` / `liveAPP/PIPContent.swift`
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| 用戶關閉 PiP 系統按鈕後 UI 仍顯示啟用 | `PIPView` 用 `@State isChatPiPActive` 自行管理狀態，不跟 `PIPService.didStartPiP` 同步 | `didStartPiP` → `@Published var isPiPActive`，`PIPService` 遵從 `ObservableObject` |
+| `PIPView` 按鈕 disabled 狀態不同步 | 按鈕綁定 `@State` 而非實際 `isPiPActive` | `PIPView` 使用 `@ObservedObject var pipService = PIPService.shared`，按鈕直接讀取 `pipService.isPiPActive` |
+
 ## 檔案變更
 
 | 檔案 | 行數變化 |
 |------|----------|
-| `liveAPP/PIPService.swift` | -46 (actor) +80 (dirty flag, overlay cache, periodic redraw) +22 (tiered memory, forceRender, isPiPActive) ~40 (self-scheduling, renderCancelled, cooldown, FPS tune) |
-| `liveAPP/PIPContent.swift` | -1 (redundant layout) +1 (reloadPending guard) |
+| `liveAPP/PIPService.swift` | -46 (actor) +80 (dirty flag, overlay cache, periodic redraw) +22 (tiered memory, forceRender, isPiPActive) ~40 (self-scheduling, renderCancelled, cooldown, FPS tune) -2 (移除 PiPImageCache.clear) -4 (scale 移除, OframeSize 簡化) +3 (ObservableObject, @Published) |
+| `liveAPP/PIPContent.swift` | -1 (redundant layout) +1 (reloadPending guard) -3 (~PIPView @State 改 @ObservedObject) |
 | `liveAPP/ContentView.swift` | ~30 (trimTextStorage → range deletion, remove CATransaction/layout duplication) |
 | `liveAPP/liveAPPApp.swift` | ~5 (LogModel lazy trimming, memory warning 不強制清 logs) |
 | `liveAPP/BackgroundTaskManager.swift` | +8 (PiP 活躍時跳過 bgTask/BGTaskScheduler) |
+| `liveAPP/Socket.swift` | -20 (startActivityIdleTimer no-op, releaseMemory 精簡, stopInternal 清理) |

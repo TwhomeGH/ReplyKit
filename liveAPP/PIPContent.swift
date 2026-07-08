@@ -1822,11 +1822,10 @@ struct DebugImageViewWrapper: UIViewRepresentable {
 
 struct PIPView: View {
 
-    // 狀態管理哪個 PiP 正在啟用
-    @State private var isChatPiPActive = false
+    @ObservedObject private var pipService = PIPService.shared
+
     @State private var isTestPiPActive = false
 
-    // ✅ 新增，用來輸入手動訊息
     @State private var manualMessage: String = "test"
     @State private var manualUser: String = "User33"
 
@@ -1834,23 +1833,18 @@ struct PIPView: View {
         VStack(spacing: 20) {
             Text("Chat")
 
-            // 水平排列聊天組與測試組按鈕
             HStack(spacing: 20) {
                 VStack(spacing: 10) {
                     Button("[聊天組]啟動 PiP") {
                         let pipSize = CGSize(width: 300, height: 200)
-
                         PIPService.shared.startPiP(size: pipSize)
-
-                        isChatPiPActive = true
                     }
-                    .disabled(isTestPiPActive) // 測試組啟用時灰掉
+                    .disabled(pipService.isPiPActive || isTestPiPActive)
 
                     Button("[聊天室]停止 PiP") {
                         PIPService.shared.stopPiP()
-                        isChatPiPActive = false
                     }
-                    .disabled(!isChatPiPActive)
+                    .disabled(!pipService.isPiPActive)
                 }
 
                 VStack(spacing: 10) {
@@ -1858,7 +1852,7 @@ struct PIPView: View {
                         PIPTestService.shared.startPiPTest(size: CGSize(width: 300, height: 200))
                         isTestPiPActive = true
                     }
-                    .disabled(isChatPiPActive) // 聊天組啟用時灰掉
+                    .disabled(pipService.isPiPActive || isTestPiPActive)
 
                     Button("[測試組]停止 PiP") {
                         PIPTestService.shared.stopPiP()

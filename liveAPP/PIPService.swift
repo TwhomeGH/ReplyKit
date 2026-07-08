@@ -54,9 +54,7 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         PIPLogTo("Memory Warning level \(memoryWarningLevel)")
 
-        Task { await PiPImageCache.shared.clear() }
         currentFPS = idleFPS
-        rescheduleRenderTimer(fps: idleFPS)
 
         if memoryWarningLevel >= 2 {
             pixelBufferPool = nil
@@ -563,18 +561,13 @@ final class PIPService: NSObject, @unchecked Sendable {
             bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
         ) else { return nil }
 
-        let scale = UIScreen.main.scale
-
         context.saveGState()
         context.translateBy(x: 0, y: size.height)
-        context.scaleBy(x: scale, y: -scale)
+        context.scaleBy(x: 1.0, y: -1.0)
         messagesLayer?.container.render(in: context)
         context.restoreGState()
 
-        context.saveGState()
-        context.scaleBy(x: scale, y: scale)
         drawTimeOverlay(in: context, size: frameSize)
-        context.restoreGState()
 
         return pb
     }
@@ -588,15 +581,9 @@ final class PIPService: NSObject, @unchecked Sendable {
         setupAudioSession()
 
         self.frameSize = size
+        self.OframeSize = size
 
-        let pixelSize = CGSize(
-            width: size.width * UIScreen.main.scale,
-            height: size.height * UIScreen.main.scale
-        )
-
-        self.OframeSize = pixelSize
-
-        setupPixelBufferPool(size: pixelSize)
+        setupPixelBufferPool(size: size)
 
         self.frameCount = 0
 
@@ -688,14 +675,13 @@ final class PIPService: NSObject, @unchecked Sendable {
     }
 
     // MARK: - Safe Start PiP
-    private var didStartPiP = false
-    var isPiPActive: Bool { didStartPiP }
+    @Published var isPiPActive = false
     private func safeTryStartPiP() {
-        guard !didStartPiP else { return }
+        guard !isPiPActive else { return }
         DispatchQueue.main.async {
             guard let pip = self.pipController, pip.isPictureInPicturePossible else { return }
             pip.startPictureInPicture()
-            self.didStartPiP = true
+            self.isPiPActive = true
             PIPLogTo("PiP started successfully")
         }
     }
@@ -722,7 +708,6 @@ final class PIPService: NSObject, @unchecked Sendable {
     }
 
     private func rescheduleRenderTimer(fps: Double) {
-        // self-scheduling: 不需要立即重排 timer，下一幀會用新的 currentFPS
     }
 
     private func cancelRenderTimer() {
@@ -848,7 +833,6 @@ final class PIPService: NSObject, @unchecked Sendable {
     }
 
     func releaseNonCriticalMemory() {
-        Task { await PiPImageCache.shared.clear() }
         guard !didStartPiP else { return }
         cancelRenderTimer()
         pixelBufferPool = nil
