@@ -185,7 +185,6 @@ final class AudioProcessor : @unchecked Sendable {
 
     //音訊PTS校正用
     private var audioStartPTS: CMTime?
-    private var currentPTS: CMTime = .zero
     private var lastAudioPTS: CMTime?
     
     private var appAddVolume: Float
@@ -298,16 +297,27 @@ final class AudioProcessor : @unchecked Sendable {
             sendlog(message: "Audio PTS before retiming: \(originalTime.presentationTimeStamp.seconds)")
         }
 
-        var newBuffer: CMSampleBuffer?
         var timingInfo = originalTime
-        
-        
+        let newPTS = timingInfo.presentationTimeStamp
+
+        if let last = lastAudioPTS {
+            if newPTS < last {
+                timingInfo.presentationTimeStamp = last
+                let drift = (last - newPTS).seconds
+                if drift > 0.5 {
+                    sendlog(message: "Audio PTS jumped backward \(drift)s, clamped to last")
+                }
+            }
+        }
+        lastAudioPTS = timingInfo.presentationTimeStamp
+
+        var newBuffer: CMSampleBuffer?
         let status = CMSampleBufferCreateCopyWithNewTiming(
-        allocator: kCFAllocatorDefault,
-        sampleBuffer: sampleBuffer,
-        sampleTimingEntryCount: 1,
-        sampleTimingArray: &timingInfo,
-        sampleBufferOut: &newBuffer
+            allocator: kCFAllocatorDefault,
+            sampleBuffer: sampleBuffer,
+            sampleTimingEntryCount: 1,
+            sampleTimingArray: &timingInfo,
+            sampleBufferOut: &newBuffer
         )
 
         if status == noErr, let buffer = newBuffer {
@@ -315,7 +325,6 @@ final class AudioProcessor : @unchecked Sendable {
         } else {
             return sampleBuffer
         }
-
 
     }
     

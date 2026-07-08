@@ -29,7 +29,7 @@ final class DummyPlaybackDelegate: NSObject, AVPictureInPictureSampleBufferPlayb
 // PIPService - Ultimate Version
 // =========================
 
-final class PIPService: NSObject, @unchecked Sendable {
+final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     static let shared = PIPService()
 
     private var isInBackground = false

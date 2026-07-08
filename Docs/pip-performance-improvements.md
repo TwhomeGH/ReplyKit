@@ -145,6 +145,18 @@
 | 用戶關閉 PiP 系統按鈕後 UI 仍顯示啟用 | `PIPView` 用 `@State isChatPiPActive` 自行管理狀態，不跟 `PIPService.didStartPiP` 同步 | `didStartPiP` → `@Published var isPiPActive`，`PIPService` 遵從 `ObservableObject` |
 | `PIPView` 按鈕 disabled 狀態不同步 | 按鈕綁定 `@State` 而非實際 `isPiPActive` | `PIPView` 使用 `@ObservedObject var pipService = PIPService.shared`，按鈕直接讀取 `pipService.isPiPActive` |
 
+## 13. ReplyKIT PTS 管線審查
+
+### `ReplyKIT/AudioProcess.swift` / `ReplyKIT/GPUVideoRotator.swift`
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| Audio PTS 無 monotonic 保護 | `retimeAudioBuffer()` 複製原始 timing 但不做任何校正，若 ReplayKit 送來倒退的 PTS 會直接餵給 MediaMixer | 追蹤 `lastAudioPTS`，新 PTS 倒退時 clamp 到上一次值；倒退 >0.5s 時 log 警告 |
+| `currentPTS` 死碼 | 宣告 `.zero` 後從未被賦值 | 移除 |
+| `GPUVideoRotator.lastPTS` 死碼 | 宣告 `nil` 後從未被賦值或讀取 | 移除 |
+
+其餘管線（VideoProcess → GPUVideoRotator/CPURotator → MediaMixer）均為純透傳 ReplayKit 原始 PTS，無合成/修改，無 PTS 倒轉風險。
+
 ## 檔案變更
 
 | 檔案 | 行數變化 |
@@ -155,3 +167,5 @@
 | `liveAPP/liveAPPApp.swift` | ~5 (LogModel lazy trimming, memory warning 不強制清 logs) |
 | `liveAPP/BackgroundTaskManager.swift` | +8 (PiP 活躍時跳過 bgTask/BGTaskScheduler) |
 | `liveAPP/Socket.swift` | -20 (startActivityIdleTimer no-op, releaseMemory 精簡, stopInternal 清理) |
+| `ReplyKIT/AudioProcess.swift` | -2 (移除 dead currentPTS) +10 (monotonic PTS clamp) |
+| `ReplyKIT/GPUVideoRotator.swift` | -2 (移除 dead lastPTS) |

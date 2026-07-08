@@ -100,8 +100,6 @@ enum RotationAngle: UInt32, Codable, CaseIterable, Identifiable, CustomStringCon
 final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
 
-    private var lastPTS: CMTime?
-    
     private var cachedFormatDescription: CMVideoFormatDescription?
     private var cachedFormatSize: CGSize = .zero
 
