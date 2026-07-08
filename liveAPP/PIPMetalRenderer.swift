@@ -1,6 +1,7 @@
 import Metal
 import CoreVideo
 import CoreText
+import UIKit
 
 final class PIPMetalRenderer {
     static let shared = PIPMetalRenderer()
