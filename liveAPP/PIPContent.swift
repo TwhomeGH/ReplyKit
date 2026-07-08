@@ -1785,6 +1785,30 @@ final class PIPServiceMessages {
         1 - pow(1 - t, 3)
     }
 }
+    // MARK: - Metal Render Data
+    func collectRenderData(scale: CGFloat, containerWidth: CGFloat) -> PIPRenderData {
+        var textItems: [PIPTextItem] = []
+        var imageItems: [PIPImageItem] = []
+        for msg in stackedMessages where msg.alpha > 0 {
+            let alpha = msg.alpha
+            let y = msg.adjustedY
+            if let nameLayer = msg.name, let string = nameLayer.string as? String {
+                textItems.append(PIPTextItem(text: string, font: msg.font ?? .systemFont(ofSize: 14), color: .white, point: CGPoint(x: msg.textX, y: y), alpha: alpha))
+            }
+            if let msgLayer = msg.message, let string = msgLayer.string as? String {
+                var msgY = y
+                if msg.name != nil { msgY = y + (msg.font ?? .systemFont(ofSize: 14)).lineHeight + msg.verticalSpacing }
+                textItems.append(PIPTextItem(text: string, font: msg.font ?? .systemFont(ofSize: 14), color: .white, point: CGPoint(x: msg.textX, y: msgY), alpha: alpha))
+            }
+            if let avatarLayer = msg.avatar {
+                imageItems.append(PIPImageItem(image: avatarLayer.contents as? UIImage, frame: avatarLayer.frame, alpha: alpha, cornerRadius: avatarLayer.cornerRadius))
+            }
+            if let giftLayer = msg.gift {
+                imageItems.append(PIPImageItem(image: giftLayer.contents as? UIImage, frame: giftLayer.frame, alpha: alpha, cornerRadius: giftLayer.cornerRadius))
+            }
+        }
+        return PIPRenderData(textItems: textItems, imageItems: imageItems)
+    }
 
 
 func PIPChatLog(_ message:String){

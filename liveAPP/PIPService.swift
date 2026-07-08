@@ -542,6 +542,15 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
         guard let pb = pixelBuffer else { return nil }
 
+        if let metal = PIPMetalRenderer.shared,
+           let mData = messagesLayer?.collectRenderData(scale: UIScreen.main.scale, containerWidth: frameSize.width) {
+            if self.frameCount % 300 == 0 { PIPLogTo("🎨 Metal GPU render") }
+            metal.render(pixelBuffer: pb, renderData: mData)
+            return pb
+        }
+
+        if self.frameCount % 300 == 0 { PIPLogTo("🎨 CPU fallback render") }
+
         CVPixelBufferLockBaseAddress(pb, [])
         defer { CVPixelBufferUnlockBaseAddress(pb, []) }
 
