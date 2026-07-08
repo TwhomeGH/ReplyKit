@@ -547,9 +547,6 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
         guard let baseAddress = CVPixelBufferGetBaseAddress(pb) else { return nil }
         let bytesPerRow = CVPixelBufferGetBytesPerRow(pb)
-        let height = CVPixelBufferGetHeight(pb)
-
-        memset(baseAddress, 0, bytesPerRow * height)
 
         guard let context = CGContext(
             data: baseAddress,
@@ -561,13 +558,21 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
         ) else { return nil }
 
+        let scale = UIScreen.main.scale
+
+        context.setFillColor(UIColor.black.cgColor)
+        context.fill(CGRect(origin: .zero, size: size))
+
         context.saveGState()
         context.translateBy(x: 0, y: size.height)
-        context.scaleBy(x: 1.0, y: -1.0)
+        context.scaleBy(x: scale, y: -scale)
         messagesLayer?.container.render(in: context)
         context.restoreGState()
 
+        context.saveGState()
+        context.scaleBy(x: scale, y: scale)
         drawTimeOverlay(in: context, size: frameSize)
+        context.restoreGState()
 
         return pb
     }
@@ -581,9 +586,14 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         setupAudioSession()
 
         self.frameSize = size
-        self.OframeSize = size
 
-        setupPixelBufferPool(size: size)
+        let pixelSize = CGSize(
+            width: size.width * UIScreen.main.scale,
+            height: size.height * UIScreen.main.scale
+        )
+        self.OframeSize = pixelSize
+
+        setupPixelBufferPool(size: pixelSize)
 
         self.frameCount = 0
 
