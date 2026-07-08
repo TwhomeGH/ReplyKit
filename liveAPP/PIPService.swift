@@ -4,9 +4,6 @@ import CoreVideo
 
 import UIKit
 
-
-
-
 // =========================
 // DummyPlaybackDelegate
 // =========================
@@ -26,16 +23,7 @@ final class DummyPlaybackDelegate: NSObject, AVPictureInPictureSampleBufferPlayb
     func pictureInPictureControllerTimeRangeForPlayback(_ pictureInPictureController: AVPictureInPictureController) -> CMTimeRange {
         return CMTimeRange(start: .zero, duration: .positiveInfinity)
     }
-
-
 }
-
-
-
-
-
-
-
 
 // =========================
 // PIPService - Ultimate Version
@@ -66,19 +54,16 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         PIPLogTo("Memory Warning level \(memoryWarningLevel)")
 
-        // Level 1: 釋放快取、降低 FPS（輕度）
         Task { await PiPImageCache.shared.clear() }
         currentFPS = idleFPS
         rescheduleRenderTimer(fps: idleFPS)
 
-        // Level 2: 釋放 pixel buffer pool（中度）
         if memoryWarningLevel >= 2 {
             pixelBufferPool = nil
             cachedFormatDescription = nil
             cachedFormatSize = .zero
         }
 
-        // Level 3: 清空訊息層（重度）
         if memoryWarningLevel >= 3 {
             messagesLayer?.clearAllMessages()
         }
@@ -94,7 +79,7 @@ final class PIPService: NSObject, @unchecked Sendable {
     private let periodicRedrawInterval: CFTimeInterval = 1.0
 
     private var pixelBufferPool: CVPixelBufferPool?
-    private let pixelBufferPoolSize = 3  // 可根據 FPS 調整
+    private let pixelBufferPoolSize = 3
     private var cachedFormatDescription: CMVideoFormatDescription?
     private var cachedFormatSize: CGSize = .zero
     private let rgbColorSpace = CGColorSpaceCreateDeviceRGB()
@@ -113,7 +98,7 @@ final class PIPService: NSObject, @unchecked Sendable {
 
     private let renderQueue = DispatchQueue(
         label: "com.pip.render",
-        qos: .background
+        qos: .default
     )
 
     private func setupPixelBufferPool(size: CGSize) {
@@ -130,7 +115,6 @@ final class PIPService: NSObject, @unchecked Sendable {
             kCVPixelBufferPoolAllocationThresholdKey as String: pixelBufferPoolSize
         ]
 
-
         var pool: CVPixelBufferPool?
         CVPixelBufferPoolCreate(
             kCFAllocatorDefault,
@@ -143,14 +127,11 @@ final class PIPService: NSObject, @unchecked Sendable {
         self.cachedFormatSize = .zero
     }
 
-
     // MARK: - Render
     @MainActor
     func renderIfNeeded() -> CVPixelBuffer?  {
             return renderUIViewToPixelBuffer(size: OframeSize)
     }
-
-
 
     private var messagesLayer: PIPServiceMessages?
 
@@ -178,10 +159,8 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         guard let fmt = cachedFormatDescription else { return nil }
 
-
         let pts: CMTime
         let duration: CMTime
-
 
         let now = CACurrentMediaTime()
 
@@ -189,9 +168,6 @@ final class PIPService: NSObject, @unchecked Sendable {
             pts = overridePTS
             duration = CMTime(seconds: 1.0 / max(currentFPS, 1), preferredTimescale: 600)
         } else {
-
-
-
             if basePTS == nil { basePTS = now }
 
             let relativeTime = now - (self.basePTS ?? now)
@@ -199,18 +175,11 @@ final class PIPService: NSObject, @unchecked Sendable {
 
             pts = CMTime(seconds: relativeTime, preferredTimescale: 600)
             duration = CMTime(seconds: delta, preferredTimescale: 600)
-
-
         }
-
-
 
         var timing = CMSampleTimingInfo(duration: duration,
                                         presentationTimeStamp: pts,
                                         decodeTimeStamp: .invalid)
-
-
-
 
         var sb: CMSampleBuffer?
         CMSampleBufferCreateForImageBuffer(allocator: kCFAllocatorDefault,
@@ -238,16 +207,19 @@ final class PIPService: NSObject, @unchecked Sendable {
 
     private let pipStartThreshold: Int64 = 1
 
+    private var renderCancelled = false
+
     // MARK: - 穩定 FPS 管理
     private var currentFPS: Double = 1
 
-    private let animationFPS: Double = 24     // 動畫中（移動/淡出）
-    private let activeFPS: Double = 8         // 有活動但沒動畫
-    private let idleFPS: Double = 1           // 閒置
+    private let animationFPS: Double = 24
+    private let activeFPS: Double = 10
+    private let idleFPS: Double = 4
 
     private var lastRenderTime = CACurrentMediaTime()
+    private var lastActiveRenderTime = CACurrentMediaTime()
+    private let decayCooldown: CFTimeInterval = 2.0
 
-    /// 要求提高 FPS（由 PIPServiceMessages 在動畫開始時呼叫）
     func requestAnimationFPS() {
         let newFPS = messagesLayer?.isAnimating == true ? animationFPS : activeFPS
         guard abs(currentFPS - newFPS) > 0.1 else { return }
@@ -258,19 +230,18 @@ final class PIPService: NSObject, @unchecked Sendable {
         lastFPS = currentFPS
     }
 
-    /// overlay 需要重繪時呼叫（例如直播狀態改變）
     func markOverlayDirty() {
         currentFPS = max(currentFPS, activeFPS)
         rescheduleRenderTimer(fps: currentFPS)
         setNeedsRedraw()
     }
 
-    /// 閒置時降低 FPS
     func decayFPSIfNeeded() {
+        let now = CACurrentMediaTime()
+
         guard let messagesLayer = messagesLayer else {
             if currentFPS != idleFPS {
                 currentFPS = idleFPS
-                rescheduleRenderTimer(fps: idleFPS)
             }
             return
         }
@@ -278,7 +249,7 @@ final class PIPService: NSObject, @unchecked Sendable {
         let targetFPS: Double
         if messagesLayer.isAnimating {
             targetFPS = animationFPS
-        } else if !messagesLayer.pendingSegments.isEmpty {
+        } else if !messagesLayer.pendingSegments.isEmpty || (now - lastActiveRenderTime) < decayCooldown {
             targetFPS = activeFPS
         } else {
             targetFPS = idleFPS
@@ -286,7 +257,6 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         if abs(currentFPS - targetFPS) > 0.1 {
             currentFPS = targetFPS
-            rescheduleRenderTimer(fps: currentFPS)
             if lastFPS != currentFPS {
                 PIPLogTo("📉 fps -> \(currentFPS)")
                 lastFPS = currentFPS
@@ -301,47 +271,9 @@ final class PIPService: NSObject, @unchecked Sendable {
         messagesLayer?.scrollSpeed = time
     }
 
-
-//    func setupDebugImageView(in parentView: UIView, frame: CGRect) {
-//        let imageView = UIImageView(frame: frame)
-//        imageView.contentMode = .scaleAspectFit
-//        imageView.backgroundColor = .clear
-//        parentView.addSubview(imageView)
-//
-//        self.debugImageView = imageView
-//    }
-//
-//    func setupDebugDisplayLayer() {
-//        let layer = AVSampleBufferDisplayLayer()
-//
-//        layer.videoGravity = .resizeAspect
-//        layer.backgroundColor = #colorLiteral(red: 0.9372549057, green: 0.3490196168, blue: 0.1921568662, alpha: 1)
-//
-//        // ✅ 設置控制時間基準
-//        var timebase: CMTimebase?
-//        CMTimebaseCreateWithSourceClock(
-//            allocator: kCFAllocatorDefault,
-//            sourceClock: CMClockGetHostTimeClock(),
-//            timebaseOut: &timebase
-//        )
-//        if let tb = timebase {
-//            layer.controlTimebase = tb
-//            CMTimebaseSetTime(tb, time: .zero)
-//            CMTimebaseSetRate(tb, rate: 1.0)
-//        }
-//
-//
-//        self.debugDisplayLayer = layer
-//
-//        
-//    }
-
-
     private var renderTimer: DispatchSourceTimer?
 
     var messagesContainerView: UIView?
-
-
 
     private var displayLayer: AVSampleBufferDisplayLayer?
     private var pipController: AVPictureInPictureController?
@@ -349,7 +281,6 @@ final class PIPService: NSObject, @unchecked Sendable {
     private var basePTS: CFTimeInterval?
 
     private let dummyDelegate = DummyPlaybackDelegate()
-
 
     var frameSize: CGSize = .zero
     var OframeSize:CGSize = .zero
@@ -372,8 +303,6 @@ final class PIPService: NSObject, @unchecked Sendable {
         }
     }
 
-
-
     func setNeedsRedraw() {
         needsRedraw = true
     }
@@ -392,8 +321,6 @@ final class PIPService: NSObject, @unchecked Sendable {
         giftURL: String? = nil,
         isMain: Bool = true
     ) {
-        // 1️⃣ 先生成 tuple，先不帶圖片
-
         messagesLayer?
             .addMessage(
                 user: user,
@@ -402,11 +329,7 @@ final class PIPService: NSObject, @unchecked Sendable {
                 giftURL: giftURL,isMain:isMain
             )
         setNeedsRedraw()
-
     }
-
-
-
 
     // MARK: 直播結束訊息框
     private func drawBadge(
@@ -443,21 +366,14 @@ final class PIPService: NSObject, @unchecked Sendable {
         var textOriginX = rect.minX + padding.left
 
         if let icon {
-
-            
-           // 文字的中線位置
             let textMidY = rect.minY + padding.top + font.lineHeight / 2
-
-            // icon 高度取 capHeight，保持比例
             let targetHeight = font.capHeight
             let aspectRatio = icon.size.width / icon.size.height
             let targetWidth = targetHeight * aspectRatio
 
-                
-            // iconRect：跟文字中線對齊
             let iconRect = CGRect(
                 x: textOriginX,
-                y: textMidY - targetHeight / 2,   // icon 中心對齊文字中線
+                y: textMidY - targetHeight / 2,
                 width: targetWidth,
                 height: targetHeight
             )
@@ -467,7 +383,6 @@ final class PIPService: NSObject, @unchecked Sendable {
 
             textOriginX += targetWidth + iconSpacing
         }
-
 
         let textPoint = CGPoint(
             x: textOriginX,
@@ -492,7 +407,7 @@ final class PIPService: NSObject, @unchecked Sendable {
         return f.string(from: Date())
     }
 
-    // MARK: 時間顯示（快取版）
+    // MARK: 時間顯示
     private func drawTimeOverlay(in cg: CGContext, size: CGSize) {
 
         let timeText = currentTimeString()
@@ -511,7 +426,6 @@ final class PIPService: NSObject, @unchecked Sendable {
         let seconds = totalSeconds % 60
         let elapsedString = String(format: "%02d:%02d:%02d", hours, minutes, seconds)
 
-        // 快取檢查：只有當相關資料有變化時才重新繪製
         let ended = LPConfig.shared.StreamEnded
         let endMes = LPConfig.shared.StreamEndMes
         let viewerCount = LPConfig.shared.streamViewerCount
@@ -618,12 +532,6 @@ final class PIPService: NSObject, @unchecked Sendable {
         cg.restoreGState()
     }
 
-
-
-
-
-
-
     // CPU
     @MainActor
     private func renderUIViewToPixelBuffer(size: CGSize) -> CVPixelBuffer? {
@@ -638,7 +546,6 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         CVPixelBufferLockBaseAddress(pb, [])
         defer { CVPixelBufferUnlockBaseAddress(pb, []) }
-
 
         guard let baseAddress = CVPixelBufferGetBaseAddress(pb) else { return nil }
         let bytesPerRow = CVPixelBufferGetBytesPerRow(pb)
@@ -656,7 +563,6 @@ final class PIPService: NSObject, @unchecked Sendable {
             bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
         ) else { return nil }
 
-
         let scale = UIScreen.main.scale
 
         context.saveGState()
@@ -670,14 +576,8 @@ final class PIPService: NSObject, @unchecked Sendable {
         drawTimeOverlay(in: context, size: frameSize)
         context.restoreGState()
 
-
         return pb
-
     }
-
-
-
-
 
     // MARK: - Start PiP
     @MainActor
@@ -686,8 +586,6 @@ final class PIPService: NSObject, @unchecked Sendable {
     ) {
         stopPiP()
         setupAudioSession()
-
-        //setupDebugDisplayLayer()
 
         self.frameSize = size
 
@@ -698,45 +596,15 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         self.OframeSize = pixelSize
 
-
         setupPixelBufferPool(size: pixelSize)
 
         self.frameCount = 0
 
-
-        // 建立容器 UIView 原來給訊息組用顯示用的 棄用
-//        let containerView = UIView(
-//            frame: CGRect(origin: .zero, size: size)
-//        )
-//
-//        containerView.backgroundColor = .clear
-//        containerView.isOpaque = false
-//
-//        self.messagesContainerView = containerView
-//
-//        if let window = UIApplication.shared
-//            .connectedScenes
-//            .compactMap({ $0 as? UIWindowScene })
-//            .first?
-//            .windows
-//            .first {
-//            window.backgroundColor = .clear
-//            window.addSubview(containerView)
-//        }
-
-        // 建立訊息 Layer
         messagesLayer = PIPServiceMessages(
             size: size,
             scrollSpeed: LPConfig.shared
                 .ScrollTime)
 
-//        if let messagesLayer = messagesLayer {
-//            containerView.layer.addSublayer(messagesLayer.container)
-//        }
-
-
-
-        // Display Layer
         let layer = AVSampleBufferDisplayLayer()
 
         layer.videoGravity = .resizeAspect
@@ -744,11 +612,6 @@ final class PIPService: NSObject, @unchecked Sendable {
         layer.backgroundColor = UIColor.black.cgColor
         self.displayLayer = layer
 
-
-
-
-
-        // PiP Controller
         self.pipController = AVPictureInPictureController(
             contentSource: .init(sampleBufferDisplayLayer: layer, playbackDelegate: self.dummyDelegate)
         )
@@ -758,18 +621,15 @@ final class PIPService: NSObject, @unchecked Sendable {
 
         self.pipController?.delegate = self
 
-        // Attach displayLayer
         self.attachToForegroundWindow {
             PIPLogTo("OK Frame?")
             Task { @MainActor in
-
                 self.startRenderTimer()
             }
         }
-
     }
 
-    // MARK: - Attach displayLayer（不限 foreground scene）
+    // MARK: - Attach displayLayer
     private func attachToForegroundWindow(completion: @escaping () -> Void) {
 
         DispatchQueue.main.async { [weak self] in
@@ -780,13 +640,11 @@ final class PIPService: NSObject, @unchecked Sendable {
                 return
             }
 
-            // 如果已附加就直接完成
             if layer.superlayer != nil {
                 completion()
                 return
             }
 
-            // 找任何一個 connected scene（不限 foregroundActive）
             let scenes = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene })
             if let windowScene = scenes.first,
                let containerLayer = windowScene.windows.first?.rootViewController?.view.layer ?? windowScene.windows.first?.layer {
@@ -800,7 +658,6 @@ final class PIPService: NSObject, @unchecked Sendable {
 
                 layer.frame = displayFrame
 
-                // ControlTimebase
                 if layer.controlTimebase == nil {
                     var timebase: CMTimebase?
                     CMTimebaseCreateWithSourceClock(allocator: kCFAllocatorDefault, sourceClock: CMClockGetHostTimeClock(), timebaseOut: &timebase)
@@ -814,8 +671,7 @@ final class PIPService: NSObject, @unchecked Sendable {
                 layer.flushAndRemoveImage()
                 completion()
             } else {
-                // 沒有任何 scene（極罕見），等 0.5 秒再試
-                PIPLogTo("⚠️ 沒有可用的 windowScene，延後重試")
+                PIPLogTo("沒有可用的 windowScene，延後重試")
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     self.attachToForegroundWindow(completion: completion)
                 }
@@ -823,7 +679,6 @@ final class PIPService: NSObject, @unchecked Sendable {
         }
     }
 
-    /// 當 app 回前景時重新 attach displayLayer（防止被 iOS 移除）
     func reAttachDisplayLayerIfNeeded() {
         guard let layer = displayLayer, layer.superlayer == nil else { return }
         PIPLogTo("displayLayer 遺失，重新 attach")
@@ -847,73 +702,43 @@ final class PIPService: NSObject, @unchecked Sendable {
 
     // MARK: - Render Timer
     private func startRenderTimer() {
-        renderQueue.async { [weak self] in
-            self?.scheduleNextRender()
-        }
+        renderCancelled = false
+        scheduleNextRender()
     }
 
-
     private func scheduleNextRender() {
-        if renderTimer == nil {
-            renderTimer = DispatchSource.makeTimerSource(queue: renderQueue)
-
-            renderTimer?.schedule(
-                deadline: .now(), repeating: 1.0 / self.currentFPS ,
-                leeway: .milliseconds(10)
-            )
-
-            // 固定 60FPS timer
-            renderTimer?.setEventHandler { [weak self] in
-                guard let self = self else { return }
-
-                Task { @MainActor in
-                    await self.renderIncremental()
+        guard !renderCancelled else { return }
+        let interval = 1.0 / max(currentFPS, 1)
+        renderQueue.asyncAfter(deadline: .now() + interval) { [weak self] in
+            guard let self = self, !self.renderCancelled else { return }
+            Task { @MainActor in
+                let didWork = await self.renderIncremental()
+                if didWork {
+                    self.lastActiveRenderTime = CACurrentMediaTime()
                 }
+                self.scheduleNextRender()
             }
-            renderTimer?.resume()
         }
     }
 
     private func rescheduleRenderTimer(fps: Double) {
-        let interval = 1.0 / max(fps, 1)
-        renderQueue.async { [weak self] in
-            self?.renderTimer?.schedule(
-                deadline: .now(),
-                repeating: interval,
-                leeway: .milliseconds(10)
-            )
-        }
+        // self-scheduling: 不需要立即重排 timer，下一幀會用新的 currentFPS
     }
 
     private func cancelRenderTimer() {
-        renderQueue.async { [weak self] in
-            self?.renderTimer?.cancel()
-            self?.renderTimer = nil
-        }
+        renderCancelled = true
+        renderTimer?.cancel()
+        renderTimer = nil
     }
-
 
     func cleanupMessageslayer() {
-
         messagesLayer?.canncel()
         messagesLayer = nil
-
     }
-//    func cleanupMessagesContainer() {
-//        // 移除所有子層
-//        messagesContainerView?.layer.sublayers?.forEach { $0.removeFromSuperlayer() }
-//
-//        // 從 superview 移除
-//        messagesContainerView?.removeFromSuperview()
-//
-//        // 清空引用
-//        messagesContainerView = nil
-//    }
 
     // MARK: - Stop PiP
     func stopPiP() {
         cancelRenderTimer()
-
 
         self.pipController?.stopPictureInPicture()
         self.pipController = nil
@@ -930,7 +755,6 @@ final class PIPService: NSObject, @unchecked Sendable {
         lastRenderTime = CACurrentMediaTime()
         basePTS = nil
 
-
         pixelBufferPool = nil
         cachedFormatDescription = nil
         cachedFormatSize = .zero
@@ -941,7 +765,6 @@ final class PIPService: NSObject, @unchecked Sendable {
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         }
     }
-
 
     // MARK: - Incremental Render
     @MainActor
@@ -957,13 +780,11 @@ final class PIPService: NSObject, @unchecked Sendable {
             return false
         }
 
-        // 1️⃣ 驅動動畫（取代舊的 CADisplayLink）
         let wasAnimating = messagesLayer?.tickAnimation() == true
         if wasAnimating {
             requestAnimationFPS()
         }
 
-        // 2️⃣ 無變化時跳過 pixel buffer 渲染
         let now = CACurrentMediaTime()
         let periodicRedraw = !needsRedraw && !wasAnimating && (now - lastPeriodicRedraw) >= periodicRedrawInterval
         if periodicRedraw { needsRedraw = true }
@@ -975,7 +796,6 @@ final class PIPService: NSObject, @unchecked Sendable {
         needsRedraw = false
         if periodicRedraw { lastPeriodicRedraw = now }
 
-        // 3️⃣ 生成 PixelBuffer
         var pixelBuffer: CVPixelBuffer?
 
         pixelBuffer = renderIfNeeded()
@@ -992,18 +812,15 @@ final class PIPService: NSObject, @unchecked Sendable {
             return false
         }
 
-        // 4️⃣ enqueue
         displayLayer.enqueue(sampleBuffer)
         self.frameCount += 1
 
-        // 啟動 PiP
         if !self.didStartPiP && self.frameCount >= self.pipStartThreshold {
             self.safeTryStartPiP()
         }
 
         lastRenderTime = CACurrentMediaTime()
 
-        // 5️⃣ 渲染完成後調整 FPS
         decayFPSIfNeeded()
 
         return true
@@ -1042,7 +859,6 @@ final class PIPService: NSObject, @unchecked Sendable {
         cleanupMessageslayer()
     }
 
-    // 在 render 循環中保護 displayLayer 不被系統移除
     func ensureDisplayLayerAttached() {
         guard let layer = displayLayer, layer.superlayer == nil, didStartPiP else { return }
         PIPLogTo("displayLayer 遺失，在 render 中重新 attach")
@@ -1050,16 +866,7 @@ final class PIPService: NSObject, @unchecked Sendable {
             self?.attachToForegroundWindow {}
         }
     }
-
-
-
-
-
-
-
 }
-
-
 
 func PIPLogTo(_ message:String){
     if LPConfig.shared.PIPLog {
@@ -1071,6 +878,7 @@ func logTo(_ message:String){
     print(message)
     sendlog(message: message)
 }
+
 // =========================
 // AVPictureInPictureControllerDelegate
 // =========================
@@ -1078,11 +886,7 @@ extension PIPService: AVPictureInPictureControllerDelegate {
     internal func pictureInPictureControllerDidStartPictureInPicture(
         _ pictureInPictureController: AVPictureInPictureController
     ) {
-
-
         logTo("PIP Open")
-
-
     }
     internal func pictureInPictureControllerDidStopPictureInPicture(
         _ pictureInPictureController: AVPictureInPictureController
@@ -1092,15 +896,9 @@ extension PIPService: AVPictureInPictureControllerDelegate {
     }
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController,
                                     failedToStartPictureInPictureWithError error: Error) {
-
         logTo("PIP Error \(error)")
     }
 }
-
-
-
-
-
 
 final class PIPTestService: NSObject {
     static let shared = PIPTestService()
@@ -1141,8 +939,6 @@ final class PIPTestService: NSObject {
 
         layer.isOpaque = true
 
-
-        // ⭐️⭐️⭐️ 正確建立 timebase ⭐️⭐️⭐️
         var timebase: CMTimebase?
         let status = CMTimebaseCreateWithSourceClock(
             allocator: kCFAllocatorDefault,
@@ -1155,10 +951,8 @@ final class PIPTestService: NSObject {
             CMTimebaseSetTime(tb, time: .zero)
             CMTimebaseSetRate(tb, rate: 1.0)
         } else {
-            logTo("❌ Failed to create CMTimebase: \(status)")
+            logTo("Failed to create CMTimebase: \(status)")
         }
-
-
 
         self.displayLayer = layer
 
@@ -1170,7 +964,6 @@ final class PIPTestService: NSObject {
         {
             rootView.layer.addSublayer(layer)
             layer.frame = CGRect(origin: .zero, size: size)
-
         }
 
         self.pipController = AVPictureInPictureController(
@@ -1181,7 +974,6 @@ final class PIPTestService: NSObject {
         )
         self.pipController?.delegate = self
 
-        // 先送幾幀白畫面
         for _ in 0..<5 {
             renderWhiteFrame()
         }
@@ -1211,8 +1003,6 @@ final class PIPTestService: NSObject {
         frameCount = 0
         didStartPiP = false
 
-
-
         if !(userDefaults?.bool(forKey: "TTSEnabled") ?? false) {
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         }
@@ -1228,18 +1018,15 @@ final class PIPTestService: NSObject {
         let attrs: CFDictionary = [
             kCVPixelBufferCGImageCompatibilityKey: true,
             kCVPixelBufferCGBitmapContextCompatibilityKey: true,
-            kCVPixelBufferIOSurfacePropertiesKey: [:]   // ⭐️⭐️⭐️ 關鍵 ⭐️⭐️⭐️
+            kCVPixelBufferIOSurfacePropertiesKey: [:]
         ] as CFDictionary
 
         guard CVPixelBufferCreate(kCFAllocatorDefault, width, height,
                                   kCVPixelFormatType_32BGRA, attrs, &pixelBuffer) == kCVReturnSuccess,
               let pb = pixelBuffer else { return }
 
-
-
         CVPixelBufferLockBaseAddress(pb, [])
         if let baseAddress = CVPixelBufferGetBaseAddress(pb) {
-            // 填滿白色: ARGB => A=255, R=255, G=255, B=255
             let bufferPtr = baseAddress.assumingMemoryBound(to: UInt32.self)
             let count = CVPixelBufferGetDataSize(pb) / MemoryLayout<UInt32>.size
             for i in 0..<count {
@@ -1248,14 +1035,12 @@ final class PIPTestService: NSObject {
         }
         CVPixelBufferUnlockBaseAddress(pb, [])
 
-        // Timing
         let duration = CMTime(value: 1, timescale: 30)
         let pts = CMTime(value: frameCount, timescale: 30)
         var timing = CMSampleTimingInfo(duration: duration,
                                         presentationTimeStamp: pts,
                                         decodeTimeStamp: .invalid)
 
-        // SampleBuffer
         var formatDesc: CMVideoFormatDescription?
         CMVideoFormatDescriptionCreateForImageBuffer(allocator: kCFAllocatorDefault,
                                                      imageBuffer: pb,
@@ -1271,8 +1056,6 @@ final class PIPTestService: NSObject {
                                            sampleBufferOut: &sb)
         guard let sampleBuffer = sb else { return }
 
-
-        // ⭐️⭐️⭐️ 就加在這裡 ⭐️⭐️⭐️
         if let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: true) {
             let dict = unsafeBitCast(
                 CFArrayGetValueAtIndex(attachments, 0),
@@ -1285,22 +1068,17 @@ final class PIPTestService: NSObject {
             )
         }
 
-
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-
 
             print("[R]status:", displayLayer.status.rawValue)
             print("ready:", displayLayer.isReadyForMoreMediaData)
             print("pip active:", pipController?.isPictureInPictureActive as Any)
 
             if displayLayer.isReadyForMoreMediaData {
-
-
                 displayLayer.enqueue(sampleBuffer)
                 self.frameCount += 1
                 logTo("FrameC:\(frameCount)")
-
 
                 if !self.didStartPiP && self.frameCount >= self.pipStartThreshold {
                     self.pipController?.startPictureInPicture()
@@ -1311,8 +1089,6 @@ final class PIPTestService: NSObject {
     }
 }
 
-
-
 // =========================
 // AVPictureInPictureControllerDelegate
 // =========================
@@ -1320,7 +1096,6 @@ extension PIPTestService: AVPictureInPictureControllerDelegate {
     internal func pictureInPictureControllerDidStartPictureInPicture(
         _ pictureInPictureController: AVPictureInPictureController
     ) {
-
         logTo("PIP Open")
     }
     internal func pictureInPictureControllerDidStopPictureInPicture(
@@ -1331,11 +1106,6 @@ extension PIPTestService: AVPictureInPictureControllerDelegate {
     }
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController,
                                     failedToStartPictureInPictureWithError error: Error) {
-
         logTo("PIP Error \(error)")
     }
 }
-
-
-
-
