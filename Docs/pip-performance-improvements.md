@@ -157,6 +157,19 @@
 
 其餘管線（VideoProcess → GPUVideoRotator/CPURotator → MediaMixer）均為純透傳 ReplayKit 原始 PTS，無合成/修改，無 PTS 倒轉風險。
 
+## 14. PiP 渲染回歸 scale 並以 CGContextFillRect 取代 memset
+
+### `liveAPP/PIPService.swift`
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| 300x200 pixel buffer 在 Retina 螢幕模糊 | 1x pixel buffer 被系統放大到 2x/3x，文字圖形模糊 | 恢復 `OframeSize = frameSize × UIScreen.main.scale`，context 加入 scale 縮放後繪製，pixel buffer 與顯示像素 1:1 |
+| `memset` 是 CPU bound | `memset(baseAddress, 0, bytesPerRow × height)` 在 600×400 (2x) 每次寫 960KB，900×600 (3x) 寫 2.1MB，全部 CPU 頻寬 | 改用 `context.setFillColor(.black) + context.fill(CGRect(...))`，純色填滿在 iOS 16+ 可能由 Window Server 走 GPU 加速，且統一在 CGContext 管線中 |
+
+### 未來方向 — `liveAPP/PIPMetalRenderer.swift`
+
+Metal renderer 已建立（含 device / commandQueue / CVMetalTextureCache / GPU clear pass），目前未啟用。可在此基礎上將整個 render pipeline 搬上 GPU（clear + 內容繪製），完全消除 CPU-side pixel buffer 操作。
+
 ## 檔案變更
 
 | 檔案 | 行數變化 |
@@ -169,3 +182,4 @@
 | `liveAPP/Socket.swift` | -20 (startActivityIdleTimer no-op, releaseMemory 精簡, stopInternal 清理) |
 | `ReplyKIT/AudioProcess.swift` | -2 (移除 dead currentPTS) +10 (monotonic PTS clamp) |
 | `ReplyKIT/GPUVideoRotator.swift` | -2 (移除 dead lastPTS) |
+| `liveAPP/PIPMetalRenderer.swift` | +75 (新檔，Metal clear pass scaffold) |
