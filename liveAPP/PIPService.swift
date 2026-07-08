@@ -735,7 +735,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         self.debugDisplayLayer = nil
 
         self.frameCount = 0
-        didStartPiP = false
+        isPiPActive = false
 
         lastRenderTime = CACurrentMediaTime()
         basePTS = nil
@@ -800,7 +800,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         displayLayer.enqueue(sampleBuffer)
         self.frameCount += 1
 
-        if !self.didStartPiP && self.frameCount >= self.pipStartThreshold {
+        if !self.isPiPActive && self.frameCount >= self.pipStartThreshold {
             self.safeTryStartPiP()
         }
 
@@ -813,7 +813,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
     func appDidEnterBackground() {
         isInBackground = true
-        if didStartPiP {
+        if isPiPActive {
             PIPLogTo("PiP active 進入背景（audio mode 保持存活）")
         }
     }
@@ -833,7 +833,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     }
 
     func releaseNonCriticalMemory() {
-        guard !didStartPiP else { return }
+        guard !isPiPActive else { return }
         cancelRenderTimer()
         pixelBufferPool = nil
         cachedFormatDescription = nil
@@ -844,7 +844,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     }
 
     func ensureDisplayLayerAttached() {
-        guard let layer = displayLayer, layer.superlayer == nil, didStartPiP else { return }
+        guard let layer = displayLayer, layer.superlayer == nil, isPiPActive else { return }
         PIPLogTo("displayLayer 遺失，在 render 中重新 attach")
         DispatchQueue.main.async { [weak self] in
             self?.attachToForegroundWindow {}
@@ -892,7 +892,7 @@ final class PIPTestService: NSObject {
     private var pipController: AVPictureInPictureController?
     private var renderTimer: DispatchSourceTimer?
     private var frameCount: Int64 = 0
-    private var didStartPiP = false
+    private var isPiPActive = false
     private let pipStartThreshold: Int64 = 3
     private var frameSize: CGSize = CGSize(width: 300, height: 200)
 
@@ -915,7 +915,7 @@ final class PIPTestService: NSObject {
 
         self.frameSize = size
         self.frameCount = 0
-        self.didStartPiP = false
+        self.isPiPActive = false
 
         let layer = AVSampleBufferDisplayLayer()
         layer.videoGravity = .resizeAspect
@@ -985,7 +985,7 @@ final class PIPTestService: NSObject {
         displayLayer?.removeFromSuperlayer()
         displayLayer = nil
         frameCount = 0
-        didStartPiP = false
+        isPiPActive = false
 
         if !(userDefaults?.bool(forKey: "TTSEnabled") ?? false) {
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
@@ -1064,9 +1064,9 @@ final class PIPTestService: NSObject {
                 self.frameCount += 1
                 logTo("FrameC:\(frameCount)")
 
-                if !self.didStartPiP && self.frameCount >= self.pipStartThreshold {
+                if !self.isPiPActive && self.frameCount >= self.pipStartThreshold {
                     self.pipController?.startPictureInPicture()
-                    self.didStartPiP = true
+                    self.isPiPActive = true
                 }
             }
         }
