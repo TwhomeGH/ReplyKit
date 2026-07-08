@@ -91,7 +91,7 @@ final class PIPService: NSObject, @unchecked Sendable {
     var isAnimatingMessages = false
     private var needsRedraw = true
     private var lastPeriodicRedraw: CFTimeInterval = CACurrentMediaTime()
-    private let periodicRedrawInterval: CFTimeInterval = 30.0
+    private let periodicRedrawInterval: CFTimeInterval = 1.0
 
     private var pixelBufferPool: CVPixelBufferPool?
     private let pixelBufferPoolSize = 3  // 可根據 FPS 調整
@@ -516,15 +516,6 @@ final class PIPService: NSObject, @unchecked Sendable {
         let endMes = LPConfig.shared.StreamEndMes
         let viewerCount = LPConfig.shared.streamViewerCount
         let isReconnecting = LPConfig.shared.isReconnecting
-
-        if cachedTimeString == timeText
-            && cachedElapsedString == elapsedString
-            && lastOverlayStreamEnded == ended
-            && lastOverlayStreamEndMes == endMes
-            && lastOverlayViewerCount == viewerCount
-            && lastOverlayIsReconnecting == isReconnecting {
-            return // 快取命中，不需重繪
-        }
 
         cachedTimeString = timeText
         cachedElapsedString = elapsedString
