@@ -569,14 +569,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
         guard let pb = pixelBuffer else { return nil }
 
-        if let metal = PIPMetalRenderer.shared {
-var mData = messagesLayer?.collectRenderData(scale: UIScreen.main.scale, containerWidth: frameSize.width) ?? PIPRenderData(textItems: [], imageItems: [])
-            mData.textItems += overlayTextItems(scale: UIScreen.main.scale)
-            if self.frameCount % 300 == 0 { PIPLogTo("🎨 Metal GPU render \(mData.textItems.count) texts, \(mData.imageItems.count) images") }
-            metal.render(pixelBuffer: pb, renderData: mData)
-            return pb
-        }
-
+        if self.frameCount % 300 == 0 { PIPLogTo("🎨 CPU render (Metal disabled)") }
         if self.frameCount % 300 == 0 { PIPLogTo("🎨 CPU fallback render") }
 
         CVPixelBufferLockBaseAddress(pb, [])
