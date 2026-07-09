@@ -853,7 +853,7 @@ struct liveAPPApp: App {
             forName: UIApplication.didReceiveMemoryWarningNotification,
             object: nil,
             queue: .main
-        ) { [self] _ in
+        ) { _ in
 
             sendlog(message: "⚠️ 收到 Memory Warning")
 

@@ -11,7 +11,7 @@ final class PIPMetalRenderer {
     let textureCache: CVMetalTextureCache
     let pipelineState: MTLRenderPipelineState
 
-    private var textTextureCache: [String: (texture: MTLTexture, width: Int, height: Int)] = [:]
+    private var textTextureCache: [String: (texture: MTLTexture, w: Int, h: Int)] = [:]
 
     private init?() {
         guard let device = MTLCreateSystemDefaultDevice(),

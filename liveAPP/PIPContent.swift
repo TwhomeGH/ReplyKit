@@ -1784,7 +1784,7 @@ final class PIPServiceMessages {
     private func easeOutCubic(_ t: Double) -> Double {
         1 - pow(1 - t, 3)
     }
-}
+
     // MARK: - Metal Render Data
     func collectRenderData(scale: CGFloat, containerWidth: CGFloat) -> PIPRenderData {
         var textItems: [PIPTextItem] = []
@@ -1793,12 +1793,12 @@ final class PIPServiceMessages {
             let alpha = msg.alpha
             let y = msg.adjustedY
             if let nameLayer = msg.name, let string = nameLayer.string as? String {
-                textItems.append(PIPTextItem(text: string, font: msg.font ?? .systemFont(ofSize: 14), color: .white, point: CGPoint(x: msg.textX, y: y), alpha: alpha))
+                textItems.append(PIPTextItem(text: string, font: msg.font ?? UIFont.systemFont(ofSize: 14), color: .white, point: CGPoint(x: msg.textX, y: y), alpha: alpha))
             }
             if let msgLayer = msg.message, let string = msgLayer.string as? String {
                 var msgY = y
-                if msg.name != nil { msgY = y + (msg.font ?? .systemFont(ofSize: 14)).lineHeight + msg.verticalSpacing }
-                textItems.append(PIPTextItem(text: string, font: msg.font ?? .systemFont(ofSize: 14), color: .white, point: CGPoint(x: msg.textX, y: msgY), alpha: alpha))
+                if msg.name != nil { msgY = y + (msg.font ?? UIFont.systemFont(ofSize: 14)).lineHeight + msg.verticalSpacing }
+                textItems.append(PIPTextItem(text: string, font: msg.font ?? UIFont.systemFont(ofSize: 14), color: .white, point: CGPoint(x: msg.textX, y: msgY), alpha: alpha))
             }
             if let avatarLayer = msg.avatar {
                 imageItems.append(PIPImageItem(image: avatarLayer.contents as? UIImage, frame: avatarLayer.frame, alpha: alpha, cornerRadius: avatarLayer.cornerRadius))
@@ -1809,6 +1809,7 @@ final class PIPServiceMessages {
         }
         return PIPRenderData(textItems: textItems, imageItems: imageItems)
     }
+}
 
 
 func PIPChatLog(_ message:String){
