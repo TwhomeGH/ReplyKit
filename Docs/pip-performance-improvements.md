@@ -157,42 +157,46 @@
 
 其餘管線（VideoProcess → GPUVideoRotator/CPURotator → MediaMixer）均為純透傳 ReplayKit 原始 PTS，無合成/修改，無 PTS 倒轉風險。
 
-## 14. PiP GPU 渲染管線（Metal + IOSurface）
+## 14. PiP 渲染優化（CPU 路徑）
 
-### `liveAPP/PIPService.swift` / `liveAPP/PIPMetalRenderer.swift` / `liveAPP/PIPContent.swift`
+### 最終決策
 
-| 問題 | 原因 | 修正 |
-|------|------|------|
-| CPU pixel buffer 每次 frame 全量 memset + CALayer.render | `memset` 寫入全 buffer + `CALayer.render(in:)` CPU 合成，在 2x/3x 下成本倍數成長 | 新增 `PIPMetalRenderer`，透過 `CVMetalTextureCache` 將 IOSurface-backed CVPixelBuffer 橋接為 `MTLTexture`，GPU clear + GPU textured quad 合成 |
-| 文字在 Metal 無法直接繪製 | Metal 無內建文字渲染 | 每個文字用 Core Text render 到小 bitmap `→` 上傳 `MTLTexture` `→` GPU textured quad；文字 texture 有 cache |
-| 圖片（頭貼/禮物）同樣 CPU 合成 | CALayer render 時 CPU compositing | 讀取 `CALayer.contents` 的 CGImage `→` Core Graphics render 到 bitmap `→` Metal texture `→` GPU quad |
-| 需要確認實際走 GPU 還是 CPU | Metal 可能因裝置不支援而 fallback | 每 300 幀 `sendlog("🎨 Metal GPU render")` / `sendlog("🎨 CPU fallback render")` |
+| 方案 | 測試結果 | 結論 |
+|------|----------|------|
+| 1x pixel buffer（300x200） | 效能佳但 Retina 螢幕模糊 | ❌ 捨棄 |
+| scale pixel buffer + CPU 繪製（目前方案） | 穩定、清晰、效能足夠 | ✅ 採用 |
+| Metal GPU 全管線（textured quad + 文字 bitmap） | 複雜度高、premultiplied alpha 與文字渲染品質難調 | ❌ 暫緩 |
 
-### 資料流對比
+**觀察**：CPU 路徑在 idle 4 FPS / active 10 FPS 下，`CVPixelBuffer` 的 IOSurface 特性讓 display layer 讀取近乎零成本；`CGContextFillRect` 取代 `memset` 維持穩定幀率，無掉幀或卡頓。Metal 版的文字渲染品質問題（粉筆灰效應、premultiplied alpha blend 不正確）耗費大量除錯時間，且 CPU 路徑已滿足效能需求，**Metal 版本無立即必要**。
+
+### 現行 CPU 路徑設計
 
 ```
-改善前（全 CPU）：
-  pool → CVPixelBuffer → LockBaseAddress → memset(CPU) → CGContext → CALayer.render(CPU) → drawTimeOverlay(CPU) → Unlock → CMSampleBuffer → displayLayer
-
-改善後（Metal GPU）：
-  pool → CVPixelBuffer(IOSurface) → CVMetalTextureCache → MTLTexture
-    → Metal clear(GPU) → text quads(GPU) → image quads(GPU) → Commit
-  → CMSampleBuffer → displayLayer
-
-  (fallback): 同上 CPU 路徑
+pool → CVPixelBuffer(IOSurface) → LockBaseAddress
+  → CGContextFillRect（取代 memset）
+  → CALayer.render(in:) (scale transform 2x/3x)
+  → drawTimeOverlay (scale transform 2x/3x)
+  → Unlock → CMSampleBuffer → displayLayer
 ```
 
-### 未來方向
+### Metal 實驗保留檔案
 
-| 項目 | 狀態 |
-|------|------|
-| `PIPMetalRenderer` scaffold（device / queue / cache） | ✅ 完成 |
-| GPU clear pass | ✅ 完成 |
-| Text textured quad rendering + cache | ✅ 完成 |
-| Image textured quad rendering | ✅ 完成 |
-| GPU/CPU log switch | ✅ 完成 |
-| 時間疊加層（drawTimeOverlay）搬上 Metal | ⏳ todo |
-| 效率：避免每幀 bitmap render（改用 SDF text 或 Metal 原生文字） | 🔮 長期 |
+`PIPMetalRenderer.swift`、`PIPMetalRenderData.swift`、`PIPShaders.metal` 保留但不啟用，供日後參考。
+
+### 最終參數
+
+| 項目 | 值 |
+|------|-----|
+| pixel buffer 尺寸 | `frameSize × UIScreen.main.scale`（300×200 → 600×400 或 900×600） |
+| idle FPS | 4 |
+| active FPS | 10 |
+| animation FPS | 24 |
+| periodic redraw | 1s |
+| render 排程 | self-scheduling（完成一幀才排下一幀） |
+| clear | `CGContextFillRect(.black)` |
+| 文字繪製 | CPU Core Graphics |
+
+## 檔案變更
 
 ## 檔案變更
 
@@ -200,8 +204,8 @@
 
 | 檔案 | 行數變化 |
 |------|----------|
-| `liveAPP/PIPService.swift` | -46 (actor) +80 (dirty flag, overlay cache, periodic redraw) +22 (tiered memory, forceRender, isPiPActive) ~40 (self-scheduling, renderCancelled, cooldown, FPS tune) -2 (移除 PiPImageCache.clear) +3 (ObservableObject, @Published) +20 (Metal integration + log) |
-| `liveAPP/PIPContent.swift` | -1 (redundant layout) +1 (reloadPending guard) -3 (~PIPView @State 改 @ObservedObject) +45 (collectRenderData) |
-| `liveAPP/PIPMetalRenderer.swift` | +250 (新檔，完整 Metal render pipeline) |
-| `liveAPP/PIPMetalRenderData.swift` | +25 (新檔，PIPRenderData / PIPTextItem / PIPImageItem) |
-| `liveAPP/PIPShaders.metal` | +30 (新檔，vertex_quad / fragment_texture shaders) |
+| `liveAPP/PIPService.swift` | -46 (actor) +80 (dirty flag, overlay cache, periodic redraw) +22 (tiered memory, forceRender, isPiPActive) ~40 (self-scheduling, renderCancelled, cooldown, FPS tune) -2 (移除 PiPImageCache.clear) +3 (ObservableObject, @Published) |
+| `liveAPP/PIPContent.swift` | -1 (redundant layout) +1 (reloadPending guard) -3 (~PIPView @State 改 @ObservedObject) |
+| `liveAPP/PIPMetalRenderer.swift` | +66 (新檔，僅 GPU clear, 未啟用) |
+| `liveAPP/PIPMetalRenderData.swift` | +20 (新檔，資料結構, 未啟用) |
+| `liveAPP/PIPShaders.metal` | +30 (新檔，Metal shaders, 未啟用) |

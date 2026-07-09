@@ -530,33 +530,6 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         cg.restoreGState()
     }
 
-    // MARK: - Metal Overlay Items
-    private func overlayTextItems(scale: CGFloat) -> [PIPTextItem] {
-        let timeText = currentTimeString()
-        let totalSeconds = Int(LPConfig.shared.lastStreamTime)
-        let hours = totalSeconds / 3600
-        let minutes = (totalSeconds % 3600) / 60
-        let seconds = totalSeconds % 60
-        let elapsedString = String(format: "%02d:%02d:%02d", hours, minutes, seconds)
-        let font = UIFont.monospacedDigitSystemFont(ofSize: 14, weight: .regular)
-        let labelFont = UIFont.systemFont(ofSize: 14, weight: .medium)
-        let timeFont = UIFont.monospacedDigitSystemFont(ofSize: 16, weight: .regular)
-        let line = "現在時間 " + timeText
-        let lineW = (line as NSString).size(withAttributes: [.font: timeFont]).width
-        let timeX = (frameSize.width - lineW) / 2
-        var items: [PIPTextItem] = []
-        items.append(PIPTextItem(text: line, font: timeFont, color: .white, point: CGPoint(x: timeX, y: 38), alpha: 1))
-        items.append(PIPTextItem(text: elapsedString, font: font, color: .white, point: CGPoint(x: 50, y: 20), alpha: 1))
-        let endMes = LPConfig.shared.StreamEndMes
-        if !endMes.isEmpty {
-            items.append(PIPTextItem(text: endMes, font: labelFont, color: .white, point: CGPoint(x: 148, y: 20), alpha: 1))
-        }
-        if let vc = LPConfig.shared.streamViewerCount {
-            items.append(PIPTextItem(text: String(vc), font: labelFont, color: UIColor(white: 0.16, alpha: 1), point: CGPoint(x: 200, y: 20), alpha: 1))
-        }
-        return items
-    }
-
     // CPU
     @MainActor
     private func renderUIViewToPixelBuffer(size: CGSize) -> CVPixelBuffer? {
@@ -569,8 +542,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
         guard let pb = pixelBuffer else { return nil }
 
-        if self.frameCount % 300 == 0 { PIPLogTo("🎨 CPU render (Metal disabled)") }
-        if self.frameCount % 300 == 0 { PIPLogTo("🎨 CPU fallback render") }
+        if self.frameCount % 300 == 0 { PIPLogTo("🎨 CPU render \(Int(OframeSize.width))x\(Int(OframeSize.height))") }
 
         CVPixelBufferLockBaseAddress(pb, [])
         defer { CVPixelBufferUnlockBaseAddress(pb, []) }
