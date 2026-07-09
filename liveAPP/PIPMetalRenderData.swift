@@ -16,6 +16,6 @@ struct PIPImageItem {
 }
 
 struct PIPRenderData {
-    let textItems: [PIPTextItem]
-    let imageItems: [PIPImageItem]
+    var textItems: [PIPTextItem]
+    var imageItems: [PIPImageItem]
 }
