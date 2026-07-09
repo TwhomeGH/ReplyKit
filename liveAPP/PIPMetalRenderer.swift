@@ -42,9 +42,9 @@ final class PIPMetalRenderer {
         pDesc.fragmentFunction = fragmentFn
         pDesc.colorAttachments[0].pixelFormat = .bgra8Unorm
         pDesc.colorAttachments[0].isBlendingEnabled = true
-        pDesc.colorAttachments[0].sourceRGBBlendFactor = .sourceAlpha
+        pDesc.colorAttachments[0].sourceRGBBlendFactor = .one
         pDesc.colorAttachments[0].destinationRGBBlendFactor = .oneMinusSourceAlpha
-        pDesc.colorAttachments[0].sourceAlphaBlendFactor = .sourceAlpha
+        pDesc.colorAttachments[0].sourceAlphaBlendFactor = .one
         pDesc.colorAttachments[0].destinationAlphaBlendFactor = .oneMinusSourceAlpha
 
         guard let ps = try? device.makeRenderPipelineState(descriptor: pDesc) else {

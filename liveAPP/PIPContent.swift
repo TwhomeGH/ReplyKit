@@ -1792,19 +1792,29 @@ final class PIPServiceMessages {
         for msg in stackedMessages where msg.alpha > 0 {
             let alpha = msg.alpha
             let y = msg.adjustedY
-            if let nameLayer = msg.name, let string = nameLayer.string as? String {
+
+            func extractString(_ layer: CATextLayer?) -> String? {
+                guard let s = layer?.string else { return nil }
+                if let str = s as? String { return str }
+                if let attr = s as? NSAttributedString { return attr.string }
+                return nil
+            }
+
+            if let string = extractString(msg.name) {
                 textItems.append(PIPTextItem(text: string, font: msg.font ?? UIFont.systemFont(ofSize: 14), color: .white, point: CGPoint(x: msg.textX, y: y), alpha: alpha))
             }
-            if let msgLayer = msg.message, let string = msgLayer.string as? String {
+            if let string = extractString(msg.message) {
                 var msgY = y
                 if msg.name != nil { msgY = y + (msg.font ?? UIFont.systemFont(ofSize: 14)).lineHeight + msg.verticalSpacing }
                 textItems.append(PIPTextItem(text: string, font: msg.font ?? UIFont.systemFont(ofSize: 14), color: .white, point: CGPoint(x: msg.textX, y: msgY), alpha: alpha))
             }
-            if let avatarLayer = msg.avatar {
-                imageItems.append(PIPImageItem(image: avatarLayer.contents as? UIImage, frame: avatarLayer.frame, alpha: alpha, cornerRadius: avatarLayer.cornerRadius))
+            if let avatarLayer = msg.avatar, let cgImg = avatarLayer.contents {
+                let img = UIImage(cgImage: cgImg as! CGImage)
+                imageItems.append(PIPImageItem(image: img, frame: avatarLayer.frame, alpha: alpha, cornerRadius: avatarLayer.cornerRadius))
             }
-            if let giftLayer = msg.gift {
-                imageItems.append(PIPImageItem(image: giftLayer.contents as? UIImage, frame: giftLayer.frame, alpha: alpha, cornerRadius: giftLayer.cornerRadius))
+            if let giftLayer = msg.gift, let cgImg = giftLayer.contents {
+                let img = UIImage(cgImage: cgImg as! CGImage)
+                imageItems.append(PIPImageItem(image: img, frame: giftLayer.frame, alpha: alpha, cornerRadius: giftLayer.cornerRadius))
             }
         }
         return PIPRenderData(textItems: textItems, imageItems: imageItems)
