@@ -541,7 +541,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         let font = UIFont.monospacedDigitSystemFont(ofSize: 14, weight: .regular)
         let labelFont = UIFont.systemFont(ofSize: 14, weight: .medium)
         let timeFont = UIFont.monospacedDigitSystemFont(ofSize: 16, weight: .regular)
-        let line = "\u73b0\u5728\u6642\u9593 " + timeText
+        let line = "現在時間 " + timeText
         let lineW = (line as NSString).size(withAttributes: [.font: timeFont]).width
         let timeX = (frameSize.width - lineW) / 2
         var items: [PIPTextItem] = []
