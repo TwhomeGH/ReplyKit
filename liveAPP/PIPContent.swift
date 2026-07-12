@@ -1,4 +1,4 @@
-//
+﻿﻿//
 //  PIPContent.swift
 //  liveAPP
 //
@@ -1088,10 +1088,11 @@ final class PIPServiceMessages {
 
 
             let (cleanMessage, emojiURLs) = Self.extractAllImageURLs(from: message)
+            let messageToShow = cleanMessage.isEmpty && !emojiURLs.isEmpty ? " " : cleanMessage
 
             let segments = self.splitLongMessage(
                 type: type, user: user,
-                message: cleanMessage,
+                message: messageToShow,
                 imgURL:imgURL,
                 giftURL: giftURL,
                 emojiURLs: emojiURLs,
@@ -1277,7 +1278,12 @@ final class PIPServiceMessages {
                             guard idx < msg.inlineEmojis.count else { return }
                             msg.inlineEmojis[idx].contents = image?.cgImage
                             if let imgSize = image?.size {
-                                msg.inlineEmojiSizes[idx] = imgSize
+                                let maxSize = msg.giftSize ?? self.giftSize
+                                let scale = min(maxSize / imgSize.width, maxSize / imgSize.height)
+                                msg.inlineEmojiSizes[idx] = CGSize(
+                                    width: imgSize.width * scale,
+                                    height: imgSize.height * scale
+                                )
                             }
                         }
                     }
