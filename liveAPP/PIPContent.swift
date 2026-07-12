@@ -952,7 +952,7 @@ final class PIPServiceMessages {
         tuple.avatarSize = avatarSizeLocal
         tuple.giftSize = giftSizeLocal
         tuple.inlineEmoji = emojiLayer
-        tuple.inlineEmojiSize = giftSizeLocal
+        tuple.inlineEmojiSize = CGSize(width: giftSizeLocal, height: giftSizeLocal)
 
         tuple.verticalSpacing = verticalSpacing
         tuple.horizontalSpacing = horizontalSpacing
@@ -1838,7 +1838,7 @@ final class PIPServiceMessages {
 
         // Inline Emoji
         if let emoji = msg.inlineEmoji {
-            let emojiSize = msg.inlineEmojiSize ?? giftSizeLocal
+            let emojiSize = (msg.inlineEmojiSize?.width ?? giftSizeLocal)
             let messageFrame = msg.message?.frame ?? .zero
 
             let emojiX = msg.name != nil
