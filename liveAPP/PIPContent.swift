@@ -1020,7 +1020,7 @@ final class PIPServiceMessages {
 
     static func extractAllImageURLs(from message: String) -> (cleaned: String, imageURLs: [String]) {
         let imageExtensions = ["png", "jpg", "jpeg", "gif", "webp", "PNG", "JPG", "JPEG", "GIF", "WEBP"]
-        let pattern = "(https?://[^\\s]+\\.(" + imageExtensions.joined(separator: "|") + "))"
+        let pattern = "(https?://[^\\s]+\\.(" + imageExtensions.joined(separator: "|") + ")(\\?[^\\s]*)?)"
 
         guard let regex = try? NSRegularExpression(pattern: pattern) else {
             return (message, [])
