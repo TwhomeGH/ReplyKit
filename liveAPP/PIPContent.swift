@@ -1863,7 +1863,7 @@ final class PIPServiceMessages {
 
         // Inline Emoji
         let messageFrame = msg.message?.frame ?? .zero
-        var emojiCursorX = messageFrame.minX
+        var emojiCursorX = messageFrame.maxX
 
         for (idx, emoji) in msg.inlineEmojis.enumerated() {
             let emojiSize = idx < msg.inlineEmojiSizes.count ? msg.inlineEmojiSizes[idx].width : giftSizeLocal
