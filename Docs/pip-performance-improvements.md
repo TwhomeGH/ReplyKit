@@ -107,14 +107,14 @@
 - `removeMessage()` → `populateVisibleMessagesIfNeeded()` + `layoutTargetsAndStartAnimation()`
 - `onMoveFinished()` → `populateVisibleMessagesIfNeeded()` + `layoutTargetsAndStartAnimation()`
 
-## 9. SocketServer 保持常駐 + 輕量 memory release
+## 9. SocketServer 保持常駐 + 移除 per-connection idle timer
 
 ### `liveAPP/Socket.swift`
 
 | 問題 | 原因 | 修正 |
 |------|------|------|
 | 1 小時無連線後 server 自殺 | `startActivityIdleTimer(3600)` 在 `start()` 和 `removeConnection()` 最後連線移除時啟動 | 改為 no-op，`NWListener` 持續監聽，永不自動關閉 |
-| Memory Warning 時清除 idle timers | `releaseMemory()` 將 per-connection idle timers 全部 cancel，導致連線遺失後無法自動清理 | 只清 send/receive buffer，保留 per-connection idle timers |
+| Per-connection 60s idle timer 在多頁快速切換時造成連線被誤關 | `resetIdleTimer()` 每條連線獨立 60s timer，audioPage↔logPage 頻繁切換產生大量連線，部分被 idle timeout 錯誤關閉 | 完全移除 per-connection idle timer (`idleTimers` dictionary、`resetIdleTimer()`、所有 call site)；改用 NWConnection state 監控 + `maxConnections` 限制做 cleanup |
 | `stopInternal()` 無謂操作 `idleTimerActivity` | activity timer 已廢除但仍嘗試 cancel | 移除相關代碼 |
 
 ## 10. NSCache 自動回收取代 Memory Warning 強制清除
@@ -157,6 +157,16 @@
 
 其餘管線（VideoProcess → GPUVideoRotator/CPURotator → MediaMixer）均為純透傳 ReplayKit 原始 PTS，無合成/修改，無 PTS 倒轉風險。
 
+## 13. 頁面切換頻率保護
+
+### `liveAPP/ContentView.swift`
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| audioPage 與 logPage 快速切換造成大量連線建立與取消 | 每次 `onChange(of: currentPage)` 立即發送 Darwin notification，extension 收到後建立 E-Socket 連線請求 config | 加入 300ms debounce：`DispatchWorkItem` + `asyncAfter`，快速切換只處理最後一次 |
+
+---
+
 ## 14. 子母窗口行內表情支援（Inline Emoji）
 
 ### `liveAPP/PIPContent.swift`
@@ -183,13 +193,14 @@ Socket message: "https://example.com/3.png 哈哈哈"
 
 | 型別 | 新增欄位 | 用途 |
 |------|----------|------|
-| `MessageSegmentData` | `inlineEmojiURL: String?` | 存放從訊息文字解析出的圖片網址 |
-| `MessageLayerTuple` | `inlineEmoji: CALayer?` | 表情圖片的 Core Animation 圖層 |
-| `MessageLayerTuple` | `inlineEmojiSize: CGSize?` | 表情圖層大小快取，用於 positioning |
+| `MessageSegmentData` | `inlineEmojiURLs: [String]` | 存放從訊息文字解析出的所有圖片網址（支援多個） |
+| `MessageLayerTuple` | `inlineEmojis: [CALayer]` | 表情圖片的 Core Animation 圖層陣列 |
+| `MessageLayerTuple` | `inlineEmojiSizes: [CGSize]` | 表情圖層大小快取陣列 |
 
 ### 渲染行為
 
 - 表情圖片僅附加於**第一個文字 segment**（`index == 0`），避免多行重複顯示
+- 支援**多個表情**同時顯示，依序水平排列於訊息文字起始處
 - 表情圖層定位在**名稱文字後方**，垂直居中於訊息文字列
 - 表情圖層與 avatar/gift 共用 `LayerPool` 的 image layer 回收機制
 - 表情圖片透過 `PiPImageCache` 載入，支援 NSCache 快取與 concurrent 限制

@@ -187,8 +187,8 @@ final class MessageLayerTuple:Equatable {
     var verticalSpacing: CGFloat = 4
     var horizontalSpacing: CGFloat = 4
 
-    var inlineEmoji: CALayer?
-    var inlineEmojiSize: CGSize?
+    var inlineEmojis: [CALayer] = []
+    var inlineEmojiSizes: [CGSize] = []
 
 
     var overflowHeight: CGFloat?
@@ -253,7 +253,7 @@ struct MessageSegmentData {
     let giftURL: String?
     let giftSizeLocal:CGFloat?
 
-    let inlineEmojiURL: String?
+    let inlineEmojiURLs: [String]
 
     let font:UIFont?
 
@@ -651,7 +651,7 @@ final class PIPServiceMessages {
         message: String,
         imgURL: String?,
         giftURL: String?,
-        emojiURL: String? = nil,
+        emojiURLs: [String] = [],
         font: UIFont,
         avatarSizeLocal: CGFloat,
         giftSizeLocal: CGFloat,
@@ -726,7 +726,7 @@ final class PIPServiceMessages {
                     avatarSizeLocal: avatarSizeLocal,
                     giftURL: nil,
                     giftSizeLocal:giftSizeLocal,
-                    inlineEmojiURL: nil,
+                    inlineEmojiURLs: [],
                     font:font,
                     verticalSpacing:vSpacing,
                     horizontalSpacing: hSpacing,
@@ -795,7 +795,7 @@ final class PIPServiceMessages {
                     avatarSizeLocal: avatarSizeLocal,
                     giftURL: isLast ? giftURL : nil,
                     giftSizeLocal: giftSizeLocal,
-                    inlineEmojiURL: index == 0 ? emojiURL : nil,
+                    inlineEmojiURLs: index == 0 ? emojiURLs : [],
                     font: font,
                     cachedLines: messageLines,
                     cachedMessageSize: messageSize,
@@ -928,14 +928,14 @@ final class PIPServiceMessages {
         }
 
         // Inline Emoji
-        var emojiLayer: CALayer?
+        var emojiLayers: [CALayer] = []
 
-        if let emojiURL = data.inlineEmojiURL {
+        for emojiURL in data.inlineEmojiURLs {
             let layer = layerPool.getImageLayer()
             layer.contentsGravity = .resizeAspect
 
             container.addSublayer(layer)
-            emojiLayer = layer
+            emojiLayers.append(layer)
         }
 
 
@@ -951,8 +951,8 @@ final class PIPServiceMessages {
         tuple.font = font
         tuple.avatarSize = avatarSizeLocal
         tuple.giftSize = giftSizeLocal
-        tuple.inlineEmoji = emojiLayer
-        tuple.inlineEmojiSize = CGSize(width: giftSizeLocal, height: giftSizeLocal)
+        tuple.inlineEmojis = emojiLayers
+        tuple.inlineEmojiSizes = Array(repeating: CGSize(width: giftSizeLocal, height: giftSizeLocal), count: emojiLayers.count)
 
         tuple.verticalSpacing = verticalSpacing
         tuple.horizontalSpacing = horizontalSpacing
@@ -1018,21 +1018,36 @@ final class PIPServiceMessages {
 
 
 
-    static func extractImageURL(from message: String) -> (cleaned: String, imageURL: String?) {
+    static func extractAllImageURLs(from message: String) -> (cleaned: String, imageURLs: [String]) {
         let imageExtensions = ["png", "jpg", "jpeg", "gif", "webp", "PNG", "JPG", "JPEG", "GIF", "WEBP"]
         let pattern = "(https?://[^\\s]+\\.(" + imageExtensions.joined(separator: "|") + "))"
 
-        guard let regex = try? NSRegularExpression(pattern: pattern),
-              let match = regex.firstMatch(in: message, range: NSRange(message.startIndex..., in: message)) else {
-            return (message, nil)
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            return (message, [])
         }
 
-        let urlRange = Range(match.range(at: 1), in: message)!
-        let url = String(message[urlRange])
-        var cleaned = message
-        cleaned.removeSubrange(urlRange)
-        cleaned = cleaned.trimmingCharacters(in: .whitespaces)
-        return (cleaned, url)
+        let nsRange = NSRange(message.startIndex..., in: message)
+        let matches = regex.matches(in: message, range: nsRange)
+
+        var urls: [String] = []
+        var cleanParts: [String] = []
+        var lastEnd = message.startIndex
+
+        for match in matches {
+            guard let urlRange = Range(match.range(at: 1), in: message) else { continue }
+            if lastEnd < urlRange.lowerBound {
+                cleanParts.append(String(message[lastEnd..<urlRange.lowerBound]))
+            }
+            urls.append(String(message[urlRange]))
+            lastEnd = urlRange.upperBound
+        }
+
+        if lastEnd < message.endIndex {
+            cleanParts.append(String(message[lastEnd...]))
+        }
+
+        let cleaned = cleanParts.joined().trimmingCharacters(in: .whitespaces)
+        return (cleaned, urls)
     }
 
     // MARK: - Add Message（Chunk 修正版，可直接替換）
@@ -1072,14 +1087,14 @@ final class PIPServiceMessages {
 
 
 
-            let (cleanMessage, emojiURL) = Self.extractImageURL(from: message)
+            let (cleanMessage, emojiURLs) = Self.extractAllImageURLs(from: message)
 
             let segments = self.splitLongMessage(
                 type: type, user: user,
                 message: cleanMessage,
                 imgURL:imgURL,
                 giftURL: giftURL,
-                emojiURL: emojiURL,
+                emojiURLs: emojiURLs,
                 font: font,
                 avatarSizeLocal: avatarSizeLocal,
                 giftSizeLocal: giftSizeLocal,
@@ -1255,12 +1270,15 @@ final class PIPServiceMessages {
             }
 
             // 有行內表情的 segment → 載入表情圖片
-            for (data, msg) in zip(insertSegments, groupMsgs) where data.inlineEmojiURL != nil {
-                if let emojiURL = data.inlineEmojiURL {
+            for (data, msg) in zip(insertSegments, groupMsgs) where !data.inlineEmojiURLs.isEmpty {
+                for (idx, emojiURL) in data.inlineEmojiURLs.enumerated() {
                     Task {
                         await PiPImageCache.shared.loadImage(urlString: emojiURL) { image in
-                            msg.inlineEmoji?.contents = image?.cgImage
-                            msg.inlineEmojiSize = image?.size
+                            guard idx < msg.inlineEmojis.count else { return }
+                            msg.inlineEmojis[idx].contents = image?.cgImage
+                            if let imgSize = image?.size {
+                                msg.inlineEmojiSizes[idx] = imgSize
+                            }
                         }
                     }
                 }
@@ -1595,10 +1613,11 @@ final class PIPServiceMessages {
             layerPool.recycleImageLayer(gift)
             msg.gift = nil
         }
-        if let emoji = msg.inlineEmoji {
+        for emoji in msg.inlineEmojis {
             layerPool.recycleImageLayer(emoji)
-            msg.inlineEmoji = nil
         }
+        msg.inlineEmojis.removeAll()
+        msg.inlineEmojiSizes.removeAll()
 
         msg.isFadingOut = false
 
@@ -1695,7 +1714,7 @@ final class PIPServiceMessages {
             if let gift = msg.gift {
                 gift.opacity = layerOpacity
             }
-            if let emoji = msg.inlineEmoji {
+            for emoji in msg.inlineEmojis {
                 emoji.opacity = layerOpacity
             }
 
@@ -1837,22 +1856,20 @@ final class PIPServiceMessages {
         }
 
         // Inline Emoji
-        if let emoji = msg.inlineEmoji {
-            let emojiSize = (msg.inlineEmojiSize?.width ?? giftSizeLocal)
-            let messageFrame = msg.message?.frame ?? .zero
+        let messageFrame = msg.message?.frame ?? .zero
+        var emojiCursorX = messageFrame.minX
 
-            let emojiX = msg.name != nil
-                ? (msg.name!.frame.maxX + msg.horizontalSpacing)
-                : (msg.textX + (msg.type == .secondary ? msg.horizontalSpacing : 0))
-
+        for (idx, emoji) in msg.inlineEmojis.enumerated() {
+            let emojiSize = idx < msg.inlineEmojiSizes.count ? msg.inlineEmojiSizes[idx].width : giftSizeLocal
             let emojiY = messageFrame.midY - emojiSize / 2
 
             emoji.frame = CGRect(
-                x: emojiX,
+                x: emojiCursorX,
                 y: emojiY,
                 width: emojiSize,
                 height: emojiSize
             )
+            emojiCursorX += emojiSize + 4
         }
 
 

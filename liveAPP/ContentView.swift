@@ -2523,6 +2523,8 @@ struct ContentView: View {
 
     @AppStorage("onAudioPage",store:userDefaults) private var onAudioPage = false
 
+    @State private var pageSwitchWorkItem: DispatchWorkItem?
+
 
 
 
@@ -2565,58 +2567,62 @@ struct ContentView: View {
         }
         // ✅ 當選到音量分頁時啟用監聽
         .onChange(of: pageState.currentPage) { newValue in
-            sendlog(message:"Page:\(newValue)")
+            pageSwitchWorkItem?.cancel()
+            let workItem = DispatchWorkItem { [self] in
+                sendlog(message:"Page:\(newValue)")
 
-            if newValue == .log {
+                if newValue == .log {
 
-                print("onlog:\(onlogPage) logTime:\(logTime)")
+                    print("onlog:\(onlogPage) logTime:\(logTime)")
 
-                onlogPage=true
-                LPConfig.shared.onLogPage = true
-
-
-                CFNotificationCenterPostNotification(cfCenter, CFNotificationName("onlogPage" as CFString), nil, nil, true)
-
-
-            } else {
-
-
-                if !logTime {
-
-                    onlogPage=false
-                    LPConfig.shared.onLogPage = false
+                    onlogPage=true
+                    LPConfig.shared.onLogPage = true
 
 
                     CFNotificationCenterPostNotification(cfCenter, CFNotificationName("onlogPage" as CFString), nil, nil, true)
 
+
+                } else {
+
+
+                    if !logTime {
+
+                        onlogPage=false
+                        LPConfig.shared.onLogPage = false
+
+
+                        CFNotificationCenterPostNotification(cfCenter, CFNotificationName("onlogPage" as CFString), nil, nil, true)
+
+                    }
+
+
                 }
 
+                if newValue == .audio {
+
+                    onAudioPage=true
+                    sendlog(message:"onAudioPage: \(onAudioPage)")
+
+                    CFNotificationCenterPostNotification(cfCenter,
+                                                         CFNotificationName("onAudioPage" as CFString),
+                                                         nil, nil, true)
+
+                } else {
+
+
+                    onAudioPage=false
+                    sendlog(message:"onAudioPage: \(onAudioPage)")
+
+
+                    CFNotificationCenterPostNotification(cfCenter,
+                                                         CFNotificationName("onAudioPage" as CFString),
+                                                         nil, nil, true)
+
+                    }
 
             }
-
-            if newValue == .audio {
-
-                onAudioPage=true
-                sendlog(message:"onAudioPage: \(onAudioPage)")
-
-                CFNotificationCenterPostNotification(cfCenter,
-                                                     CFNotificationName("onAudioPage" as CFString),
-                                                     nil, nil, true)
-
-            } else {
-
-
-                onAudioPage=false
-                sendlog(message:"onAudioPage: \(onAudioPage)")
-
-
-                CFNotificationCenterPostNotification(cfCenter,
-                                                     CFNotificationName("onAudioPage" as CFString),
-                                                     nil, nil, true)
-
-                }
-
-
+            pageSwitchWorkItem = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: workItem)
         }
 
 

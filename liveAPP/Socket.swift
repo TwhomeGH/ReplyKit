@@ -43,8 +43,6 @@ class SocketServer:ObservableObject {
                           )
     private let queueKey = DispatchSpecificKey<Void>()
 
-    private var idleTimers: [ObjectIdentifier: DispatchSourceTimer] = [:]
-
     private func performOnQueue(_ block: @escaping () -> Void) {
         if DispatchQueue.getSpecific(key: queueKey) != nil {
             block()
@@ -52,32 +50,6 @@ class SocketServer:ObservableObject {
             queue.async(execute: block)
         }
     }
-
-    private func resetIdleTimer(for conn: NWConnection) {
-        if DispatchQueue.getSpecific(key: queueKey) == nil {
-            queue.async { [weak self] in
-                self?.resetIdleTimer(for: conn)
-            }
-            return
-        }
-
-        let id = ObjectIdentifier(conn)
-
-        if let timer = idleTimers.removeValue(forKey: id) {
-            timer.cancel()
-        }
-
-        let timer = DispatchSource.makeTimerSource(queue: queue)
-        timer.schedule(deadline: .now() + 60)
-        timer.setEventHandler { [weak self] in
-            self?.logTo("[\(id)] Idle timeout, closing connection")
-            self?.removeConnection(conn)
-        }
-        timer.resume()
-
-        idleTimers[id] = timer
-    }
-
 
     private var currentRestartKey: String?
 
@@ -140,7 +112,6 @@ class SocketServer:ObservableObject {
     // MARK: - Deinit Socket Server
     deinit {
 
-        idleTimers.values.forEach { $0.cancel() }
         listener?.cancel()
 
         CFNotificationCenterRemoveObserver(
@@ -383,7 +354,6 @@ class SocketServer:ObservableObject {
             if let data = result.data, !data.isEmpty {
                 var buffer = self.receiveBuffers[id] ?? Data()
 
-                resetIdleTimer(for: connection)
                 if LPConfig.shared.SocketLog {
                     logger.debug("Socket received \(data.count) bytes")
                 }
@@ -1049,9 +1019,6 @@ class SocketServer:ObservableObject {
             var dataWithNewline = data
             dataWithNewline.append(0x0A)
 
-            self.resetIdleTimer(for: conn)
-
-
             let timeoutKey = "send_\(id)"
             self.sendTimeoutFlags[timeoutKey] = true
             self.queue.asyncAfter(deadline: .now() + 30) { [weak self, weak conn] in
@@ -1133,9 +1100,6 @@ class SocketServer:ObservableObject {
         let id = ObjectIdentifier(connection)
 
         guard connections[id] != nil else { return }
-
-        idleTimers[id]?.cancel()
-        idleTimers[id] = nil
 
         connection.stateUpdateHandler = nil
         connection.cancel()
@@ -1223,9 +1187,6 @@ class SocketServer:ObservableObject {
         listener?.cancel()
 
         listener = nil
-
-        idleTimers.values.forEach { $0.cancel() }
-        idleTimers.removeAll()
 
         connections.removeAll()
         receiveBuffers.removeAll()
