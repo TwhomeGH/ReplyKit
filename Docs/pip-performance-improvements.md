@@ -157,7 +157,47 @@
 
 其餘管線（VideoProcess → GPUVideoRotator/CPURotator → MediaMixer）均為純透傳 ReplayKit 原始 PTS，無合成/修改，無 PTS 倒轉風險。
 
-## 14. PiP 渲染優化（CPU 路徑）
+## 14. 子母窗口行內表情支援（Inline Emoji）
+
+### `liveAPP/PIPContent.swift`
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| Socket stream 訊息的 `message` 欄位包含圖片網址（`https://example.com/3.png 哈哈哈`），但 PiP 將其整個視為純文字渲染 | 無圖片網址解析機制，所有文字直接餵給 `CATextLayer` | 新增 `extractImageURL()` 正則解析，擷取結尾為 `.png/.jpg/.gif/.webp` 的網址，分別以 `CALayer` 顯示圖片、`CATextLayer` 顯示剩餘文字 |
+
+### 資料流
+
+```
+Socket message: "https://example.com/3.png 哈哈哈"
+  → extractImageURL()
+    → cleaned: "哈哈哈"
+    → emojiURL: "https://example.com/3.png"
+  → splitLongMessage() 分行 "哈哈哈"
+    → 第一個 message segment 取得 inlineEmojiURL
+  → buildMessageTuple() 建立 CATextLayer + 表情 CALayer
+  → PiPImageCache 非同步載入表情圖片
+  → 子母窗口顯示: [名稱] [表情圖] 哈哈哈
+```
+
+### 模型變更
+
+| 型別 | 新增欄位 | 用途 |
+|------|----------|------|
+| `MessageSegmentData` | `inlineEmojiURL: String?` | 存放從訊息文字解析出的圖片網址 |
+| `MessageLayerTuple` | `inlineEmoji: CALayer?` | 表情圖片的 Core Animation 圖層 |
+| `MessageLayerTuple` | `inlineEmojiSize: CGSize?` | 表情圖層大小快取，用於 positioning |
+
+### 渲染行為
+
+- 表情圖片僅附加於**第一個文字 segment**（`index == 0`），避免多行重複顯示
+- 表情圖層定位在**名稱文字後方**，垂直居中於訊息文字列
+- 表情圖層與 avatar/gift 共用 `LayerPool` 的 image layer 回收機制
+- 表情圖片透過 `PiPImageCache` 載入，支援 NSCache 快取與 concurrent 限制
+- 淡出動畫、移除回收一併處理表情圖層
+
+---
+
+## 15. PiP 渲染優化（CPU 路徑）
 
 ### 最終決策
 
