@@ -260,3 +260,112 @@ pool → CVPixelBuffer(IOSurface) → LockBaseAddress
 | `liveAPP/PIPMetalRenderer.swift` | +66 (新檔，僅 GPU clear, 未啟用) |
 | `liveAPP/PIPMetalRenderData.swift` | +20 (新檔，資料結構, 未啟用) |
 | `liveAPP/PIPShaders.metal` | +30 (新檔，Metal shaders, 未啟用) |
+
+---
+
+## 16. 行內表情圖改進（2026-07）
+
+### `liveAPP/PIPContent.swift`
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| Discord CDN 圖片網址（`...jpg?ex=...&hm=...`）因 query parameters 不被 regex 匹配，整個 URL 當純文字顯示 | `extractAllImageURLs` 的 regex `[^\s]+\.(ext)` 只匹配到副檔名，query string 殘留在 clean text | 加上 `(\?[^\s]*)?` 讓 query string 成為 URL 一部分（:1023） |
+| URL 全部抽出後 clean text 為空，無 message segment 導致 emoji 無處附著不顯示 | `splitLongMessage` 在 message 空字串時不產生 message segment，`inlineEmojiURLs` 遺失 | `addMessage` 判斷 clean text 為空但有 emoji URLs 時以 `" "` 代替（:1091） |
+| 下載後 inline emoji 以原始解析度顯示（如 400×400），遠大於字體大小 | `inlineEmojiSizes[idx] = imgSize` 直接取用實際圖片尺寸 | 改為 `min(maxSize/width, maxSize/height)` 等比縮放至字體大小（:1281-1286） |
+| Emoji 與文字重疊，`emojiCursorX = messageFrame.minX` 使圖片蓋在文字上 | 圖片從文字左緣開始排列，與文字完全重疊 | 改為 `messageFrame.maxX`，排到文字右側（:1866） |
+
+---
+
+## 17. Memory Warning 分級釋放廢除（2026-07）
+
+### `liveAPP/PIPService.swift`
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| `memoryWarningLevel` 循環升級（L1=L2=L3）：10 秒內連續觸發才逐步加重，但 warning 已結束仍遺留高級別 | cooldown timer + level counter 設計使同一次 memory pressure 週期中 level 只增不減，容易卡在高級別狀態 | 移除 `memoryWarningLevel` / `lastMemoryWarningTime` / `memoryWarningCooldown` 全部變數，收到 warning 直接一次釋放所有可回收資源 |
+| L1（降 FPS）沒有實際釋放記憶體 | `currentFPS = idleFPS` 僅降低渲染頻率，不釋放 pixel buffer | 不再操作 FPS，FPS 由 animation/decay 機制獨立管理 |
+| `PiPImageCache` 未在 memory warning 時清空 | 舊設計僅 L3（level>=3）才清訊息，image cache 完全沒被觸及 | `handleMemoryWarning` 最後加上 `Task { await PiPImageCache.shared.clear() }` |
+
+```swift
+// before: 分級釋放
+func handleMemoryWarning() {
+    let now = CACurrentMediaTime()
+    if now - lastMemoryWarningTime < memoryWarningCooldown { level += 1 }
+    else { level = 1 }
+    currentFPS = idleFPS
+    if level >= 2 { pixelBufferPool = nil }
+    if level >= 3 { messagesLayer?.clearAllMessages() }
+}
+
+// after: 一次釋放
+func handleMemoryWarning() {
+    pixelBufferPool = nil
+    cachedFormatDescription = nil
+    cachedFormatSize = .zero
+    messagesLayer?.clearAllMessages()
+    Task { await PiPImageCache.shared.clear() }
+    setNeedsRedraw()
+}
+```
+
+---
+
+## 18. TTS Audio Session 配置修正（2026-07）
+
+### `liveAPP/TTSService.swift`
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| PIP `stopPiP()` 在 TTS disabled 時 `setActive(false)` deactivate 了 audio session，但 TTS 的 `isConfigured` flag 維持在 `true`，後續每次 `start()` 都跳過重新配置 | `configureSessionOnly()` 開頭 `guard !isConfigured` 阻斷重入 | 移除 `isConfigured` guard，每次 TTS 啟動都重新呼叫 `setCategory`/`setActive(true)`（冪等呼叫，已配置時無副作用） |
+
+```swift
+// before
+func configureSessionOnly() {
+    guard !isConfigured else { return }
+    try configurePlaybackSession()
+    isConfigured = true
+}
+
+// after
+func configureSessionOnly() {
+    try configurePlaybackSession()
+    isConfigured = true
+}
+```
+
+---
+
+## 19. Socket BGTask 與 Keepalive 改進（2026-07）
+
+### `liveAPP/BackgroundTaskManager.swift`
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| PIP 活躍時 `scheduleSocketRefresh()` 直接 return，不排程下一次 BGTask。PIP 長時間運作後停止時無 pending task 可喚醒 App | `guard !PIPService.shared.isPiPActive` 導致 PiP active 時跳過排程 | 移除 PIP guard，永遠排程下次 refresh（15 分鐘後） |
+
+### `liveAPP/Socket.swift`
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| NWConnection 60 秒無資料後自動 idle timeout 關閉連線，extension 不會自動重連 | 無 server 端 keepalive 機制 | 新增定時器：首條連線建立後每 30 秒對所有連線廣播 `{"type":"keepalive"}`，最後一條連線移除時停止 |
+| `stopInternal()` 與 `removeConnection()` 未清理 keepalive timer | timer 無對應的生命週期管理 | `stopInternal()` + `removeConnection`(last) 時呼叫 `stopKeepaliveTimer()` |
+
+```swift
+private func startKeepaliveTimer() {
+    stopKeepaliveTimer()
+    let timer = DispatchSource.makeTimerSource(queue: queue)
+    timer.schedule(deadline: .now() + 30, repeating: 30)
+    timer.setEventHandler { [weak self] in
+        self?.sendKeepalive()
+    }
+    timer.activate()
+    keepaliveTimer = timer
+}
+
+private func sendKeepalive() {
+    let payload: [String: Any] = ["type": "keepalive"]
+    for conn in connections.values {
+        sendTo(conn, payload: payload)
+    }
+}
+```

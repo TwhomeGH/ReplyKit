@@ -37,10 +37,6 @@ final class BackgroundTaskManager {
 
     func scheduleSocketRefresh() {
         #if os(iOS)
-        guard !PIPService.shared.isPiPActive else {
-            sendlog(message: "PiP 活躍中，跳過 BGTaskScheduler")
-            return
-        }
         BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: socketKeepAliveTaskID)
         let request = BGProcessingTaskRequest(identifier: socketKeepAliveTaskID)
         request.requiresNetworkConnectivity = true

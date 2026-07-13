@@ -351,10 +351,6 @@ private final class TTSCallAudioKeeper {
     private var isConfigured = false
 
     func configureSessionOnly() {
-        guard !isConfigured else {
-            sendlog(message: "TTS configureSessionOnly: 已配置過，跳過")
-            return
-        }
         sendlog(message: "TTS configureSessionOnly: 開始配置音訊會話")
         do {
             try configurePlaybackSession()

@@ -38,32 +38,14 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         super.init()
     }
 
-    private var memoryWarningLevel = 0
-    private var lastMemoryWarningTime: CFTimeInterval = 0
-    private let memoryWarningCooldown: CFTimeInterval = 10.0
-
     @objc func handleMemoryWarning() {
-        let now = CACurrentMediaTime()
+        pixelBufferPool = nil
+        cachedFormatDescription = nil
+        cachedFormatSize = .zero
+        messagesLayer?.clearAllMessages()
 
-        if now - lastMemoryWarningTime < memoryWarningCooldown {
-            memoryWarningLevel += 1
-        } else {
-            memoryWarningLevel = 1
-        }
-        lastMemoryWarningTime = now
-
-        PIPLogTo("Memory Warning level \(memoryWarningLevel)")
-
-        currentFPS = idleFPS
-
-        if memoryWarningLevel >= 2 {
-            pixelBufferPool = nil
-            cachedFormatDescription = nil
-            cachedFormatSize = .zero
-        }
-
-        if memoryWarningLevel >= 3 {
-            messagesLayer?.clearAllMessages()
+        Task {
+            await PiPImageCache.shared.clear()
         }
 
         setNeedsRedraw()

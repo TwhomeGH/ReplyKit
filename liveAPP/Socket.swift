@@ -36,6 +36,7 @@ class SocketServer:ObservableObject {
 
     private var listener: NWListener?
     private var connections: [ObjectIdentifier: NWConnection] = [:]
+    private var keepaliveTimer: DispatchSourceTimer?
 
     private let queue = DispatchQueue(
                                       label: "SocketServerQueue",
@@ -268,6 +269,10 @@ class SocketServer:ObservableObject {
         }
 
         connections[id] = connection
+
+        if connections.count == 1 {
+            startKeepaliveTimer()
+        }
         
         logTo("New connection added. Total connections: \(self.connections.count)")
 
@@ -1086,6 +1091,30 @@ class SocketServer:ObservableObject {
     }
 
 
+    // MARK: - Keepalive
+    private func startKeepaliveTimer() {
+        stopKeepaliveTimer()
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + 30, repeating: 30)
+        timer.setEventHandler { [weak self] in
+            self?.sendKeepalive()
+        }
+        timer.activate()
+        keepaliveTimer = timer
+    }
+
+    private func stopKeepaliveTimer() {
+        keepaliveTimer?.cancel()
+        keepaliveTimer = nil
+    }
+
+    private func sendKeepalive() {
+        let payload: [String: Any] = ["type": "keepalive"]
+        for conn in connections.values {
+            sendTo(conn, payload: payload)
+        }
+    }
+
     // MARK: - Connection Cleanup
     private var pendingFailedPayloads: [ObjectIdentifier: [[String: Any]]] = [:]
 
@@ -1114,6 +1143,10 @@ class SocketServer:ObservableObject {
         receiveBuffers[id] = nil
         sendQueues[id] = nil
         sendingFlags[id] = nil
+
+        if connections.isEmpty {
+            stopKeepaliveTimer()
+        }
 
         logTo("Connection removed. Remaining: \(self.connections.count)")
     }
@@ -1188,6 +1221,7 @@ class SocketServer:ObservableObject {
 
         listener = nil
 
+        stopKeepaliveTimer()
         connections.removeAll()
         receiveBuffers.removeAll()
         sendQueues.removeAll()
