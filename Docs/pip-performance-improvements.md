@@ -442,6 +442,51 @@ postSystemNotification(title: user, body: msg, imageURL: img, inlineImages: inli
 
 ## 21. 移除 forceFlushBatch 與 sendLog 順序規範（2026-07）
 
+## 22. UPSet 伺服器端改進與頁面切換連線優化（2026-07）
+
+### `ReplyKIT/SampleHandler.swift`
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| 每次切換日誌頁/音訊頁時，extension 先讀 `SharedDefaults`，再發 `requestSet` (UPSet) 透過 socket 向 liveAPP 重新索取同一值 | 兩邊已共用 `group.nuclear.liveAPP` App Group UserDefaults，main app 寫入後 post Darwin notification，extension handler 讀取時值已就緒，UPSet 完全多餘 | 移除 `requestSet` 呼叫，handler 直接使用 `SharedDefaults.group?.bool(forKey:)` |
+
+```swift
+// before: 2 次 read（SharedDefaults + UPSet socket）
+var logPage = SharedDefaults.group?.bool(forKey: "onlogPage") ?? false
+if RPConfig.shared.enableSocketLog {
+    if let raw = try await SocketClient.shared.requestSet(for: "onlogPage", type: "Bool") {
+        if let av = raw as? Bool { logPage = av }
+    }
+}
+
+// after: 1 次 read（SharedDefaults，無 socket）
+let logPage = SharedDefaults.group?.bool(forKey: "onlogPage") ?? false
+RPConfig.shared.onLogPage = logPage
+```
+
+**效果：** 非側載時頁面切換不再需要建立 socket 連線；側載時透過 UPSet 取得，且連線在 UPSet 回應後保持不關閉，後續 UPSet 可重複使用。
+
+### `liveAPP/Socket.swift` — 伺服器端 UPSet 改進
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| `bool(forKey:)`/`integer(forKey:)` 對不存在的 key 回傳 `false`/`0`，無法區分「不存在」與「值為 false/0」 | Apple API 設計：UserDefaults 的 primitive 讀取方法對缺失 key 回傳型別預設值 | 改用 `object(forKey:) as? Bool/Double/Int/Float`，key 不存在時回傳 `NSNull()` |
+| 客戶端 UPSet handler 收到回應後立刻 `_closeConnection()` | on-demand 設計，每次 UPSet 連線用完即關 | 移除 `_closeConnection()`，連線保留供後續 UPSet 重複使用，由 idle timeout 或下一次 `_connect()` 清理舊連線時自然關閉 |
+
+```swift
+// before
+res = userDefaults?.bool(forKey: key)  // 不存在 → false，無法區分
+// after
+res = userDefaults?.object(forKey: key) as? Bool  // 不存在 → nil → NSNull()
+```
+
+### `ReplyKIT/SampleHandler.swift` — 頁面切換 handler
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| `onlogPage`/`onAudioPage` handler 每次都透過 UPSet 向伺服器索取已存在 SharedDefaults 的值 | 多餘的 socket 連線造成連線數暴增與 close/reconnect 開銷 | 非側載時直接讀 SharedDefaults（同一 App Group，值已就緒）；側載時才用 UPSet 取得 |
+| `requestSet` 16 個 handler（音量、旋轉等）各自獨立連線 | 每個 handler 在 CFNotification 觸發時建立獨立連線 | UPSet 連線不再主動關閉，後續 requestSet 可重複使用同一連線 |
+
 ### `ReplyKIT/Socket.swift` — 刪除 forceFlushBatch
 
 | 問題 | 原因 | 修正 |

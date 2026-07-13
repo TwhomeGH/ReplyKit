@@ -757,56 +757,17 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "onlogPage":
-            
+            let sharedValue = SharedDefaults.group?.bool(forKey: "onlogPage") ?? false
 
-            Task {
-
-                var logPage=SharedDefaults.group?.bool(forKey: "onlogPage") ?? false
-
-                if RPConfig.shared.enableSocketLog {
-                    if let raw = try await SocketClient.shared.requestSet(for: "onlogPage", type: "Bool") {
-
-                        if let av = raw as? Bool {
-                            let oldV = logPage
-                            logPage = av
-
-                            logger.debug("logPage \(av)")
-                            sendlog(message: "Socket原始logPage數據包:\(av) -> \(oldV)")
-                        } else {
-                            logger.error("logPage 型別錯誤: \(type(of: raw))")
-                        }
-
+            if RPConfig.isSideload, RPConfig.shared.enableSocketLog {
+                Task {
+                    if let raw = try? await SocketClient.shared.requestSet(for: "onlogPage", type: "Bool") {
+                        let logPage = (raw as? Bool) ?? sharedValue
+                        applyOnLogPage(logPage)
                     }
-
-                    SocketClient.shared
-                        .sendSettings(
-                            key: "ReplyKitWidth",
-                            value: ReplyKitW
-                        )
-                    SocketClient.shared
-                        .sendSettings(
-                            key: "ReplyKitHeight",
-                            value: ReplyKitH
-                        )
-                    
                 }
-
-                RPConfig.shared.onLogPage=logPage
-                updateONLogFixState()
-
-
-                if logPage {
-
-                    LogManager.shared.forceFlush()
-                    LogManager.shared.setupFlushTimer()
-
-                    sendlog(message: "正在LOG")
-
-                } else {
-                    LogManager.shared.forceFlush()
-                    
-                }
-
+            } else {
+                applyOnLogPage(sharedValue)
             }
 
             break
@@ -969,41 +930,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "onAudioPage":
-            
-            Task {
-                var APage=SharedDefaults.group?.bool(forKey: "onAudioPage") ?? false
+            let APage = SharedDefaults.group?.bool(forKey: "onAudioPage") ?? false
+            RPConfig.shared.onAudioPage = APage
 
-                if RPConfig.shared.enableSocketLog {
-                    if let raw = try await SocketClient.shared.requestSet(for: "onAudioPage", type: "Bool") {
-
-                        if let av = raw as? Bool {
-                            let oldV = APage
-                            APage = av
-
-                            logger.debug("onAudioPage \(av)")
-                            sendlog(message: "Socket原始onAudioPage數據包:\(av) -> \(oldV)")
-                        } else {
-                            logger.error("onAudioPage 型別錯誤: \(type(of: raw))")
-                        }
-
-                    }
-                }
-
-                RPConfig.shared.onAudioPage = APage
-                sendlog(message: "AudioPage:\(String(describing: RPConfig.shared.onAudioPage)) processorInit:\(processorsInitialized)")
-
-                if audioProcessor != nil && processorsInitialized == true {
-
-                    audioProcessor?.updatePage(status: RPConfig.shared.onAudioPage)
-                    sendlog(
-                        message:"[Audio] Page \(String(describing: RPConfig.shared.onAudioPage))"
-                    )
-
-                }  else {
-
-                    sendlog(message:"[Audio] ⚠️ audioProcessor 為 nil 且 processorsInitialized=false，暫時無法更新 Page，等待初始化完成")
-                }
-
+            if audioProcessor != nil && processorsInitialized {
+                audioProcessor?.updatePage(status: APage)
             }
 
             break

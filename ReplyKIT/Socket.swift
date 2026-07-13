@@ -1042,7 +1042,6 @@ class SocketClient : @unchecked Sendable {
                         }
                     }
                 }
-                self._closeConnection()
 
             case "logConfig":
                 if let env = try? decoder.decode(LogConfig.self, from: data) {

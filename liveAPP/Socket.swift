@@ -826,21 +826,21 @@ class SocketServer:ObservableObject {
                 case "String":
                     res = userDefaults?.string(forKey: key)
                 case "Bool":
-                    res = userDefaults?.bool(forKey: key)
+                    res = userDefaults?.object(forKey: key) as? Bool
                 case "Double":
-                    res = userDefaults?.double(forKey: key)
+                    res = userDefaults?.object(forKey: key) as? Double
                 case "Int":
-                    res = userDefaults?.integer(forKey: key)
+                    res = userDefaults?.object(forKey: key) as? Int
                 case "Float":
-                    res = userDefaults?.float(forKey: key)
+                    res = userDefaults?.object(forKey: key) as? Float
                 default:
-                    logTo("Unknow?")
+                    logTo("Unknown UPSet type: \(VType)")
                     return
                 }
 
                 guard let result = res else {
-                    logTo("Value for key \(key) is nil")
-                    sendTo(connection, payload: ["type": "UPSet", "key": key, "value": "\(key) is Nil"])
+                    logTo("UPSet key '\(key)' not found or type mismatch")
+                    sendTo(connection, payload: ["type": "UPSet", "key": key, "value": NSNull()])
                     return
                 }
 
