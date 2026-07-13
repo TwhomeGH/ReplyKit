@@ -1042,7 +1042,6 @@ final class PIPServiceMessages {
         let nsRange = NSRange(message.startIndex..., in: message)
         let matches = regex.matches(in: message, range: nsRange)
 
-        var seenURLs = Set<String>()
         var urls: [String] = []
         var cleanParts: [String] = []
         var lastEnd = message.startIndex
@@ -1059,12 +1058,7 @@ final class PIPServiceMessages {
             if lastEnd < urlRange.lowerBound {
                 cleanParts.append(String(message[lastEnd..<urlRange.lowerBound]))
             }
-            let url = String(message[urlRange])
-            if seenURLs.insert(url).inserted {
-                urls.append(url)
-            } else {
-                cleanParts.append(url)
-            }
+            urls.append(String(message[urlRange]))
             lastEnd = urlRange.upperBound
         }
 

@@ -397,18 +397,7 @@ if inFlightTasks[urlString] != nil {
 
 | 問題 | 原因 | 修正 |
 |------|------|------|
-| 同一表情 URL 重複 N 次時雖只下載一次，但仍佔用 N 個 emoji slot，PIP layout 會顯示 N 個相同圖片 | 無去重邏輯 | 加入 `seenURLs: Set<String>`，重複 URL 視為一般文字放回 clean text，不再建立重複 CALayer |
-
-```swift
-let url = String(message[urlRange])
-if seenURLs.insert(url).inserted {
-    urls.append(url)       // 首次 → 建立 emoji layer
-} else {
-    cleanParts.append(url) // 重複 → 當文字放回
-}
-```
-
-| `maxURLs` 預設值 5 → 20 | 5 個表情上限過低，一次實況貼圖包可能超出 | 配合去重 + callback 佇列，放寬至 20，同一表情無限次仍只算 1 |
+| `maxURLs` 預設值 5 過低，一次實況貼圖包可能超出 | 限制太嚴格，用戶體驗不佳 | 放寬至 20，配合 PiPImageCache callback 佇列，重複 URL 只下載一次、其餘從快取取用 |
 
 ### `liveAPP/liveAPPApp.swift` — postSystemNotification
 
