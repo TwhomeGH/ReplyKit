@@ -1119,6 +1119,9 @@ class SocketClient : @unchecked Sendable {
                     logTo("[Socket] log decode failed")
                 }
 
+            case "keepalive":
+                sendPayload(["type": "heartbeat"])
+
             default:
                 logTo("[Socket] Unknown type: \(type)")
             }
