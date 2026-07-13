@@ -725,28 +725,41 @@ func showLogOnScreen(_ message: String) {
 
 #endif
 
-func postSystemNotification(title: String, body: String, imageURL: String? = nil) {
+func postSystemNotification(title: String, body: String, imageURL: String? = nil, inlineImages: [String] = []) {
     let content = UNMutableNotificationContent()
     content.title = title
     content.body = body
     content.sound = .default
     content.categoryIdentifier = "replykit_notification"
 
-    if let imageURL = imageURL, let url = URL(string: imageURL) {
-        // 下載遠端圖片並存到暫存，再建立附件
+    let allURLs = ([imageURL] + inlineImages).compactMap { URL(string: $0) }
+    guard !allURLs.isEmpty else {
+        deliverNotification(content: content)
+        return
+    }
+
+    let group = DispatchGroup()
+    var attachments: [UNNotificationAttachment] = []
+    let lock = NSLock()
+
+    for url in allURLs {
+        group.enter()
         URLSession.shared.dataTask(with: url) { data, _, error in
-            if let data = data, error == nil {
-                let tempDir = FileManager.default.temporaryDirectory
-                let tempFile = tempDir.appendingPathComponent(UUID().uuidString + ".png")
-                try? data.write(to: tempFile)
-                if let attachment = try? UNNotificationAttachment(identifier: "image", url: tempFile, options: nil) {
-                    content.attachments = [attachment]
-                }
+            defer { group.leave() }
+            guard let data = data, error == nil else { return }
+            let tempFile = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString + ".png")
+            try? data.write(to: tempFile)
+            if let attachment = try? UNNotificationAttachment(identifier: UUID().uuidString, url: tempFile) {
+                lock.lock()
+                attachments.append(attachment)
+                lock.unlock()
             }
-            // 不論圖片是否下載成功，都發送通知
-            deliverNotification(content: content)
         }.resume()
-    } else {
+    }
+
+    group.notify(queue: .main) {
+        content.attachments = attachments
         deliverNotification(content: content)
     }
 }

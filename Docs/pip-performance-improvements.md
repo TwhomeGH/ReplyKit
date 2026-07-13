@@ -369,3 +369,82 @@ private func sendKeepalive() {
     }
 }
 ```
+
+---
+
+## 20. 行內表情去重與下載佇列改進（2026-07）
+
+### `liveAPP/PIPContent.swift` — PiPImageCache
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| 相同網址重複出現時，第二個請求因 `inFlightTasks[url] != nil` 直接 `return`，不呼叫 completion，第二個表情圖層永遠空白 | 僅防止重複下載但未保存待通知的 callback | 新增 `pendingCallbacks: [String: [(UIImage?) -> Void]]`，在飛中的 URL 後續請求排入佇列，下載完成後遍歷所有 callback 通知 |
+
+```swift
+// before
+if inFlightTasks[urlString] != nil {
+    return  // 第二個請求直接被丟棄
+}
+
+// after
+if inFlightTasks[urlString] != nil {
+    pendingCallbacks[urlString, default: []].append(completion)
+    return  // 排入佇列，等第一筆下載完成後統一通知
+}
+```
+
+### `liveAPP/PIPContent.swift` — extractAllImageURLs
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| 同一表情 URL 重複 N 次時雖只下載一次，但仍佔用 N 個 emoji slot，PIP layout 會顯示 N 個相同圖片 | 無去重邏輯 | 加入 `seenURLs: Set<String>`，重複 URL 視為一般文字放回 clean text，不再建立重複 CALayer |
+
+```swift
+let url = String(message[urlRange])
+if seenURLs.insert(url).inserted {
+    urls.append(url)       // 首次 → 建立 emoji layer
+} else {
+    cleanParts.append(url) // 重複 → 當文字放回
+}
+```
+
+| `maxURLs` 預設值 5 → 20 | 5 個表情上限過低，一次實況貼圖包可能超出 | 配合去重 + callback 佇列，放寬至 20，同一表情無限次仍只算 1 |
+
+### `liveAPP/liveAPPApp.swift` — postSystemNotification
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| 通知僅附帶使用者頭像，訊息內的圖片網址被當純文字顯示 | `postSystemNotification` 只收 `imageURL` 參數 | 新增 `inlineImages: [String]`，`DispatchGroup` 平行下載所有圖片，全部完成後一次發送通知 |
+
+```swift
+func postSystemNotification(title: String, body: String, imageURL: String? = nil, inlineImages: [String] = []) {
+    // ...
+    for url in allURLs {
+        group.enter()
+        URLSession.shared.dataTask(with: url) { data, _, error in
+            // 下載並建立 UNNotificationAttachment
+        }.resume()
+    }
+    group.notify(queue: .main) {
+        content.attachments = attachments
+        deliverNotification(content: content)
+    }
+}
+```
+
+### `liveAPP/Socket.swift` — renderChatMessage
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| 通知 body 為原始 `msg`（含未解析的圖片網址），且未傳遞 inline 圖片 | 未對 `msg` 做 URL 抽取 | 呼叫 `PIPServiceMessages.extractAllImageURLs(from: msg)` 取出圖片網址，與頭像一併傳入 `postSystemNotification` |
+
+```swift
+let inlineImages = PIPServiceMessages.extractAllImageURLs(from: msg).imageURLs
+postSystemNotification(title: user, body: msg, imageURL: img, inlineImages: inlineImages)
+```
+
+### Wi`ReplyKIT/Socket.swift` — keepalive 回應
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| Server 每 30s 發 `{"type":"keepalive"}`，但用戶端無對應 handler，打 `default` 記錄 Unknown type | 用戶端缺少 `case "keepalive"` | 新增 `case "keepalive": sendPayload(["type": "heartbeat"])`，形成雙向 keepalive 防止任一端 idle timeout |

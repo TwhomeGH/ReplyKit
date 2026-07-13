@@ -1,4 +1,4 @@
-//
+﻿//
 //  PIPContent.swift
 //  liveAPP
 //
@@ -44,6 +44,8 @@ actor PiPImageCache {
 
     // 正在下載中的任務（防止重複下載）
     private var inFlightTasks: [String: Task<UIImage?, Never>] = [:]
+    // 相同網址重複請求的 callback 佇列
+    private var pendingCallbacks: [String: [(UIImage?) -> Void]] = [:]
 
     // 併發限制
     private let maxConcurrentDownloads = 5
@@ -62,9 +64,9 @@ actor PiPImageCache {
             return
         }
 
-        // 防止重複下載
+        // 已在飛 — 排入 callback 佇列，下載完成後統一通知
         if inFlightTasks[urlString] != nil {
-            // 可以選擇加入回調列表
+            pendingCallbacks[urlString, default: []].append(completion)
             return
         }
 
@@ -80,20 +82,30 @@ actor PiPImageCache {
                 let (data, _) = try await URLSession.shared.data(from: url)
 
 
-                Task {
-                    if let img = UIImage(data: data) {
-                        cache.setObject(img, forKey: urlString as NSString)
-                        await MainActor.run {
-                            completion(img)
+                if let img = UIImage(data: data) {
+                    cache.setObject(img, forKey: urlString as NSString)
+                    await MainActor.run {
+                        // 通知所有等待此網址的 callback
+                        completion(img)
+                        if let callbacks = pendingCallbacks.removeValue(forKey: urlString) {
+                            for cb in callbacks {
+                                cb(img)
+                            }
                         }
                     }
-                    self.finishDownload(urlString: urlString)
                 }
+                self.finishDownload(urlString: urlString)
 
                 return nil
 
             } catch {
-
+                await MainActor.run {
+                    if let callbacks = pendingCallbacks.removeValue(forKey: urlString) {
+                        for cb in callbacks {
+                            cb(nil)
+                        }
+                    }
+                }
                 self.finishDownload(urlString: urlString)
 
                 return nil
@@ -116,6 +128,7 @@ actor PiPImageCache {
         cache.removeAllObjects()
         inFlightTasks.values.forEach { $0.cancel() }
         inFlightTasks.removeAll()
+        pendingCallbacks.removeAll()
         waitingQueue.removeAll()
         currentDownloads = 0
     }
@@ -1018,7 +1031,7 @@ final class PIPServiceMessages {
 
 
 
-    static func extractAllImageURLs(from message: String) -> (cleaned: String, imageURLs: [String]) {
+    static func extractAllImageURLs(from message: String, maxURLs: Int = 20) -> (cleaned: String, imageURLs: [String]) {
         let imageExtensions = ["png", "jpg", "jpeg", "gif", "webp", "PNG", "JPG", "JPEG", "GIF", "WEBP"]
         let pattern = "(https?://[^\\s]+\\.(" + imageExtensions.joined(separator: "|") + ")(\\?[^\\s]*)?)"
 
@@ -1029,16 +1042,29 @@ final class PIPServiceMessages {
         let nsRange = NSRange(message.startIndex..., in: message)
         let matches = regex.matches(in: message, range: nsRange)
 
+        var seenURLs = Set<String>()
         var urls: [String] = []
         var cleanParts: [String] = []
         var lastEnd = message.startIndex
 
         for match in matches {
+            guard urls.count < maxURLs else {
+                if let urlRange = Range(match.range(at: 1), in: message) {
+                    cleanParts.append(String(message[lastEnd...]))
+                }
+                lastEnd = message.endIndex
+                break
+            }
             guard let urlRange = Range(match.range(at: 1), in: message) else { continue }
             if lastEnd < urlRange.lowerBound {
                 cleanParts.append(String(message[lastEnd..<urlRange.lowerBound]))
             }
-            urls.append(String(message[urlRange]))
+            let url = String(message[urlRange])
+            if seenURLs.insert(url).inserted {
+                urls.append(url)
+            } else {
+                cleanParts.append(url)
+            }
             lastEnd = urlRange.upperBound
         }
 
