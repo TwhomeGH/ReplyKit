@@ -97,4 +97,72 @@ python crash_trace.py crash.ips -s symbols.txt
 |------|------|
 | `crash_trace.py` | 主工具 (Python 3) |
 | `crash_trace.sh` | macOS/Linux wrapper |
+| `crashlog_analyzer.py` | 日誌/IPS 分析工具（跨平台，支援多種 bug_type） |
 | `crash-tracing.md` | 本文件 |
+
+---
+
+## 日誌 / IPS 分析工具 `crashlog_analyzer.py`
+
+跨平台 Python 3 工具，無需 dSYM 即可快速瀏覽 crash report、GPU hang、資源異常、Analytics 及一般 log 的關鍵資訊。
+
+### 支援格式
+
+| 格式 | bug_type | 內容 |
+|------|----------|------|
+| Apple Crash Report (`.ips`) | 309 | Crash 例外終止、執行緒堆疊、記憶體分布、模組列表 |
+| GPU Hang Event (`.ips`) | 284 | GPU Hang、IOFence 阻塞 surface 分析 |
+| Resource Exception (`.ips`) | 145 | 磁碟寫入等資源異常、持續時間 |
+| Analytics (`.ips.ca.synced.txt`) | 211 | 系統統計事件計數、bundleId 分布 |
+| ReplyKit log (`.txt`, `.log`)| - | 時間範圍、事件統計、閒置超時、FPS、背景任務 |
+
+### 用法
+
+```bash
+# 單一檔案（自動判斷格式）
+python crashlog_analyzer.py crash.ips
+python crashlog_analyzer.py crash.ips.ca.synced.txt
+python crashlog_analyzer.py log.txt
+
+# 掃描整個目錄
+python crashlog_analyzer.py E:\Video5\crash-symbols
+```
+
+### 輸出範例
+
+**Crash Report (bug_type 309):**
+```
+[DEV] Device: iPad13,18
+[ID] Bundle: nuclear.liveAPP.ReplyKIT
+[APP] App: ReplyKIT (v2.3)
+[X] Exception: EXC_BAD_ACCESS (Segmentation fault: 11)
+[THR] Thread 2 queue=com.liveapp.logQueue  << FAULT THREAD
+    _swift_release_dealloc+48
+    RefCounts::doDecrementSlow<PerformDeinit>+240
+[MEM] Malloc 41.3M  |  IOAccelerator 1152K
+```
+
+**GPU Hang (bug_type 284):**
+```
+[GPU] GPU Analysis
+  Restart Reason: blocked by IOFence
+  Signature: 627
+  IOFence blocked surfaces: 2
+    Surface 104: 2 active, 0 waiting
+    Surface 18: 1 active, 2 waiting
+```
+
+**Resource Exception (bug_type 145):**
+```
+[DUR] duration: 19m 37s (1177534.0 ms)
+```
+
+**ReplyKit Log:**
+```
+[TIME] Time: 2026-07-13 11:44:03
+[STAT] VFrame: 57840
+[STAT] PIP: 24
+[NET] Idle Timeouts: 8
+[FPS] PIP FPS: min=4.0 max=24.0 avg=10.2
+[TASK] BGTask scheduled: 1  |  Skipped (PiP active): 3
+```
