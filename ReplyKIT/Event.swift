@@ -304,8 +304,7 @@ final class LogManager {
 
         if RPConfig.shared.enableSocketLog {
             let limited = Array(bufferCopy.suffix(maxForceFlushLines))
-            SocketClient.shared.sendLogBatch(entries: limited)
-            SocketClient.shared.forceFlushBatch()
+            SocketClient.shared.sendLogBatch(entries: limited, force: true)
         } else {
             let text = bufferCopy.joined()
             writeLogToFile(text)

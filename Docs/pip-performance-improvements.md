@@ -432,8 +432,43 @@ let inlineImages = PIPServiceMessages.extractAllImageURLs(from: msg).imageURLs
 postSystemNotification(title: user, body: msg, imageURL: img, inlineImages: inlineImages)
 ```
 
-### Wi`ReplyKIT/Socket.swift` — keepalive 回應
+### `ReplyKIT/Socket.swift` — keepalive 回應
 
 | 問題 | 原因 | 修正 |
 |------|------|------|
 | Server 每 30s 發 `{"type":"keepalive"}`，但用戶端無對應 handler，打 `default` 記錄 Unknown type | 用戶端缺少 `case "keepalive"` | 新增 `case "keepalive": sendPayload(["type": "heartbeat"])`，形成雙向 keepalive 防止任一端 idle timeout |
+
+---
+
+## 21. 移除 forceFlushBatch 與 sendLog 順序規範（2026-07）
+
+### `ReplyKIT/Socket.swift` — 刪除 forceFlushBatch
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| `forceFlushBatch()` 使用 `queue.sync {}` 阻塞呼叫端，在 HaishinKit 媒體操作路徑上造成同步 I/O，加劇 C++ buffer overflow 對 string buffer 的破壞 | 強制立即發送日誌的設計在瓶頸路徑上增加了阻塞與記憶體壓力 | 移除整個 `forceFlushBatch()` 方法 |
+
+```swift
+// 已刪除
+func forceFlushBatch() {
+    queue.sync {
+        _connect()  // 同步建立連線
+        sendPayload(payload)  // 同步發送
+    }
+}
+```
+
+### `ReplyKIT/Event.swift` — forceFlush call site 改為非同步
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| `forceLogFlush` 和 `flushLocalLogs` 在送出 batch 後立即呼叫 `forceFlushBatch()`，阻塞直到日誌送達 server | 設計假設日誌必須在繼續前送達，但 log pipeline 不需要即時性 | 改為 `sendLogBatch(entries:, force: true)`，內部 `flushBatch()` 在 serial queue 上非同步處理 |
+
+### 設計變更總結
+
+| 面向 | 改前 | 改後 |
+|------|------|------|
+| 日誌傳送 | `forceFlushBatch()` 阻塞直到連線+發送完成 | `flushBatch()` 非同步排入 serial queue |
+| sendLog 呼叫時機 | 必須在 HaishinKit 操作「之前」，否則可能觸發已破壞的 string buffer | 無順序要求 — log 僅 append 到 ring buffer（固定 1000 條 O(1)），不碰媒體管線 |
+| 丟棄策略 | force flush 會繞過 `maxInflightBatches` 限制，造成堆積 | 依賴 `maxInflightBatches=3` 硬限制，逾限自動 drop 最舊 batch |
+| 定時器 | 250ms batch timer + 同步 force flush | 僅 250ms batch timer，無同步 flush |

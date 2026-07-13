@@ -614,22 +614,6 @@ class SocketClient : @unchecked Sendable {
         _sendBatch(entries)
     }
 
-    func forceFlushBatch() {
-        queue.sync { [weak self] in
-            guard let self = self else { return }
-            guard !self.pendingBatchEntries.isEmpty else { return }
-            let entries = self.pendingBatchEntries
-            self.pendingBatchEntries.removeAll()
-            self.stopBatchTimer()
-            _connect(host: "localhost", port: 9322)
-            let payload: [String: Any] = [
-                "type": "logbatch",
-                "entries": entries
-            ]
-            self.sendPayload(payload)
-        }
-    }
-
     private func _sendBatch(_ entries: [String]) {
         inFlightBatches += 1
         let payload: [String: Any] = [
