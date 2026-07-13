@@ -732,7 +732,10 @@ func postSystemNotification(title: String, body: String, imageURL: String? = nil
     content.sound = .default
     content.categoryIdentifier = "replykit_notification"
 
-    let allURLs = ([imageURL] + inlineImages).compactMap { URL(string: $0) }
+    var allURLs = inlineImages.compactMap { URL(string: $0) }
+    if let imageURL = imageURL, let url = URL(string: imageURL) {
+        allURLs.insert(url, at: 0)
+    }
     guard !allURLs.isEmpty else {
         deliverNotification(content: content)
         return
