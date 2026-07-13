@@ -487,6 +487,36 @@ res = userDefaults?.object(forKey: key) as? Bool  // 不存在 → nil → NSNul
 | `onlogPage`/`onAudioPage` handler 每次都透過 UPSet 向伺服器索取已存在 SharedDefaults 的值 | 多餘的 socket 連線造成連線數暴增與 close/reconnect 開銷 | 非側載時直接讀 SharedDefaults（同一 App Group，值已就緒）；側載時才用 UPSet 取得 |
 | `requestSet` 16 個 handler（音量、旋轉等）各自獨立連線 | 每個 handler 在 CFNotification 觸發時建立獨立連線 | UPSet 連線不再主動關閉，後續 requestSet 可重複使用同一連線 |
 
+### `ReplyKIT/SampleHandler.swift` — 頁面切換重構
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| `onlogPage` handler 中 inline 邏輯與 `applyOnLogPage` 方法不存在造成編譯錯誤 | 先前 patch 殘留未定義的方法呼叫 | 拆為 `updateLogPageState()`（負責獲取值，區分側載/UPSet）與 `applyLogPage(_:)`（負責套用狀態） |
+| `forceFlush()` 在頁面切換時被呼叫，但 `forceFlush()` 會 cancel timer + 設 `isActive = false`，與後續 `setupFlushTimer()` 原子性不足，中間 window 的 log 會被丟棄 | `forceFlush()` 設計為「關閉 logging pipeline」，不適合僅切換頁面狀態 | 完全移除頁面 handler 中的 `forceFlush()`：切 ON 只 `setupFlushTimer()`，切 OFF 只 `discardBuffer()` |
+
+```swift
+// before: forceFlush + setupFlushTimer 重置 pipeline
+if logPage {
+    LogManager.shared.forceFlush()      // 關閉 timer + isActive=false
+    LogManager.shared.setupFlushTimer() // 重新開啟
+} else {
+    LogManager.shared.forceFlush()      // 關閉 pipeline
+}
+
+// after: 直接切換狀態
+if logPage {
+    LogManager.shared.setupFlushTimer()  // 啟動/重啟 timer
+} else {
+    LogManager.shared.discardBuffer()    // 清空 buffer，timer 自然過期
+}
+```
+
+| 新增方法 | 所屬類別 | 用途 |
+|----------|----------|------|
+| `updateLogPageState()` | `SampleHandler` | 閱讀頁面狀態（SharedDefaults / UPSet），非同步取得後呼叫 `applyLogPage` |
+| `applyLogPage(_:)` | `SampleHandler` | 套用頁面狀態：ON → 啟動 timer，OFF → 丟棄 buffer |
+| `discardBuffer()` | `LogManager` | 清空 ring buffer（`localLogBuffer.removeAll()`），在 logQueue barrier 中安全執行 |
+
 ### `ReplyKIT/Socket.swift` — 刪除 forceFlushBatch
 
 | 問題 | 原因 | 修正 |

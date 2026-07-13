@@ -757,18 +757,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "onlogPage":
-            let sharedValue = SharedDefaults.group?.bool(forKey: "onlogPage") ?? false
-
-            if RPConfig.isSideload, RPConfig.shared.enableSocketLog {
-                Task {
-                    if let raw = try? await SocketClient.shared.requestSet(for: "onlogPage", type: "Bool") {
-                        let logPage = (raw as? Bool) ?? sharedValue
-                        applyOnLogPage(logPage)
-                    }
-                }
-            } else {
-                applyOnLogPage(sharedValue)
-            }
+            updateLogPageState()
 
             break
 
@@ -2196,4 +2185,29 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         }
     }
 
+    private func updateLogPageState() {
+        if RPConfig.isSideload, RPConfig.shared.enableSocketLog {
+            Task {
+                let sharedValue = SharedDefaults.group?.bool(forKey: "onlogPage") ?? false
+                let logPage: Bool
+                if let raw = try? await SocketClient.shared.requestSet(for: "onlogPage", type: "Bool") {
+                    logPage = (raw as? Bool) ?? sharedValue
+                } else {
+                    logPage = sharedValue
+                }
+                applyLogPage(logPage)
+            }
+        } else {
+            applyLogPage(SharedDefaults.group?.bool(forKey: "onlogPage") ?? false)
+        }
+    }
+
+    private func applyLogPage(_ logPage: Bool) {
+        RPConfig.shared.onLogPage = logPage
+        if logPage {
+            LogManager.shared.setupFlushTimer()
+        } else {
+            LogManager.shared.discardBuffer()
+        }
+    }
 }

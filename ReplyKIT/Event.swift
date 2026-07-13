@@ -359,6 +359,12 @@ final class LogManager {
         }
     }
 
+    func discardBuffer() {
+        logQueue.async(flags: .barrier) { [weak self] in
+            self?.localLogBuffer.removeAll()
+        }
+    }
+
     func setupFlushTimer() {
         flushTimer?.cancel()
         flushTimer = nil
