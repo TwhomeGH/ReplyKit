@@ -616,9 +616,14 @@ class SocketClient : @unchecked Sendable {
 
     private func _sendBatch(_ entries: [String]) {
         inFlightBatches += 1
+        let safeEntries = entries.filter { (try? JSONSerialization.data(withJSONObject: $0, options: [.fragmentsAllowed])) != nil }
+        guard !safeEntries.isEmpty else {
+            inFlightBatches -= 1
+            return
+        }
         let payload: [String: Any] = [
             "type": "logbatch",
-            "entries": entries
+            "entries": safeEntries
         ]
         sendPayload(payload) { [weak self] _ in
             guard let self = self else { return }

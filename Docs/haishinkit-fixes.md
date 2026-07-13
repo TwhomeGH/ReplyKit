@@ -94,3 +94,88 @@ RTMPStream.swift:772
 ```
 
 維持原先的 actor 隔離層級，避免因移除造成排程行為差異。
+
+---
+
+## Buffer Overflow 修復（2026-07）
+
+### 背景
+
+HaishinKit 內多處使用 `memcpy` 與 raw pointer arithmetic 時缺少 bounds check，C++-style buffer overflow 會破壞鄰近的 Swift String heap storage，導致在 log pipeline 中讀取已腐化的 String 時發生 `EXC_BAD_ACCESS`（pointer authentication failure）。最常見的觸發路徑：`setVideoSettings` / `stopRunning` 等媒體操作 → AudioRingBuffer 出界 → 相鄰 heap 上的 String buffer 被覆寫 → logQueue 處理日誌時 crash。
+
+### `AudioRingBuffer.swift` — 音訊環形緩衝區
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| `head`/`tail` 無鎖，多執行緒同時讀寫 | AudioUnit render callback + CMSampleBuffer append 在不同佇列上操作同一組 count | 加入 `os_unfair_lock` 保護所有 `head`/`tail`/`skip`/`sampleTime` 讀寫 |
+| `append(_:offset:)` 遞迴時 `offset` 可能讀取 source 緩衝區之外 | 遞迴 `offset` 遞增但 `frameLength` 不變，`advanced(by: offset * channelCount)` 可能超過 allocation | 檢查 `offset < frameLength`，超出直接 return；限制 `numSamples` 不超過剩餘空間 |
+| `render()` 的 `memcpy` 使用 `outputBuffer.frameLength`（永久等於 capacity）計算剩餘空間 | `outputBuffer.frameLength` 設為 `frameCapacity` 後永不更新，`capacity - tail` 計算正確但有誤導性 | 改用 `outputBuffer.frameCapacity` 作為容量基準 |
+| `render()` `memcpy` 使用 `advanced(by:)` 產生未檢查的 pointer | 若 `offset * channelCount * bytesPerSample` 為負或過大，寫入任意記憶體 | 統一計算 `copyBytes`，只對 `ioData` 和 source buffer 的有效範圍做 `memcpy` |
+| 無 `numSamples > 0` guard | `0` 樣本的 `memcpy` 或 `memset` 雖不寫入但仍浪費 CPU | 加入 `guard numSamples > 0` |
+
+```swift
+// before: 無鎖、無 bounds check
+memcpy(bufferList[0].mData?.advanced(by: offset * channelCount * 4),
+       outputBuffer.floatChannelData?[0].advanced(by: tail * channelCount),
+       numSamples * channelCount * 4)
+
+// after: lock + 統一計算 + 雙向 guard
+lock()
+let copyBytes = numSamples * channelCount * bytesPerSample
+guard let dst = bufferList[0].mData,
+      let src = outputBuffer.int16ChannelData?[0].advanced(by: tail * channelCount) else { unlock(); return -1 }
+memcpy(dst.advanced(by: offset * channelCount * bytesPerSample), src, copyBytes)
+tail += numSamples
+// ...
+unlock()
+```
+
+### `CVPixelBuffer+Extension.swift` — 像素緩衝區複製
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| Non-planar 路徑 `bytesPerRowDst = bytesPerRowSrc`（永遠相等，永遠走 bulk path） | 沒有讀取 destination 的真實 bytesPerRow，bulk `memcpy` 若兩者實際 row stride 不同則寫出界 | `bytesPerRowDst = self.bytesPerRow`，只在 `bytesPerRowSrc == bytesPerRowDst` 時使用 bulk path |
+| Bulk path 全量 `height * bytesPerRowSrc` 無限制 | 假設來源與目標尺寸一致 | 加入 `copyHeight = min(pixelBuffer.height, self.height)`、`copyWidth = min(bytesPerRowSrc, bytesPerRowDst)` |
+| Planar 路徑相同問題 | 同上，且 `height` 變數遮罩了 destination plane height | `bytesPerRowDst = self.bytesPerRawOfPlane(plane)`、加入 `copyHeight`/`copyWidth` 限制 |
+
+```swift
+// before
+let bytesPerRowDst = bytesPerRowSrc  // ← 永遠相等，永遠跳過 row-by-row 路徑
+if bytesPerRowSrc == bytesPerRowDst {
+    memcpy(dst, src, height * bytesPerRowSrc)  // ← 可能寫超過 dst 的實際 allocation
+}
+
+// after
+let bytesPerRowDst = self.bytesPerRow          // ← 讀取真實 destination stride
+let copyHeight = min(pixelBuffer.height, self.height)
+let copyWidth = min(bytesPerRowSrc, bytesPerRowDst)
+if bytesPerRowSrc == bytesPerRowDst {
+    memcpy(dst, src, copyHeight * bytesPerRowSrc)
+}
+```
+
+### `AVAudioPCMBuffer+Extension.swift` — 音訊緩衝區複製
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| `copy()` 只檢查 `frameLength == audioBuffer.frameLength`，沒檢查 `frameCapacity` | 若 `frameLength > frameCapacity`，`memcpy` 或 `update(repeating:)` 寫出界 | `numSamples = min(frameLength, audioBuffer.frameLength, frameCapacity, audioBuffer.frameCapacity)` |
+| `muted()` 使用 `Int(frameLength)` 作為 `update(repeating:count:)` 的 count | 同上 | 改為 `min(Int(frameLength), Int(frameCapacity))` |
+
+```swift
+// before
+guard frameLength == audioBuffer.frameLength else { return false }
+let numSamples = Int(frameLength)
+
+// after
+let numSamples = min(Int(frameLength), Int(audioBuffer.frameLength),
+                     Int(audioBuffer.frameCapacity), Int(frameCapacity))
+guard numSamples > 0 else { return false }
+```
+
+### 受影響檔案
+
+| 檔案 | 行數變化 |
+|------|----------|
+| `HaishinKit/Sources/Mixer/AudioRingBuffer.swift` | +150 (lock, bounds check, zeroBuffer helper, appendInternal rename) |
+| `HaishinKit/Sources/Extension/CVPixelBuffer+Extension.swift` | +8 (bytesPerRowDst, copyHeight/copyWidth) |
+| `HaishinKit/Sources/Extension/AVAudioPCMBuffer+Extension.swift` | +6 (frameCapacity guard) |

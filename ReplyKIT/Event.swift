@@ -213,6 +213,8 @@ final class LogManager {
     private let maxLogFileLines = 5000
     private let maxEarlyLogLines = 2000
     private let maxForceFlushLines = 200
+    private var earlyLogWriteCount = 0
+    private let trimCheckInterval = 50
 
     // MARK: flush寫入間隔
     var flushInterval: TimeInterval = 1.0
@@ -350,7 +352,10 @@ final class LogManager {
                 }
                 self.remoteLogger?.log(title: title, message: message)
             }
-            self.writeEarlyLogToFile(logMessage)
+        }
+
+        logQueue.async { [weak self] in
+            self?.writeEarlyLogToFile(logMessage)
         }
     }
 
@@ -444,7 +449,10 @@ final class LogManager {
         } else {
             try? data.write(to: fileURL, options: .atomic)
         }
-        trimEarlyLogFileIfNeeded(fileURL: fileURL)
+        earlyLogWriteCount += 1
+        if earlyLogWriteCount % trimCheckInterval == 0 {
+            trimEarlyLogFileIfNeeded(fileURL: fileURL)
+        }
     }
 
     private func earlyLogFileURL() -> URL {
