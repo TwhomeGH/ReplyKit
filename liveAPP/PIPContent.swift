@@ -1,4 +1,4 @@
-﻿//
+﻿﻿﻿//
 //  PIPContent.swift
 //  liveAPP
 //
@@ -84,13 +84,11 @@ actor PiPImageCache {
 
                 if let img = UIImage(data: data) {
                     cache.setObject(img, forKey: urlString as NSString)
+                    let callbacks = pendingCallbacks.removeValue(forKey: urlString) ?? []
                     await MainActor.run {
-                        // 通知所有等待此網址的 callback
                         completion(img)
-                        if let callbacks = pendingCallbacks.removeValue(forKey: urlString) {
-                            for cb in callbacks {
-                                cb(img)
-                            }
+                        for cb in callbacks {
+                            cb(img)
                         }
                     }
                 }
@@ -99,11 +97,10 @@ actor PiPImageCache {
                 return nil
 
             } catch {
+                let callbacks = pendingCallbacks.removeValue(forKey: urlString) ?? []
                 await MainActor.run {
-                    if let callbacks = pendingCallbacks.removeValue(forKey: urlString) {
-                        for cb in callbacks {
-                            cb(nil)
-                        }
+                    for cb in callbacks {
+                        cb(nil)
                     }
                 }
                 self.finishDownload(urlString: urlString)
@@ -943,7 +940,7 @@ final class PIPServiceMessages {
         // Inline Emoji
         var emojiLayers: [CALayer] = []
 
-        for emojiURL in data.inlineEmojiURLs {
+        for _ in data.inlineEmojiURLs {
             let layer = layerPool.getImageLayer()
             layer.contentsGravity = .resizeAspect
 
@@ -1048,7 +1045,7 @@ final class PIPServiceMessages {
 
         for match in matches {
             guard urls.count < maxURLs else {
-                if let urlRange = Range(match.range(at: 1), in: message) {
+                if Range(match.range(at: 1), in: message) != nil {
                     cleanParts.append(String(message[lastEnd...]))
                 }
                 lastEnd = message.endIndex
