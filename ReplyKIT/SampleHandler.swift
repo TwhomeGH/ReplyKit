@@ -1800,52 +1800,42 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     private var isBroadcastPaused = false
 
     // MARK: 直播結束處理
-    func broadcastEnd(message:String = "正常結束")  {
-        sendlog(message:"[RTMP] \(message)")
+    private var broadcastEndTask: Task<Void, Never>?
 
-        Task {
-
+    func broadcastEnd(message: String = "正常結束") {
+        guard broadcastEndTask == nil else { return }
+        sendlog(message: "[RTMP] \(message)")
+        broadcastEndTask = Task { [weak self] in
+            guard let self else { return }
             isStopping = true
             isBroadcasting = false
             isInitialSyncDone = false
 
             SocketClient.shared.sendStreamEnd()
 
-            // 停止斷線監控 Task
             disconnectMonitorTask?.cancel()
             disconnectMonitorTask = nil
 
-            
             isSessionReady = false
 
-            
             removeObservers()
 
             await mediaMixer.removeOutput(rtmpStream)
             await mediaMixer.stopRunning()
 
-            // 取消重連（由 RTMPConnection 內部處理，關閉連線即可）
-
             _ = try? await rtmpStream.close()
             _ = try? await rtmpConnection?.close()
 
-            volumeNotifier=nil
+            volumeNotifier = nil
 
             videoProcessor?.cleanup()
-            videoProcessor=nil
+            videoProcessor = nil
 
             audioProcessor?.cleanup()
-            audioProcessor=nil
-            // AdaptiveVideoBufferManager 已停用
-            // adaptiveBufferManager = nil
-
+            audioProcessor = nil
         }
 
-
         LogManager.shared.forceFlush()
-
-
-
     }
 
 
