@@ -20,12 +20,12 @@
       "screenshots": [],
       "versions": [
         {
-          "downloadURL": "https://github.com/TwhomeGH/ReplyKit/releases/download/2.3/liveApp_2.3.ipa",
+          "downloadURL": "https://github.com/TwhomeGH/ReplyKit/releases/download/12.0.4/liveApp_12.0.4.ipa",
           "size": 2950000,
-          "version": "2.3",
-          "buildVersion": "2025101801",
-          "date": "2026-04-20T00:00:00+08:00",
-          "localizedDescription": "重寫 rotateNV12_bilinear 與 rotateNV12_bicubic，修正 4:3 到 16:9 等比例適應時的畫面對齊、90/270 度方向顛倒，以及 NV12 UV 色度對齊不穩問題；並保留先前音軌 PTS 對齊修正。",
+          "version": "2.4",
+          "buildVersion": "2026071501",
+          "date": "2026-07-15T04:00:00+08:00",
+          "localizedDescription": "此應用用於iPad/iPhone設備進行RTMP直播",
           "minOSVersion": "16.0"
         }
       ],
