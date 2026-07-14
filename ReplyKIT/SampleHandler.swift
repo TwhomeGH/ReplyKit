@@ -1573,6 +1573,16 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             
 
             sendlog(message:"🎉 RTMP:\(url)/ KEY:\(fixlogSafeKey(key)) 連線成功",flush: true)
+
+            if let conn = rtmpConnection {
+                let supported = await rtmpStream.ensureVideoCodecSupported(by: conn)
+                if !supported {
+                    RPConfig.shared.state.videoCodec = "H264"
+                    sendlog(message: "⚠️ HEVC 不被 server 支援，自動降級為 H.264")
+                    await applyAllVideoSettings(width: DWidth, height: DHeight)
+                }
+            }
+
             // step 4: 標記 session ready
             await MainActor.run {
                 // Add output
