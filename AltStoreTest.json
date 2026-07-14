@@ -20,10 +20,10 @@
       "screenshots": [],
       "versions": [
         {
-          "downloadURL": "https://github.com/TwhomeGH/ReplyKit/releases/download/12.0.4/liveApp_12.0.4.ipa",
+          "downloadURL": "https://github.com/TwhomeGH/ReplyKit/releases/download/12.0.5/liveApp_12.0.5.ipa",
           "size": 2950000,
-          "version": "2.4",
-          "buildVersion": "2026071501",
+          "version": "12.0.5",
+          "buildVersion": "2026071502",
           "date": "2026-07-15T04:00:00+08:00",
           "localizedDescription": "此應用用於iPad/iPhone設備進行RTMP直播",
           "minOSVersion": "16.0"
