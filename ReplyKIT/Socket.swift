@@ -786,6 +786,8 @@ class SocketClient : @unchecked Sendable {
         let isOringinAudio:Bool?
 
         let h264level: String
+        let videoCodec: String?
+        let hevcLevel: String?
         let BitRateMode: Int
         let videoBuffer: Int
 
@@ -839,7 +841,9 @@ class SocketClient : @unchecked Sendable {
 
         logRES.append("[Get]Bit:\(c.BitRate):\(c.ChangeBit) 低延遲模式:\(c.isLowLatencyRateControlEnabled) E-RTMP:\(c.useEnhancedRTMP ?? false) useBic:\(c.useBic)")
 
-        logRES.append("[Get]H264:\(c.h264level) : \(c.dstW)x\(c.dstH) \(c.videoBuffer) 方向:\(c.Rotate) KF:\(c.KeyFrameInterval ?? -1)")
+        let codecName = c.videoCodec ?? "H264"
+        let hevc = c.hevcLevel ?? "Main"
+        logRES.append("[Get]\(codecName):\(codecName == "HEVC" ? hevc : c.h264level) : \(c.dstW)x\(c.dstH) \(c.videoBuffer) 方向:\(c.Rotate) KF:\(c.KeyFrameInterval ?? -1)")
 
         logRES.append("[Get]OutDraw:\(c.odstW)x\(c.odstH) RotateOriginal:\(c.RotateOriginal)")
 
@@ -847,6 +851,8 @@ class SocketClient : @unchecked Sendable {
             RTMPURL: c.rtmpURL,
             RTMPKey: c.rtmpKey,
             h264level: c.h264level,
+            videoCodec: c.videoCodec,
+            hevcLevel: c.hevcLevel,
             BitRateMode: c.BitRateMode,
             BufferCount: c.videoBuffer,
             BitRate: c.BitRate,

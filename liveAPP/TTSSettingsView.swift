@@ -564,7 +564,8 @@ struct TTSSettingsView: View {
                                     Text("佇列滿載：")
                                     Picker("", selection: $queueOverflowAction) {
                                         Text("跳過新訊息").tag(0)
-                                        Text("清空佇列").tag(1)
+                                        Text("停止舊的，讀新的先").tag(1)
+                                        Text("清空待朗讀").tag(2)
                                     }
                                     .pickerStyle(.menu)
                                 }

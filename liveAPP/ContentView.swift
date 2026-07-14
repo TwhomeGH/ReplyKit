@@ -1987,6 +1987,14 @@ enum H264Profile: String, CaseIterable, Identifiable {
     var id: String { self.rawValue }
 }
 
+enum HEVCProfile: String, CaseIterable, Identifiable {
+    case main = "Main"
+    case main10 = "Main10"
+    case main42210 = "Main42210"
+
+    var id: String { self.rawValue }
+}
+
 
 
 struct homeView:View{
@@ -2002,11 +2010,21 @@ struct homeView:View{
 
     @AppStorage("h264level",store: userDefaults) var h264level: String = "AutoHigh"
 
+    @AppStorage("videoCodec",store: userDefaults) var videoCodec: String = "H264"
+    @AppStorage("hevcLevel",store: userDefaults) var hevcLevel: String = "Main"
+
     // 封裝成 Binding
     var selectedProfile: Binding<H264Profile> {
         Binding<H264Profile>(
             get: { H264Profile(rawValue: h264level) ?? .main },
             set: { h264level = $0.rawValue }
+        )
+    }
+
+    var selectedHEVCProfile: Binding<HEVCProfile> {
+        Binding<HEVCProfile>(
+            get: { HEVCProfile(rawValue: hevcLevel) ?? .main },
+            set: { hevcLevel = $0.rawValue }
         )
     }
 
@@ -2113,24 +2131,34 @@ struct homeView:View{
 
                 HStack(alignment: .top, spacing: 16) {  // spacing 控制兩個區塊間距
                     VStack(spacing:10) {
-                        Text("H264配置")
+                        Text("編碼配置")
                             .font(.headline)
                             .padding()
 
                         VStack {
-                            Picker("H264配置", selection: selectedProfile) {
-                                ForEach(H264Profile.allCases) { profile in
-                                    Text(profile.rawValue).tag(profile)
-                                }
+                            Picker("編碼格式", selection: $videoCodec) {
+                                Text("H264").tag("H264")
+                                Text("HEVC").tag("HEVC")
                             }
-                            .pickerStyle(.menu)
+                            .pickerStyle(.segmented)
 
-                            // 可以改成 MenuPickerStyle、WheelPickerStyle 等
-
-
-
-                            Text("當前選擇:  \(selectedProfile.wrappedValue.rawValue)")
-
+                            if videoCodec == "H264" {
+                                Picker("H264配置", selection: selectedProfile) {
+                                    ForEach(H264Profile.allCases) { profile in
+                                        Text(profile.rawValue).tag(profile)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                Text("當前選擇:  \(selectedProfile.wrappedValue.rawValue)")
+                            } else {
+                                Picker("HEVC配置", selection: selectedHEVCProfile) {
+                                    ForEach(HEVCProfile.allCases) { profile in
+                                        Text(profile.rawValue).tag(profile)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                Text("當前選擇: HEVC \(selectedHEVCProfile.wrappedValue.rawValue)")
+                            }
                         }
                         .frame(maxWidth: .infinity) //
 

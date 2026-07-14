@@ -541,6 +541,8 @@ final class RPConfig {
         var RTMPKey : String?
 
         var h264level : String = "AutoHight"
+        var videoCodec : String = "H264"
+        var hevcLevel : String = "Main"
         var BitRateMode: Int = 0
         var BufferCount : Int = 3
         var BitRate : Int = 6_000_000
@@ -650,6 +652,8 @@ final class RPConfig {
     func updateState(RTMPURL:String? = nil,
                      RTMPKey:String? = nil,
                      h264level:String? = nil,
+                     videoCodec:String? = nil,
+                     hevcLevel:String? = nil,
                      BitRateMode:Int? = nil,
                      BufferCount:Int? = nil,
                      BitRate:Int? = nil,
@@ -678,6 +682,14 @@ final class RPConfig {
 
             if let h264level = h264level {
                 self.state.h264level = h264level
+            }
+
+            if let videoCodec = videoCodec {
+                self.state.videoCodec = videoCodec
+            }
+
+            if let hevcLevel = hevcLevel {
+                self.state.hevcLevel = hevcLevel
             }
 
             if let BitRateMode = BitRateMode {
@@ -804,6 +816,8 @@ final class RPConfig {
             RTMPURL:SharedDefaults.group?.string(forKey: "rtmpURL") ?? "rtmp://192.168.0.102/live",
             RTMPKey:SharedDefaults.group?.string(forKey: "rtmpKey")  ?? "stream1?vhost=live2",
             h264level:SharedDefaults.group?.string(forKey: "h264level") ?? "AutoHigh",
+            videoCodec: SharedDefaults.group?.string(forKey: "videoCodec") ?? "H264",
+            hevcLevel: SharedDefaults.group?.string(forKey: "hevcLevel") ?? "Main",
             BufferCount:SharedDefaults.group?.integer(forKey: "BufferCount") ?? 3,
             BitRate:SharedDefaults.group?.integer(forKey: "bitRate") ?? 6_000_000,
             

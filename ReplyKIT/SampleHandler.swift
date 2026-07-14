@@ -1250,8 +1250,21 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     }
 
 
-    func h264ProfileLevelString(width: Int, height: Int) -> String {
-        switch RPConfig.shared.state.h264level {
+    func profileLevelString(width: Int, height: Int) -> String {
+        let config = RPConfig.shared.state
+        if config.videoCodec == "HEVC" {
+            switch config.hevcLevel {
+            case "Main":
+                return kVTProfileLevel_HEVC_Main_AutoLevel as String
+            case "Main10":
+                return kVTProfileLevel_HEVC_Main10_AutoLevel as String
+            case "Main42210":
+                return kVTProfileLevel_HEVC_Main42210_AutoLevel as String
+            default:
+                return kVTProfileLevel_HEVC_Main_AutoLevel as String
+            }
+        }
+        switch config.h264level {
         case "Baseline":
             return h264ProfileLevel(forWidth: width, height: height, fps: 60, profile: .baseline)
         case "Main":
@@ -1279,7 +1292,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         guard let target = stream ?? rtmpStream else { return }
         var videoSettings = await target.videoSettings
 
-        let profilelvl = h264ProfileLevelString(width: width, height: height)
+        let profilelvl = profileLevelString(width: width, height: height)
         videoSettings.profileLevel = profilelvl
         videoSettings.scalingMode = .letterbox
 
@@ -1319,9 +1332,16 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         videoSettings.isLowLatencyRateControlEnabled = RPConfig.shared.state.isLowLatencyRateControlEnabled
         videoSettings.bitRate = RPConfig.shared.state.BitRate
 
+        let codec = RPConfig.shared.state.videoCodec
+        if codec == "HEVC" {
+            if videoSettings.bitRateMode == .average || videoSettings.bitRateMode == .constant {
+                videoSettings.bitRateMode = .variable
+            }
+        }
+
         try? await target.setVideoSettings(videoSettings)
         await streamStataus?.updateVideoBitRate(to: RPConfig.shared.state.BitRate)
-        sendlog(message: "套用完整 video settings: \(width)x\(height) profile=\(profilelvl) keyframe=\(kv)s bitrate=\(RPConfig.shared.state.BitRate/1000)kbps")
+        sendlog(message: "套用完整 video settings: \(width)x\(height) codec=\(codec) profile=\(profilelvl) keyframe=\(kv)s bitrate=\(RPConfig.shared.state.BitRate/1000)kbps")
     }
 
     func configureVideo_init() async {
@@ -2093,8 +2113,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             videoFrameCount += 1
 
-            // ✅ 強制診斷日誌：每 60 幀或首幀輸出，不依賴 enablePipelineLog
-            if videoFrameCount == 1 || videoFrameCount % 60 == 0 {
+            // ✅ 強制診斷日誌：每 1500 幀或首幀輸出，不依賴 enablePipelineLog
+            if videoFrameCount == 60 || videoFrameCount % 1500 == 0 {
                 let sinceStart = timestamp.seconds
                 sendlog(message: "[VFrame] #\(videoFrameCount) PTS:\(String(format:"%.3f",sinceStart))s ready:\(sampleBuffer.dataReadiness == .ready) vp:\(videoProcessor != nil ? (videoProcessor!.isActive ? "Y" : "INACTIVE") : "N") init:\(processorsInitialized)")
             }
@@ -2136,6 +2156,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 let trackType: AudioTrackType = (sampleBufferType == .audioApp) ? .app : .mic
 
                 audioFrameCount += 1
+
+                //安全日誌：每 1500 幀或首幀輸出，不依賴 enablePipelineLog
+                if audioFrameCount == 60 || audioFrameCount % 1500 == 0 {
+                    let sinceStart = timestamp.seconds
+                    sendlog(message: "[AudioFRAME] #\(audioFrameCount) track:\(trackType) PTS:\(String(format:"%.3f",sinceStart))s ready:\(sampleBuffer.dataReadiness == .ready) ap:\(audioProcessor != nil ? (audioProcessor!.isActive ? "Y" : "INACTIVE") : "N") init:\(processorsInitialized)")
+                }
 
                 if RPConfig.shared.enablePipelineLog, audioFrameCount == 1 || audioFrameCount % 300 == 0 {
                     let sinceStart = timestamp.seconds

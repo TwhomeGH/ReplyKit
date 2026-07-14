@@ -9,8 +9,9 @@ import AVFoundation
 import Foundation
 
 enum TTSQueueOverflowAction: Int {
-    case skipNew = 0   // 跳過新訊息
-    case stopOld = 1   // 停止目前朗讀，清空佇列
+    case skipNew = 0       // 跳過新訊息
+    case stopOld = 1       // 停止目前朗讀，清空佇列，朗讀新訊息
+    case clearPending = 2  // 清空待朗讀（停止目前 + 清佇列），不讀新訊息
 }
 
 @MainActor
@@ -273,9 +274,15 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
                 sendlog(message:"TTS 佇列已滿 (\(pendingUtteranceCount)/\(maxQueueSize))，跳過新訊息")
                 return
             case .stopOld:
-                sendlog(message:"TTS 佇列已滿 (\(pendingUtteranceCount)/\(maxQueueSize))，清空佇列")
+                sendlog(message:"TTS 佇列已滿 (\(pendingUtteranceCount)/\(maxQueueSize))，清空佇列並朗讀新訊息")
                 synthesizer.stopSpeaking(at: .immediate)
                 pendingUtteranceCount = 0
+            case .clearPending:
+                sendlog(message:"TTS 佇列已滿 (\(pendingUtteranceCount)/\(maxQueueSize))，清空待朗讀")
+                synthesizer.stopSpeaking(at: .immediate)
+                pendingUtteranceCount = 0
+                callAudioKeeper.stop()
+                return
             }
         }
 

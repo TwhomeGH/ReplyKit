@@ -937,6 +937,55 @@ HaishinKit 的 TCP timeout 為 15 秒，在這段期間 frame 持續積累，可
 | `liveAPP/Socket.swift` | `stopInternal()` 補上 `sendQueues.removeAll()` + `sendingFlags.removeAll()` |
 | `liveAPP/Socket.swift` | 新增 `deinit`，取消 idleTimers 與 listener |
 
+## 新增 HEVC 編碼支援
+
+### 問題
+先前僅支援 H.264 編碼，無法利用 HEVC（H.265）的更高壓縮率與 10-bit 色深支援。
+
+### 修改
+
+**`liveAPP/ContentView.swift`**
+- 新增 `HEVCProfile` 列舉（Main / Main10 / Main42210）
+- 編碼配置 UI 改為 segmented control 切換 H264 / HEVC，動態顯示對應的 profile picker
+
+**`ReplyKIT/Event.swift`**
+- `State` 新增 `videoCodec` 與 `hevcLevel` 欄位
+- `updateState()` 與 `init()` 同步載入
+
+**`ReplyKIT/SampleHandler.swift`**
+- `h264ProfileLevelString()` → `profileLevelString()`，新增 HEVC 分支（回傳 `kVTProfileLevel_HEVC_Main_AutoLevel` 等常數）
+- `applyAllVideoSettings()` 在 HEVC 模式自動將 `bitRateMode` 強制設為 `.variable`（HEVC 建議搭配 VBR）
+
+**Socket**
+- `liveAPP/Socket.swift` / `ReplyKIT/Socket.swift` 新增 `videoCodec` 與 `hevcLevel` 欄位傳遞
+
+### 行為
+| 編碼格式 | profileLevel | bitRateMode |
+|---------|-------------|-------------|
+| H264 | 依使用者選擇（AutoLevel 或自訂 Level） | 使用者設定 |
+| HEVC | `kVTProfileLevel_HEVC_Main_AutoLevel` 等（AutoLevel，由系統決定） | 強制 `.variable` |
+
+## 擴充 TTS 佇列滿載行為控制選項
+
+### 問題
+`TTSQueueOverflowAction` 僅有 `.skipNew`（跳過新訊息）與 `.stopOld`（清空佇列並朗讀新訊息）兩種行為，缺乏「清空待朗讀但不讀新訊息」的選項。
+
+### 修改
+
+**`liveAPP/TTSService.swift`**
+- `TTSQueueOverflowAction` 新增 `.clearPending = 2`
+- `speak()` 新增 `.clearPending` 分支：stopSpeaking + 重置計數 + 釋放音訊 + return（不朗讀新訊息）
+
+**`liveAPP/TTSSettingsView.swift`**
+- 佇列滿載 Picker 新增第三選項「清空待朗讀」
+
+### 行為對照
+| 選項 | 佇列滿時行為 |
+|------|-------------|
+| 跳過新訊息（skipNew） | 直接丟棄新訊息 |
+| 停止舊的，讀新的先（stopOld） | 停止目前朗讀，清空佇列，朗讀新訊息 |
+| 清空待朗讀（clearPending） | 停止目前朗讀，清空佇列，不讀新訊息 |
+
 ## TODO 待辦事項
 
 

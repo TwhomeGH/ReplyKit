@@ -609,6 +609,10 @@ class SocketServer:ObservableObject {
 
             "h264level": userDefaults?
                 .string(forKey: "h264level") ?? "AutoHigh",
+            "videoCodec": userDefaults?
+                .string(forKey: "videoCodec") ?? "H264",
+            "hevcLevel": userDefaults?
+                .string(forKey: "hevcLevel") ?? "Main",
             "BitRateMode": userDefaults?
                 .integer(forKey: "BitRateMode") ?? 0,
 
