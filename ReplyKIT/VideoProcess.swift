@@ -192,8 +192,8 @@ final class VideoFrameProcessor {
         processedCount += 1
         let localCount = processedCount
 
-        // ✅ 強制診斷：每 60 幀輸出，確認 process() 有被呼叫
-        if localCount == 1 || localCount % 60 == 0 {
+        // ✅ 強制診斷：每 60 幀 / 1500 輸出，確認 process() 有被呼叫
+        if localCount == 60 || localCount % 1500 == 0 {
             sendlog("[VProc] #\(localCount) PTS:\(String(format:"%.3f",pts.seconds))s active:\(isActive) processing:\(isProcessing)")
         }
 
