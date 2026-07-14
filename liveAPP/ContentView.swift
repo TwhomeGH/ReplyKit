@@ -2629,6 +2629,7 @@ struct ContentView: View {
                 if newValue == .audio {
 
                     onAudioPage=true
+                    userDefaults?.synchronize()
                     sendlog(message:"onAudioPage: \(onAudioPage)")
 
                     CFNotificationCenterPostNotification(cfCenter,
@@ -2639,6 +2640,7 @@ struct ContentView: View {
 
 
                     onAudioPage=false
+                    userDefaults?.synchronize()
                     sendlog(message:"onAudioPage: \(onAudioPage)")
 
 
@@ -2678,6 +2680,7 @@ struct ContentView: View {
                 if pageState.onAudioPage {
                     if onAudioPage == false {
                         onAudioPage=true
+                        userDefaults?.synchronize()
 
                         CFNotificationCenterPostNotification(cfCenter,
                                                              CFNotificationName("onAudioPage" as CFString),
@@ -2717,6 +2720,7 @@ struct ContentView: View {
 
                 if onAudioPage == true {
                     onAudioPage=false
+                    userDefaults?.synchronize()
 
                     CFNotificationCenterPostNotification(cfCenter,
                                                          CFNotificationName("onAudioPage" as CFString),

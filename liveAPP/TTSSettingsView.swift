@@ -559,17 +559,16 @@ struct TTSSettingsView: View {
                                 .pickerStyle(.menu)
                             }
 
-                            if maxQueueSize > 0 {
-                                HStack {
-                                    Text("佇列滿載：")
-                                    Picker("", selection: $queueOverflowAction) {
-                                        Text("跳過新訊息").tag(0)
-                                        Text("停止舊的，讀新的先").tag(1)
-                                        Text("清空待朗讀").tag(2)
-                                    }
-                                    .pickerStyle(.menu)
+                            HStack {
+                                Text("佇列滿載：")
+                                Picker("", selection: $queueOverflowAction) {
+                                    Text("跳過新訊息").tag(0)
+                                    Text("停止舊的，讀新的先").tag(1)
+                                    Text("清空待朗讀").tag(2)
                                 }
+                                .pickerStyle(.menu)
                             }
+                            .disabled(maxQueueSize == 0)
 
                             Button("測試朗讀") {
                                 TTSService.shared.speakPreview()
