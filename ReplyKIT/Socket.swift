@@ -1245,6 +1245,14 @@ class SocketClient : @unchecked Sendable {
                 self.processReceiveBuffer()
             }
 
+            if result.isComplete {
+                if !self.receiveBuffer.isEmpty {
+                    self.processReceiveBuffer()
+                }
+                self.cleanupConnection()
+                return
+            }
+
             if let error = result.error {
                 self.logTo("Socket receive error: \(error), closing connection")
 
@@ -1258,10 +1266,6 @@ class SocketClient : @unchecked Sendable {
 
                 self.cleanupConnection()
                 return
-            }
-
-            if result.isComplete, !self.receiveBuffer.isEmpty {
-                self.processReceiveBuffer()
             }
         }
     }
