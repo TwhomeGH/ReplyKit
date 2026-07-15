@@ -343,7 +343,7 @@ jobs:
           tag_name: ${{ steps.get_tag.outputs.tag }}
           files: |
             build/*.ipa
-            build/liveApp_${{ steps.get_tag.outputs.tag }}.xcarchive.zip
+            # build/liveApp_${{ steps.get_tag.outputs.tag }}.xcarchive.zip
           
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
