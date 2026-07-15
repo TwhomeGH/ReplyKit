@@ -152,7 +152,7 @@ class SocketClient : @unchecked Sendable {
             switch conn.state {
             case .ready:
                 return
-            case .preparing:
+            case .preparing, .setup:
                 return
             case .waiting:
                 if let creationTime = connectionCreationTime,
