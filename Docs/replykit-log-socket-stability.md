@@ -333,3 +333,88 @@ case "audience":
 | 連線死亡但 NWConnection 未偵測 | 30s keepalive 繼續往死連線寫，30s send timeout 才清理 | 10s keepalive + 60s 無資料閾值，最多 70s 檢測到 dead 連線並移除 |
 | extension 被 iOS suspend 後恢復 | 無主動心跳，server 空等 30s 才發現連線可能死亡 | extension 恢復後 10s 內發送心跳，server 立即更新 lastReceiveTime |
 | 僅更新觀眾人數 | 發送完整 `StreamMessage`（含空 user/msg），server 解析 ChatMessage 全部欄位 | 發送輕量 `audience`（僅 userNum/userList），server 輕量解析 |
+
+---
+
+## 7. Send 基礎設施 Codable 遷移（2026-07）
+
+### 動機
+
+原本所有 socket payload 都用 `[String: Any]` + `JSONSerialization`：
+- 編譯器無法檢查 key 名稱或型別正確性
+- payload 建構與解析不一致（server 發送用 dictionary、接收用 Codable struct）
+- `JSONSerialization` 對 `Any` 的處理拋棄型別安全
+
+### 改動
+
+#### 7a. Send queue 型別變更（`liveAPP/Socket.swift`）
+
+```swift
+// 改前
+private var sendQueues: [ObjectIdentifier: [[String: Any]]] = [:]
+
+// 改後
+private var sendQueues: [ObjectIdentifier: [Data]] = [:]
+```
+
+queue 不再儲存未序列化的 dictionary，改存已編碼的 `Data`。序列化在 `enqueue` 前完成。
+
+#### 7b. 新增 `Encodable` 版本的 send 函數
+
+```swift
+/// 對 Sendable payload 編碼後入隊
+private func encodedData<T: Encodable>(_ payload: T) -> Data? {
+    try? JSONEncoder().encode(payload)
+}
+
+/// Encodable 版本 — 類型安全的 payload 建構
+private func sendTo(_ connection: NWConnection, payload: some Encodable) {
+    guard let data = encodedData(payload) else { return }
+    enqueue(data, to: connection)
+}
+
+/// 群播也使用 Encodable
+func queueSend(payload: some Encodable) {
+    guard let data = encodedData(payload) else { return }
+    queue.async {
+        for conn in self.connections.values {
+            self.enqueue(data, to: conn)
+        }
+    }
+}
+```
+
+#### 7c. 新舊共存（逐步遷移）
+
+`broadcast` 與 `GetRTMPConfig()` / `GetLogConfig()` 等回傳 `[String: Any]` 的函數保留不動，使用保留的 dictionary → Data 輔助方法：
+
+```swift
+private func sendTo(_ connection: NWConnection, dictionary: [String: Any]) {
+    guard let data = try? JSONSerialization.data(withJSONObject: dictionary, options: []) else { return }
+    enqueue(data, to: connection)
+}
+```
+
+#### 7d. sendNextPayload 簡化
+
+```swift
+// 改前：收到 dictionary 後才做 JSONSerialization
+let payload = queue.removeFirst()
+guard let data = try? JSONSerialization.data(withJSONObject: payload, options: []) else { ... }
+var dataWithNewline = data
+dataWithNewline.append(0x0A)
+
+// 改後：data 已預先編碼，只需補 newline
+var data = queue.removeFirst()
+data.append(0x0A)
+```
+
+### 影響
+
+| 面向 | 改前 | 改後 |
+|------|------|------|
+| Payload 建構 | `["type": "keepalive"]` (untyped) | `KeepaliveMessage()` (typed struct) |
+| 序列化 | `JSONSerialization.data(withJSONObject:)` | `JSONEncoder().encode(_:)` |
+| 發送 queue 型別 | `[[String: Any]]` | `[Data]` |
+| 編譯器檢查 | 無（key 拼錯 runtime 才炸） | 有（struct 不存在就無法編譯） |
+| 逐步遷移 | — | 保留 dictionary overload，可逐一轉換 |

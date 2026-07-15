@@ -998,26 +998,32 @@ class SocketServer:ObservableObject {
     }
 
 
-    private var sendQueues: [ObjectIdentifier: [[String: Any]]] = [:]
+    private var sendQueues: [ObjectIdentifier: [Data]] = [:]
     private var sendingFlags: [ObjectIdentifier: Bool] = [:]
     private var sendTimeoutFlags: [String: Bool] = [:]
 
 
+    private func encodedData<T: Encodable>(_ payload: T) -> Data? {
+        try? JSONEncoder().encode(payload)
+    }
+
+
     // MARK: 群播
-    func queueSend(payload: [String: Any]) {
+    func queueSend(payload: some Encodable) {
+        guard let data = encodedData(payload) else { return }
         queue.async { [weak self] in
             guard let self else { return }
             for conn in self.connections.values {
-                self.enqueue(payload, to: conn)
+                self.enqueue(data, to: conn)
             }
         }
     }
 
-    private func enqueue(_ payload: [String: Any], to conn: NWConnection) {
+    private func enqueue(_ data: Data, to conn: NWConnection) {
         let id = ObjectIdentifier(conn)
         queue.async {
             var queue = self.sendQueues[id] ?? []
-            queue.append(payload)
+            queue.append(data)
             self.sendQueues[id] = queue
 
             if self.sendingFlags[id] != true {
@@ -1037,27 +1043,21 @@ class SocketServer:ObservableObject {
                 return
             }
 
-            let payload = queue.removeFirst()
+            var data = queue.removeFirst()
             self.sendQueues[id] = queue
 
-            guard let data = try? JSONSerialization.data(withJSONObject: payload, options: []) else {
-                self.sendNextPayload(for: conn)
-                return
-            }
-
-            var dataWithNewline = data
-            dataWithNewline.append(0x0A)
+            data.append(0x0A)
 
             let timeoutKey = "send_\(id)"
             self.sendTimeoutFlags[timeoutKey] = true
             self.queue.asyncAfter(deadline: .now() + 30) { [weak self, weak conn] in
                 guard let self, let conn else { return }
                 guard self.sendTimeoutFlags.removeValue(forKey: timeoutKey) != nil else { return }
-                self.logTo("Send timeout, removing connection")
+                self.logTo("Send timeout (30s), removing connection")
                 self.removeConnection(conn)
             }
 
-            conn.send(content: dataWithNewline, completion: .contentProcessed { [weak self] error in
+            conn.send(content: data, completion: .contentProcessed { [weak self] error in
 
                 guard let self = self else { return }
                 self.sendTimeoutFlags.removeValue(forKey: timeoutKey)
@@ -1100,11 +1100,12 @@ class SocketServer:ObservableObject {
 
 
     // MARK: 一對一
-    private func sendTo(_ connection: NWConnection, payload: [String: Any]) {
+    private func sendTo(_ connection: NWConnection, payload: some Encodable) {
+        guard let data = encodedData(payload) else { return }
         let id = ObjectIdentifier(connection)
         queue.async {
             var queue = self.sendQueues[id] ?? []
-            queue.append(payload)
+            queue.append(data)
             self.sendQueues[id] = queue
 
             if self.sendingFlags[id] != true {
