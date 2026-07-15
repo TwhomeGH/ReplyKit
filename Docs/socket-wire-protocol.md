@@ -14,7 +14,7 @@
 | 方向 | → Server |
 |------|----------|
 | Payload | `{"type":"heartbeat"}` |
-| 觸發 | 被動回應 server `keepalive`，或主動每 10s 由用戶端定時器發送 |
+| 觸發 | 僅被動回應 server 發送的 `keepalive`，用戶端不主動發送 |
 | Server 行為 | 僅記錄「收到Socket心跳維持連線」，同時更新該連線的 `lastReceiveTime` |
 
 ---
@@ -225,6 +225,5 @@ ReplyKIT (Extension)                          liveAPP (Main App)
   - 用戶端 `heartbeat` 或任何資料都會更新 `lastReceiveTime`
 - 用戶端：
   - 按需連線（on-demand），每次操作（requestRTMP、logConfig、UPSet、sendStreamEnd、flushBatch）獨立建立 TCP 連線，收到回應後關閉
-  - 連線存活期間，**主動每 10s** 發送 `{"type":"heartbeat"}` 供 server 檢測健康度
-  - 被動回應 server 的 `keepalive` 時也發送 `heartbeat`
+  - **不主動發送 heartbeat**，僅被動回應 server 的 `keepalive` 時回送 `{"type":"heartbeat"}`
 - logbatch 在 `onLogPage=true` 時保持長連線，false 時關閉

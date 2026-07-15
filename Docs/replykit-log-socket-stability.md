@@ -256,7 +256,7 @@ if self.listener == nil {
 ### 問題
 
 1. **Keepalive 30s 間隔過長**：iOS 可能在 30s 內 suspend extension，server 無法及時發現連線死亡。連線死後 keepalive 繼續往 dead socket 寫入，30s send timeout 才清理。
-2. **用戶端無主動保活**：只有 server 端發起 keepalive，用戶端被動回應。如果 server 端 keepalive timer 延遲或 connection 停留在 `.waiting`，用戶端完全不會發送任何心跳。
+2. **用戶端心跳與 server keepalive 碰撞**：原先加入了用戶端主動每 10s 發送 heartbeat 的機制，但用戶端同時也會被動回應 server 的 `keepalive`。兩者每 10s 撞車導致 server 收到重複的心跳包，浪費頻寬且增加 send timeout 誤判風險。（已移除用戶端主動心跳，改為純被動回應）
 3. **聊天訊息與觀眾人數更新耦合**：extension 僅需更新人數時被迫發送一整個 `StreamMessage`（含空 user/msg），增加解析成本與頻寬浪費。
 
 ### 修正
@@ -271,23 +271,11 @@ timer.schedule(deadline: .now() + 30, repeating: 30)
 timer.schedule(deadline: .now() + 10, repeating: 10)
 ```
 
-#### 6b. 用戶端主動心跳（`ReplyKIT/Socket.swift`）
+#### 6b. ❌ 用戶端主動心跳（已移除 `ReplyKIT/Socket.swift`）
 
-連線建立後啟動 10s 定時器，主動發送 `{"type":"heartbeat"}`：
-
-```swift
-private func startHeartbeatTimer() {
-    let timer = DispatchSource.makeTimerSource(queue: queue)
-    timer.schedule(deadline: .now() + 10, repeating: 10, leeway: .seconds(2))
-    timer.setEventHandler { [weak self] in
-        self?.sendPayload(["type": "heartbeat"])
-    }
-    timer.resume()
-    heartbeatTimer = timer
-}
-```
-
-`startReceiveLoop()` 和 `stopReceiveLoop()` 分別啟動與停止此定時器，與連線生命週期綁定。
+~~連線建立後啟動 10s 定時器，主動發送 `{"type":"heartbeat"}`~~  
+已移除：用戶端不再主動發送 heartbeat，僅被動回應 server 的 `keepalive`。  
+原因：server 每 10s 發送 `keepalive`，用戶端每 10s 又主動發 `heartbeat`，兩者碰撞導致 server 收到重複心跳，浪費頻寬且增加 send timeout 誤判風險。Server 端 `lastReceiveTime` 60s 逾時機制已足夠檢測死連線。
 
 #### 6c. 伺服器端 stale 連線檢測（`liveAPP/Socket.swift`）
 
@@ -331,8 +319,9 @@ case "audience":
 | 場景 | 改前 | 改後 |
 |------|------|------|
 | 連線死亡但 NWConnection 未偵測 | 30s keepalive 繼續往死連線寫，30s send timeout 才清理 | 10s keepalive + 60s 無資料閾值，最多 70s 檢測到 dead 連線並移除 |
-| extension 被 iOS suspend 後恢復 | 無主動心跳，server 空等 30s 才發現連線可能死亡 | extension 恢復後 10s 內發送心跳，server 立即更新 lastReceiveTime |
+| extension 被 iOS suspend 後恢復 | 無主動心跳，server 空等 30s 才發現連線可能死亡 | server 10s keepalive 觸發 extension 回應 heartbeat，立即更新 lastReceiveTime |
 | 僅更新觀眾人數 | 發送完整 `StreamMessage`（含空 user/msg），server 解析 ChatMessage 全部欄位 | 發送輕量 `audience`（僅 userNum/userList），server 輕量解析 |
+| 心跳碰撞 | 無（改前無用戶端主動心跳） | ~~用戶端主動心跳 + keepalive 回應雙重發送，造成重複~~ 已移除用戶端主動心跳，純被動回應 |
 
 ---
 
