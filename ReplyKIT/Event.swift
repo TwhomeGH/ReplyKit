@@ -693,7 +693,7 @@ final class RPConfig {
             }
 
             if let BitRateMode = BitRateMode {
-                self.state.BitRateMode = BitRateMode
+                self.state.BitRateMode = min(BitRateMode, 2)
             }
 
             if let BufferCount = BufferCount {

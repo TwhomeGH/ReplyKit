@@ -127,16 +127,29 @@ final class AppLogPersister {
     private let maxLogFileLines = 5000
     private let trimMargin = 2000
 
-    /// 記憶體中估算行數，避免每次寫入都讀檔
-    private var estimatedLineCount = 5000
+    private var estimatedLineCount = 0
     private var trimScheduled = false
+    private let trimInterval: TimeInterval = 0.3
 
     private var logURL: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
             .appendingPathComponent(logFileName)
     }
 
-    
+    init() {
+        queue.async { [weak self] in
+            self?.calibrateLineCount()
+        }
+    }
+
+    private func calibrateLineCount() {
+        guard let handle = try? FileHandle(forReadingFrom: logURL),
+              let currentData = try? handle.readToEnd()
+        else { return }
+        handle.closeFile()
+        guard let content = String(data: currentData, encoding: .utf8) else { return }
+        estimatedLineCount = content.split(separator: "\n", omittingEmptySubsequences: false).count
+    }
 
     func append(line: String) {
         queue.async {
@@ -181,7 +194,6 @@ final class AppLogPersister {
         }
     }
 
-    /// 累積寫入位元組（供 DeviceInfo 取樣）
     private(set) var totalWrittenBytes: UInt64 = 0
 
     private func write(_ data: Data) {
@@ -198,16 +210,12 @@ final class AppLogPersister {
             try? data.write(to: logURL, options: .atomic)
         }
 
-        if estimatedLineCount > maxLogFileLines + trimMargin && !trimScheduled {
-            trimScheduled = true
-            queue.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-                self?.trimLogFileIfNeeded()
-                self?.trimScheduled = false
-            }
+        if estimatedLineCount > maxLogFileLines + trimMargin {
+            trimNow()
         }
     }
 
-    private func trimLogFileIfNeeded() {
+    private func trimNow() {
         guard let handle = try? FileHandle(forReadingFrom: logURL),
               let currentData = try? handle.readToEnd()
         else { return }

@@ -418,3 +418,29 @@ data.append(0x0A)
 | 發送 queue 型別 | `[[String: Any]]` | `[Data]` |
 | 編譯器檢查 | 無（key 拼錯 runtime 才炸） | 有（struct 不存在就無法編譯） |
 | 逐步遷移 | — | 保留 dictionary overload，可逐一轉換 |
+
+---
+
+## 8. 停用 Quality 位元率模式（2026-07）
+
+### 問題
+
+BitRateMode 選項 3（Quality）會啟用 `videoSettings.bitRateMode = .quality`，在 HaishinKit 中此模式無視設定位元率、改以畫面品質為目標，導致直播位元率暴衝或異常偏低。使用 HEVC 編碼時即使選擇 ABR/CBR 也會被強制轉為 VBR（見 `SampleHandler.swift:1336-1339`），但 Quality 模式不受此保護。
+
+### 修正
+
+| 檔案 | 改動 |
+|------|------|
+| `liveAPP/Setting.swift` | `BitRateOptions` 陣列從 4 項減為 3 項，移除「Quality 品質模式」 |
+| `ReplyKIT/SampleHandler.swift` | switch 前 `min(BitRateMode, 2)`，值 3 自動降級為 2 (VBR) |
+| `liveAPP/Socket.swift` | `GetRTMPConfig()` 輸出時 clamp `BitRateMode` 到 0-2 |
+| `ReplyKIT/Socket.swift` | `applyRTMP()` 套用時 clamp `c.BitRateMode` |
+| `ReplyKIT/Event.swift` | `updateState()` 儲存時 clamp |
+
+### 行為對照
+
+| 情境 | 改前 | 改後 |
+|------|------|------|
+| 使用者先前選了 Quality（UserDefaults 存 3） | 啟用 `.quality`，位元率失控 | 自動降級為 VBR (2) |
+| HEVC + ABR/CBR | 強制轉 VBR，但 Quality 維持不變 | 已無 Quality 選項，HEVC 統一走 VBR |
+| Picker 顯示 | 4 個 segment | 3 個 segment（Quality 移除） |

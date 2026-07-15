@@ -889,7 +889,7 @@ class SocketClient : @unchecked Sendable {
             h264level: c.h264level,
             videoCodec: c.videoCodec,
             hevcLevel: c.hevcLevel,
-            BitRateMode: c.BitRateMode,
+            BitRateMode: min(c.BitRateMode, 2),
             BufferCount: c.videoBuffer,
             BitRate: c.BitRate,
             ChangeBit: c.ChangeBit,

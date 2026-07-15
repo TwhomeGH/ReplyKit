@@ -1312,15 +1312,14 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         videoSettings.expectedFrameRate = expectedFrameRate
         //不改預設值 videoSettings.frameInterval = 1.0 / expectedFrameRate
 
-        switch RPConfig.shared.state.BitRateMode {
+        let mode = min(RPConfig.shared.state.BitRateMode, 2)
+        switch mode {
         case 0:
             videoSettings.bitRateMode = .average
         case 1:
             videoSettings.bitRateMode = .constant
         case 2:
             videoSettings.bitRateMode = .variable
-        case 3:
-            videoSettings.bitRateMode = .quality
         default:
             videoSettings.bitRateMode = .average
         }

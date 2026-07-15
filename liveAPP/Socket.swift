@@ -628,8 +628,8 @@ class SocketServer:ObservableObject {
                 .string(forKey: "videoCodec") ?? "H264",
             "hevcLevel": userDefaults?
                 .string(forKey: "hevcLevel") ?? "Main",
-            "BitRateMode": userDefaults?
-                .integer(forKey: "BitRateMode") ?? 0,
+            "BitRateMode": min(userDefaults?
+                .integer(forKey: "BitRateMode") ?? 0, 2),
 
             "videoBuffer": userDefaults?
                 .integer(forKey: "BufferCount") ?? 5,
