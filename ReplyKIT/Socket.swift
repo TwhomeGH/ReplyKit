@@ -120,6 +120,7 @@ class SocketClient : @unchecked Sendable {
     private var inFlightBatches = 0
     private let maxInflightBatches = 3
     private var batchTimer: DispatchSourceTimer?
+    private var heartbeatTimer: DispatchSourceTimer?
 
 
 
@@ -670,6 +671,22 @@ class SocketClient : @unchecked Sendable {
         batchTimer = nil
     }
 
+    private func startHeartbeatTimer() {
+        guard heartbeatTimer == nil else { return }
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + 10, repeating: 10, leeway: .seconds(2))
+        timer.setEventHandler { [weak self] in
+            guard let self = self else { return }
+            self.sendPayload(["type": "heartbeat"])
+        }
+        timer.resume()
+        heartbeatTimer = timer
+    }
+
+    private func stopHeartbeatTimer() {
+        heartbeatTimer?.cancel()
+        heartbeatTimer = nil
+    }
 
 
     private let maxLogChunkBytes = 8192
@@ -1177,11 +1194,13 @@ class SocketClient : @unchecked Sendable {
         receiveTask = Task { [weak self] in
             await self?.runReceiveLoop()
         }
+        startHeartbeatTimer()
     }
 
     private func stopReceiveLoop() {
         receiveTask?.cancel()
         receiveTask = nil
+        stopHeartbeatTimer()
     }
 
     private func runReceiveLoop() async {

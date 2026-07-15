@@ -14,7 +14,8 @@
 | 方向 | → Server |
 |------|----------|
 | Payload | `{"type":"heartbeat"}` |
-| Server 行為 | 僅記錄「收到Socket心跳維持連線」 |
+| 觸發 | 被動回應 server `keepalive`，或主動每 10s 由用戶端定時器發送 |
+| Server 行為 | 僅記錄「收到Socket心跳維持連線」，同時更新該連線的 `lastReceiveTime` |
 
 ---
 
@@ -23,9 +24,9 @@
 | 方向 | Server → |
 |------|----------|
 | Payload | `{"type":"keepalive"}` |
-| 觸發 | 30 秒定時器，向所有連線廣播 |
-| Server 行為 | 防止 NWConnection 60 秒閒置超時自動斷線 |
-| 用戶端建議 | 收到後回 `{"type":"heartbeat"}` 雙向重置 idle timer |
+| 觸發 | 10 秒定時器，向所有連線廣播 |
+| Server 行為 | 發送前檢查 `lastReceiveTime`，若該連線 >60 秒無任何資料視為 dead 並移除；防止 NWConnection 閒置超時自動斷線 |
+| 用戶端行為 | 收到後回 `{"type":"heartbeat"}` 雙向重置 idle timer |
 
 ---
 
@@ -44,6 +45,16 @@
 |------|----------|
 | Payload | `{"type":"Ended","Message":"StreamEnded"}` |
 | Server 行為 | 呼叫 `StreamStatusChanged(isLive:false)` |
+
+---
+
+### `audience` — 純觀眾資訊更新
+
+| 方向 | → Server |
+|------|----------|
+| Payload | `{"type":"audience","userNum":Int?,"userList":[String]?}` |
+| Server 行為 | 僅更新觀眾數量與列表，不渲染任何聊天訊息 |
+| 用途 | 與 `StreamMessage` 分離，避免為了更新人數而傳送空字串聊天訊息 |
 
 ---
 
@@ -170,7 +181,8 @@
 ```
 ReplyKIT (Extension)                          liveAPP (Main App)
 ────────────────────                          ──────────────────
-  heartbeat ──────────────►                   僅 log
+  heartbeat ──────────────►                   更新 lastReceiveTime (10s 定時)
+  audience ───────────────►                   僅更新觀眾人數/列表
   StreamStarting ────────►                   reset 直播狀態
   Ended ─────────────────►                   終止直播
   StreamMessage ─────────►                   PiP 渲染 + TTS
@@ -185,7 +197,7 @@ ReplyKIT (Extension)                          liveAPP (Main App)
   log / logbatch ────────►                   寫 LogBuffer
   reconnectStatus ───────►                   更新 PiP 重連 UI
 
-                          ◄─── keepalive (30s 定時廣播)
+                          ◄─── keepalive (10s 定時廣播，含 stale 連線清理)
                           ◄─── testRTMP (偵錯)
 ```
 
@@ -207,6 +219,12 @@ ReplyKIT (Extension)                          liveAPP (Main App)
 
 ## 連線模型
 
-- 伺服端：`NWListener` 常駐監聽 port 9322，`keepalive` timer 每 30s 廣播保活
-- 用戶端：按需連線（on-demand），每次操作（requestRTMP、logConfig、UPSet、sendStreamEnd、flushBatch）獨立建立 TCP 連線，收到回應後關閉
+- 伺服端：`NWListener` 常駐監聽 port 9322
+  - `keepalive` timer 每 **10s** 廣播 `{"type":"keepalive"}` 保活
+  - 發送 keepalive 前檢查 `lastReceiveTime`，連線 >60s 無任何資料視為 dead 並移除
+  - 用戶端 `heartbeat` 或任何資料都會更新 `lastReceiveTime`
+- 用戶端：
+  - 按需連線（on-demand），每次操作（requestRTMP、logConfig、UPSet、sendStreamEnd、flushBatch）獨立建立 TCP 連線，收到回應後關閉
+  - 連線存活期間，**主動每 10s** 發送 `{"type":"heartbeat"}` 供 server 檢測健康度
+  - 被動回應 server 的 `keepalive` 時也發送 `heartbeat`
 - logbatch 在 `onLogPage=true` 時保持長連線，false 時關閉

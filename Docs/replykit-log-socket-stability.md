@@ -248,3 +248,88 @@ if self.listener == nil {
 | 分屏啟動直播，server 忙碌 | NWConnection 卡 `.waiting` 直到 `waitForReady` 10s 超時，重試 2 次後放棄 | `.waiting` 逾 2s 自動重建連線，任一週期成功即繼續流程 |
 | scene `.active` 時 listener 仍在 `.preparing` | `cleanupStaleListener()` 取消 listener 並重建，造成窗口損失 | listener 保留，等待自然就緒 |
 | listener 進入 `.failed` 但未即時回收 | `ensureRunning()` 無反應（只檢查 nil） | 主動偵測 `.failed` 並觸發 restart |
+
+---
+
+## 6. Keepalive 強化與死連線檢測（2026-07）
+
+### 問題
+
+1. **Keepalive 30s 間隔過長**：iOS 可能在 30s 內 suspend extension，server 無法及時發現連線死亡。連線死後 keepalive 繼續往 dead socket 寫入，30s send timeout 才清理。
+2. **用戶端無主動保活**：只有 server 端發起 keepalive，用戶端被動回應。如果 server 端 keepalive timer 延遲或 connection 停留在 `.waiting`，用戶端完全不會發送任何心跳。
+3. **聊天訊息與觀眾人數更新耦合**：extension 僅需更新人數時被迫發送一整個 `StreamMessage`（含空 user/msg），增加解析成本與頻寬浪費。
+
+### 修正
+
+#### 6a. Keepalive 間隔縮短至 10s（`liveAPP/Socket.swift`）
+
+```swift
+// 改前
+timer.schedule(deadline: .now() + 30, repeating: 30)
+
+// 改後
+timer.schedule(deadline: .now() + 10, repeating: 10)
+```
+
+#### 6b. 用戶端主動心跳（`ReplyKIT/Socket.swift`）
+
+連線建立後啟動 10s 定時器，主動發送 `{"type":"heartbeat"}`：
+
+```swift
+private func startHeartbeatTimer() {
+    let timer = DispatchSource.makeTimerSource(queue: queue)
+    timer.schedule(deadline: .now() + 10, repeating: 10, leeway: .seconds(2))
+    timer.setEventHandler { [weak self] in
+        self?.sendPayload(["type": "heartbeat"])
+    }
+    timer.resume()
+    heartbeatTimer = timer
+}
+```
+
+`startReceiveLoop()` 和 `stopReceiveLoop()` 分別啟動與停止此定時器，與連線生命週期綁定。
+
+#### 6c. 伺服器端 stale 連線檢測（`liveAPP/Socket.swift`）
+
+追蹤每條連線的最後接收時間，keepalive 發送前檢查：
+
+```swift
+private var lastReceiveTimes: [ObjectIdentifier: Date] = [:]
+private let staleConnectionTimeout: TimeInterval = 60
+
+// sendKeepalive() 中
+for (id, conn) in connections {
+    if let lastRx = lastReceiveTimes[id],
+       now.timeIntervalSince(lastRx) > staleConnectionTimeout {
+        logTo("Connection stale, removing")
+        removeConnection(conn)
+        continue
+    }
+    sendTo(conn, payload: payload)
+}
+```
+
+`lastReceiveTimes[id]` 在連線建立時初始化為 `Date()`，每次 `runReceiveLoop` 收到資料時更新，在 `removeConnection`/`stopInternal`/`suspend`/`releaseMemory` 中清理。
+
+#### 6d. 獨立 AudienceUpdate 訊息類型
+
+Server 端新增輕量解析器，僅更新人數不處理聊天渲染：
+
+```swift
+struct AudiencePayload: Codable {
+    let userNum: Int?
+    let userList: [String]?
+}
+
+case "audience":
+    let dict = try decoder.decode(AudiencePayload.self, from: data)
+    updateAudienceInfo(userNum: dict.userNum, userList: dict.userList)
+```
+
+### 行為對照
+
+| 場景 | 改前 | 改後 |
+|------|------|------|
+| 連線死亡但 NWConnection 未偵測 | 30s keepalive 繼續往死連線寫，30s send timeout 才清理 | 10s keepalive + 60s 無資料閾值，最多 70s 檢測到 dead 連線並移除 |
+| extension 被 iOS suspend 後恢復 | 無主動心跳，server 空等 30s 才發現連線可能死亡 | extension 恢復後 10s 內發送心跳，server 立即更新 lastReceiveTime |
+| 僅更新觀眾人數 | 發送完整 `StreamMessage`（含空 user/msg），server 解析 ChatMessage 全部欄位 | 發送輕量 `audience`（僅 userNum/userList），server 輕量解析 |

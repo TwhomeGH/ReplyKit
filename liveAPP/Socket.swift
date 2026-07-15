@@ -36,6 +36,7 @@ class SocketServer:ObservableObject {
 
     private var listener: NWListener?
     private var connections: [ObjectIdentifier: NWConnection] = [:]
+    private var lastReceiveTimes: [ObjectIdentifier: Date] = [:]
     private var keepaliveTimer: DispatchSourceTimer?
 
     private let queue = DispatchQueue(
@@ -276,6 +277,7 @@ class SocketServer:ObservableObject {
         }
 
         connections[id] = connection
+        lastReceiveTimes[id] = Date()
 
         if connections.count == 1 {
             startKeepaliveTimer()
@@ -364,6 +366,7 @@ class SocketServer:ObservableObject {
             guard connections[id] != nil else { break }
 
             if let data = result.data, !data.isEmpty {
+                self.lastReceiveTimes[id] = Date()
                 var buffer = self.receiveBuffers[id] ?? Data()
 
                 if LPConfig.shared.SocketLog {
@@ -480,6 +483,11 @@ class SocketServer:ObservableObject {
         var appVol:Float
         var micVol:Float
         var persist:Bool = false
+    }
+
+    struct AudiencePayload: Codable {
+        let userNum: Int?
+        let userList: [String]?
     }
 
 
@@ -951,6 +959,10 @@ class SocketServer:ObservableObject {
                 LogBuffer.shared.push(prefixed)
                 AppLogPersister.shared.append(lines: prefixed)
 
+            case "audience":
+                let dict = try decoder.decode(AudiencePayload.self, from: data)
+                updateAudienceInfo(userNum: dict.userNum, userList: dict.userList)
+
             case "reconnectStatus":
                 if let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                    let status = dict["status"] as? String,
@@ -1107,7 +1119,7 @@ class SocketServer:ObservableObject {
     private func startKeepaliveTimer() {
         stopKeepaliveTimer()
         let timer = DispatchSource.makeTimerSource(queue: queue)
-        timer.schedule(deadline: .now() + 30, repeating: 30)
+        timer.schedule(deadline: .now() + 10, repeating: 10)
         timer.setEventHandler { [weak self] in
             self?.sendKeepalive()
         }
@@ -1120,9 +1132,17 @@ class SocketServer:ObservableObject {
         keepaliveTimer = nil
     }
 
+    private let staleConnectionTimeout: TimeInterval = 60
+
     private func sendKeepalive() {
         let payload: [String: Any] = ["type": "keepalive"]
-        for conn in connections.values {
+        let now = Date()
+        for (id, conn) in connections {
+            if let lastRx = lastReceiveTimes[id], now.timeIntervalSince(lastRx) > staleConnectionTimeout {
+                logTo("Connection stale (no data for \(Int(now.timeIntervalSince(lastRx)))s), removing")
+                removeConnection(conn)
+                continue
+            }
             sendTo(conn, payload: payload)
         }
     }
@@ -1153,6 +1173,7 @@ class SocketServer:ObservableObject {
         stopReceiveLoop(for: connection)
         connections[id] = nil
         receiveBuffers[id] = nil
+        lastReceiveTimes[id] = nil
         sendQueues[id] = nil
         sendingFlags[id] = nil
 
@@ -1193,6 +1214,7 @@ class SocketServer:ObservableObject {
             }
             self.connections.removeAll()
             self.receiveBuffers.removeAll()
+            self.lastReceiveTimes.removeAll()
             self.sendQueues.removeAll()
             self.sendingFlags.removeAll()
             self.pendingFailedPayloads.removeAll()
@@ -1215,6 +1237,7 @@ class SocketServer:ObservableObject {
         queue.async { [weak self] in
             guard let self = self else { return }
             self.receiveBuffers.removeAll()
+            self.lastReceiveTimes.removeAll()
             self.sendQueues.removeAll()
             self.sendingFlags.removeAll()
             self.pendingFailedPayloads.removeAll()
@@ -1236,6 +1259,7 @@ class SocketServer:ObservableObject {
         stopKeepaliveTimer()
         connections.removeAll()
         receiveBuffers.removeAll()
+        lastReceiveTimes.removeAll()
         sendQueues.removeAll()
         sendingFlags.removeAll()
         pendingFailedPayloads.removeAll()
