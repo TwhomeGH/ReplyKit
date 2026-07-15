@@ -742,13 +742,24 @@ func postSystemNotification(title: String, body: String, imageURL: String? = nil
         return
     }
 
-    URLSession.shared.dataTask(with: bestURL) { data, _, error in
+    URLSession.shared.dataTask(with: bestURL) { data, response, error in
         guard let data = data, error == nil else {
             DispatchQueue.main.async { deliverNotification(content: content) }
             return
         }
+        let ext: String
+        if let mimeType = response?.mimeType {
+            switch mimeType.lowercased() {
+            case "image/jpeg", "image/jpg": ext = "jpg"
+            case "image/gif": ext = "gif"
+            case "image/webp": ext = "webp"
+            default: ext = "png"
+            }
+        } else {
+            ext = bestURL.pathExtension.isEmpty ? "png" : bestURL.pathExtension
+        }
         let tempFile = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString + ".png")
+            .appendingPathComponent(UUID().uuidString + "." + ext)
         try? data.write(to: tempFile)
         if let attachment = try? UNNotificationAttachment(identifier: UUID().uuidString, url: tempFile) {
             content.attachments = [attachment]
