@@ -183,7 +183,7 @@ final class AppLogPersister {
             } else {
                 try? data.write(to: self.logURL, options: .atomic)
             }
-            self.trimLogFileIfNeeded()
+            self.trimNow()
         }
     }
 
