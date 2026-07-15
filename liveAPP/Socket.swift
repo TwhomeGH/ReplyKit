@@ -418,7 +418,7 @@ class SocketServer:ObservableObject {
     func debugRTMP() {
         let rtmpPayload: [String: Any] = GetRTMPConfig()
         
-        queueSend(payload: rtmpPayload)
+        queueSend(dictionary: rtmpPayload)
 
     }
 
@@ -859,11 +859,11 @@ class SocketServer:ObservableObject {
 
                 guard let result = res else {
                     logTo("UPSet key '\(key)' not found or type mismatch")
-                    sendTo(connection, payload: ["type": "UPSet", "key": key, "value": NSNull()])
+                    sendTo(connection, dictionary: ["type": "UPSet", "key": key, "value": NSNull()])
                     return
                 }
 
-                sendTo(connection, payload: ["type": "UPSet", "key": key, "value": result])
+                sendTo(connection, dictionary: ["type": "UPSet", "key": key, "value": result])
 
             case "batch":
                 let json = try JSONSerialization.jsonObject(with: data)
@@ -898,7 +898,7 @@ class SocketServer:ObservableObject {
                 responses.append(["type": "BatchEnded"])
 
                 for (index, resp) in responses.enumerated() {
-                    sendTo(connection, payload: resp)
+                    sendTo(connection, dictionary: resp)
                     if index == 0, let type = resp["type"] as? String, type == "RTMP" {
                         var logResp = resp
                         if let rtmpKey = logResp["rtmpKey"] as? String {
@@ -911,10 +911,10 @@ class SocketServer:ObservableObject {
                 }
 
             case "logConfig":
-                sendTo(connection, payload: GetLogConfig())
+                sendTo(connection, dictionary: GetLogConfig())
 
             case "requestRTMP":
-                sendTo(connection, payload: GetRTMPConfig())
+                sendTo(connection, dictionary: GetRTMPConfig())
 
             case "requestSettings":
                 logTo("棄用Sync UserDefaults to client 該項目不使用")
@@ -1019,6 +1019,16 @@ class SocketServer:ObservableObject {
         }
     }
 
+    func queueSend(dictionary: [String: Any]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: dictionary, options: []) else { return }
+        queue.async { [weak self] in
+            guard let self else { return }
+            for conn in self.connections.values {
+                self.enqueue(data, to: conn)
+            }
+        }
+    }
+
     private func enqueue(_ data: Data, to conn: NWConnection) {
         let id = ObjectIdentifier(conn)
         queue.async {
@@ -1088,11 +1098,11 @@ class SocketServer:ObservableObject {
 
         if let conn = connection {
             logTo("使用單一廣播")
-            sendTo(conn, payload: payload)
+            sendTo(conn, dictionary: payload)
         } else {
 
             logTo("廣播給所有已連線")
-            queueSend(payload: payload)
+            queueSend(dictionary: payload)
         }
 
 
@@ -1113,6 +1123,11 @@ class SocketServer:ObservableObject {
                 self.sendNextPayload(for: connection)
             }
         }
+    }
+
+    private func sendTo(_ connection: NWConnection, dictionary: [String: Any]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: dictionary, options: []) else { return }
+        enqueue(data, to: connection)
     }
 
 
@@ -1144,12 +1159,12 @@ class SocketServer:ObservableObject {
                 removeConnection(conn)
                 continue
             }
-            sendTo(conn, payload: payload)
+            sendTo(conn, dictionary: payload)
         }
     }
 
     // MARK: - Connection Cleanup
-    private var pendingFailedPayloads: [ObjectIdentifier: [[String: Any]]] = [:]
+    private var pendingFailedPayloads: [ObjectIdentifier: [Data]] = [:]
 
     private func removeConnection(_ connection: NWConnection) {
         if DispatchQueue.getSpecific(key: queueKey) == nil {
