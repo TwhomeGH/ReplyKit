@@ -1000,7 +1000,6 @@ class SocketServer:ObservableObject {
 
     private var sendQueues: [ObjectIdentifier: [Data]] = [:]
     private var sendingFlags: [ObjectIdentifier: Bool] = [:]
-    private var sendTimeoutFlags: [String: Bool] = [:]
 
 
     private func encodedData<T: Encodable>(_ payload: T) -> Data? {
@@ -1058,19 +1057,9 @@ class SocketServer:ObservableObject {
 
             data.append(0x0A)
 
-            let timeoutKey = "send_\(id)"
-            self.sendTimeoutFlags[timeoutKey] = true
-            self.queue.asyncAfter(deadline: .now() + 30) { [weak self, weak conn] in
-                guard let self, let conn else { return }
-                guard self.sendTimeoutFlags.removeValue(forKey: timeoutKey) != nil else { return }
-                self.logTo("Send timeout (30s), removing connection")
-                self.removeConnection(conn)
-            }
-
             conn.send(content: data, completion: .contentProcessed { [weak self] error in
 
                 guard let self = self else { return }
-                self.sendTimeoutFlags.removeValue(forKey: timeoutKey)
 
                 if let error {
                     self.removeConnection(conn)

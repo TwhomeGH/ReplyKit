@@ -433,3 +433,52 @@ BitRateMode 選項 3（Quality）會啟用 `videoSettings.bitRateMode = .quality
 | 使用者先前選了 Quality（UserDefaults 存 3） | 啟用 `.quality`，位元率失控 | 自動降級為 VBR (2) |
 | HEVC + ABR/CBR | 強制轉 VBR，但 Quality 維持不變 | 已無 Quality 選項，HEVC 統一走 VBR |
 | Picker 顯示 | 4 個 segment | 3 個 segment（Quality 移除） |
+
+---
+
+## 9. 移除 Send Timeout 主動斷線機制（2026-07）
+
+### 問題
+
+`sendNextPayload()` 中有一個 30s 計時器：若 `conn.send` 的 `.contentProcessed` callback 在 30s 內未觸發，server 會主動呼叫 `removeConnection()` 砍掉連線。
+
+但 NWConnection callback 在 iOS 高負載或 app 狀態切換時可能遺失（見 #244 分析）。此時連線**接收端完全正常**（heartbeat 仍可送達），僅因 send callback 未觸發就被 server 主動斷線，反而破壞穩定性。
+
+### 修正
+
+移除 send timeout 計時器與 `sendTimeoutFlags`，完全交由 NWConnection 自己管理連線生命週期：
+
+```swift
+// 改前：30s 計時器 + 強制 removeConnection
+let timeoutKey = "send_\(id)"
+sendTimeoutFlags[timeoutKey] = true
+queue.asyncAfter(deadline: .now() + 30) { [weak self, weak conn] in
+    guard let self, let conn else { return }
+    guard sendTimeoutFlags.removeValue(forKey: timeoutKey) != nil else { return }
+    logTo("Send timeout, removing connection")
+    removeConnection(conn)
+}
+
+conn.send(content: data, completion: .contentProcessed { error in
+    sendTimeoutFlags.removeValue(forKey: timeoutKey)
+    // ...
+})
+
+// 改後：僅靠 send completion callback 驅動 queue
+conn.send(content: data, completion: .contentProcessed { [weak self] error in
+    guard let self = self else { return }
+    if let error {
+        removeConnection(conn)   // NWConnection 回報錯誤才斷
+        return
+    }
+    sendNextPayload(for: conn)   // 正常完成就送下一筆
+})
+```
+
+### 影響
+
+| 面向 | 改前 | 改後 |
+|------|------|------|
+| Send callback 遺失 | 30s 後 server 主動砍連線 | 連線保留，下一筆 keepalive/send 會觸發新 callback |
+| 連線穩定性 | 健康連線被誤殺 → Node.js bot 需 15s 重連 | 健康連線不受影響，僅 NWConnection 回報 error 才斷 |
+| 死連線偵測 | 30s send timeout（過度積極） | 60s stale connection timeout（keepalive 時檢查 lastReceiveTime） |
