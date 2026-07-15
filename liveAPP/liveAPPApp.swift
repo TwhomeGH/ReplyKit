@@ -733,10 +733,10 @@ func postSystemNotification(title: String, body: String, imageURL: String? = nil
     content.categoryIdentifier = "replykit_notification"
 
     let bestURL: URL
-    if let imageURL = imageURL, let url = URL(string: imageURL) {
-        bestURL = url
-    } else if let firstEmoji = inlineImages.compactMap({ URL(string: $0) }).first {
+    if let firstEmoji = inlineImages.compactMap({ URL(string: $0) }).first {
         bestURL = firstEmoji
+    } else if let imageURL = imageURL, let url = URL(string: imageURL) {
+        bestURL = url
     } else {
         deliverNotification(content: content)
         return
