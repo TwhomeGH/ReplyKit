@@ -732,39 +732,29 @@ func postSystemNotification(title: String, body: String, imageURL: String? = nil
     content.sound = .default
     content.categoryIdentifier = "replykit_notification"
 
-    var allURLs = inlineImages.compactMap { URL(string: $0) }
+    let bestURL: URL?
     if let imageURL = imageURL, let url = URL(string: imageURL) {
-        allURLs.insert(url, at: 0)
-    }
-    guard !allURLs.isEmpty else {
+        bestURL = url
+    } else if let firstEmoji = inlineImages.compactMap({ URL(string: $0) }).first {
+        bestURL = firstEmoji
+    } else {
         deliverNotification(content: content)
         return
     }
 
-    let group = DispatchGroup()
-    var attachments: [UNNotificationAttachment] = []
-    let lock = NSLock()
-
-    for url in allURLs {
-        group.enter()
-        URLSession.shared.dataTask(with: url) { data, _, error in
-            defer { group.leave() }
-            guard let data = data, error == nil else { return }
-            let tempFile = FileManager.default.temporaryDirectory
-                .appendingPathComponent(UUID().uuidString + ".png")
-            try? data.write(to: tempFile)
-            if let attachment = try? UNNotificationAttachment(identifier: UUID().uuidString, url: tempFile) {
-                lock.lock()
-                attachments.append(attachment)
-                lock.unlock()
-            }
-        }.resume()
-    }
-
-    group.notify(queue: .main) {
-        content.attachments = attachments
-        deliverNotification(content: content)
-    }
+    URLSession.shared.dataTask(with: bestURL) { data, _, error in
+        guard let data = data, error == nil else {
+            DispatchQueue.main.async { deliverNotification(content: content) }
+            return
+        }
+        let tempFile = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".png")
+        try? data.write(to: tempFile)
+        if let attachment = try? UNNotificationAttachment(identifier: UUID().uuidString, url: tempFile) {
+            content.attachments = [attachment]
+        }
+        DispatchQueue.main.async { deliverNotification(content: content) }
+    }.resume()
 }
 
 private func deliverNotification(content: UNMutableNotificationContent) {
