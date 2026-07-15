@@ -547,8 +547,8 @@ class SocketServer:ObservableObject {
 
 
         if isNotifyApp {
-            let inlineImages = PIPServiceMessages.extractAllImageURLs(from: msg).imageURLs
-            postSystemNotification(title: user, body: msg, imageURL: img, inlineImages: inlineImages)
+            let (cleanBody, inlineImages) = PIPServiceMessages.extractAllImageURLs(from: msg)
+            postSystemNotification(title: user, body: cleanBody, imageURL: img, inlineImages: inlineImages)
         }
 
         PIPService.shared
