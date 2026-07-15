@@ -107,6 +107,10 @@ class SocketClient : @unchecked Sendable {
 
     private let queue = DispatchQueue(label: "SocketClientQueue")
 
+    private var connectionCreationTime: Date?
+
+    private let maxWaitTimeBeforeReconnect: TimeInterval = 2.0
+
 
 
     // MARK: - Batch Log Transport
@@ -145,9 +149,21 @@ class SocketClient : @unchecked Sendable {
 
         if let conn = connection {
             switch conn.state {
-            case .ready, .preparing, .waiting:
+            case .ready:
                 return
-            default:
+            case .preparing:
+                return
+            case .waiting:
+                if let creationTime = connectionCreationTime,
+                   Date().timeIntervalSince(creationTime) > maxWaitTimeBeforeReconnect {
+                    logTo("Connection waiting \(Int(Date().timeIntervalSince(creationTime)))s, recreating...")
+                    _closeConnection()
+                } else {
+                    return
+                }
+            case .failed, .cancelled:
+                _closeConnection()
+            @unknown default:
                 _closeConnection()
             }
         }
@@ -157,6 +173,7 @@ class SocketClient : @unchecked Sendable {
             port: NWEndpoint.Port(rawValue: port)!,
             using: .tcp
         )
+        connectionCreationTime = Date()
         start()
 
         isConnection = false
@@ -194,6 +211,7 @@ class SocketClient : @unchecked Sendable {
         connection?.stateUpdateHandler = nil
         connection?.cancel()
         connection = nil
+        connectionCreationTime = nil
 
         readyContinuation?.resume(returning: false)
         readyContinuation = nil
@@ -251,6 +269,7 @@ class SocketClient : @unchecked Sendable {
         connection?.stateUpdateHandler = nil
         connection?.cancel()
         connection = nil
+        connectionCreationTime = nil
         receiveBuffer.removeAll()
         stopReceiveLoop()
     }

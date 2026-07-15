@@ -159,6 +159,9 @@ class SocketServer:ObservableObject {
         switch listener.state {
         case .ready:
             isStopping = false
+        case .waiting:
+            logTo("listener 狀態 waiting，保留等待")
+            isStopping = false
         case .failed(let error):
             logTo("listener 狀態 failed: \(error)")
             listener.stateUpdateHandler = nil
@@ -254,6 +257,10 @@ class SocketServer:ObservableObject {
             if self.listener == nil {
                 self.logTo("Listener missing, restarting")
                 self.scheduleRestart(delay: 1.0)
+            } else if case .failed = self.listener?.state {
+                self.logTo("Listener in failed state, restarting")
+                self.stopInternal()
+                self.start()
             }
         }
     }

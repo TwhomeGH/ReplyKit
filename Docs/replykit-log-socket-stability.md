@@ -166,3 +166,85 @@ flushBatch() (onLogPage=true 時) → connect() (若無連線) → 發送 logbat
 - `sendLog`（單條 log 發送）保留不動，供 socket 內部 debug 訊息使用
 - `forceFlushBatch()` 使用 `queue.sync` 確保 termination 前 pending batch 確實送出（內部呼叫 `_connect()` 確保連線存在）
 - `closeConnection()` 重置 `inFlightBatches = 0` 並清空 `pendingBatchEntries`
+
+---
+
+## 5. 分屏／台前調度 Socket 連線修復（2026-07）
+
+### 問題
+
+在 iPadOS 的分屏（Split Screen）或台前調度（Stage Manager）模式下啟動直播時，Broadcast Extension 完全無反應。使用者回報「主 socket 又死了」。
+
+### 根本原因
+
+**SocketClient._connect() 對 NWConnection `.waiting` 狀態缺乏逾時處理：**
+
+1. 主 App 的 SocketServer（NWListener）在分屏模式下可能因系統資源調度暫時不可用
+2. Extension 的 `_connect()` 建立 NWConnection，但 server 不在監聽 → 連線進入 `.waiting`
+3. `_connect()` 看到 `.waiting` 直接 `return`，**永遠不會重建連線**：
+   ```swift
+   // 改前：.waiting 也直接 return
+   case .ready, .preparing, .waiting:
+       return
+   ```
+4. `waitForReady()` 輪詢 10 秒 → 超時 → `requestRTMPKEYAndLog()` 失敗
+5. 3 次重試共 ~45 秒後 → `stopBroadcastWithError()`
+6. 使用者看到「完全沒反應」
+
+**次要問題**：`cleanupStaleListener()` 會取消 `.preparing` 狀態的 listener，造成短暫的無監聽窗口。
+
+### 修正
+
+#### 5a. SocketClient：.waiting 逾時重建（`ReplyKIT/Socket.swift`）
+
+新增 `connectionCreationTime` 追蹤連線建立時間，`.waiting` 超過 2 秒視為 server 不可用，關閉並重建連線：
+
+```swift
+private var connectionCreationTime: Date?
+private let maxWaitTimeBeforeReconnect: TimeInterval = 2.0
+
+// _connect() 中對 .waiting 的處理
+case .waiting:
+    if let creationTime = connectionCreationTime,
+       Date().timeIntervalSince(creationTime) > maxWaitTimeBeforeReconnect {
+        logTo("Connection waiting \(Int(...))s, recreating...")
+        _closeConnection()
+    } else {
+        return
+    }
+```
+
+`connectionCreationTime` 在連線建立時設為 `Date()`，在 `_closeConnection()` 與 `cleanupConnection()` 中清空。
+
+#### 5b. SocketServer：保留 `.waiting` listener（`liveAPP/Socket.swift`）
+
+`cleanupStaleListener()` 不再取消處於 `.waiting` 狀態的 NWListener（等候網路恢復時不應被打斷）：
+
+```swift
+case .waiting:
+    logTo("listener 狀態 waiting，保留等待")
+    isStopping = false
+```
+
+#### 5c. SocketServer：增強 ensureRunning（`liveAPP/Socket.swift`）
+
+`ensureRunning()` 除了檢查 `listener == nil`，也檢查 listener 是否處於 `.failed` 狀態並觸發重啟：
+
+```swift
+if self.listener == nil {
+    self.logTo("Listener missing, restarting")
+    self.scheduleRestart(delay: 1.0)
+} else if case .failed = self.listener?.state {
+    self.logTo("Listener in failed state, restarting")
+    self.stopInternal()
+    self.start()
+}
+```
+
+### 行為對照
+
+| 場景 | 改前 | 改後 |
+|------|------|------|
+| 分屏啟動直播，server 忙碌 | NWConnection 卡 `.waiting` 直到 `waitForReady` 10s 超時，重試 2 次後放棄 | `.waiting` 逾 2s 自動重建連線，任一週期成功即繼續流程 |
+| scene `.active` 時 listener 仍在 `.preparing` | `cleanupStaleListener()` 取消 listener 並重建，造成窗口損失 | listener 保留，等待自然就緒 |
+| listener 進入 `.failed` 但未即時回收 | `ensureRunning()` 無反應（只檢查 nil） | 主動偵測 `.failed` 並觸發 restart |
