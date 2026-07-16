@@ -1116,7 +1116,7 @@ final class LocalNetworkPermissionManager: ObservableObject {
 
         let descriptor = NWBrowser.Descriptor.bonjour(
             type: "_http._tcp",
-            domain: "localhost"
+            domain: ""  
         )
 
         let browser = NWBrowser(for: descriptor, using: params)
