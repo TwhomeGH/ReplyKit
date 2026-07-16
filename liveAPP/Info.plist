@@ -23,6 +23,12 @@
 	<array>
 		<string>com.nuclear.liveAPP.socket.keepalive</string>
 	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>ReplyKit 需要區域網路權限來搜尋本機 RTMP 伺服器與通信</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_http._tcp</string>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>processing</string>
