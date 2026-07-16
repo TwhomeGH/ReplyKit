@@ -482,3 +482,67 @@ conn.send(content: data, completion: .contentProcessed { [weak self] error in
 | Send callback 遺失 | 30s 後 server 主動砍連線 | 連線保留，下一筆 keepalive/send 會觸發新 callback |
 | 連線穩定性 | 健康連線被誤殺 → Node.js bot 需 15s 重連 | 健康連線不受影響，僅 NWConnection 回報 error 才斷 |
 | 死連線偵測 | 30s send timeout（過度積極） | 60s stale connection timeout（keepalive 時檢查 lastReceiveTime） |
+
+---
+
+## 10. PiP 保活模式（2026-07）
+
+### 動機
+
+PiP（子母畫面）能讓 iOS 在背景保持 app 存活，但標準 PiP 以 4-24 fps 持續渲染畫面，耗電且對長時間純監控場景無必要。新增一個「保活模式」：極低幀率、無聊天訊息渲染、僅顯示時間與狀態，用最少資源維持 PiP 活躍。
+
+### 實作
+
+**新增屬性**（`liveAPP/PIPService.swift`）：
+
+```swift
+private(set) var isKeepaliveMode = false
+private let keepaliveFPS: Double = 0.1    // 每 10 秒 1 幀
+```
+
+**`startKeepalivePiP()`** —— 類似 `startPiP()` 但不建立 `messagesLayer`，`currentFPS` 直接鎖 `keepaliveFPS`。
+
+**`decayFPSIfNeeded()`** 開頭檢查：
+
+```swift
+guard !isKeepaliveMode else {
+    if abs(currentFPS - keepaliveFPS) > 0.01 { currentFPS = keepaliveFPS }
+    return
+}
+```
+
+**`renderUIViewToPixelBuffer()`** 跳過聊天渲染：
+
+```swift
+if !isKeepaliveMode {
+    messagesLayer?.container.render(in: context)
+}
+```
+
+**`drawTimeOverlay()`** 在保活模式顯示兩行：
+
+```
+┌──────────────────────────┐
+│   2026/07/15 下午05:10:30  │  ← 白色 monospacedDigit 16
+│   保活用子母工作中          │  ← 綠色 bold 18
+└──────────────────────────┘
+```
+
+兩行水平居中，黑色半透明背景 0.6 alpha。
+
+**UI 按鈕**（`liveAPP/PIPContent.swift`）：
+
+```
+[聊天組]啟動 PiP    [保活組]啟動 PiP 保活    [聊天室]停止 PiP
+```
+
+### 行為對照
+
+| 面向 | 標準 PiP | 保活 PiP |
+|------|----------|----------|
+| 幀率 | 4-24 fps（動態調整） | 0.1 fps（固定） |
+| 聊天訊息 | 渲染 + 動畫 | 不渲染 |
+| 畫面內容 | 時間 + 狀態 + 聊天訊息 | 時間 + 「保活用子母工作中」 |
+| 耗電 | 高（持續 CPU/GPU） | 極低 |
+| 目的 | 直播監控 + 聊天互動 | 純保活（避免 iOS 殺後台） |
+| 停止 | 同一 `stopPiP()` | 同一 `stopPiP()` |
