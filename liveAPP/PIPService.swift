@@ -412,6 +412,10 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             let x = (size.width - maxW) / 2
             let y = (size.height - totalH) / 2
 
+            cg.saveGState()
+            cg.translateBy(x: 0, y: size.height)
+            cg.scaleBy(x: 1.0, y: -1.0)
+
             cg.setFillColor(UIColor.black.withAlphaComponent(0.6).cgColor)
             cg.fill(CGRect(x: x, y: y, width: maxW, height: totalH))
 
@@ -425,6 +429,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
                 withAttributes: [.font: labelFont, .foregroundColor: UIColor.systemGreen]
             )
             UIGraphicsPopContext()
+            cg.restoreGState()
             return
         }
         var elapsedSeconds: Double = 0
