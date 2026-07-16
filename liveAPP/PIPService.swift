@@ -415,6 +415,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             cg.setFillColor(UIColor.black.withAlphaComponent(0.6).cgColor)
             cg.fill(CGRect(x: x, y: y, width: maxW, height: totalH))
 
+            UIGraphicsPushContext(cg)
             (timeText as NSString).draw(
                 at: CGPoint(x: x + (maxW - timeSize.width) / 2, y: y + 6),
                 withAttributes: [.font: timeFont, .foregroundColor: UIColor.white]
@@ -423,6 +424,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
                 at: CGPoint(x: x + (maxW - labelSize.width) / 2, y: y + 6 + timeSize.height + 4),
                 withAttributes: [.font: labelFont, .foregroundColor: UIColor.systemGreen]
             )
+            UIGraphicsPopContext()
             return
         }
         var elapsedSeconds: Double = 0
