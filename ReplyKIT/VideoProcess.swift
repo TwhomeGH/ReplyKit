@@ -113,9 +113,6 @@ final class VideoFrameProcessor {
     var debug = RPConfig.shared.enableRotateLog
     var processedCount: Int = 0
     var sentCount: Int = 0
-    private var isProcessing = false
-    private var processingStartedAt: Date?
-    private let processingTimeout: TimeInterval = 2.0
     private var watchdogResetCount: Int = 0
     private var consecutiveDropCount: Int = 0
     private let maxConsecutiveDrops = 60
@@ -194,19 +191,7 @@ final class VideoFrameProcessor {
 
         // ✅ 強制診斷：每 60 幀 / 1500 輸出，確認 process() 有被呼叫
         if localCount == 60 || localCount % 1500 == 0 {
-            sendlog("[VProc] #\(localCount) PTS:\(String(format:"%.3f",pts.seconds))s active:\(isActive) processing:\(isProcessing)")
-        }
-
-        // Watchdog: 偵測 GPU 旋轉逾時，重置整個管線
-        if isProcessing, let startedAt = processingStartedAt {
-            if Date().timeIntervalSince(startedAt) > processingTimeout {
-                isProcessing = false
-                processingStartedAt = nil
-                watchdogResetCount += 1
-                resetProcessorActor(
-                    reason: "[VideoProcessor] ⚠️ #\(processedCount) GPU 處理逾時 (\(Int(processingTimeout))s)，重置旋轉器管線 (#\(watchdogResetCount))"
-                )
-            }
+            sendlog("[VProc] #\(localCount) PTS:\(String(format:"%.3f",pts.seconds))s active:\(isActive)")
         }
 
         // 連續逾時重置超過上限，標記需要重建
@@ -215,12 +200,6 @@ final class VideoFrameProcessor {
             sendlog("[VideoProcessor] ❌ 連續 GPU 逾時超過上限，標記重建")
             return
         }
-
-        guard !isProcessing else { return }
-        isProcessing = true
-        processingStartedAt = Date()
-        processingGeneration &+= 1
-        let taskGeneration = processingGeneration
 
         let isFirstFrame = localCount == 1
         let enablePipeLog = RPConfig.shared.enablePipelineLog
@@ -233,73 +212,66 @@ final class VideoFrameProcessor {
         if processorActor == nil {
             processorActor = makeProcessorActor()
         }
-        guard let actor = processorActor else {
-            isProcessing = false
-            processingStartedAt = nil
-            return
-        }
+        guard let actor = processorActor else { return }
 
-        Task.detached(priority: .utility) { [weak self] in
+        videoQueue.async { [weak self] in
             guard let self else { return }
-            defer {
-                if self.processingGeneration == taskGeneration {
-                    self.isProcessing = false
-                    self.processingStartedAt = nil
+            let prev = self.videoTaskChain
+            self.videoTaskChain = Task(priority: .high) { [weak self] in
+                _ = await prev?.value
+                guard let self, self.isActive else { return }
+
+                guard let rotated = await actor.processFrame(
+                    imageBuffer: imageBuffer,
+                    originalTime: oringinaltime,
+                    angle: self.angle
+                ) else {
+                    self.consecutiveDropCount += 1
+                    if self.consecutiveDropCount >= self.maxConsecutiveDrops {
+                        self.isActive = false
+                        sendlog("[VideoProcessor] ❌ 連續 \(self.consecutiveDropCount) 幀旋轉失敗，標記重建")
+                    }
+                    return
                 }
-            }
-            guard self.isActive else { return }
 
-            guard let rotated = await actor.processFrame(
-                imageBuffer: imageBuffer,
-                originalTime: oringinaltime,
-                angle: self.angle
-            ) else {
-                self.consecutiveDropCount += 1
-                if self.consecutiveDropCount >= self.maxConsecutiveDrops {
-                    self.isActive = false
-                    sendlog("[VideoProcessor] ❌ 連續 \(self.consecutiveDropCount) 幀旋轉失敗，標記重建")
+                self.watchdogResetCount = 0
+                self.consecutiveDropCount = 0
+
+                let duration: CMTime
+                if oringinaltime.duration.isValid, oringinaltime.duration.seconds > 0 {
+                    duration = oringinaltime.duration
+                } else {
+                    duration = CMTime(seconds: 1.0 / 60.0, preferredTimescale: 600)
                 }
-                return
-            }
+                var correctedTiming = CMSampleTimingInfo(
+                    duration: duration,
+                    presentationTimeStamp: pts,
+                    decodeTimeStamp: CMTime.invalid
+                )
+                var correctedBuffer: CMSampleBuffer?
+                CMSampleBufferCreateCopyWithNewTiming(
+                    allocator: kCFAllocatorDefault,
+                    sampleBuffer: rotated,
+                    sampleTimingEntryCount: 1,
+                    sampleTimingArray: &correctedTiming,
+                    sampleBufferOut: &correctedBuffer
+                )
 
-            // 成功處理，重置所有計數
-            self.watchdogResetCount = 0
-            self.consecutiveDropCount = 0
-
-            let duration: CMTime
-            if oringinaltime.duration.isValid, oringinaltime.duration.seconds > 0 {
-                duration = oringinaltime.duration
-            } else {
-                duration = CMTime(seconds: 1.0 / 60.0, preferredTimescale: 600)
-            }
-            var correctedTiming = CMSampleTimingInfo(
-                duration: duration,
-                presentationTimeStamp: pts,
-                decodeTimeStamp: CMTime.invalid
-            )
-            var correctedBuffer: CMSampleBuffer?
-            CMSampleBufferCreateCopyWithNewTiming(
-                allocator: kCFAllocatorDefault,
-                sampleBuffer: rotated,
-                sampleTimingEntryCount: 1,
-                sampleTimingArray: &correctedTiming,
-                sampleBufferOut: &correctedBuffer
-            )
-
-            guard await self.mediaMixer.isRunning else {
-                if enablePipeLog {
-                    sendlog("[VideoProcessor] ⚠️ #\(localCount) MediaMixer 未運行，跳過 PTS:\(String(format:"%.3f",pts.seconds))s")
+                guard await self.mediaMixer.isRunning else {
+                    if enablePipeLog {
+                        sendlog("[VideoProcessor] ⚠️ #\(localCount) MediaMixer 未運行，跳過 PTS:\(String(format:"%.3f",pts.seconds))s")
+                    }
+                    return
                 }
-                return
-            }
-            self.sentCount += 1
-            if enablePipeLog, isFirstFrame || localCount % 300 == 0 {
-                sendlog("[VideoProcessor] #\(localCount) 送出MediaMixer PTS:\(String(format:"%.3f",pts.seconds))s")
-            }
-            if let cb = correctedBuffer {
-                await self.mediaMixer.append(cb)
-            } else {
-                await self.mediaMixer.append(rotated)
+                self.sentCount += 1
+                if enablePipeLog, isFirstFrame || localCount % 300 == 0 {
+                    sendlog("[VideoProcessor] #\(localCount) 送出MediaMixer PTS:\(String(format:"%.3f",pts.seconds))s")
+                }
+                if let cb = correctedBuffer {
+                    await self.mediaMixer.append(cb)
+                } else {
+                    await self.mediaMixer.append(rotated)
+                }
             }
         }
     }

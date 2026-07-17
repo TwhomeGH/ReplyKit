@@ -1,0 +1,51 @@
+rocessingStartedAt = nil
+
+            return
+
+        }
+
+
+
+        Task.detached(priority: .utility) { [weak self] in
+
+            guard let self else { return }
+
+            defer {
+
+                if self.processingGeneration == taskGeneration {
+
+                    self.isProcessing = false
+
+                    self.processingStartedAt = nil
+
+                }
+
+            }
+
+            guard self.isActive else { return }
+
+
+
+            guard let rotated = await actor.processFrame(
+
+                imageBuffer: imageBuffer,
+
+                originalTime: oringinaltime,
+
+                angle: self.angle
+
+            ) else {
+
+                self.consecutiveDropCount += 1
+
+                if self.consecutiveDropCount >= self.maxConsecutiveDrops {
+
+                    self.isActive = false
+
+                    sendlog("[VideoProcessor] ❌ 連續 \(self.consecutiveDropCount) 幀旋轉失敗，標記重建")
+
+                }
+
+                return
+
+       
