@@ -971,7 +971,7 @@ Extension 的除錯日誌（`sendlog()`）在 socket 就緒前只寫入 ring buf
 
 ```swift
 // 自動選擇 device 支援的最佳 AAC 格式（heAacV2 → heAac → aac）
-var audioSettings = await mediaMixer.audioMixerSettings
+var audioSettings = await rtmpStream.audioSettings
 audioSettings.format = AudioCodecSettings.bestAacFormat
 await mediaMixer.setAudioMixerSettings(audioSettings)
 
