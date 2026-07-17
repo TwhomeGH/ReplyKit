@@ -117,6 +117,8 @@ final class VideoFrameProcessor {
     private var consecutiveDropCount: Int = 0
     private let maxConsecutiveDrops = 60
     private var processingGeneration: UInt64 = 0
+    private let videoQueue = DispatchQueue(label: "com.replykit.video", qos: .userInitiated)
+    private var videoTaskChain: Task<Void, Never>?
 
     init(mediaMixer: MediaMixer,
         sendlog: @escaping (String) -> Void) {

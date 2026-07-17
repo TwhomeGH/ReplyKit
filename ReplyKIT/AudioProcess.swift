@@ -435,7 +435,8 @@ final class AudioProcessor : @unchecked Sendable {
     private var enqueueCount: Int = 0
     private var lastEnqueueLog: CFTimeInterval = 0
     private let audioQueue = DispatchQueue(label: "com.replykit.audio", qos: .userInitiated)
-    private weak var audioTaskChain: Task<Void, Never>?
+    // 不能弱引用Task，否則會被釋放導致後續音訊處理中斷
+    private var audioTaskChain: Task<Void, Never>?
 
     func enqueue(_ sampleBuffer: CMSampleBuffer, trackType: AudioTrackType, oringinaltime: CMSampleTimingInfo) {
         enqueueCount += 1
