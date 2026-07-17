@@ -448,9 +448,8 @@ final class AudioProcessor : @unchecked Sendable {
 
         audioQueue.async { [weak self] in
             guard let self else { return }
-            let prev = self.audioTaskChain
+            self.audioTaskChain?.cancel()
             self.audioTaskChain = Task(priority: .high) { [weak self] in
-                _ = await prev?.value
                 guard let self, self.isActive else { return }
 
                 guard await self.mediaMixer.isRunning else {

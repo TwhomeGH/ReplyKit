@@ -216,9 +216,8 @@ final class VideoFrameProcessor {
 
         videoQueue.async { [weak self] in
             guard let self else { return }
-            let prev = self.videoTaskChain
+            self.videoTaskChain?.cancel()
             self.videoTaskChain = Task(priority: .high) { [weak self] in
-                _ = await prev?.value
                 guard let self, self.isActive else { return }
 
                 guard let rotated = await actor.processFrame(
