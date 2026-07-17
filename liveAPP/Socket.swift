@@ -806,7 +806,8 @@ class SocketServer:ObservableObject {
             case "AdOverlay":
                 let dict = try decoder.decode(AdOverlay.self, from: data)
                 
-                let user = dict.user?.isEmpty == false ? dict.user : "贊助訊息"
+                let user = (dict.user?.isEmpty == false) ? dict.user! : "贊助訊息"
+
                 let text = dict.text
                 let iconURL = dict.iconURL
                 let useTTS = dict.useTTS
@@ -816,7 +817,7 @@ class SocketServer:ObservableObject {
                 
                 if isNotifyApp {
                     let (cleanBody, inlineImages) = PIPServiceMessages.extractAllImageURLs(from: text)
-                    postSystemNotification(title: user, body: cleanBody, imageURL: img, inlineImages: inlineImages)
+                    postSystemNotification(title: user, body: cleanBody, imageURL: iconURL ?? "", inlineImages: inlineImages)
                 }
 
 
