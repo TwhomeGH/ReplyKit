@@ -160,8 +160,6 @@ final class VideoFrameProcessor {
     }
 
     func resetProcessing() {
-        isProcessing = false
-        processingStartedAt = nil
         watchdogResetCount = 0
         consecutiveDropCount = 0
         processingGeneration &+= 1
