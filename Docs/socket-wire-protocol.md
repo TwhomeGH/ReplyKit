@@ -67,6 +67,31 @@
 
 ---
 
+### `AdOverlay` — 廣告贊助聊天室訊息
+
+| 方向 | → Server |
+|------|----------|
+| Payload | `{"type":"AdOverlay","user":String,"text":String,"iconURL":String?,"userTTS":Bool}` |
+| Server 行為 | 顯示廣告信息、PiP 疊加層渲染聊天訊息、TTS 朗讀 |
+
+
+  #### 待辦事項
+  - [ ] PIP疊加層渲染專用贊助信息欄位
+  - [X] 純系統通知
+  - [X] TTS郎讀通知
+
+```json
+{
+  "type":"AdOverlay",
+  "user":String?,
+  "text":String,
+  "iconURL":String?,
+  "userTTS":Bool
+}
+```
+
+---
+
 ### `UPSet` — 讀取 UserDefaults
 
 | 方向 | ↔ |

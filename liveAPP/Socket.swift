@@ -441,6 +441,14 @@ class SocketServer:ObservableObject {
     }
 
 
+    // MARK: - AdOverlay and ChatMessage Structs 廣告用日誌與聊天室訊息
+    struct AdOverlay: Codable {
+        let user: String?
+        let text:String
+        let iconURL:String?
+        let useTTS:Bool
+    }
+
     struct ChatMessage: Codable {
         let user:String
         let message:String
@@ -794,6 +802,36 @@ class SocketServer:ObservableObject {
             
 
             switch type {
+            
+            case "AdOverlay":
+                let dict = try decoder.decode(AdOverlay.self, from: data)
+                
+                let user = dict.user?.isEmpty == false ? dict.user : "贊助訊息"
+                let text = dict.text
+                let iconURL = dict.iconURL
+                let useTTS = dict.useTTS
+
+                logTo("收到廣告訊息:\(user) - \(text) Icon:\(String(describing: iconURL)) TTS:\(useTTS)")
+
+                
+                if isNotifyApp {
+                    let (cleanBody, inlineImages) = PIPServiceMessages.extractAllImageURLs(from: text)
+                    postSystemNotification(title: user, body: cleanBody, imageURL: img, inlineImages: inlineImages)
+                }
+
+
+                Task { @MainActor in
+                    if useTTS {
+                        
+                        TTSService.shared.speakStreamMessage(user: user, message: msg, isMain: true)
+                    }
+                    
+                }
+
+                // 先註解還沒實現此功能
+                // PIPService.shared.addAdOverlay(text: text, iconURL: iconURL, useTTS: useTTS)
+
+
 
             case "heartbeat":
                 sendlog(message: "收到Socket心跳維持連線")
@@ -828,6 +866,7 @@ class SocketServer:ObservableObject {
                     logTo("訊息是空的 不需要更新子母_StreamMessage")
                     return
                 }
+                
 
                 renderChatMessage(user: user, msg: msg, img: img, giftImg: giftImg, isMain: isMain)
 
