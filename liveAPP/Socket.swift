@@ -824,7 +824,7 @@ class SocketServer:ObservableObject {
                 Task { @MainActor in
                     if useTTS {
                         
-                        TTSService.shared.speakStreamMessage(user: user, message: msg, isMain: true)
+                        TTSService.shared.speakStreamMessage(user: user, message: text, isMain: true)
                     }
                     
                 }
