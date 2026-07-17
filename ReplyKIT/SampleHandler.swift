@@ -1402,6 +1402,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         audioSettings.tracks[0] = .default
         audioSettings.tracks[1] = .default
 
+        audioSettings.format = AudioCodecSettings.bestAacFormat
+
+        // Log 會顯示選擇結果
+        sendlog(message: "Audio格式自動使用: format=\(AudioCodecSettings.bestAacFormat.audioDescription)")
+
         await mediaMixer.setAudioMixerSettings(audioSettings)
 
         reloadVolumes()

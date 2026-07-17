@@ -958,3 +958,26 @@ Extension 的除錯日誌（`sendlog()`）在 socket 就緒前只寫入 ring buf
 - 觀察 `onAudioPage` 等事件是否確實觸發
 - 確認 `audioProcessor?.updatePage(status:)` 是否被呼叫
 - 追蹤 `_closeConnection()` 與 `liveAPP.SocketRestart` 之間的因果關係
+
+
+
+## 14. 底層增加HE-AAC / HE-AAC v2 高效率音訊編碼格式
+
+參考以下說明
+
+### HE-AAC v1/v2 支援已實作完畢
+
+在你的 SampleHandler 中可以這樣用：
+
+```swift
+// 自動選擇 device 支援的最佳 AAC 格式（heAacV2 → heAac → aac）
+var audioSettings = await mediaMixer.audioMixerSettings
+audioSettings.format = AudioCodecSettings.bestAacFormat
+await mediaMixer.setAudioMixerSettings(audioSettings)
+
+// Log 會顯示選擇結果
+logger.info("audio: format=\(AudioCodecSettings.bestAacFormat.audioDescription)")
+```
+
+### RTMP 端用同一 CodecID (10)
+ 傳送，HE-AAC 的差異 只反應在 AudioSpecificConfig 的 AudioObjectType，server/player 自動判讀。
