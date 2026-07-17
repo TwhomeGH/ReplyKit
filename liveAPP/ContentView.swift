@@ -210,8 +210,8 @@ struct BroadcastButton: UIViewRepresentable {
 final class LiveVolumeModel: ObservableObject {
     static let shared = LiveVolumeModel()   // 全局共用單例
 
-    var micVolumeLive: Float = 0.0
-    var appVolumeLive: Float = 0.0
+    @Published var micVolumeLive: Float = 0.0
+    @Published var appVolumeLive: Float = 0.0
 
     private init() {
 #if os(iOS)
