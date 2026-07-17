@@ -272,11 +272,10 @@ final class AudioProcessor : @unchecked Sendable {
     }
 
     func cleanup() {
-        
         self.isActive = false
-
+        audioTaskChain?.cancel()
+        audioTaskChain = nil
         sendlog(message: "🧹 AudioProcessor deinit — resources released")
-    
     }
     deinit {
         cleanup()
@@ -435,22 +434,11 @@ final class AudioProcessor : @unchecked Sendable {
 
     private var enqueueCount: Int = 0
     private var lastEnqueueLog: CFTimeInterval = 0
-    private var _isEnqueuingApp = false
-    private var _isEnqueuingMic = false
-    private var _enqueueLock = os_unfair_lock()
+    private let audioQueue = DispatchQueue(label: "com.replykit.audio", qos: .userInitiated)
+    // 不能弱引用Task，否則會被釋放導致後續音訊處理中斷
+    private var audioTaskChain: Task<Void, Never>?
 
     func enqueue(_ sampleBuffer: CMSampleBuffer, trackType: AudioTrackType, oringinaltime: CMSampleTimingInfo) {
-        os_unfair_lock_lock(&_enqueueLock)
-        switch trackType {
-        case .app:
-            guard !_isEnqueuingApp else { os_unfair_lock_unlock(&_enqueueLock); return }
-            _isEnqueuingApp = true
-        case .mic:
-            guard !_isEnqueuingMic else { os_unfair_lock_unlock(&_enqueueLock); return }
-            _isEnqueuingMic = true
-        }
-        os_unfair_lock_unlock(&_enqueueLock)
-
         enqueueCount += 1
         let pts = oringinaltime.presentationTimeStamp.seconds
         let now = CACurrentMediaTime()
@@ -458,53 +446,37 @@ final class AudioProcessor : @unchecked Sendable {
         let shouldLog = enablePipeLog && (enqueueCount == 1 || enqueueCount % 300 == 0 || (now - lastEnqueueLog) > 5.0)
         let localCount = enqueueCount
 
-        Task.detached(priority: .high) { [weak self] in
-            guard let self, self.isActive else {
-                if let self { self.setEnqueuing(false, trackType: trackType) }
-                return
-            }
-            defer {
-                self.setEnqueuing(false, trackType: trackType)
-            }
-            guard await self.mediaMixer.isRunning else {
-                if shouldLog { sendlog(message: "[AudioProcessor] ⚠️ #\(localCount) MediaMixer 未運行 PTS:\(String(format:"%.3f",pts))s") }
-                return
-            }
+        audioQueue.async { [weak self] in
+            guard let self else { return }
+            self.audioTaskChain?.cancel()
+            self.audioTaskChain = Task(priority: .high) { [weak self] in
+                guard let self, self.isActive else { return }
 
-            if shouldLog {
-                self.lastEnqueueLog = now
-                sendlog(message: "[AudioProcessor] #\(localCount) 進入 track:\(trackType) PTS:\(String(format:"%.3f",pts))s mode:\(self.UseOringin ? "原始" : "專用")")
-            }
-
-            if self.UseOringin {
-
-                let RSample = self.applyGain(sampleBuffer, trackType: trackType)
-                self.processRMS(RSample, trackType: trackType, originalTime: oringinaltime)
-
-                if shouldLog { sendlog(message: "[AudioProcessor] #\(localCount) 送出MediaMixer track:\(trackType.rawValue)") }
-                await self.mediaMixer.append(RSample, track: trackType.rawValue)
-
-            } else {
-
-                if let audioEngine = self.audioEngine, self.isActive {
-                    audioEngine.process(sampleBuffer, track: trackType)
+                guard await self.mediaMixer.isRunning else {
+                    if shouldLog { sendlog(message: "[AudioProcessor] ⚠️ #\(localCount) MediaMixer 未運行 PTS:\(String(format:"%.3f",pts))s") }
+                    return
                 }
 
-                self.processRMS(sampleBuffer, trackType: trackType, originalTime: oringinaltime)
+                if shouldLog {
+                    self.lastEnqueueLog = now
+                    sendlog(message: "[AudioProcessor] #\(localCount) 進入 track:\(trackType) PTS:\(String(format:"%.3f",pts))s mode:\(self.UseOringin ? "原始" : "專用")")
+                }
 
-                if shouldLog { sendlog(message: "[AudioProcessor] #\(localCount) 送出MediaMixer track:\(trackType.rawValue)") }
-                await self.mediaMixer.append(sampleBuffer, track: trackType.rawValue)
+                if self.UseOringin {
+                    let RSample = self.applyGain(sampleBuffer, trackType: trackType)
+                    self.processRMS(RSample, trackType: trackType, originalTime: oringinaltime)
+                    if shouldLog { sendlog(message: "[AudioProcessor] #\(localCount) 送出MediaMixer track:\(trackType.rawValue)") }
+                    await self.mediaMixer.append(RSample, track: trackType.rawValue)
+                } else {
+                    if let audioEngine = self.audioEngine, self.isActive {
+                        audioEngine.process(sampleBuffer, track: trackType)
+                    }
+                    self.processRMS(sampleBuffer, trackType: trackType, originalTime: oringinaltime)
+                    if shouldLog { sendlog(message: "[AudioProcessor] #\(localCount) 送出MediaMixer track:\(trackType.rawValue)") }
+                    await self.mediaMixer.append(sampleBuffer, track: trackType.rawValue)
+                }
             }
         }
-    }
-
-    private func setEnqueuing(_ value: Bool, trackType: AudioTrackType) {
-        os_unfair_lock_lock(&_enqueueLock)
-        switch trackType {
-        case .app: _isEnqueuingApp = value
-        case .mic: _isEnqueuingMic = value
-        }
-        os_unfair_lock_unlock(&_enqueueLock)
     }
 
 

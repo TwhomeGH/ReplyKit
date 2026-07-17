@@ -549,78 +549,51 @@ if !isKeepaliveMode {
 
 ---
 
-## 11. Audio/Video 管線 Task Chain 序列化（2026-07）
+## 11. Audio/Video 管線優先級修正（2026-07）
 
 ### 問題
 
-Audio/Video 處理管線使用 `Task.detached(priority: .utility)` 處理每個 buffer：
+Audio/Video 處理管線的 `Task.detached(priority: .utility)` 是音訊斷斷續續的**唯一原因**。
 
-```swift
-Task.detached(priority: .utility) { [weak self] in
-    guard let self else { return }
-    // ... applyGain / processFrame ...
-    await self.mediaMixer.append(...)
-}
-```
+iOS 的 GCD / Swift Concurrency 優先級系統中，`.utility` 是**背景級別**——系統在有更高優先級工作（UI、網路、使用者互動）時，會大幅延遲 `.utility` task。Audio 每 ~20ms 就需要處理一個 buffer，若被延遲 50-100ms 就會造成可感知的斷音。
 
-三個缺陷：
+原本的架構設計是正確的：
+- 每幀獨立 `Task.detached`（不互相等待，不會整條鏈卡死）
+- `isProcessing` guard 在忙碌時自動丟棄重疊幀（對視訊正確，對音訊偶爾丟一幀也無感）
+- Actor 內部 `isProcessing` 防止 GPU 旋轉重疊
 
-1. **無執行序保證** — 連續的 audio/video buffer 可能被亂序處理，造成 PTS 翻轉
-2. **優先級 `.utility`** — 系統可大幅延遲此類 task，audio 每 ~20ms 就需要處理，延遲造成斷音
-3. **丟幀 guard** — Audio 用 `_isEnqueuingApp/Mic` + `os_unfair_lock`，Video 用 `isProcessing` flag，前一個 task 卡住就直接丟棄後面的 buffer
+唯一需要改的只有優先級。
 
 ### 修正
-
-#### 11a. 序列化 Task Chain 模式
 
 ```swift
 // 改前
 Task.detached(priority: .utility) { ... }
 
 // 改後
-private let audioQueue = DispatchQueue(label: "com.replykit.audio", qos: .userInitiated)
-
-func enqueue(...) {
-    audioQueue.async { [weak self] in
-        guard let self else { return }
-        let prev = self.audioTaskChain
-        self.audioTaskChain = Task(priority: .high) { [weak self] in
-            _ = await prev?.value   // ← 等待前一個完成
-            guard let self, self.isActive else { return }
-            // ... 處理 ...
-            await self.mediaMixer.append(...)
-        }
-    }
-}
+Task.detached(priority: .high) { ... }
 ```
 
-`DispatchQueue` 負責將 enqueue 操作序列化，`Task chain` 確保每個處理 task 依序等待上一個完成。
+`.high` 是使用者啟動級別，與 UI 互動、網路響應同等優先，系統不會隨意延遲。
 
-#### 11b. AudioProcess 移除元件
+### 為什麼不是其他設計
 
-| 移除項目 | 原因 |
-|---------|------|
-| `_enqueueLock` (`os_unfair_lock`) | 不再需要——`audioQueue` 提供序列化 |
-| `_isEnqueuingApp` / `_isEnqueuingMic` | 不再需要——Task chain 保證 FIFO，不再主動丟幀 |
-| `setEnqueuing()` | 同上 |
-| `Task.detached(priority: .utility)` | 取代為 `audioQueue` + `Task(priority: .high)` |
+| 嘗試過的方案 | 問題 |
+|------------|------|
+| `Task chain`（prev?.value） | 一個 task 卡死即整條鏈停擺 |
+| `cancel + restart` | 永遠沒 task 能完成（新 task 取消前一個，前一個永遠送不到 MediaMixer） |
+| `DispatchQueue + semaphore` | blocking serial queue thread，造成 thread 耗盡 |
+| 移除 `isProcessing` guard | 多個 GPU 旋轉同時進行（actor 會保護，但旋轉結果可能被跳過） |
 
-#### 11c. VideoProcess 移除元件
-
-| 移除項目 | 原因 |
-|---------|------|
-| `isProcessing` flag | 不再需要——Task chain 保證 FIFO |
-| `processingStartedAt` / `processingTimeout` | Watchdog 依賴 `isProcessing`，連帶移除 |
-| `guard !isProcessing else { return }` | 不再主動丟幀 |
-| `processingGeneration` / `taskGeneration` | 用於 `defer { isProcessing = false }`，已移除 |
+`Task.detached(priority: .high)` + `isProcessing` guard 是最穩定的方案——每個 task 獨立執行不互相阻塞，忙碌時自然丟幀，不引入任何新的 deadlock 風險。
 
 ### 行為對照
 
-| 面向 | 改前 | 改後 |
-|------|------|------|
-| 執行順序 | 無保證（多個 `.utility` Task 可交錯執行） | FIFO 保證（Task chain 等待前一個完成） |
-| 優先級 | `.utility`（可能被系統大幅延遲） | `.high`（即時處理） |
-| buffer 丟棄策略 | 前一個卡住 → 丟棄後面的（`_isEnqueuing` / `isProcessing` guard） | 不主動丟棄——依序排隊等待 |
-| `os_unfair_lock` | Audio: 3 處 | 0 處 |
-| 音訊斷續風險 | 高（task 延遲 + 丟幀） | 低（FIFO + 高優先級） |
+| 面向 | 改前 (.utility) | 改後 (.high) |
+|------|-----------------|--------------|
+| 優先級 | 背景級，可被大幅延遲 | 使用者級，即時處理 |
+| task 互相影響 | 獨立，不互相等待 | 同左（不變） |
+| 忙碌時 | `isProcessing` guard 丟棄多餘幀 | 同左（不變） |
+| 音訊斷續風險 | 高 | 低 |
+| 程式碼變動量 | — | 2 字串（`.utility` → `.high`） |
 | 已處理總行數變動 | Audio: -88 行，Video: -136 行 | — |
