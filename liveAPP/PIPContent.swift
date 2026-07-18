@@ -1283,8 +1283,13 @@ final class PIPServiceMessages {
                             msg.inlineEmojiSizes[idx] = newSize
                             let charIndex = idx < msg.inlineEmojiCharIndices.count ? msg.inlineEmojiCharIndices[idx] : 0
                             guard let messageLayer = msg.message, let font = msg.font else { return }
-                            let text = messageLayer.string as? NSString ?? ""
-                            let attrLine = CTLineCreateWithAttributedString(NSAttributedString(string: text as String, attributes: [.font: font]))
+                            let text: String
+                            if let attrStr = messageLayer.string as? NSAttributedString {
+                                text = attrStr.string
+                            } else {
+                                text = messageLayer.string as? String ?? ""
+                            }
+                            let attrLine = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: [.font: font]))
                             let messageFrame = messageLayer.frame
                             let baseX = messageFrame.origin.x + CTLineGetOffsetForStringIndex(attrLine, charIndex, nil)
                             let emojiY = messageFrame.midY - newSize.height / 2
@@ -1833,8 +1838,13 @@ final class PIPServiceMessages {
 
         // Inline Emoji
         let messageFrame = msg.message?.frame ?? .zero
-        let text = msg.message?.string as? NSString ?? ""
-        let attrLine = CTLineCreateWithAttributedString(NSAttributedString(string: text as String, attributes: [.font: msg.font ?? UIFont.systemFont(ofSize: 12)]))
+        let text: String
+        if let attrStr = msg.message?.string as? NSAttributedString {
+            text = attrStr.string
+        } else {
+            text = msg.message?.string as? String ?? ""
+        }
+        let attrLine = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: [.font: msg.font ?? UIFont.systemFont(ofSize: 12)]))
 
         var lastEmojiMaxX: CGFloat = 0
         var lastCharIndex: Int = -1
