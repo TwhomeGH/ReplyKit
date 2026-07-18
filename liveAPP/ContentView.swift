@@ -862,9 +862,9 @@ struct LogSettingsView: View {
 
     @AppStorage("PIPFontMain", store: userDefaults) private var PIPFontMain = 14.0
     @AppStorage("PIPFontSecond", store: userDefaults) private var PIPFontSecond = 10.0
-    @AppStorage("PIPAdOverlayFont", store: userDefaults) private var PIPAdOverlayFont = 12.0
-    @AppStorage("PIPAdOverlayUserFont", store: userDefaults) private var PIPAdOverlayUserFont = 11.0
-    @AppStorage("PIPAdOverlaySpacing", store: userDefaults) private var PIPAdOverlaySpacing = 2.0
+    @AppStorage("PIPAdOverlayFont", store: userDefaults) private var PIPAdOverlayFont = 13.0
+    @AppStorage("PIPAdOverlayUserFont", store: userDefaults) private var PIPAdOverlayUserFont = 14.0
+    @AppStorage("PIPAdOverlaySpacing", store: userDefaults) private var PIPAdOverlaySpacing = 4.5
 
     @AppStorage("broadcastExtension", store: userDefaults) private var broadcastExtension = (Bundle.main.bundleIdentifier ?? "nuclear.liveAPP") + ".ReplyKIT"
 
@@ -996,7 +996,7 @@ struct LogSettingsView: View {
 
                     // MARK: Ad Overlay Font
                     TextField(
-                        "廣告覆著字體大小 直接輸入大小 12",
+                        "廣告覆著字體大小 直接輸入大小 13",
                         value: $PIPAdOverlayFont,
                         format: .number
                     )
@@ -1014,7 +1014,7 @@ struct LogSettingsView: View {
                         LPConfig.shared.PIPAdOverlayFontSize = newVal
                     }
 
-                    Text("建議值: 12.0")
+                    Text("建議值: 13.0")
                             .font(.footnote)
                             .foregroundColor(.secondary)
                             .padding(.bottom, 5)
@@ -1039,7 +1039,7 @@ struct LogSettingsView: View {
                         LPConfig.shared.PIPAdOverlayUserFontSize = newVal
                     }
 
-                    Text("建議值: 11.0")
+                    Text("建議值: 14.0")
                             .font(.footnote)
                             .foregroundColor(.secondary)
                             .padding(.bottom, 5)
@@ -1064,7 +1064,7 @@ struct LogSettingsView: View {
                         LPConfig.shared.PIPAdOverlaySpacing = newVal
                     }
 
-                    Text("建議值: 2.0")
+                    Text("建議值: 4.5")
                             .font(.footnote)
                             .foregroundColor(.secondary)
                             .padding(.bottom, 5)

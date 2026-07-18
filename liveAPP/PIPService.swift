@@ -746,7 +746,9 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
         let iconSize: CGFloat = 28
         let iconX = bannerX + 8
-        let iconY = bannerY + (bannerH - iconSize) / 2
+        // icon 垂直置中於文字區塊（贊助者名稱 + 間距 + 內文）
+        let textBlockCenter = (bannerY + 6) + (labelFont.lineHeight + overlaySpacing + textFont.lineHeight * 2) / 2
+        let iconY = textBlockCenter - iconSize / 2
         let iconRect = CGRect(x: iconX, y: iconY, width: iconSize, height: iconSize)
 
         if let icon = adOverlayIconImage {

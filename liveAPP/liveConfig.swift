@@ -75,9 +75,9 @@ final class LPConfig {
 
     var PIPChatFontMainSize: Double = 14.0
     var PIPChatFontSecondSize: Double = 10.0
-    var PIPAdOverlayFontSize: Double = 12.0
-    var PIPAdOverlayUserFontSize: Double = 11.0
-    var PIPAdOverlaySpacing: Double = 2.0
+    var PIPAdOverlayFontSize: Double = 13.0
+    var PIPAdOverlayUserFontSize: Double = 14.0
+    var PIPAdOverlaySpacing: Double = 4.5
 
     var PIPLog: Bool = false
     var PIPChatLog:Bool = false
@@ -114,9 +114,9 @@ final class LPConfig {
         PIPChatFontMainSize = userDefaults?.double(forKey: "PIPFontMain") ?? 14.0
         PIPChatFontSecondSize =  userDefaults?
             .double(forKey: "PIPFontSecond") ?? 10.0
-        PIPAdOverlayFontSize = userDefaults?.double(forKey: "PIPAdOverlayFont") ?? 12.0
-        PIPAdOverlayUserFontSize = userDefaults?.double(forKey: "PIPAdOverlayUserFont") ?? 11.0
-        PIPAdOverlaySpacing = userDefaults?.double(forKey: "PIPAdOverlaySpacing") ?? 2.0
+        PIPAdOverlayFontSize = (userDefaults?.object(forKey: "PIPAdOverlayFont") as? Double) ?? 13.0
+        PIPAdOverlayUserFontSize = (userDefaults?.object(forKey: "PIPAdOverlayUserFont") as? Double) ?? 14.0
+        PIPAdOverlaySpacing = (userDefaults?.object(forKey: "PIPAdOverlaySpacing") as? Double) ?? 4.5
 
     }
 
