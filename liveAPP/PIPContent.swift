@@ -55,7 +55,9 @@ actor PiPImageCache {
     func loadImage(urlString: String, completion: @escaping (UIImage?) -> Void) async {
 
         if let img = cache.object(forKey: urlString as NSString) {
-            completion(img)
+            await MainActor.run {
+                completion(img)
+            }
             return
         }
 
@@ -68,6 +70,13 @@ actor PiPImageCache {
             await self.waitForSlot()
 
             guard let url = URL(string: urlString) else {
+                let callbacks = pendingCallbacks.removeValue(forKey: urlString) ?? []
+                await MainActor.run {
+                    completion(nil)
+                    for cb in callbacks {
+                        cb(nil)
+                    }
+                }
                 self.finishDownload(urlString: urlString)
                 return nil
             }
@@ -75,30 +84,36 @@ actor PiPImageCache {
             do {
                 let (data, _) = try await URLSession.shared.data(from: url)
 
+                let callbacks = pendingCallbacks.removeValue(forKey: urlString) ?? []
 
                 if let img = UIImage(data: data) {
                     cache.setObject(img, forKey: urlString as NSString)
-                    let callbacks = pendingCallbacks.removeValue(forKey: urlString) ?? []
                     await MainActor.run {
                         completion(img)
                         for cb in callbacks {
                             cb(img)
                         }
                     }
+                } else {
+                    await MainActor.run {
+                        completion(nil)
+                        for cb in callbacks {
+                            cb(nil)
+                        }
+                    }
                 }
                 self.finishDownload(urlString: urlString)
-
                 return nil
 
             } catch {
                 let callbacks = pendingCallbacks.removeValue(forKey: urlString) ?? []
                 await MainActor.run {
+                    completion(nil)
                     for cb in callbacks {
                         cb(nil)
                     }
                 }
                 self.finishDownload(urlString: urlString)
-
                 return nil
             }
         }
@@ -1250,18 +1265,33 @@ final class PIPServiceMessages {
 
             for (data, msg) in zip(insertSegments, groupMsgs) where !data.inlineEmojiURLs.isEmpty {
                 for (idx, emojiURL) in data.inlineEmojiURLs.enumerated() {
-                    Task {
-                        await PiPImageCache.shared.loadImage(urlString: emojiURL) { image in
-                            guard idx < msg.inlineEmojis.count else { return }
+                    Task { [idx, msg] in
+                        await PiPImageCache.shared.loadImage(urlString: emojiURL) { [weak msg] image in
+                            guard let msg = msg, idx < msg.inlineEmojis.count else { return }
                             msg.inlineEmojis[idx].contents = image?.cgImage
+                            let newSize: CGSize
                             if let imgSize = image?.size {
                                 let maxSize = msg.giftSize ?? self.giftSize
                                 let scale = min(maxSize / imgSize.width, maxSize / imgSize.height)
-                                msg.inlineEmojiSizes[idx] = CGSize(
+                                newSize = CGSize(
                                     width: imgSize.width * scale,
                                     height: imgSize.height * scale
                                 )
+                            } else {
+                                newSize = CGSize(width: self.giftSize, height: self.giftSize)
                             }
+                            msg.inlineEmojiSizes[idx] = newSize
+                            let charIndex = idx < msg.inlineEmojiCharIndices.count ? msg.inlineEmojiCharIndices[idx] : 0
+                            guard let messageLayer = msg.message, let font = msg.font else { return }
+                            let text = messageLayer.string as? NSString ?? ""
+                            let attrLine = CTLineCreateWithAttributedString(NSAttributedString(string: text as String, attributes: [.font: font]))
+                            let messageFrame = messageLayer.frame
+                            let baseX = messageFrame.origin.x + CTLineGetOffsetForStringIndex(attrLine, charIndex, nil)
+                            let emojiY = messageFrame.midY - newSize.height / 2
+                            msg.inlineEmojis[idx].frame = CGRect(
+                                x: baseX, y: emojiY,
+                                width: newSize.width, height: newSize.height
+                            )
                         }
                     }
                 }

@@ -547,3 +547,26 @@ func forceFlushBatch() {
 | sendLog 呼叫時機 | 必須在 HaishinKit 操作「之前」，否則可能觸發已破壞的 string buffer | 無順序要求 — log 僅 append 到 ring buffer（固定 1000 條 O(1)），不碰媒體管線 |
 | 丟棄策略 | force flush 會繞過 `maxInflightBatches` 限制，造成堆積 | 依賴 `maxInflightBatches=3` 硬限制，逾限自動 drop 最舊 batch |
 | 定時器 | 250ms batch timer + 同步 force flush | 僅 250ms batch timer，無同步 flush |
+
+---
+
+## 23. 行內表情載入修復（2026-07）
+
+### `liveAPP/PIPContent.swift` — PiPImageCache.loadImage
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| 相同網址快取命中時 completion 在 actor context（非主執行緒）執行，設定 `CALayer.contents` 有執行緒風險 | 原 code 直接 `completion(img)` 未 dispatch 到 MainActor | 快取命中時以 `await MainActor.run { completion(img) }` 派發至主執行緒 |
+| `UIImage(data:)` 回傳 nil（伺服器回傳非圖片資料，如 GitHub blob HTML）時，第一個 caller 的 completion 完全未被呼叫，對應 emoji 圖層永遠空白 | `if let img = UIImage(data: data)` 的 else 分支直接跳過，未呼叫 `completion` 也無 pending callbacks 通知 | 加入 else 分支，以 `await MainActor.run { completion(nil); for cb in callbacks { cb(nil) } }` 確保所有 callback 都收到 nil |
+| 無效 URL 時僅呼叫 `finishDownload`，不通知 caller | `guard let url = URL(...)` 的 else 分支遺漏 callback 處理 | 加入 pendingCallbacks 取出 + MainActor.run 通知所有 callback nil |
+
+### `liveAPP/PIPContent.swift` — populateVisibleMessagesIfNeeded 表情非同步載入
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| 表情圖片非同步載入完成後更新了 `inlineEmojiSizes[idx]`，但 emoji 的 `CALayer.frame` 已在 `layout(msg:)` 中以初始 `giftSize` 設定，不會重新計算 | `layout(msg:)` 只在訊息移動動畫期間被呼叫，動畫結束後不再重新排版；emoji frame 停留在初始大小 | 在載入 callback 中直接用 `CTLineGetOffsetForStringIndex` 計算 X 座標、`messageFrame.midY` 計算 Y 座標，立即設定 `emoji.frame = CGRect(x:baseX, y:emojiY, width:newSize.width, height:newSize.height)` |
+| Task 未使用 capture list，closure 強捕獲 `msg` 與 `idx`，即使訊息已移除仍有 retain | 一般 closure 會強捕獲所有使用到的區域變數 | `Task { [idx, msg] in` 明確 capture；completion handler 使用 `[weak msg]` 避免延長訊息生命週期 |
+
+### 相關記憶體更新
+
+- [memory #30](PROJECT_RULES) — 本次修復比對 log 發現 `UIImage(data:)` 失敗路徑完全無 callback 是結構性缺陷（不是單一的間歇性參數問題），符合「先追 pipeline 再下修」原則。
