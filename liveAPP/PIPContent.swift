@@ -12,11 +12,11 @@ import AVFoundation
 
 
 struct ChatMessage: Identifiable, Equatable {
-    let id = UUID()       // 唯一識別符
-    let user: String // 粉絲
-    let msg: String // 訊息
-    let img: String? // 圖片
-    let giftImg: String? // 禮物圖片
+    let id = UUID()
+    let user: String
+    let msg: String
+    let img: String?
+    let giftImg: String?
 
     static func == (lhs: ChatMessage, rhs: ChatMessage) -> Bool {
             return lhs.id == rhs.id
@@ -42,12 +42,9 @@ actor PiPImageCache {
     static let shared = PiPImageCache()
 
 
-    // 正在下載中的任務（防止重複下載）
     private var inFlightTasks: [String: Task<UIImage?, Never>] = [:]
-    // 相同網址重複請求的 callback 佇列
     private var pendingCallbacks: [String: [(UIImage?) -> Void]] = [:]
 
-    // 併發限制
     private let maxConcurrentDownloads = 5
     private var currentDownloads = 0
     private var waitingQueue: [String] = []
@@ -55,16 +52,13 @@ actor PiPImageCache {
     private init() {
     }
 
-    // MARK: - Public API（async 版）
     func loadImage(urlString: String, completion: @escaping (UIImage?) -> Void) async {
 
-        // cache hit
         if let img = cache.object(forKey: urlString as NSString) {
             completion(img)
             return
         }
 
-        // 已在飛 — 排入 callback 佇列，下載完成後統一通知
         if inFlightTasks[urlString] != nil {
             pendingCallbacks[urlString, default: []].append(completion)
             return
@@ -112,8 +106,6 @@ actor PiPImageCache {
         inFlightTasks[urlString] = task
     }
 
-    // MARK: - 併發控制
-
     private func waitForSlot() async {
         while currentDownloads >= maxConcurrentDownloads {
             await Task.yield()
@@ -154,27 +146,23 @@ final class MessageLayerTuple:Equatable {
 
     var initialStartY: CGFloat = 0
 
-    // MessageLayerTuple
     var hasAvatarSlot: Bool = false
 
-    // layout
-    var isNew: Bool = false      // 是否新訊息
-    var startY: CGFloat = 0      // 動畫起始 y
-    var targetY: CGFloat = 0     // 動畫目標 y
-    var height: CGFloat = 0      // 訊息總高度
+    var isNew: Bool = false
+    var startY: CGFloat = 0
+    var targetY: CGFloat = 0
+    var height: CGFloat = 0
 
-    // 透明度控制，用於漸隱
     var alpha: CGFloat = 1.0
-    // ⚡ 新增支援訊息大小的屬性
-    var font: UIFont?             // 訊息字體
+    var font: UIFont?
 
     var name: CATextLayer?
     var message: CATextLayer?
     var avatar: CALayer?
     var gift: CALayer?
 
-    var avatarSize: CGFloat?      // avatar 尺寸
-    var giftSize: CGFloat?        // gift 尺寸
+    var avatarSize: CGFloat?
+    var giftSize: CGFloat?
 
     var avatarImage:CGSize?
     var giftImage:CGSize?
@@ -189,8 +177,8 @@ final class MessageLayerTuple:Equatable {
     var isFadingOut: Bool = false
     var isMoving:Bool = false
 
-    var parentMessageID: UUID? = nil  // 標識同一條長訊息的多個段落
-    var segmentIndex: Int = 0         // 這條訊息是第幾段
+    var parentMessageID: UUID? = nil
+    var segmentIndex: Int = 0
 
     var didResolveSize: Bool = false
 
@@ -204,21 +192,18 @@ final class MessageLayerTuple:Equatable {
 
     var overflowHeight: CGFloat?
 
-    // 🔹 新增快取屬性
     var cachedNameSize: CGSize = .zero
     var cachedMessageSize: CGSize = .zero
 
     var cachedGiftOffsetX: CGFloat = 0
     var cachedGiftOffsetY: CGFloat = 0
 
-    // MessageLayerTuple 新增
     var lastLineText: String?
 
 
 
-    // ⚡ 主要屬性比較用
     static func == (lhs: MessageLayerTuple, rhs: MessageLayerTuple) -> Bool {
-        return lhs === rhs // 使用物件引用判斷是否為同一個實例
+        return lhs === rhs
     }
 
 
@@ -287,8 +272,6 @@ final class LayerPool {
 
     private let scale = UIScreen.main.scale
 
-    // MARK: - Text
-
     func getTextLayer() -> CATextLayer {
         if let layer = textLayers.popLast() {
             layer.isHidden = false
@@ -314,8 +297,6 @@ final class LayerPool {
         layer.removeFromSuperlayer()
         textLayers.append(layer)
     }
-
-    // MARK: - Image (avatar / gift 共用)
 
     func getImageLayer() -> CALayer {
         if let layer = imageLayers.popLast() {
@@ -362,7 +343,6 @@ final class PIPServiceMessages {
         }
     }
 
-    // MARK: 動畫狀態機
     enum AnimationPhase {
         case moving
         case fading
@@ -374,18 +354,14 @@ final class PIPServiceMessages {
 
     private var phase: AnimationPhase = .idle
 
-    // DisplayLink 專用（只讀）
     private var animatingGroups: [[MessageLayerTuple]] = []
 
-    // 滾動與漸隱
     var containerHeight: CGFloat { container.bounds.height }
-    var scrollSpeed: CGFloat // 每幀上移的像素
+    var scrollSpeed: CGFloat
 
     var fadeOutThreshold: CGFloat {
-        // 當 stackedMessages 總高度超過 container，最上面那條就應該 fade
         return container.bounds.height - (stackedMessages.reduce(0) { $0 + $1.height } - container.bounds.height)
     }
-    // 舊訊息漸隱開始的高度
 
     private var lastFadeTriggerTime: CFTimeInterval = 0
     private var lastMoveTriggerTime: CFTimeInterval = 0
@@ -393,7 +369,6 @@ final class PIPServiceMessages {
 
     var fadeInterval: CFTimeInterval = LPConfig.shared.MessageFadeTime
 
-    // 新增：目前正在淡出的組
     private var fadingParentID: UUID?
 
     func groupLeader(_ msg: MessageLayerTuple) -> MessageLayerTuple? {
@@ -403,13 +378,12 @@ final class PIPServiceMessages {
     }
 
 
-    // MARK: - Properties
     let container = CALayer()
     private let layerPool = LayerPool()
 
-    var stackedMessages: [MessageLayerTuple] = []   // 一般聊天
+    var stackedMessages: [MessageLayerTuple] = []
 
-    private var bottomMessage: MessageLayerTuple?           // 底部固定
+    private var bottomMessage: MessageLayerTuple?
 
 
 
@@ -428,12 +402,9 @@ final class PIPServiceMessages {
 
     private var lastDirtyTime: CFTimeInterval = 0
 
-    //private var isAnyMessageFadingOut: Bool = false
-
     private var needsRelayoutAfterRemoval = false
 
 
-    // ✅ 新增（fade 決策只算一次）
     private var fadeCandidate: MessageLayerTuple?
 
     let bottomPadding: CGFloat = 4
@@ -462,9 +433,7 @@ final class PIPServiceMessages {
 
 
 
-    // Animation（由外部 render timer 驅動）
     private var hasLaidOutOnce = false
-    /// 詢問外部：是否還有動畫正在進行
     var isAnimating: Bool {
         phase != .idle
     }
@@ -508,12 +477,10 @@ final class PIPServiceMessages {
             return
         }
 
-        // 2️⃣ 按 group 分組，再組內按 segmentIndex 排序
         let grouped = Dictionary(grouping: moving, by: { $0.parentMessageID })
             .values
             .map { $0.sorted { $0.segmentIndex < $1.segmentIndex } }
 
-        // 3️⃣ 再按組的最上方 targetY 排序
         let orderedGroups = grouped.sorted { group1, group2 in
             (group1.first?.targetY ?? 0) < (group2.first?.targetY ?? 0)
         }
@@ -525,7 +492,6 @@ final class PIPServiceMessages {
     private func relayoutTargetsOnly(updateTargetY: Bool = true,changeSY:Bool=true) -> [MessageLayerTuple] {
 
 
-        // 🔑 1️⃣ 用「目前畫面順序」排序
         let relayoutMessages = stackedMessages
             .filter {
                 $0.alpha > 0 &&
@@ -540,7 +506,6 @@ final class PIPServiceMessages {
             }
         }
 
-        // 先按 parentMessageID 的出現順序；同組內再按 segmentIndex 排序。
         let orderedMessages = relayoutMessages.sorted { lhs, rhs in
             if lhs.parentMessageID == rhs.parentMessageID {
                 return lhs.segmentIndex < rhs.segmentIndex
@@ -574,7 +539,6 @@ final class PIPServiceMessages {
 
 
 
-        // ✅ 只在「第一次完成 targetY 計算」後標記
         if !hasLaidOutOnce {
             hasLaidOutOnce = true
             PIPChatLog("First layout baseline established")
@@ -624,14 +588,11 @@ final class PIPServiceMessages {
 
     private func calculateGiftOffset(lines: [CTLine], messageSize: CGSize, giftSize: CGFloat) -> (CGFloat, CGFloat) {
         guard let lastLine = lines.last else {
-            // fallback：直接貼在 message 中心
             return (0, (messageSize.height - giftSize) / 2)
         }
 
-        // 最後一行文字寬度
         let lastLineWidth = CGFloat(CTLineGetTypographicBounds(lastLine, nil, nil, nil))
 
-        // baseline
         var origins = Array(repeating: CGPoint.zero, count: lines.count)
         CTFrameGetLineOrigins(CTFramesetterCreateFrame(
             CTFramesetterCreateWithAttributedString(NSAttributedString(string: "")),
@@ -647,7 +608,6 @@ final class PIPServiceMessages {
         var leading: CGFloat = 0
         CTLineGetTypographicBounds(lastLine, &ascent, &descent, &leading)
 
-        // 微調 visual offset
         let visualOffset: CGFloat = 2.0
 
         let giftX = lastLineWidth + 2.0
@@ -680,11 +640,10 @@ final class PIPServiceMessages {
         let parentID = UUID()
 
 
-        // ⚠️ 計算可用寬度（跟 buildMessageTuple 一致）
         let maxMessageWidth = container.bounds.width
             - vSpacing * 2
             - avatarSizeLocal
-            - hSpacing // horizontalSpacing
+            - hSpacing
             - giftSizeLocal
 
         let maxNameWidth = container.bounds.width
@@ -698,7 +657,6 @@ final class PIPServiceMessages {
         )
 
 
-        // ① 名稱段（可能多行）
         for (index, line) in nameLines.enumerated() {
 
             let isFirst = index == 0
@@ -769,7 +727,6 @@ final class PIPServiceMessages {
             font: font, maxWidth: maxMessageWidth
         )
 
-        // Assign emojis to correct lines based on character position
         var lineStartIndex = 0
 
         for (index, line) in messageLines.enumerated() {
@@ -849,7 +806,6 @@ final class PIPServiceMessages {
 
 
 
-    // MARK: - Build Message Tuple（抽出來重用）
     func buildMessageTuple(
         type:MessageType = .primary,
         user: String = "",
@@ -871,7 +827,6 @@ final class PIPServiceMessages {
     ) -> MessageLayerTuple {
 
 
-        // Avatar
         var avatarLayer :CALayer?
 
         if showAvatar {
@@ -885,7 +840,6 @@ final class PIPServiceMessages {
                 height: avatarSizeLocal
             )
 
-            // ✅ 讓圖片圓形
             layer.cornerRadius = avatarSizeLocal / 2
             layer.masksToBounds = true
 
@@ -895,7 +849,6 @@ final class PIPServiceMessages {
 
         }
 
-        // Name
         var nameLayer: CATextLayer?
 
         if showName {
@@ -920,7 +873,6 @@ final class PIPServiceMessages {
 
         }
 
-        // Message
         var messageLayer: CATextLayer?
 
         if showMessage {
@@ -943,7 +895,6 @@ final class PIPServiceMessages {
             messageLayer = layer
         }
 
-        // Gift
         var giftLayer: CALayer?
 
         if showGift {
@@ -955,7 +906,6 @@ final class PIPServiceMessages {
             giftLayer = layer
         }
 
-        // Inline Emoji
         var emojiLayers: [CALayer] = []
 
         for _ in data.inlineEmojiURLs {
@@ -1002,14 +952,9 @@ final class PIPServiceMessages {
         tuple.textX = avatarSlotWidth
 
 
-//        // 🔹 同步計算高度
-//        let maxNameWidth = container.bounds.width
-//            - horizontalSpacing * 2
-//            - avatarWidth
 
         tuple.cachedNameSize = data.cachedMessageSize
 
-        // ✅ 只用 cache，完全不算 CoreText
         tuple.cachedMessageSize = data.cachedMessageSize
         tuple.cachedGiftOffsetX = data.cachedGiftOffsetX
         tuple.cachedGiftOffsetY = data.cachedGiftOffsetY
@@ -1060,49 +1005,37 @@ final class PIPServiceMessages {
 
         var urls: [String] = []
         var positions: [Int] = []
-        var cleanParts: [String] = []
+        var parts: [String] = []
         var lastEnd = message.startIndex
 
         for match in matches {
             guard urls.count < maxURLs else {
                 if Range(match.range(at: 1), in: message) != nil {
-                    cleanParts.append(String(message[lastEnd...]))
+                    parts.append(String(message[lastEnd...]))
                 }
                 lastEnd = message.endIndex
                 break
             }
             guard let urlRange = Range(match.range(at: 1), in: message) else { continue }
+
             if lastEnd < urlRange.lowerBound {
-                var before = String(message[lastEnd..<urlRange.lowerBound])
-                if !before.hasSuffix(" ") {
-                    before += " "
-                }
-                cleanParts.append(before)
-            } else if !cleanParts.isEmpty {
-                cleanParts.append(" ")
+                parts.append(String(message[lastEnd..<urlRange.lowerBound]))
             }
-            let currentCleanedLen = cleanParts.map(\.count).reduce(0, +)
-            positions.append(currentCleanedLen)
+
+            let currentLen = parts.map(\.count).reduce(0, +)
+            positions.append(currentLen)
             urls.append(String(message[urlRange]))
+            parts.append("\u{2003}")
             lastEnd = urlRange.upperBound
         }
 
         if lastEnd < message.endIndex {
-            var after = String(message[lastEnd...])
-            if !after.hasPrefix(" ") {
-                after = " " + after
-            }
-            cleanParts.append(after)
+            parts.append(String(message[lastEnd...]))
         }
 
-        let cleaned = cleanParts.joined()
-        let trimmed = cleaned.trimmingCharacters(in: .whitespaces)
-        let leadingSpaces = cleaned.count - cleaned.drop(while: { $0.isWhitespace }).count
-        let adjustedPositions = positions.map { max(0, $0 - leadingSpaces) }
-        return (trimmed, urls, adjustedPositions)
+        return (parts.joined(), urls, positions)
     }
 
-    // MARK: - Add Message（Chunk 修正版，可直接替換）
     func addMessage(
         user: String,
         message: String,
@@ -1158,13 +1091,11 @@ final class PIPServiceMessages {
             )
 
 
-            // ① 先只存資料（上限 200 segments，超過丟棄最舊的）
             pendingSegments.append(contentsOf: segments)
             if pendingSegments.count > 200 {
                 pendingSegments.removeFirst(pendingSegments.count - 200)
             }
 
-            // ② 嘗試補畫面
             populateVisibleMessagesIfNeeded()
 
             layoutTargetsAndStartAnimation()
@@ -1182,7 +1113,7 @@ final class PIPServiceMessages {
 
     func currentBottomTargetY() -> CGFloat {
         stackedMessages
-            .filter { !$0.isNew }   // 排除還在進場的
+            .filter { !$0.isNew }
             .map { $0.targetY + $0.height }
             .max()
         ?? topMargin
@@ -1244,8 +1175,6 @@ final class PIPServiceMessages {
         return (count, bottom)
     }
 
-    // MARK: - 從 pending 補到 visible（Chunk 修正版）
-
     func populateVisibleMessagesIfNeeded() {
         var visibleBottom = currentVisibleBottom()
 
@@ -1266,7 +1195,6 @@ final class PIPServiceMessages {
             let insertSegments = Array(pendingSegments.prefix(fitting.count))
             visibleBottom = fitting.bottom
 
-            // 先建構整組訊息
             var groupMsgs: [MessageLayerTuple] = []
             for data in insertSegments {
                 guard let font = data.font,
@@ -1296,10 +1224,8 @@ final class PIPServiceMessages {
                 groupMsgs.append(msg)
             }
 
-            // 可以塞下去 → 只移除已經補進畫面的前綴，超長訊息後段留在 pending
             pendingSegments.removeFirst(fitting.count)
 
-            // 有頭貼的 segment → 載頭貼
             for (data, msg) in zip(insertSegments, groupMsgs) where data.avatarURL != nil {
                 if let avatarURL = data.avatarURL {
                     Task {
@@ -1311,7 +1237,6 @@ final class PIPServiceMessages {
                 }
             }
 
-            // 有禮物的 segment → 載禮物；超長訊息的尾段補進來時一定會顯示
             for (data, msg) in zip(insertSegments, groupMsgs) where data.giftURL != nil {
                 if let giftURL = data.giftURL {
                     Task {
@@ -1323,7 +1248,6 @@ final class PIPServiceMessages {
                 }
             }
 
-            // 有行內表情的 segment → 載入表情圖片
             for (data, msg) in zip(insertSegments, groupMsgs) where !data.inlineEmojiURLs.isEmpty {
                 for (idx, emojiURL) in data.inlineEmojiURLs.enumerated() {
                     Task {
@@ -1344,7 +1268,6 @@ final class PIPServiceMessages {
             }
 
 
-            // 最後 append 整組
             stackedMessages.append(contentsOf: groupMsgs)
 
 
@@ -1358,8 +1281,6 @@ final class PIPServiceMessages {
     func IshasOverFlow() -> Bool {
 
 
-        // 找出最底部訊息的 targetY + height
-        // 取得這組還有 alpha > 0 的最下方訊息
         let bottomY  = stackedMessages
                .filter({ $0.alpha > 0 })
                .map { $0.targetY + $0.height + $0.verticalSpacing }
@@ -1379,10 +1300,8 @@ final class PIPServiceMessages {
 
     let snapThreshold: CGFloat = 0.2
 
-    // MARK: - Layout + Animation（由外部 render timer 驅動）
     func layoutTargetsAndStartAnimation() {
 
-        // 🔑 一定要先算 targetY（否則動畫會拉到 0）
         _ = relayoutTargetsOnly(updateTargetY: true)
 
         rebuildAnimatingGroups()
@@ -1397,7 +1316,6 @@ final class PIPServiceMessages {
 
         collectMovingMessages()
 
-        // 通知外部提高 FPS
         PIPService.shared.requestAnimationFPS()
         PIPService.shared.isAnimatingMessages = true
 
@@ -1435,7 +1353,6 @@ final class PIPServiceMessages {
 
 
     private func rebuildAnimatingGroups() {
-        // 所有還在移動的訊息
         let movingMessages = stackedMessages
             .filter { $0.alpha > 0 && abs($0.startY - $0.targetY) >= snapThreshold }
 
@@ -1459,7 +1376,6 @@ final class PIPServiceMessages {
                     .sorted { $0.segmentIndex < $1.segmentIndex }
             }
 
-        // 🔹 確保 animatingMessages 也包含所有還在移動的訊息
         for msg in movingMessages {
             if !animatingMessages.contains(msg) {
                 animatingMessages.append(msg)
@@ -1480,24 +1396,21 @@ final class PIPServiceMessages {
 
 
 
-        // 4️⃣ 動畫
         let now = CACurrentMediaTime()
         let elapsed = now - lastMoveTriggerTime
         lastMoveTriggerTime = now
 
-        var anyStillMoving = false // 用來判斷整組訊息是否都完成移動
+        var anyStillMoving = false
 
         
         for group in moving {
-            // 計算組的移動距離
             guard let firstMsg = group.first else { continue }
             let distance = abs(firstMsg.targetY - firstMsg.startY)
             let moveDuration = max(0.15, min(0.45, distance / 120.0))
             let moveStep = min(elapsed / moveDuration, 1)
 
-            var groupMoving = false // 判斷這組內是否還有訊息在動
+            var groupMoving = false
 
-            // 組內每條訊息同步移動
             for msg in group {
 
                 if abs(msg.startY - msg.targetY) >= snapThreshold {
@@ -1506,7 +1419,6 @@ final class PIPServiceMessages {
                     msg.isNew = false
                     msg.startY = newY
 
-                    //PIPChatLog("NewY:\(newY) SY:\(msg.startY) -> \(msg.targetY)")
                     self.layout(msg: msg, y: newY)
 
                     groupMoving = true
@@ -1530,7 +1442,6 @@ final class PIPServiceMessages {
         }
         
 
-        // ✅ 如果整個動畫都完成
         if !anyStillMoving {
             onMoveFinished()
         }
@@ -1568,7 +1479,6 @@ final class PIPServiceMessages {
 
     private func findFadeCandidate() -> MessageLayerTuple? {
 
-        // 1️⃣ 只看「穩定、可見、不是新訊息」的 leader
         let leaders = stackedMessages
             .filter { msg in
                 msg.alpha > 0 &&
@@ -1579,8 +1489,6 @@ final class PIPServiceMessages {
 
         guard !leaders.isEmpty else { return nil }
 
-        // 2️⃣ 找畫面中「最上面」的那一組
-        // ⚠️ 一定要用 targetY，不是 startY
         let candidate = leaders.min(by: {
             $0.targetY < $1.targetY
         })
@@ -1636,14 +1544,12 @@ final class PIPServiceMessages {
             return
         }
 
-        // 動畫結束，真正移除
         removeMessage(msg)
         fadeCandidate = nil
 
         _ = relayoutTargetsOnly(updateTargetY: true, changeSY: false)
 
         rebuildAnimatingGroups()
-        // 標記動畫需要更新，但不要重置 targetY
         fixMoving()
 
 
@@ -1740,17 +1646,11 @@ final class PIPServiceMessages {
 
     private func startFadeAnimation(for msg: MessageLayerTuple) {
 
-        // 用FadeAlpha的時間
         let fadeDuration: CGFloat = LPConfig.shared.FadeAlpha
 
         let now = CACurrentMediaTime()
         let elapsed = now - lastFadeTriggerTime
         let fadeStep = min(elapsed / fadeDuration, 1)
-
-
-//        PIPChatLog(
-//            "Fade Step in \(String(describing: msg.name?.string)) : \(String(describing: msg.message?.string)) Time:\(duration) Alpah:\(msg.alpha)"
-//        )
 
         lastFadeTriggerTime = now
 
@@ -1783,8 +1683,6 @@ final class PIPServiceMessages {
     }
 
 
-    // MARK: - 由 PIPService render timer 每幀呼叫一次
-    /// 回傳 true 表示動畫還在進行中
     func tickAnimation() -> Bool {
         guard !safeCanncel else {
             stopAnimation()
@@ -1833,7 +1731,6 @@ final class PIPServiceMessages {
 
         let textX = msg.textX
 
-        // Avatar
         msg.avatar?.frame.origin = CGPoint(
             x: textX - avatarSizeLocal,
             y: y
@@ -1841,11 +1738,9 @@ final class PIPServiceMessages {
 
 
 
-        // Name
         var cursorY = y
 
         if let nameLayer = msg.name {
-            // Name（不再計算）
             let size = msg.cachedNameSize
 
             nameLayer.frame = CGRect(
@@ -1859,7 +1754,6 @@ final class PIPServiceMessages {
 
             cursorY += size.height + msg.verticalSpacing
 
-            // 第一行的 top
             let textCenterY = nameLayer.frame.origin.y + nameLayer.frame.height / 2
             msg.avatar?.frame.origin.y = textCenterY - avatarSizeLocal / 2
 
@@ -1869,7 +1763,6 @@ final class PIPServiceMessages {
 
         var offSet = 0.0
 
-        // Message
         if let message = msg.message {
             let size = msg.cachedMessageSize
 
@@ -1887,8 +1780,6 @@ final class PIPServiceMessages {
 
         }
 
-        // Gift（不再算 lastLine）
-
         if let gift = msg.gift,
            let messageLayer = msg.message {
 
@@ -1899,10 +1790,6 @@ final class PIPServiceMessages {
             let GiftCY = msg.cachedGiftOffsetY
 
 
-
-//            PIPChatLog(
-//                "M:\(String(describing: messageLayer.string)) Mes MinX:\(minX) MinY:\(minY) Gift X:\(GiftCX) Y:\(GiftCY)"
-//            )
 
             gift.frame = CGRect(
                 x: minX + GiftCX,
@@ -1950,207 +1837,3 @@ final class PIPServiceMessages {
     }
 
 }
-
-
-func PIPChatLog(_ message:String){
-    guard LPConfig.shared.PIPChatLog else { return }
-
-    logger.debug("PIPCHAT \(message)")
-    sendlog(title:"[PIP_Chat]",message: message)
-
-}
-
-struct DebugImageViewWrapper: UIViewRepresentable {
-
-    // 這裡傳 PIPService 的 debug layer
-    let layer: AVSampleBufferDisplayLayer?
-
-    func makeUIView(context: Context) -> UIView {
-        let container = UIView()
-
-        if let layer = layer {
-                    layer.frame = container.bounds
-                    layer.videoGravity = .resizeAspect
-                    layer.backgroundColor = #colorLiteral(red: 0.9254902005, green: 0.2352941185, blue: 0.1019607857, alpha: 1)
-                    container.layer.addSublayer(layer)
-        }
-
-
-        return container
-    }
-
-    func updateUIView(_ uiView: UIView, context: Context) {
-
-
-    }
-}
-
-struct PIPView: View {
-
-    @ObservedObject private var pipService = PIPService.shared
-
-    @State private var isTestPiPActive = false
-
-    @State private var manualMessage: String = "test"
-    @State private var manualUser: String = "User33"
-
-    var body: some View {
-        VStack(spacing: 20) {
-            Text("Chat")
-
-            HStack(spacing: 20) {
-                VStack(spacing: 10) {
-                    Button("[聊天組]啟動 PiP") {
-                        let pipSize = CGSize(width: 300, height: 200)
-                        PIPService.shared.startPiP(size: pipSize)
-                    }
-                    .disabled((pipService.isPiPActive && !pipService.isKeepaliveMode) || isTestPiPActive)
-
-                    Button("[保活組]啟動 PiP 保活") {
-                        let pipSize = CGSize(width: 300, height: 200)
-                        PIPService.shared.startKeepalivePiP(size: pipSize)
-                    }
-                    .disabled(pipService.isPiPActive || isTestPiPActive)
-
-                    Button("[聊天室]停止 PiP") {
-                        PIPService.shared.stopPiP()
-                    }
-                    .disabled(!pipService.isPiPActive)
-                }
-
-                VStack(spacing: 10) {
-                    Button("[測試組]啟動 PiP") {
-                        PIPTestService.shared.startPiPTest(size: CGSize(width: 300, height: 200))
-                        isTestPiPActive = true
-                    }
-                    .disabled(pipService.isPiPActive || isTestPiPActive)
-
-                    Button("[測試組]停止 PiP") {
-                        PIPTestService.shared.stopPiP()
-                        isTestPiPActive = false
-                    }
-                    .disabled(!isTestPiPActive)
-                }
-            }
-
-            VStack(spacing: 10) {
-                // ✅ 新增 TextField
-                TextField("輸入手動用戶名", text: $manualUser)
-                    .textFieldStyle(.roundedBorder)
-                    .padding(.horizontal)
-
-                TextField("輸入手動訊息", text: $manualMessage)
-                    .textFieldStyle(.roundedBorder)
-                    .padding(.horizontal)
-
-                // 手動新增訊息按鈕
-                Button("新增訊息") {
-                    let imgA = "https://img.icons8.com/?size=100&id=12860&format=png&color=000000"
-                    let imgG = "https://img.icons8.com/?size=100&id=y5xu7jml0MTU&format=png&color=000000"
-
-                    // 把 TextField 內容傳給 PIPService
-                    PIPService.shared
-                        .addMessage(
-                            user: manualUser,
-                            msg: manualMessage,
-                            imgURL: imgA,
-                            giftURL: imgG
-                        )
-
-                    TTSService.shared.speakStreamMessage(
-                        user: manualUser,
-                        message: manualMessage
-                    )
-
-
-
-                }
-
-            }
-
-
-
-            Button("測試長訊息") {
-
-                let user =  "1阿呵呵呵阿呵呵呵阿呵呵呵阿呵呵呵2阿呵呵呵阿3呵呵呵阿呵呵4呵阿呵呵呵阿呵呵呵阿呵呵呵阿5呵呵呵阿呵呵呵阿呵呵呵阿呵呵呵阿呵呵呵測試5"
-
-                let msg =  "1阿呵呵呵阿呵呵呵2阿呵呵呵阿3呵呵呵阿呵呵呵阿呵呵呵阿呵4呵呵阿呵呵呵阿呵呵呵阿呵呵呵5阿呵呵呵阿呵呵呵阿呵呵呵測試6"
-                let img = "https://img.icons8.com/?size=100&id=L8HgZUgz2jWS&format=png&color=000000"
-
-                let gift = "https://img.icons8.com/?size=100&id=tgLepcPbp6mP&format=png&color=000000"
-
-                PIPService.shared
-                    .addMessage(user: user, msg: msg,imgURL: img,giftURL: gift)
-
-
-                TTSService.shared.speakStreamMessage(
-                    user: user,
-                    message: msg
-                )
-
-            }
-            Button("TestB") {
-                let imgA = "https://img.icons8.com/?size=100&id=12860&format=png&color=000000"
-                let imgG = "https://img.icons8.com/?size=100&id=y5xu7jml0MTU&format=png&color=000000"
-
-
-                let UNAME = "小明3"
-                let UMSG = "Hello!"
-
-                PIPService.shared.addMessage(user: UNAME, msg: UMSG, imgURL: imgA, giftURL: imgG)
-
-                TTSService.shared.speakStreamMessage(
-                    user: UNAME,
-                    message: UMSG
-                )
-
-            }
-
-            Button("Test次要訊息") {
-                let imgA = "https://img.icons8.com/?size=100&id=12860&format=png&color=000000"
-                let imgG = "https://img.icons8.com/?size=100&id=y5xu7jml0MTU&format=png&color=000000"
-
-                let UNAME = "小明2"
-                let UMSG = "Hello!"
-
-                PIPService.shared.addMessage(user: UNAME , msg: UMSG , imgURL: imgA, giftURL: imgG, isMain: false)
-
-                TTSService.shared.speakStreamMessage(
-                    user: UNAME,
-                    message: UMSG,
-                    isMain:false
-                )
-
-            }
-
-            Button("新增訊息") {
-
-                let UNAME = ""
-                let UMSG = "測試訊息圖片"
-                let GIFTURL = "https://img.icons8.com/?size=100&id=y5xu7jml0MTU&format=png&color=000000"
-                
-                PIPService.shared.addMessage(
-                    msg: UMSG,
-                    imgURL: "https://img.icons8.com/?size=100&id=12860&format=png&color=000000",
-                    giftURL: GIFTURL
-                )
-
-
-                TTSService.shared.speakStreamMessage(
-                    user: UNAME,
-                    message: UMSG
-                )
-
-            }
-
-            // 將 debugImageView 顯示在 SwiftUI
-//            DebugImageViewWrapper(layer: PIPService.shared.debugDisplayLayer)
-//                .frame(width: 300, height: 200)
-//                .border(Color.red)
-            
-
-        }
-        .padding()
-    }
-}
-// 這是一個你自訂的內容（聊天室/動畫等）
