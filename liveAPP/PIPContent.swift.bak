@@ -410,15 +410,8 @@ final class PIPServiceMessages {
     var avatarSize: CGFloat = 28
     var giftSize: CGFloat = 28
 
-    var adOverlayOffset: CGFloat = 0
-
     var topMargin: CGFloat {
-        max(65, container.bounds.height * 0.18) + adOverlayOffset
-    }
-
-    func setAdOverlayOffset(_ offset: CGFloat) {
-        adOverlayOffset = offset
-        layoutTargetsAndStartAnimation()
+        max(65, container.bounds.height * 0.18)
     }
 
 
@@ -1014,7 +1007,7 @@ final class PIPServiceMessages {
 
 
 
-    static func extractAllImageURLs(from message: String, maxURLs: Int = 20, placeholder: String = "\u{2003}") -> (cleaned: String, imageURLs: [String], imagePositions: [Int]) {
+    static func extractAllImageURLs(from message: String, maxURLs: Int = 20) -> (cleaned: String, imageURLs: [String], imagePositions: [Int]) {
         let imageExtensions = ["png", "jpg", "jpeg", "gif", "webp", "PNG", "JPG", "JPEG", "GIF", "WEBP"]
         let pattern = "(https?://[^\\s]+\\.(" + imageExtensions.joined(separator: "|") + ")(\\?[^\\s]*)?)"
 
@@ -1047,7 +1040,7 @@ final class PIPServiceMessages {
             let currentLen = parts.map(\.count).reduce(0, +)
             positions.append(currentLen)
             urls.append(String(message[urlRange]))
-            parts.append(placeholder)
+            parts.append("\u{2003}")
             lastEnd = urlRange.upperBound
         }
 

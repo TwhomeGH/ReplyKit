@@ -342,6 +342,8 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         adOverlayStartTime = CACurrentMediaTime()
         adOverlayActive = true
 
+        messagesLayer?.setAdOverlayOffset(60)
+
         if let iconURL, !iconURL.isEmpty {
             Task { [weak self] in
                 await PiPImageCache.shared.loadImage(urlString: iconURL) { image in
@@ -361,6 +363,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         adOverlayUser = nil
         adOverlayIconURL = nil
         adOverlayIconImage = nil
+        messagesLayer?.setAdOverlayOffset(0)
     }
 
     // MARK: 直播結束訊息框
@@ -631,16 +634,11 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         let iconRect = CGRect(x: iconX, y: iconY, width: iconSize, height: iconSize)
 
         if let icon = adOverlayIconImage {
-            cg.restoreGState()
             cg.saveGState()
             cg.addEllipse(in: iconRect)
             cg.clip()
             icon.draw(in: iconRect)
             cg.restoreGState()
-            cg.saveGState()
-            cg.translateBy(x: 0, y: size.height)
-            cg.scaleBy(x: 1.0, y: -1.0)
-            cg.setAlpha(alpha)
         } else {
             UIImage(systemName: "star.fill")?.withTintColor(.white, renderingMode: .alwaysOriginal).draw(in: iconRect)
         }

@@ -572,7 +572,7 @@ class SocketServer:ObservableObject {
 
 
         if isNotifyApp {
-            let (cleanBody, inlineImages, _) = PIPServiceMessages.extractAllImageURLs(from: msg)
+            let (cleanBody, inlineImages, _) = PIPServiceMessages.extractAllImageURLs(from: msg, placeholder: "")
             postSystemNotification(title: user, body: cleanBody, imageURL: img, inlineImages: inlineImages)
         }
 
@@ -833,7 +833,7 @@ class SocketServer:ObservableObject {
 
                 
                 if isNotifyApp {
-                    let (cleanBody, inlineImages, _) = PIPServiceMessages.extractAllImageURLs(from: text)
+                    let (cleanBody, inlineImages, _) = PIPServiceMessages.extractAllImageURLs(from: text, placeholder: "")
                     postSystemNotification(title: user, body: cleanBody, imageURL: iconURL ?? "", inlineImages: inlineImages)
                 }
 
