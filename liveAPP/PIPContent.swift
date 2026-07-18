@@ -778,7 +778,7 @@ final class PIPServiceMessages {
             var lineEmojiIndices: [Int] = []
             for (ei, pos) in emojiPositions.enumerated() {
                 let localPos = pos - lineStartIndex
-                if localPos >= 0 && localPos <= lineLen && ei < emojiURLs.count {
+                if localPos >= 0 && localPos < lineLen && ei < emojiURLs.count {
                     lineEmojiURLs.append(emojiURLs[ei])
                     lineEmojiIndices.append(localPos)
                 }
