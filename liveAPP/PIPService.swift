@@ -80,11 +80,16 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     // MARK: - Ad Overlay
     private var adOverlayUser: String?
     private var adOverlayText: String?
+    private var adOverlayCleanText: String?
+    private var adOverlayPages: [String] = []
+    private var adOverlayPageIndex: Int = 0
     private var adOverlayIconURL: String?
     private var adOverlayIconImage: UIImage?
+    private var adOverlayEmojiURLs: [String] = []
+    private var adOverlayEmojiImages: [UIImage?] = []
     private var adOverlayStartTime: CFTimeInterval = 0
     private var adOverlayActive = false
-    private let adOverlayDuration: CFTimeInterval = 5.0
+    private let adOverlayPageDuration: CFTimeInterval = 5.0
 
     private let renderQueue = DispatchQueue(
         label: "com.pip.render",
@@ -344,6 +349,27 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
         messagesLayer?.setAdOverlayOffset(145)
 
+        let (cleanText, emojiURLs, _) = PIPServiceMessages.extractAllImageURLs(from: text, placeholder: "")
+        adOverlayCleanText = cleanText
+        adOverlayEmojiURLs = emojiURLs
+        adOverlayEmojiImages = Array(repeating: nil, count: emojiURLs.count)
+
+        let maxTextW = frameSize.width * 0.88 - 8 - 28 - 8 - 8 - 16 * CGFloat(min(emojiURLs.count, 4)) - 4
+        let msgY: CGFloat = 6 + UIFont.boldSystemFont(ofSize: 11).lineHeight + 2
+        let msgH: CGFloat = 85 + 52 - 4 - 85 - msgY
+        adOverlayPages = Self.splitAdText(cleanText, font: .systemFont(ofSize: 10), width: maxTextW, height: msgH)
+        adOverlayPageIndex = 0
+
+        for (idx, url) in emojiURLs.enumerated() {
+            Task { [weak self] in
+                await PiPImageCache.shared.loadImage(urlString: url) { image in
+                    guard let self = self, idx < self.adOverlayEmojiImages.count else { return }
+                    self.adOverlayEmojiImages[idx] = image
+                    self.setNeedsRedraw()
+                }
+            }
+        }
+
         if let iconURL, !iconURL.isEmpty {
             Task { [weak self] in
                 await PiPImageCache.shared.loadImage(urlString: iconURL) { image in
@@ -360,10 +386,59 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     private func clearAdOverlay() {
         adOverlayActive = false
         adOverlayText = nil
+        adOverlayCleanText = nil
         adOverlayUser = nil
         adOverlayIconURL = nil
         adOverlayIconImage = nil
+        adOverlayEmojiURLs.removeAll()
+        adOverlayEmojiImages.removeAll()
+        adOverlayPages.removeAll()
+        adOverlayPageIndex = 0
         messagesLayer?.setAdOverlayOffset(0)
+    }
+
+    private static func splitAdText(_ text: String, font: UIFont, width: CGFloat, height: CGFloat) -> [String] {
+        guard !text.isEmpty else { return [] }
+        let nsText = text as NSString
+        let attrs: [NSAttributedString.Key: Any] = [.font: font]
+        let constraint = CGSize(width: max(1, width), height: .greatestFiniteMagnitude)
+
+        let totalSize = nsText.boundingRect(with: constraint, options: .usesLineFragmentOrigin, attributes: attrs, context: nil)
+        if totalSize.height <= height { return [text] }
+
+        let lineHeight = font.lineHeight
+        let linesPerPage = max(1, Int(height / lineHeight))
+
+        var pages: [String] = []
+        var searchStart = 0
+
+        while searchStart < nsText.length {
+            var low = searchStart
+            var high = nsText.length
+            var best = searchStart
+
+            while low < high {
+                let mid = (low + high + 1) / 2
+                let testRange = NSRange(location: searchStart, length: mid - searchStart)
+                let testStr = nsText.substring(with: testRange)
+                let testSize = (testStr as NSString).boundingRect(with: constraint, options: .usesLineFragmentOrigin, attributes: attrs, context: nil)
+                let testLines = Int(ceil(testSize.height / lineHeight))
+
+                if testLines <= linesPerPage {
+                    best = mid
+                    low = mid
+                } else {
+                    high = mid - 1
+                }
+            }
+
+            if best <= searchStart { break }
+            let pageStr = nsText.substring(with: NSRange(location: searchStart, length: best - searchStart))
+            pages.append(pageStr.trimmingCharacters(in: .whitespacesAndNewlines))
+            searchStart = best
+        }
+
+        return pages.isEmpty ? [text] : pages
     }
 
     // MARK: 直播結束訊息框
@@ -602,12 +677,20 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         guard adOverlayActive, let text = adOverlayText else { return }
 
         let elapsed = CACurrentMediaTime() - adOverlayStartTime
-        let remaining = adOverlayDuration - elapsed
+        let remaining = adOverlayPageDuration - elapsed
 
         if remaining <= 0 {
-            clearAdOverlay()
+            let nextPage = adOverlayPageIndex + 1
+            if nextPage < adOverlayPages.count {
+                adOverlayPageIndex = nextPage
+                adOverlayStartTime = CACurrentMediaTime()
+            } else {
+                clearAdOverlay()
+            }
             return
         }
+
+        let pageText = adOverlayPageIndex < adOverlayPages.count ? adOverlayPages[adOverlayPageIndex] : text
 
         let alpha: CGFloat = min(1.0, max(0, remaining / 0.5))
 
@@ -643,9 +726,24 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             UIImage(systemName: "star.fill")?.withTintColor(.white, renderingMode: .alwaysOriginal).draw(in: iconRect)
         }
 
+        let emojiSize: CGFloat = 16
+        var emojiCursor = iconX + iconSize + 4
+        for emojiImage in adOverlayEmojiImages {
+            if let img = emojiImage {
+                let emojiRect = CGRect(
+                    x: emojiCursor,
+                    y: bannerY + (bannerH - emojiSize) / 2,
+                    width: emojiSize,
+                    height: emojiSize
+                )
+                img.draw(in: emojiRect)
+            }
+            emojiCursor += emojiSize + 4
+        }
+
         let labelFont = UIFont.boldSystemFont(ofSize: 11)
         let textFont = UIFont.systemFont(ofSize: 10)
-        let textX = iconX + iconSize + 8
+        let textX = emojiCursor + 4
         let textW = bannerW - (textX - bannerX) - 8
 
         let user = adOverlayUser ?? "贊助訊息"
@@ -654,10 +752,15 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             .foregroundColor: UIColor.white
         ])
 
-        let msgRect = CGRect(x: textX, y: bannerY + 6 + labelFont.lineHeight + 2, width: textW, height: textFont.lineHeight + 2)
-        (text as NSString).draw(in: msgRect, withAttributes: [
+        let msgY = bannerY + 6 + labelFont.lineHeight + 2
+        let msgH = bannerY + bannerH - 4 - msgY
+        let msgRect = CGRect(x: textX, y: msgY, width: textW, height: msgH)
+        let msgStyle = NSMutableParagraphStyle()
+        msgStyle.lineBreakMode = .byTruncatingTail
+        (pageText as NSString).draw(in: msgRect, withAttributes: [
             .font: textFont,
-            .foregroundColor: UIColor(white: 1, alpha: 0.9)
+            .foregroundColor: UIColor(white: 1, alpha: 0.9),
+            .paragraphStyle: msgStyle
         ])
 
         UIGraphicsPopContext()
