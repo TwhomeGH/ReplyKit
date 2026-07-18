@@ -339,6 +339,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     }
 
     // MARK: - Ad Overlay
+    // 顯示贊助/廣告覆蓋層，支援多頁文字與行內 emoji 圖片
     @MainActor
     func addAdOverlay(user: String, text: String, iconURL: String?, useTTS: Bool) {
         adOverlayUser = user
@@ -348,14 +349,19 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         adOverlayStartTime = CACurrentMediaTime()
         adOverlayActive = true
 
+        // 推下聊天訊息，為 overlay 騰出空間
         messagesLayer?.setAdOverlayOffset(145)
 
+        // 抽離文字中的圖片網址，用 \u{2003} 保留行內位置
         let (cleanText, emojiURLs, emojiPositions) = PIPServiceMessages.extractAllImageURLs(from: text, placeholder: "\u{2003}")
         adOverlayCleanText = cleanText
         adOverlayEmojiURLs = emojiURLs
         adOverlayEmojiPositions = emojiPositions
         adOverlayEmojiImages = Array(repeating: nil, count: emojiURLs.count)
 
+        PIPLogTo("AdOverlay: text='\(text)' clean='\(cleanText)' emojiURLs=\(emojiURLs) positions=\(emojiPositions)")
+
+        // 計算可用文字區域，分頁
         let overlayFontSize = CGFloat(LPConfig.shared.PIPAdOverlayFontSize)
         let maxTextW = frameSize.width * 0.88 - 8 - 28 - 8 - 8 - 16 * CGFloat(min(emojiURLs.count, 4)) - 4
         let msgY: CGFloat = 6 + UIFont.boldSystemFont(ofSize: 11).lineHeight + 2
@@ -370,17 +376,21 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         }
         adOverlayPages = pages
         adOverlayPageIndex = 0
+        PIPLogTo("AdOverlay: \(pages.count) page(s), frameSize=\(frameSize), maxTextW=\(maxTextW) msgH=\(msgH)")
 
+        // 非同步載入 emoji 圖片
         for (idx, url) in emojiURLs.enumerated() {
             Task { [weak self] in
                 await PiPImageCache.shared.loadImage(urlString: url) { image in
                     guard let self = self, idx < self.adOverlayEmojiImages.count else { return }
                     self.adOverlayEmojiImages[idx] = image
+                    PIPLogTo("AdOverlay: emoji[\(idx)] loaded \(image != nil)")
                     self.setNeedsRedraw()
                 }
             }
         }
 
+        // 非同步載入贊助者頭像
         if let iconURL, !iconURL.isEmpty {
             Task { [weak self] in
                 await PiPImageCache.shared.loadImage(urlString: iconURL) { image in
@@ -407,6 +417,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         adOverlayPages.removeAll()
         adOverlayPageIndex = 0
         messagesLayer?.setAdOverlayOffset(0)
+        PIPLogTo("AdOverlay: cleared")
     }
 
     private static func splitAdText(_ text: String, font: UIFont, width: CGFloat, height: CGFloat) -> [String] {
@@ -758,6 +769,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         let msgRect = CGRect(x: textX, y: msgY, width: textW, height: msgH)
 
         // Draw text with inline emoji using Core Text
+        // 流程：CTFrame 計算排版 → 逐行逐字元檢查是否為 emoji 位置 → 繪製 emoji 或文字
         let attrStr = NSAttributedString(string: pageText, attributes: [.font: textFont, .foregroundColor: UIColor(white: 1, alpha: 0.9)])
         let framesetter = CTFramesetterCreateWithAttributedString(attrStr)
         let cgPathRect = CGRect(origin: .zero, size: msgRect.size)
@@ -766,6 +778,8 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         let lines = CTFrameGetLines(ctFrame) as! [CTLine]
         var lineOrigins = [CGPoint](repeating: .zero, count: lines.count)
         CTFrameGetLineOrigins(ctFrame, CFRange(location: 0, length: lines.count), &lineOrigins)
+
+        PIPLogTo("AdOverlay: drawing page=\(adOverlayPageIndex)/\(adOverlayPages.count) text='\(pageText)' emojiLoaded=\(adOverlayEmojiImages.compactMap({ $0 != nil }).count)/\(adOverlayEmojiImages.count)")
 
         for (li, line) in lines.enumerated() {
             let lineOrigin = lineOrigins[li]
@@ -782,12 +796,15 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
                 if let emojiIdx = adOverlayEmojiPositions.firstIndex(of: globalPos),
                    emojiIdx < adOverlayEmojiImages.count,
                    let img = adOverlayEmojiImages[emojiIdx] {
+                    // 此行有 emoji 圖片 → 繪製圖片
                     let emojiX = msgRect.origin.x + CTLineGetOffsetForStringIndex(line, charIdx, nil)
                     let emojiSize: CGFloat = overlayFontSize * 1.2
                     let emojiY = lineY + (textFont.lineHeight - emojiSize) / 2
                     img.draw(in: CGRect(x: emojiX, y: emojiY, width: emojiSize, height: emojiSize))
+                    PIPLogTo("AdOverlay: emoji[\(emojiIdx)] at line=\(li) x=\(emojiX) y=\(emojiY)")
                     charIdx += 1
                 } else {
+                    // 一般文字區段 → 找出連續非 emoji 文字並繪製
                     var segEnd = charIdx + 1
                     while segEnd < lineEnd {
                         let nextGlobalPos = page.range.location + segEnd
