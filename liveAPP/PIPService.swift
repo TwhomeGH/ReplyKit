@@ -779,7 +779,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         var lineOrigins = [CGPoint](repeating: .zero, count: lines.count)
         CTFrameGetLineOrigins(ctFrame, CFRange(location: 0, length: lines.count), &lineOrigins)
 
-        PIPLogTo("AdOverlay: drawing page=\(adOverlayPageIndex)/\(adOverlayPages.count) text='\(pageText)' emojiLoaded=\(adOverlayEmojiImages.compactMap({ $0 != nil }).count)/\(adOverlayEmojiImages.count)")
+        PIPLogTo("AdOverlay: drawing page=\(adOverlayPageIndex)/\(adOverlayPages.count) range=\(page.range) text='\(pageText)' positions=\(adOverlayEmojiPositions) emojiLoaded=\(adOverlayEmojiImages.compactMap({ $0 != nil }).count)/\(adOverlayEmojiImages.count)")
 
         for (li, line) in lines.enumerated() {
             let lineOrigin = lineOrigins[li]
@@ -792,8 +792,10 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             var charIdx = lineStart
             while charIdx < lineEnd {
                 let globalPos = page.range.location + charIdx
+                let foundEmojiPos = adOverlayEmojiPositions.firstIndex(of: globalPos)
+                PIPLogTo("AdOverlay: charIdx=\(charIdx) globalPos=\(globalPos) posMatch=\(foundEmojiPos ?? -1) imgCount=\(adOverlayEmojiImages.count) imgLoaded=\(foundEmojiPos.map { $0 < adOverlayEmojiImages.count && adOverlayEmojiImages[$0] != nil } ?? false)")
 
-                if let emojiIdx = adOverlayEmojiPositions.firstIndex(of: globalPos),
+                if let emojiIdx = foundEmojiPos,
                    emojiIdx < adOverlayEmojiImages.count,
                    let img = adOverlayEmojiImages[emojiIdx] {
                     // 此行有 emoji 圖片 → 繪製圖片
