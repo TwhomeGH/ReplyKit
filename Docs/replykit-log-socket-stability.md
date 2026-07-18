@@ -727,7 +727,7 @@ picker.preferredExtension = actualExtension
 
 ### 問題
 
-長時間未主動打開 socket 時，nsureRunning() 只檢查 listener == nil 或 .failed 狀態。
+長時間未主動打開 socket 時，ensureRunning() 只檢查 listener == nil 或 .failed 狀態。
 
 但 NWListener 可能卡在 .setup、.waiting 或 .cancelled 但仍非 nil，造成「socket already running」但實際已死。
 
