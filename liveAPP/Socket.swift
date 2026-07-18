@@ -840,7 +840,7 @@ class SocketServer:ObservableObject {
 
                 Task { @MainActor in
                     if useTTS {
-                        TTSService.shared.speakStreamMessage(user: user, message: text, isMain: true)
+                        TTSService.shared.speakStreamMessage(user: user, message: text, isMain: true, force: true)
                     }
                     PIPService.shared.addAdOverlay(user: user, text: text, iconURL: iconURL, useTTS: useTTS)
                 }

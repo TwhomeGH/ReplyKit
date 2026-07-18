@@ -187,7 +187,8 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
     func speakStreamMessage(
         user: String,
         message: String,
-        isMain:Bool = true
+        isMain:Bool = true,
+        force:Bool = false
     ) {
         guard isEnabled else { return }
 
@@ -195,7 +196,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
         let RES_MSG = filter.processMessage(message)
 
 
-        if RES_MSG.count < minLen {
+        if !force, RES_MSG.count < minLen {
             sendlog(message:"太短了跳過 少於\(minLen)個字")
             return;
         }
