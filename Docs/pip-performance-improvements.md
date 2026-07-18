@@ -567,6 +567,34 @@ func forceFlushBatch() {
 | 表情圖片非同步載入完成後更新了 `inlineEmojiSizes[idx]`，但 emoji 的 `CALayer.frame` 已在 `layout(msg:)` 中以初始 `giftSize` 設定，不會重新計算 | `layout(msg:)` 只在訊息移動動畫期間被呼叫，動畫結束後不再重新排版；emoji frame 停留在初始大小 | 在載入 callback 中直接用 `CTLineGetOffsetForStringIndex` 計算 X 座標、`messageFrame.midY` 計算 Y 座標，立即設定 `emoji.frame = CGRect(x:baseX, y:emojiY, width:newSize.width, height:newSize.height)` |
 | Task 未使用 capture list，closure 強捕獲 `msg` 與 `idx`，即使訊息已移除仍有 retain | 一般 closure 會強捕獲所有使用到的區域變數 | `Task { [idx, msg] in` 明確 capture；completion handler 使用 `[weak msg]` 避免延長訊息生命週期 |
 
+### `liveAPP/PIPContent.swift` — layout(msg:) & 非同步 callback CTLine 文字取用
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| 所有 emoji 全部疊在同一 X 位置（`messageFrame.origin.x`） | `CATextLayer.string` 實際型別是 `NSAttributedString`（`buildMessageTuple` 以 `NSAttributedString(string:message, attributes:)` 設定），但 `layout(msg:)` 用 `as? NSString` 解讀 → 永遠回傳 `nil` → `text = ""` → `CTLine` 空的 → `CTLineGetOffsetForStringIndex` 對任何 index 都回傳 0 | 改為優先 `as? NSAttributedString` 取 `.string`，fallback `as? String` |
+
 ### 相關記憶體更新
 
 - [memory #30](PROJECT_RULES) — 本次修復比對 log 發現 `UIImage(data:)` 失敗路徑完全無 callback 是結構性缺陷（不是單一的間歇性參數問題），符合「先追 pipeline 再下修」原則。
+
+---
+
+## 24. BroadcastButton 錯誤指向修正與日誌增強（2026-07）
+
+### `liveAPP/ContentView.swift` — BroadcastButton.resolveExtension()
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| PlugIns 中有三個 extension（`ReplyKIT.appex`、`ReplyKITSetupUI.appex`、`ReplyKITNotification.appex`），`resolveExtension()` 直接回傳第一個找到的 `.appex`，可能選到 setup UI 或 notification extension | `FileManager.contentsOfDirectory` 不保證順序，回圈未過濾 extension type | 載入每個 `.appex` 的 `Info.plist`，檢查 `NSExtension.NSExtensionPointIdentifier` 是否為 `com.apple.broadcast-services-upload`，只回傳符合的 bundle ID |
+| 無 PlugIns 目錄或無法讀取時無任何提示 | `try?` 吃掉所有錯誤 | 加入 `sendlog` 記錄失敗原因 |
+
+### 日誌增強
+
+| 位置 | 新增日誌 |
+|------|----------|
+| `resolveExtension()` | PlugIns 中 `appex` 總數；每個 extension 的檔名、bundle ID、類型（broadcast-upload/other）；最終選擇的 extension 及選取原因（PlugIns / user setting / constructed） |
+| `makeUIView()` | `preferredExtension` 最終值、`Bundle.main.bundleIdentifier` |
+| `updateUIView()` | 每次更新時記錄 extension |
+| `buttonTapped` | 觸發時的 orientation 值 |
+| `trigger()` | 呼叫記錄；`currentPicker` 為 nil 時記錄失敗；`UIButton` 找不到時記錄失敗 |
+| `onChange(of: broadcastExtension)` | 使用者修改值時記錄 |

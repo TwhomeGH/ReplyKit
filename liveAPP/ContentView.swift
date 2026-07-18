@@ -142,25 +142,47 @@ struct BroadcastButton: UIViewRepresentable {
     var multiplier: Int = 34
 
     private func resolveExtension() -> String? {
-        // 1. 從 PlugIns 動態發現——適用於所有簽名環境
+        // 1. 從 PlugIns 動態發現——只選 broadcast upload extension
         if let plugInsURL = Bundle.main.builtInPlugInsURL,
            let entries = try? FileManager.default.contentsOfDirectory(at: plugInsURL, includingPropertiesForKeys: nil) {
-            for entry in entries where entry.pathExtension == "appex" {
+            let appexEntries = entries.filter { $0.pathExtension == "appex" }
+            sendlog(title: "BroadcastButton", message: "Found \(appexEntries.count) appex bundles in PlugIns")
+
+            for entry in appexEntries {
                 if let bundle = Bundle(url: entry), let bundleID = bundle.bundleIdentifier {
-                    sendlog(title: "BroadcastButton", message: "Found extension: " + bundleID)
-                    return bundleID
+                    let isBroadcastUpload: Bool
+                    if let extDict = bundle.infoDictionary?["NSExtension"] as? [String: Any],
+                       let pointID = extDict["NSExtensionPointIdentifier"] as? String {
+                        isBroadcastUpload = (pointID == "com.apple.broadcast-services-upload")
+                    } else {
+                        isBroadcastUpload = false
+                    }
+                    sendlog(title: "BroadcastButton", message: "  \(entry.lastPathComponent): bundleID=\(bundleID) type=\(isBroadcastUpload ? "broadcast-upload" : "other")")
+                    if isBroadcastUpload {
+                        sendlog(title: "BroadcastButton", message: "Selected broadcast upload extension: \(bundleID)")
+                        return bundleID
+                    }
                 }
             }
+            sendlog(title: "BroadcastButton", message: "No broadcast upload extension found in PlugIns")
+        } else {
+            sendlog(title: "BroadcastButton", message: "No PlugIns directory or unable to read")
         }
 
         // 2. 使用使用者設定的值
-        if !preferredExtension.isEmpty { return preferredExtension }
+        if !preferredExtension.isEmpty {
+            sendlog(title: "BroadcastButton", message: "Fallback to user setting: \(preferredExtension)")
+            return preferredExtension
+        }
 
         // 3. 從主 App bundle ID 推測
         if let bundleID = Bundle.main.bundleIdentifier {
             let candidate = bundleID + ".ReplyKIT"
+            sendlog(title: "BroadcastButton", message: "Fallback to constructed: \(candidate)")
             return candidate
         }
+
+        sendlog(title: "BroadcastButton", message: "Failed to resolve broadcast extension")
         return nil
     }
 
@@ -184,7 +206,9 @@ struct BroadcastButton: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: RPSystemBroadcastPickerView, context: Context) {
-        uiView.preferredExtension = resolveExtension()
+        let ext = resolveExtension()
+        sendlog(title: "BroadcastButton", message: "updateUIView preferredExtension = \(ext ?? "nil")")
+        uiView.preferredExtension = ext
         context.coordinator.rtmpURL = rtmpURL
         context.coordinator.rtmpKey = rtmpKey
     }
@@ -205,20 +229,29 @@ struct BroadcastButton: UIViewRepresentable {
 
         @objc func buttonTapped() {
             self.UR = UIDevice.current.orientation
+            sendlog(title: "BroadcastButton", message: "buttonTapped orientation=\(self.UR.rawValue)")
             logger.info("ROTATE:\(String(describing: self.UR))")
             userDefaults?.set(self.UR.rawValue, forKey: "L3Rotate")
         }
 
         static func trigger() {
+            sendlog(title: "BroadcastButton", message: "trigger() called")
+
             let payload = [
                 "type": "log",
                 "message": "Socket連線測試"
             ]
             SocketServer.shared.queueSend(payload: payload)
 
-            guard let picker = currentPicker,
-                  let button = picker.subviews.first(where: { $0 is UIButton }) as? UIButton
-            else { return }
+            guard let picker = currentPicker else {
+                sendlog(title: "BroadcastButton", message: "trigger() failed: currentPicker is nil")
+                return
+            }
+            guard let button = picker.subviews.first(where: { $0 is UIButton }) as? UIButton else {
+                sendlog(title: "BroadcastButton", message: "trigger() failed: no UIButton in picker subviews")
+                return
+            }
+            sendlog(title: "BroadcastButton", message: "trigger() simulating button tap")
             button.sendActions(for: .touchUpInside)
         }
     }
@@ -2469,6 +2502,7 @@ struct homeView:View{
 
                 }
                 .onChange(of: broadcastExtension) { newValue in
+                    sendlog(title: "BroadcastButton", message: "broadcastExtension changed to: \(newValue)")
                     StreamBtn = BroadcastButton(
                         preferredExtension: newValue,
                         rtmpURL: StreamBtn.rtmpURL,
