@@ -362,11 +362,13 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         PIPLogTo("AdOverlay: text='\(text)' clean='\(cleanText)' emojiURLs=\(emojiURLs) positions=\(emojiPositions)")
 
         // 計算可用文字區域，分頁
-        let overlayFontSize = CGFloat(LPConfig.shared.PIPAdOverlayFontSize)
+        let overlayFontSize = max(1, CGFloat(LPConfig.shared.PIPAdOverlayFontSize))
+        let overlayUserFontSize = max(1, CGFloat(LPConfig.shared.PIPAdOverlayUserFontSize))
+        let overlaySpacing = max(0, CGFloat(LPConfig.shared.PIPAdOverlaySpacing))
         let maxTextW = frameSize.width * 0.88 - 8 - 28 - 8 - 8 - 16 * CGFloat(min(emojiURLs.count, 4)) - 4
-        let msgY: CGFloat = 6 + UIFont.boldSystemFont(ofSize: 11).lineHeight + 2
-        let msgH: CGFloat = 85 + 52 - 4 - 85 - msgY
-        let rawPages = Self.splitAdText(cleanText, font: .systemFont(ofSize: overlayFontSize), width: maxTextW, height: msgH)
+        let msgYOffset = 6 + UIFont.boldSystemFont(ofSize: overlayUserFontSize).lineHeight + overlaySpacing
+        let msgH = max(52, 6 + UIFont.boldSystemFont(ofSize: overlayUserFontSize).lineHeight + overlaySpacing + UIFont.systemFont(ofSize: overlayFontSize).lineHeight * 2 + 4 + 4) - 4 - msgYOffset
+        let rawPages = Self.splitAdText(cleanText, font: .systemFont(ofSize: overlayFontSize), width: maxTextW, height: max(1, msgH))
         var offset = 0
         var pages: [(text: String, range: NSRange)] = []
         for p in rawPages {
@@ -726,9 +728,14 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         cg.setAlpha(alpha)
 
         let bannerW = size.width * 0.88
-        let bannerH: CGFloat = 52
         let bannerX = (size.width - bannerW) / 2
         let bannerY: CGFloat = 85
+
+        let labelFont = UIFont.boldSystemFont(ofSize: max(1, CGFloat(LPConfig.shared.PIPAdOverlayUserFontSize)))
+        let overlayFontSize = max(1, CGFloat(LPConfig.shared.PIPAdOverlayFontSize))
+        let textFont = UIFont.systemFont(ofSize: overlayFontSize)
+        let overlaySpacing = max(0, CGFloat(LPConfig.shared.PIPAdOverlaySpacing))
+        let bannerH: CGFloat = max(52, 6 + labelFont.lineHeight + overlaySpacing + textFont.lineHeight * 2 + 4 + 4)
 
         let bgRect = CGRect(x: bannerX, y: bannerY, width: bannerW, height: bannerH)
         let path = UIBezierPath(roundedRect: bgRect, cornerRadius: 10)
@@ -752,9 +759,6 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             UIImage(systemName: "star.fill")?.withTintColor(.white, renderingMode: .alwaysOriginal).draw(in: iconRect)
         }
 
-        let labelFont = UIFont.boldSystemFont(ofSize: 11)
-        let overlayFontSize = max(1, CGFloat(LPConfig.shared.PIPAdOverlayFontSize))
-        let textFont = UIFont.systemFont(ofSize: overlayFontSize)
         let textX = iconX + iconSize + 8
         let textW = bannerW - (textX - bannerX) - 8
 
@@ -764,7 +768,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             .foregroundColor: UIColor.white
         ])
 
-        let msgY = bannerY + 6 + labelFont.lineHeight + 2
+        let msgY = bannerY + 6 + labelFont.lineHeight + overlaySpacing
         let msgH = bannerY + bannerH - 4 - msgY
         let msgRect = CGRect(x: textX, y: msgY, width: textW, height: msgH)
 

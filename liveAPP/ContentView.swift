@@ -863,6 +863,8 @@ struct LogSettingsView: View {
     @AppStorage("PIPFontMain", store: userDefaults) private var PIPFontMain = 14.0
     @AppStorage("PIPFontSecond", store: userDefaults) private var PIPFontSecond = 10.0
     @AppStorage("PIPAdOverlayFont", store: userDefaults) private var PIPAdOverlayFont = 12.0
+    @AppStorage("PIPAdOverlayUserFont", store: userDefaults) private var PIPAdOverlayUserFont = 11.0
+    @AppStorage("PIPAdOverlaySpacing", store: userDefaults) private var PIPAdOverlaySpacing = 2.0
 
     @AppStorage("broadcastExtension", store: userDefaults) private var broadcastExtension = (Bundle.main.bundleIdentifier ?? "nuclear.liveAPP") + ".ReplyKIT"
 
@@ -1013,6 +1015,56 @@ struct LogSettingsView: View {
                     }
 
                     Text("建議值: 12.0")
+                            .font(.footnote)
+                            .foregroundColor(.secondary)
+                            .padding(.bottom, 5)
+
+                    // MARK: Ad Overlay User Font
+                    TextField(
+                        "贊助者字體大小 直接輸入大小 11",
+                        value: $PIPAdOverlayUserFont,
+                        format: .number
+                    )
+                        .frame(maxWidth: .infinity)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .keyboardType(.numberPad)
+
+                    Stepper(
+                        "贊助者字體大小：\(PIPAdOverlayUserFont)",
+                        value: $PIPAdOverlayUserFont,
+                        in: 1...100,
+                        step:0.1
+                    )
+                    .onChange(of: PIPAdOverlayUserFont) { newVal in
+                        LPConfig.shared.PIPAdOverlayUserFontSize = newVal
+                    }
+
+                    Text("建議值: 11.0")
+                            .font(.footnote)
+                            .foregroundColor(.secondary)
+                            .padding(.bottom, 5)
+
+                    // MARK: Ad Overlay Spacing
+                    TextField(
+                        "贊助者與內文間距 直接輸入大小 2",
+                        value: $PIPAdOverlaySpacing,
+                        format: .number
+                    )
+                        .frame(maxWidth: .infinity)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .keyboardType(.numberPad)
+
+                    Stepper(
+                        "贊助者與內文間距：\(PIPAdOverlaySpacing)",
+                        value: $PIPAdOverlaySpacing,
+                        in: 0...50,
+                        step:0.5
+                    )
+                    .onChange(of: PIPAdOverlaySpacing) { newVal in
+                        LPConfig.shared.PIPAdOverlaySpacing = newVal
+                    }
+
+                    Text("建議值: 2.0")
                             .font(.footnote)
                             .foregroundColor(.secondary)
                             .padding(.bottom, 5)
