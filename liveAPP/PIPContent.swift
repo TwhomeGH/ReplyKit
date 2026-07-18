@@ -1073,7 +1073,13 @@ final class PIPServiceMessages {
             }
             guard let urlRange = Range(match.range(at: 1), in: message) else { continue }
             if lastEnd < urlRange.lowerBound {
-                cleanParts.append(String(message[lastEnd..<urlRange.lowerBound]))
+                var before = String(message[lastEnd..<urlRange.lowerBound])
+                if !before.hasSuffix(" ") {
+                    before += " "
+                }
+                cleanParts.append(before)
+            } else if !cleanParts.isEmpty {
+                cleanParts.append(" ")
             }
             let currentCleanedLen = cleanParts.map(\.count).reduce(0, +)
             positions.append(currentCleanedLen)
@@ -1082,7 +1088,11 @@ final class PIPServiceMessages {
         }
 
         if lastEnd < message.endIndex {
-            cleanParts.append(String(message[lastEnd...]))
+            var after = String(message[lastEnd...])
+            if !after.hasPrefix(" ") {
+                after = " " + after
+            }
+            cleanParts.append(after)
         }
 
         let cleaned = cleanParts.joined()
