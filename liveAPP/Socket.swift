@@ -256,7 +256,8 @@ class SocketServer:ObservableObject {
         performOnQueue { [weak self] in
             guard let self else { return }
             guard let lis = self.listener, lis.state == .ready else {
-                self.logTo("Listener not ready (state: \(self.listener?.state.description ?? "nil")), restarting")
+                self.logTo("Listener not ready (state: \(self.listener?.stateString ?? "nil")), restarting")
+
                 self.stopInternal()
                 self.start()
                 return
