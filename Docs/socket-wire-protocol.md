@@ -245,7 +245,7 @@ ReplyKIT (Extension)                          liveAPP (Main App)
 ## 連線模型
 
 - 伺服端：`NWListener` 常駐監聽 port 9322
-  - `keepalive` timer 每 **10s** 廣播 `{"type":"keepalive"}` 保活
+  - `keepalive` timer 首次 **10s** 下次 每 **40s** 廣播 `{"type":"keepalive"}` 保活
   - 發送 keepalive 前檢查 `lastReceiveTime`，連線 >60s 無任何資料視為 dead 並移除
   - 用戶端 `heartbeat` 或任何資料都會更新 `lastReceiveTime`
 - 用戶端：

@@ -1164,7 +1164,7 @@ class SocketServer:ObservableObject {
     private func startKeepaliveTimer() {
         stopKeepaliveTimer()
         let timer = DispatchSource.makeTimerSource(queue: queue)
-        timer.schedule(deadline: .now() + 10, repeating: 10)
+        timer.schedule(deadline: .now() + 10, repeating: 40)
         timer.setEventHandler { [weak self] in
             self?.sendKeepalive()
         }
