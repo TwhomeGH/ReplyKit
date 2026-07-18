@@ -1005,7 +1005,7 @@ struct LogSettingsView: View {
                     Stepper(
                         "廣告覆著字體大小：\(PIPAdOverlayFont)",
                         value: $PIPAdOverlayFont,
-                        in: 0...100,
+                        in: 1...100,
                         step:0.1
                     )
                     .onChange(of: PIPAdOverlayFont) { newVal in
