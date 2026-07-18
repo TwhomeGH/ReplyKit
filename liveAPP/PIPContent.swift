@@ -1085,8 +1085,11 @@ final class PIPServiceMessages {
             cleanParts.append(String(message[lastEnd...]))
         }
 
-        let cleaned = cleanParts.joined().trimmingCharacters(in: .whitespaces)
-        return (cleaned, urls, positions)
+        let cleaned = cleanParts.joined()
+        let trimmed = cleaned.trimmingCharacters(in: .whitespaces)
+        let leadingSpaces = cleaned.count - cleaned.drop(while: { $0.isWhitespace }).count
+        let adjustedPositions = positions.map { max(0, $0 - leadingSpaces) }
+        return (trimmed, urls, adjustedPositions)
     }
 
     // MARK: - Add Message（Chunk 修正版，可直接替換）
