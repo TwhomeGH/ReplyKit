@@ -1903,19 +1903,25 @@ final class PIPServiceMessages {
 
         // Inline Emoji
         let messageFrame = msg.message?.frame ?? .zero
+        let text = msg.message?.string as? NSString ?? ""
+        let attrLine = CTLineCreateWithAttributedString(NSAttributedString(string: text as String, attributes: [.font: msg.font ?? UIFont.systemFont(ofSize: 12)]))
+        var ascent: CGFloat = 0
+        var descent: CGFloat = 0
+        CTLineGetTypographicBounds(attrLine, &ascent, &descent, nil)
+
+        var lastEmojiMaxX: CGFloat = 0
+        var lastCharIndex: Int = -1
 
         for (idx, emoji) in msg.inlineEmojis.enumerated() {
             let emojiSize = idx < msg.inlineEmojiSizes.count ? msg.inlineEmojiSizes[idx].width : giftSizeLocal
 
             let charIndex = idx < msg.inlineEmojiCharIndices.count ? msg.inlineEmojiCharIndices[idx] : 0
-            let text = msg.message?.string as? NSString ?? ""
-            let attrLine = CTLineCreateWithAttributedString(NSAttributedString(string: text as String, attributes: [.font: msg.font ?? UIFont.systemFont(ofSize: 12)]))
+            let baseX = messageFrame.origin.x + CTLineGetOffsetForStringIndex(attrLine, charIndex, nil)
 
-            let emojiX = messageFrame.origin.x + CTLineGetOffsetForStringIndex(attrLine, charIndex, nil)
+            let emojiX = (charIndex == lastCharIndex) ? (lastEmojiMaxX + 4) : baseX
+            lastEmojiMaxX = emojiX + emojiSize
+            lastCharIndex = charIndex
 
-            var ascent: CGFloat = 0
-            var descent: CGFloat = 0
-            CTLineGetTypographicBounds(attrLine, &ascent, &descent, nil)
             let emojiY = messageFrame.origin.y + (ascent - emojiSize) / 2
 
             emoji.frame = CGRect(
