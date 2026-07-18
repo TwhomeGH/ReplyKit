@@ -83,6 +83,7 @@ let BitRateOptions = [
 
 
 # 建議位元率設定（VBR 模式）
+
 在使用 VBR（Variable Bitrate，可變位元率）時
 不能直接套用與 CBR（Constant Bitrate，固定位元率） 或 ABR（Average Bitrate，平均位元率） 相同的數值。
 
