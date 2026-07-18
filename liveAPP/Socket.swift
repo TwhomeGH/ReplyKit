@@ -828,8 +828,7 @@ class SocketServer:ObservableObject {
                     
                 }
 
-                // 先註解還沒實現此功能
-                // PIPService.shared.addAdOverlay(text: text, iconURL: iconURL, useTTS: useTTS)
+                PIPService.shared.addAdOverlay(user: user, text: text, iconURL: iconURL, useTTS: useTTS)
 
 
 

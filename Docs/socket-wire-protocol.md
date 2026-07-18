@@ -67,28 +67,41 @@
 
 ---
 
-### `AdOverlay` — 廣告贊助聊天室訊息
+### `AdOverlay` — 廣告贊助訊息
 
 | 方向 | → Server |
 |------|----------|
-| Payload | `{"type":"AdOverlay","user":String,"text":String,"iconURL":String?,"userTTS":Bool}` |
-| Server 行為 | 顯示廣告信息、PiP 疊加層渲染聊天訊息、TTS 朗讀 |
-
-
-  #### 待辦事項
-  - [ ] PIP疊加層渲染專用贊助信息欄位
-  - [X] 純系統通知
-  - [X] TTS郎讀通知
+| Payload | `{"type":"AdOverlay","user":String?,"text":String,"iconURL":String?,"useTTS":Bool}` |
+| Server 行為 | 系統通知（可選）+ TTS 朗讀（可選）+ **PiP 贊助橫幅疊層** |
 
 ```json
 {
-  "type":"AdOverlay",
-  "user":String?,
-  "text":String,
-  "iconURL":String?,
-  "userTTS":Bool
+  "type": "AdOverlay",
+  "user": "贊助者名稱",
+  "text": "贊助訊息內容",
+  "iconURL": "https://example.com/avatar.png",
+  "useTTS": true
 }
 ```
+
+**PiP 贊助橫幅疊層**（`liveAPP/PIPService.swift` — `addAdOverlay`）：
+
+```
+┌──────────────────────┐
+│ ┌──────────────────┐ │
+│ │ ⭐ 贊助者名稱    │ │ ← 金底圓角橫幅，y=4, h=52
+│ │   贊助訊息內容   │ │    5 秒自動淡出，可選頭像圖示
+│ └──────────────────┘ │
+│    聊天訊息往上滾動   │
+└──────────────────────┘
+```
+
+- 渲染層級：顯示在聊天訊息之上、時間疊層之上（最上層）
+- 位置：PiP 頂部 `y=4`，橫幅高 `52pt`，寬度 `88%`
+- 視覺：金底 `rgba(0.9, 0.55, 0.05, 0.88)`、圓角 `10`、白色粗體名稱 + 灰色內文
+- 持續時間：5 秒後自動清除，最後 0.5 秒 alpha 淡出
+- 頭像：非同步透過 `PiPImageCache` 下載，圓形裁切；無 URL 時顯示 `star.fill` 系統圖示
+- PiP 關閉或收到記憶體警告時立即清除
 
 ---
 
@@ -211,6 +224,7 @@ ReplyKIT (Extension)                          liveAPP (Main App)
   StreamStarting ────────►                   reset 直播狀態
   Ended ─────────────────►                   終止直播
   StreamMessage ─────────►                   PiP 渲染 + TTS
+  AdOverlay ─────────────►                   PiP 贊助橫幅 + TTS + 通知
   UPSet ─────────────────►                   讀 UserDefaults 並回應
                           ◄─── UPSet 回應
   batch ─────────────────►                   requestRTMP + logConfig
@@ -241,6 +255,8 @@ ReplyKIT (Extension)                          liveAPP (Main App)
 | `RTMPConfig` | `ReplyKIT/Socket.swift` | RTMP 回應 |
 | `LogConfig` | 同上 | logConfig 回應 |
 | `LogMessage` | 同上 | log 回應 |
+| `AdOverlay` | `liveAPP/Socket.swift` | AdOverlay payload |
+| `AudiencePayload` | 同上 | audience payload |
 
 ## 連線模型
 

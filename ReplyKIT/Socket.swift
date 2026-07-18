@@ -8,6 +8,27 @@
 import Foundation
 import Network
 
+
+extension NWListener.State {
+    var stateString: String {
+        switch self {
+        case .setup:
+            return "setup"
+        case .waiting(let error):
+            return "waiting (\(error))"
+        case .ready:
+            return "ready"
+        case .failed(let error):
+            return "failed (\(error))"
+        case .cancelled:
+            return "cancelled"
+        @unknown default:
+            return "unknown"
+        }
+    }
+}
+
+
 extension Notification.Name {
     static let didReceiveSettings = Notification.Name("didReceiveSettings")
 }

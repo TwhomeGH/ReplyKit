@@ -43,6 +43,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         cachedFormatDescription = nil
         cachedFormatSize = .zero
         messagesLayer?.clearAllMessages()
+        clearAdOverlay()
 
         Task {
             await PiPImageCache.shared.clear()
@@ -75,6 +76,15 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     private var lastOverlayStreamEndMes: String = ""
     private var lastOverlayViewerCount: Int? = nil
     private var lastOverlayIsReconnecting: Bool = false
+
+    // MARK: - Ad Overlay
+    private var adOverlayUser: String?
+    private var adOverlayText: String?
+    private var adOverlayIconURL: String?
+    private var adOverlayIconImage: UIImage?
+    private var adOverlayStartTime: CFTimeInterval = 0
+    private var adOverlayActive = false
+    private let adOverlayDuration: CFTimeInterval = 5.0
 
     private let renderQueue = DispatchQueue(
         label: "com.pip.render",
@@ -322,6 +332,37 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         setNeedsRedraw()
     }
 
+    // MARK: - Ad Overlay
+    @MainActor
+    func addAdOverlay(user: String, text: String, iconURL: String?, useTTS: Bool) {
+        adOverlayUser = user
+        adOverlayText = text
+        adOverlayIconURL = iconURL
+        adOverlayIconImage = nil
+        adOverlayStartTime = CACurrentMediaTime()
+        adOverlayActive = true
+
+        if let iconURL, !iconURL.isEmpty {
+            Task { [weak self] in
+                await PiPImageCache.shared.loadImage(urlString: iconURL) { image in
+                    self?.adOverlayIconImage = image
+                    self?.setNeedsRedraw()
+                }
+            }
+        }
+
+        setNeedsRedraw()
+        requestAnimationFPS()
+    }
+
+    private func clearAdOverlay() {
+        adOverlayActive = false
+        adOverlayText = nil
+        adOverlayUser = nil
+        adOverlayIconURL = nil
+        adOverlayIconImage = nil
+    }
+
     // MARK: 直播結束訊息框
     private func drawBadge(
         in cg: CGContext,
@@ -553,6 +594,78 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         cg.restoreGState()
     }
 
+    // MARK: - Ad Overlay Drawing
+    private func drawAdOverlay(in cg: CGContext, size: CGSize) {
+        guard adOverlayActive, let text = adOverlayText else { return }
+
+        let elapsed = CACurrentMediaTime() - adOverlayStartTime
+        let remaining = adOverlayDuration - elapsed
+
+        if remaining <= 0 {
+            clearAdOverlay()
+            return
+        }
+
+        let alpha: CGFloat = min(1.0, max(0, remaining / 0.5))
+
+        cg.saveGState()
+        cg.translateBy(x: 0, y: size.height)
+        cg.scaleBy(x: 1.0, y: -1.0)
+        cg.setAlpha(alpha)
+
+        let bannerW = size.width * 0.88
+        let bannerH: CGFloat = 52
+        let bannerX = (size.width - bannerW) / 2
+        let bannerY: CGFloat = 4
+
+        let bgRect = CGRect(x: bannerX, y: bannerY, width: bannerW, height: bannerH)
+        let path = UIBezierPath(roundedRect: bgRect, cornerRadius: 10)
+        cg.setFillColor(UIColor(red: 0.9, green: 0.55, blue: 0.05, alpha: 0.88).cgColor)
+        path.fill()
+
+        UIGraphicsPushContext(cg)
+
+        let iconSize: CGFloat = 28
+        let iconX = bannerX + 8
+        let iconY = bannerY + (bannerH - iconSize) / 2
+        let iconRect = CGRect(x: iconX, y: iconY, width: iconSize, height: iconSize)
+
+        if let icon = adOverlayIconImage {
+            cg.restoreGState()
+            cg.saveGState()
+            cg.addEllipse(in: iconRect)
+            cg.clip()
+            icon.draw(in: iconRect)
+            cg.restoreGState()
+            cg.saveGState()
+            cg.translateBy(x: 0, y: size.height)
+            cg.scaleBy(x: 1.0, y: -1.0)
+            cg.setAlpha(alpha)
+        } else {
+            UIImage(systemName: "star.fill")?.withTintColor(.white, renderingMode: .alwaysOriginal).draw(in: iconRect)
+        }
+
+        let labelFont = UIFont.boldSystemFont(ofSize: 11)
+        let textFont = UIFont.systemFont(ofSize: 10)
+        let textX = iconX + iconSize + 8
+        let textW = bannerW - (textX - bannerX) - 8
+
+        let user = adOverlayUser ?? "贊助訊息"
+        (user as NSString).draw(at: CGPoint(x: textX, y: bannerY + 6), withAttributes: [
+            .font: labelFont,
+            .foregroundColor: UIColor.white
+        ])
+
+        let msgRect = CGRect(x: textX, y: bannerY + 6 + labelFont.lineHeight + 2, width: textW, height: textFont.lineHeight + 2)
+        (text as NSString).draw(in: msgRect, withAttributes: [
+            .font: textFont,
+            .foregroundColor: UIColor(white: 1, alpha: 0.9)
+        ])
+
+        UIGraphicsPopContext()
+        cg.restoreGState()
+    }
+
     // CPU
     @MainActor
     private func renderUIViewToPixelBuffer(size: CGSize) -> CVPixelBuffer? {
@@ -599,6 +712,11 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         context.saveGState()
         context.scaleBy(x: scale, y: scale)
         drawTimeOverlay(in: context, size: frameSize)
+        context.restoreGState()
+
+        context.saveGState()
+        context.scaleBy(x: scale, y: scale)
+        drawAdOverlay(in: context, size: frameSize)
         context.restoreGState()
 
         return pb
@@ -801,6 +919,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     func stopPiP() {
         cancelRenderTimer()
         isKeepaliveMode = false
+        clearAdOverlay()
 
         self.pipController?.stopPictureInPicture()
         self.pipController = nil
