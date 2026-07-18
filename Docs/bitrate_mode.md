@@ -80,3 +80,16 @@ let BitRateOptions = [
 - `currentVideoBitRate` — 緩存值，`applyVideoBitrate` 寫入時同步更新
 - `guard ChangeBit` — `.status` 入口處提早返回，僅更新 timestamp + avg + 節流 log
 - `statsLogCounter / statsLogInterval` — 統計模式下控制 log 寫入頻率
+
+
+# 建議位元率設定（VBR 模式）
+在使用 VBR（Variable Bitrate，可變位元率）時
+不能直接套用與 CBR（Constant Bitrate，固定位元率） 或 ABR（Average Bitrate，平均位元率） 相同的數值。
+
+例如：
+
+- 如果你的目標是 6000 kbps，在 VBR 模式下建議設定為 一半左右（約 3000 kbps）。
+
+- 這樣實際輸出會落在 3000 ~ 6000 kbps 的合理範圍。
+
+- 若直接設定成 6000 kbps，VBR 在高複雜度場景可能會飆升到 10000 kbps 以上，導致檔案過大或超出預期。
