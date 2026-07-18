@@ -13,8 +13,6 @@ import Network
 
 final class GPUSettingsViewModel: ObservableObject {
 
-    static let shared = GPUSettingsViewModel()
-
     @AppStorage("profileName", store: userDefaults) var displayName = ""
 
     @AppStorage("dstW", store: userDefaults) var dstW = 0

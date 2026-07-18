@@ -798,7 +798,7 @@ struct LogSettingsView: View {
     @State private var isTesting = false
 
 
-    @StateObject private var gpuSettings = GPUSettingsViewModel()
+    @ObservedObject private var gpuSettings = GPUSettingsViewModel.shared
 
     @AppStorage("fadeAlpha", store: userDefaults) private var fadeAlpha = 0.08
 
@@ -891,13 +891,7 @@ struct LogSettingsView: View {
                         step:0.1
 
                     )
-                    .onChange(of: PIPFontMain) { newVal in
-
-                        logTo("主訊息文字與圖片大小 -> \(newVal) ")
-                        LPConfig.shared.PIPChatFontMainSize = newVal
-
-
-                        }
+                    
 
                     Text("建議值: 14.0"
                     )
@@ -917,14 +911,7 @@ struct LogSettingsView: View {
                         .textFieldStyle(RoundedBorderTextFieldStyle())
                         .keyboardType(.numberPad)
 
-                        .onChange(of: PIPFontSecond) { newVal in
-
-                            logTo("次要訊息文字與圖片大小 -> \(newVal) ")
-                            LPConfig.shared.PIPChatFontSecondSize = newVal
-
-                        }
-
-                    Stepper(
+                     Stepper(
                         "次要訊息文字大小：\(PIPFontSecond)",
                         value: $PIPFontSecond,
                         in: 0...100,
@@ -962,14 +949,7 @@ struct LogSettingsView: View {
                         .textFieldStyle(RoundedBorderTextFieldStyle())
                         .keyboardType(.numberPad)
 
-                        .onChange(of: fadeAlpha) { newVal in
-
-                            logTo("FadeSpeedAlpha -> \(newVal) ")
-                            LPConfig.shared.FadeAlpha = newVal
-
-                        }
-
-                    Stepper(
+                     Stepper(
                         "訊息淡出速度：\(String(format: "%.2f", fadeAlpha))",
                         value: $fadeAlpha,
                         in: 0...100,
@@ -1002,15 +982,7 @@ struct LogSettingsView: View {
                         .textFieldStyle(RoundedBorderTextFieldStyle())
                         .keyboardType(.numberPad)
 
-                        .onChange(of: fadeTime) { newVal in
-
-                            logTo("FadeTime -> \(newVal) ")
-                            LPConfig.shared.MessageFadeTime = newVal
-                            PIPService.shared.fadeTime(newVal)
-
-                        }
-
-                    Stepper(
+                     Stepper(
                         "訊息淡出時間間隔：\(String(format: "%.2f", fadeTime))",
                         value: $fadeTime,
                         in: 0...100,
@@ -1044,15 +1016,7 @@ struct LogSettingsView: View {
                         .textFieldStyle(RoundedBorderTextFieldStyle())
                         .keyboardType(.numberPad)
 
-                        .onChange(of: scrollTime) { newVal in
-
-                            logTo("ScrollTime -> \(newVal) ")
-                            LPConfig.shared.ScrollTime = newVal
-                            PIPService.shared.scrollTime(newVal)
-
-                        }
-
-                    Stepper(
+                     Stepper(
                         "滾動時間：\(String(format: "%.2f", scrollTime))",
                         value: $scrollTime,
                         in: 0...100,
@@ -2519,20 +2483,6 @@ final class PageState: ObservableObject {
     @Published var currentPage: AppPage = .home
     @Published var onAudioPage: Bool = false
     @Published var onlogPage: Bool = false
-
-
-
-    // 當 currentPage 改變時自動更新 onAudioPage
-    private var cancellables = Set<AnyCancellable>()
-
-    init() {
-        $currentPage
-            .sink { [weak self] page in
-                self?.onAudioPage = (page == .audio)
-                self?.onlogPage = (page == .log)
-            }
-            .store(in: &cancellables)
-    }
 }
 
 struct ContentView: View {
@@ -2550,10 +2500,6 @@ struct ContentView: View {
 
 
     @AppStorage("onAudioPage",store:userDefaults) private var onAudioPage = false
-
-    @State private var pageSwitchWorkItem: DispatchWorkItem?
-
-
 
 
 
@@ -2593,66 +2539,34 @@ struct ContentView: View {
                 .tag(AppPage.videoBitrate)
 
         }
-        // ✅ 當選到音量分頁時啟用監聽
         .onChange(of: pageState.currentPage) { newValue in
-            pageSwitchWorkItem?.cancel()
-            let workItem = DispatchWorkItem { [self] in
-                sendlog(message:"Page:\(newValue)")
+            sendlog(message:"Page:\(newValue)")
 
-                if newValue == .log {
-
-                    print("onlog:\(onlogPage) logTime:\(logTime)")
-
-                    onlogPage=true
-                    LPConfig.shared.onLogPage = true
-
-
-                    CFNotificationCenterPostNotification(cfCenter, CFNotificationName("onlogPage" as CFString), nil, nil, true)
-
-
-                } else {
-
-
-                    if !logTime {
-
-                        onlogPage=false
-                        LPConfig.shared.onLogPage = false
-
-
-                        CFNotificationCenterPostNotification(cfCenter, CFNotificationName("onlogPage" as CFString), nil, nil, true)
-
-                    }
-
-
-                }
-
-                if newValue == .audio {
-
-                    onAudioPage=true
-                    userDefaults?.synchronize()
-                    sendlog(message:"onAudioPage: \(onAudioPage)")
-
-                    CFNotificationCenterPostNotification(cfCenter,
-                                                         CFNotificationName("onAudioPage" as CFString),
-                                                         nil, nil, true)
-
-                } else {
-
-
-                    onAudioPage=false
-                    userDefaults?.synchronize()
-                    sendlog(message:"onAudioPage: \(onAudioPage)")
-
-
-                    CFNotificationCenterPostNotification(cfCenter,
-                                                         CFNotificationName("onAudioPage" as CFString),
-                                                         nil, nil, true)
-
-                    }
-
+            if newValue == .log {
+                pageState.onlogPage = true
+                onlogPage = true
+                LPConfig.shared.onLogPage = true
+                CFNotificationCenterPostNotification(cfCenter, CFNotificationName("onlogPage" as CFString), nil, nil, true)
+            } else if !logTime {
+                pageState.onlogPage = false
+                onlogPage = false
+                LPConfig.shared.onLogPage = false
+                CFNotificationCenterPostNotification(cfCenter, CFNotificationName("onlogPage" as CFString), nil, nil, true)
             }
-            pageSwitchWorkItem = workItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: workItem)
+
+            if newValue == .audio {
+                pageState.onAudioPage = true
+                onAudioPage = true
+                userDefaults?.synchronize()
+                sendlog(message:"onAudioPage: \(onAudioPage)")
+                CFNotificationCenterPostNotification(cfCenter, CFNotificationName("onAudioPage" as CFString), nil, nil, true)
+            } else {
+                pageState.onAudioPage = false
+                onAudioPage = false
+                userDefaults?.synchronize()
+                sendlog(message:"onAudioPage: \(onAudioPage)")
+                CFNotificationCenterPostNotification(cfCenter, CFNotificationName("onAudioPage" as CFString), nil, nil, true)
+            }
         }
 
 

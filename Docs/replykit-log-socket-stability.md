@@ -597,3 +597,49 @@ Task.detached(priority: .high) { ... }
 | 音訊斷續風險 | 高 | 低 |
 | 程式碼變動量 | — | 2 字串（`.utility` → `.high`） |
 | 已處理總行數變動 | Audio: -88 行，Video: -136 行 | — |
+
+
+---
+
+## 12. 設定頁面來回切換卡死（2026-07）
+
+### 問題
+
+使用者在「主設定」sheet 內，於音訊處理 / PIP 設置 / GPU 旋轉設置等 NavigationLink 頁面快速來回切換時，應用卡死。
+
+### 根因：四項連鎖問題
+
+#### 12a. DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) 競態窗口
+
+Tab 切換時透過 DispatchWorkItem 延遲 0.3s 才更新 @AppStorage，但 PageState 的 Combine .sink 立即更新 @Published 變數。兩者不一致的 0.3s 窗口內若發生 scenePhase 變更，scenePhase handler 會偵測到不匹配而重複發出 CFNotification，造成連鎖狀態更新和 Layout 迴圈。
+
+#### 12b. PageState Combine .sink 重複邏輯
+
+與 .onChange(of: pageState.currentPage) 做完全相同的事，但執行在不同時間點（sink 立即、onChange 延遲 0.3s）。
+
+#### 12c. @StateObject gpuSettings 每次 sheet 打開重建
+
+每次使用者打開設定 sheet，就建立新的 GPUSettingsViewModel，其 init() 執行 JSON decode + 8 次 @AppStorage 寫入，全部在 main thread。
+
+#### 12d. TextField + Stepper 雙重 .onChange
+
+每個 PIP 設定的 TextField 和 Stepper 各自掛載 .onChange(of:) 處理器，修改一次值觸發兩次 logTo() + LPConfig.shared.* = newVal。
+
+### 修正
+
+| # | 問題 | 修正 |
+|---|------|------|
+| 12a | 0.3s 延遲 DispatchWorkItem | 移除延遲，切換頁時同步更新 @AppStorage + pageState.@Published + CFNotification |
+| 12b | Combine.sink 重複 | 移除 .sink——.onChange handler 直接設定 pageState.onAudioPage/onlogPage |
+| 12c | @StateObject gpuSettings | 改為 static let shared singleton + @ObservedObject，init 只跑一次 |
+| 12d | TextField + Stepper 雙重 onChange | 每項只保留一個 .onChange，移除 TextField 端的重複 handler |
+
+### 行為對照
+
+| 面向 | 改前 | 改後 |
+|------|------|------|
+| 頁面切換延遲 | 0.3s (asyncAfter) | 即時 |
+| @AppStorage vs @Published 同步 | 可能不一致 0.3s | 同步更新 |
+| 每項設定 onChange 觸發次數 | 2 次 (TextField + Stepper 各 1) | 1 次 |
+| gpuSettings 建立次數 | 每次 sheet 打開 | 1 次 (singleton) |
+| 來回切頁卡死 | 會 | 不會 |
