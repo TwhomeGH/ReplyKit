@@ -342,7 +342,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         adOverlayStartTime = CACurrentMediaTime()
         adOverlayActive = true
 
-        messagesLayer?.setAdOverlayOffset(60)
+        messagesLayer?.setAdOverlayOffset(145)
 
         if let iconURL, !iconURL.isEmpty {
             Task { [weak self] in
@@ -619,7 +619,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         let bannerW = size.width * 0.88
         let bannerH: CGFloat = 52
         let bannerX = (size.width - bannerW) / 2
-        let bannerY: CGFloat = 4
+        let bannerY: CGFloat = 85
 
         let bgRect = CGRect(x: bannerX, y: bannerY, width: bannerW, height: bannerH)
         let path = UIBezierPath(roundedRect: bgRect, cornerRadius: 10)
