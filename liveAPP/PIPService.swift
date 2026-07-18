@@ -789,6 +789,10 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             let lineEnd = lineRange.location + lineRange.length
             let nsPageText = pageText as NSString
 
+            if li == 0 {
+                PIPLogTo("AdOverlay: msgRect=\(msgRect) lineOrigin=\(lineOrigin) lineHeight=\(textFont.lineHeight) lineY=\(lineY)")
+            }
+
             var charIdx = lineStart
             while charIdx < lineEnd {
                 let globalPos = page.range.location + charIdx
