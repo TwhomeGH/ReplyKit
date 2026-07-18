@@ -65,6 +65,19 @@
 | Payload | `{"type":"StreamMessage","user":String,"message":String,"img":String?,"giftImg":String?,"isMain":Bool?,"userNum":Int?,"userList":[String]?}` |
 | Server 行為 | 更新觀眾資訊、PiP 疊加層渲染聊天訊息、TTS 朗讀 |
 
+**PiP 行內 emoji 渲染** — `message` 中的圖片 URL（`https://...png|jpg|gif|webp`）會自動提取並在聊天文字中行內顯示：
+
+```
+┌──────────────────────────────┐
+│  user: 你好 🖼️ 謝謝          │   ← emoji 顯示在 URL 原本位置
+│  user: 另一則訊息 🖼️ 🖼️     │       換行時正確跟隨所屬行
+└──────────────────────────────┘
+```
+
+- 表情圖片位置使用 CoreText `CTLineGetOffsetForStringIndex` 精準對應到文字中 URL 原始字元位置
+- 垂直基準線與該行文字 `ascent` 對齊，非 frame 置中
+- 支援多個 emoji、多行文字，換行後 emoji 自動歸屬正確行
+
 ---
 
 ### `AdOverlay` — 廣告贊助訊息
