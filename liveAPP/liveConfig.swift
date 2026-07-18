@@ -75,6 +75,7 @@ final class LPConfig {
 
     var PIPChatFontMainSize: Double = 14.0
     var PIPChatFontSecondSize: Double = 10.0
+    var PIPAdOverlayFontSize: Double = 12.0
 
     var PIPLog: Bool = false
     var PIPChatLog:Bool = false
@@ -111,6 +112,7 @@ final class LPConfig {
         PIPChatFontMainSize = userDefaults?.double(forKey: "PIPFontMain") ?? 14.0
         PIPChatFontSecondSize =  userDefaults?
             .double(forKey: "PIPFontSecond") ?? 10.0
+        PIPAdOverlayFontSize = userDefaults?.double(forKey: "PIPAdOverlayFont") ?? 12.0
 
     }
 

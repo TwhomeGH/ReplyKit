@@ -862,7 +862,6 @@ struct LogSettingsView: View {
 
     @AppStorage("PIPFontMain", store: userDefaults) private var PIPFontMain = 14.0
     @AppStorage("PIPFontSecond", store: userDefaults) private var PIPFontSecond = 10.0
-    @AppStorage("PIPAdOverlayFont", store: userDefaults) private var PIPAdOverlayFont = 12.0
 
     @AppStorage("broadcastExtension", store: userDefaults) private var broadcastExtension = (Bundle.main.bundleIdentifier ?? "nuclear.liveAPP") + ".ReplyKIT"
 
@@ -992,30 +991,6 @@ struct LogSettingsView: View {
                             .padding(.bottom, 5)
 
 
-                    // MARK: Ad Overlay Font
-                    TextField(
-                        "廣告覆著字體大小 直接輸入大小 12",
-                        value: $PIPAdOverlayFont,
-                        format: .number
-                    )
-                        .frame(maxWidth: .infinity)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .keyboardType(.numberPad)
-
-                    Stepper(
-                        "廣告覆著字體大小：\(PIPAdOverlayFont)",
-                        value: $PIPAdOverlayFont,
-                        in: 0...100,
-                        step:0.1
-                    )
-                    .onChange(of: PIPAdOverlayFont) { newVal in
-                        LPConfig.shared.PIPAdOverlayFontSize = newVal
-                    }
-
-                    Text("建議值: 12.0")
-                            .font(.footnote)
-                            .foregroundColor(.secondary)
-                            .padding(.bottom, 5)
 
 
                     // MARK: FadeSpeed

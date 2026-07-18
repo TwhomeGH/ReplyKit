@@ -81,11 +81,12 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     private var adOverlayUser: String?
     private var adOverlayText: String?
     private var adOverlayCleanText: String?
-    private var adOverlayPages: [String] = []
+    private var adOverlayPages: [(text: String, range: NSRange)] = []
     private var adOverlayPageIndex: Int = 0
     private var adOverlayIconURL: String?
     private var adOverlayIconImage: UIImage?
     private var adOverlayEmojiURLs: [String] = []
+    private var adOverlayEmojiPositions: [Int] = []
     private var adOverlayEmojiImages: [UIImage?] = []
     private var adOverlayStartTime: CFTimeInterval = 0
     private var adOverlayActive = false
@@ -349,15 +350,25 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
         messagesLayer?.setAdOverlayOffset(145)
 
-        let (cleanText, emojiURLs, _) = PIPServiceMessages.extractAllImageURLs(from: text, placeholder: "")
+        let (cleanText, emojiURLs, emojiPositions) = PIPServiceMessages.extractAllImageURLs(from: text, placeholder: "\u{2003}")
         adOverlayCleanText = cleanText
         adOverlayEmojiURLs = emojiURLs
+        adOverlayEmojiPositions = emojiPositions
         adOverlayEmojiImages = Array(repeating: nil, count: emojiURLs.count)
 
+        let overlayFontSize = CGFloat(LPConfig.shared.PIPAdOverlayFontSize)
         let maxTextW = frameSize.width * 0.88 - 8 - 28 - 8 - 8 - 16 * CGFloat(min(emojiURLs.count, 4)) - 4
         let msgY: CGFloat = 6 + UIFont.boldSystemFont(ofSize: 11).lineHeight + 2
         let msgH: CGFloat = 85 + 52 - 4 - 85 - msgY
-        adOverlayPages = Self.splitAdText(cleanText, font: .systemFont(ofSize: 10), width: maxTextW, height: msgH)
+        let rawPages = Self.splitAdText(cleanText, font: .systemFont(ofSize: overlayFontSize), width: maxTextW, height: msgH)
+        var offset = 0
+        var pages: [(text: String, range: NSRange)] = []
+        for p in rawPages {
+            let nsLen = (p as NSString).length
+            pages.append((text: p, range: NSRange(location: offset, length: nsLen)))
+            offset += nsLen
+        }
+        adOverlayPages = pages
         adOverlayPageIndex = 0
 
         for (idx, url) in emojiURLs.enumerated() {
@@ -391,6 +402,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         adOverlayIconURL = nil
         adOverlayIconImage = nil
         adOverlayEmojiURLs.removeAll()
+        adOverlayEmojiPositions.removeAll()
         adOverlayEmojiImages.removeAll()
         adOverlayPages.removeAll()
         adOverlayPageIndex = 0
@@ -539,16 +551,81 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             cg.fill(CGRect(x: x, y: y, width: maxW, height: totalH))
 
             UIGraphicsPushContext(cg)
-            (timeText as NSString).draw(
-                at: CGPoint(x: x + (maxW - timeSize.width) / 2, y: y + 6),
-                withAttributes: [.font: timeFont, .foregroundColor: UIColor.white]
-            )
-            ("保活用子母工作中" as NSString).draw(
-                at: CGPoint(x: x + (maxW - labelSize.width) / 2, y: y + 6 + timeSize.height + 4),
-                withAttributes: [.font: labelFont, .foregroundColor: UIColor.systemGreen]
-            )
-            UIGraphicsPopContext()
+
+        let iconSize: CGFloat = 28
+        let iconX = bannerX + 8
+        let iconY = bannerY + (bannerH - iconSize) / 2
+        let iconRect = CGRect(x: iconX, y: iconY, width: iconSize, height: iconSize)
+
+        if let icon = adOverlayIconImage {
+            cg.saveGState()
+            cg.addEllipse(in: iconRect)
+            cg.clip()
+            icon.draw(in: iconRect)
             cg.restoreGState()
+        } else {
+            UIImage(systemName: "star.fill")?.withTintColor(.white, renderingMode: .alwaysOriginal).draw(in: iconRect)
+        }
+
+        let labelFont = UIFont.boldSystemFont(ofSize: 11)
+        let overlayFontSize = CGFloat(LPConfig.shared.PIPAdOverlayFontSize)
+        let textFont = UIFont.systemFont(ofSize: overlayFontSize)
+        let textX = iconX + iconSize + 8
+        let textW = bannerW - (textX - bannerX) - 8
+
+        let user = adOverlayUser ?? "贊助訊息"
+        (user as NSString).draw(at: CGPoint(x: textX, y: bannerY + 6), withAttributes: [
+            .font: labelFont,
+            .foregroundColor: UIColor.white
+        ])
+
+        let msgY = bannerY + 6 + labelFont.lineHeight + 2
+        let msgH = bannerY + bannerH - 4 - msgY
+        let msgRect = CGRect(x: textX, y: msgY, width: textW, height: msgH)
+
+        // Draw text with inline emoji using Core Text
+        let attrStr = NSAttributedString(string: pageText, attributes: [.font: textFont, .foregroundColor: UIColor(white: 1, alpha: 0.9)])
+        let framesetter = CTFramesetterCreateWithAttributedString(attrStr)
+        let pathRect = CGRect(origin: .zero, size: msgRect.size)
+        let cgPath = CGPath(rect: pathRect, transform: nil)
+        let ctFrame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: attrStr.length), cgPath, nil)
+        let lines = CTFrameGetLines(ctFrame) as! [CTLine]
+        var lineOrigins = [CGPoint](repeating: .zero, count: lines.count)
+        CTFrameGetLineOrigins(ctFrame, CFRange(location: 0, length: lines.count), &lineOrigins)
+
+        for (li, line) in lines.enumerated() {
+            let lineOrigin = lineOrigins[li]
+            let lineY = msgRect.origin.y + msgRect.height - lineOrigin.y - textFont.lineHeight
+
+            let runs = CTLineGetGlyphRuns(line) as! [CTRun]
+            for run in runs {
+                let runRange = CTRunGetStringRange(run)
+                let nsPageText = pageText as NSString
+                let runStr = nsPageText.substring(with: NSRange(location: runRange.location, length: runRange.length))
+
+                if runStr == " " {
+                    let globalPos = page.range.location + runRange.location
+                    if let emojiIdx = adOverlayEmojiPositions.firstIndex(of: globalPos),
+                       emojiIdx < adOverlayEmojiImages.count,
+                       let img = adOverlayEmojiImages[emojiIdx] {
+                        let runX = msgRect.origin.x + CTLineGetOffsetForStringIndex(line, runRange.location, nil)
+                        let emojiSize: CGFloat = overlayFontSize * 1.2
+                        let emojiY = lineY + (textFont.lineHeight - emojiSize) / 2
+                        let emojiRect2 = CGRect(x: runX, y: emojiY, width: emojiSize, height: emojiSize)
+                        img.draw(in: emojiRect2)
+                    }
+                } else {
+                    let runX = msgRect.origin.x + CTLineGetOffsetForStringIndex(line, runRange.location, nil)
+                    let subStr = nsPageText.substring(with: NSRange(location: runRange.location, length: runRange.length))
+                    (subStr as NSString).draw(at: CGPoint(x: runX, y: lineY), withAttributes: [
+                        .font: textFont,
+                        .foregroundColor: UIColor(white: 1, alpha: 0.9)
+                    ])
+                }
+            }
+        }
+        UIGraphicsPopContext()
+        cg.restoreGState()
             return
         }
         var elapsedSeconds: Double = 0
@@ -690,7 +767,9 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             return
         }
 
-        let pageText = adOverlayPageIndex < adOverlayPages.count ? adOverlayPages[adOverlayPageIndex] : text
+        guard adOverlayPageIndex < adOverlayPages.count else { return }
+        let page = adOverlayPages[adOverlayPageIndex]
+        let pageText = page.text
 
         let alpha: CGFloat = min(1.0, max(0, remaining / 0.5))
 
@@ -726,24 +805,10 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             UIImage(systemName: "star.fill")?.withTintColor(.white, renderingMode: .alwaysOriginal).draw(in: iconRect)
         }
 
-        let emojiSize: CGFloat = 16
-        var emojiCursor = iconX + iconSize + 4
-        for emojiImage in adOverlayEmojiImages {
-            if let img = emojiImage {
-                let emojiRect = CGRect(
-                    x: emojiCursor,
-                    y: bannerY + (bannerH - emojiSize) / 2,
-                    width: emojiSize,
-                    height: emojiSize
-                )
-                img.draw(in: emojiRect)
-            }
-            emojiCursor += emojiSize + 4
-        }
-
         let labelFont = UIFont.boldSystemFont(ofSize: 11)
-        let textFont = UIFont.systemFont(ofSize: 10)
-        let textX = emojiCursor + 4
+        let overlayFontSize = CGFloat(LPConfig.shared.PIPAdOverlayFontSize)
+        let textFont = UIFont.systemFont(ofSize: overlayFontSize)
+        let textX = iconX + iconSize + 8
         let textW = bannerW - (textX - bannerX) - 8
 
         let user = adOverlayUser ?? "贊助訊息"
@@ -755,13 +820,45 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         let msgY = bannerY + 6 + labelFont.lineHeight + 2
         let msgH = bannerY + bannerH - 4 - msgY
         let msgRect = CGRect(x: textX, y: msgY, width: textW, height: msgH)
-        let msgStyle = NSMutableParagraphStyle()
-        msgStyle.lineBreakMode = .byTruncatingTail
-        (pageText as NSString).draw(in: msgRect, withAttributes: [
-            .font: textFont,
-            .foregroundColor: UIColor(white: 1, alpha: 0.9),
-            .paragraphStyle: msgStyle
-        ])
+
+        // Draw text with inline emoji using Core Text
+        let attrStr = NSAttributedString(string: pageText, attributes: [.font: textFont, .foregroundColor: UIColor(white: 1, alpha: 0.9)])
+        let framesetter = CTFramesetterCreateWithAttributedString(attrStr)
+        let cgPathRect = CGRect(origin: .zero, size: msgRect.size)
+        let cgPath = CGPath(rect: cgPathRect, transform: nil)
+        let ctFrame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: attrStr.length), cgPath, nil)
+        let lines = CTFrameGetLines(ctFrame) as! [CTLine]
+        var lineOrigins = [CGPoint](repeating: .zero, count: lines.count)
+        CTFrameGetLineOrigins(ctFrame, CFRange(location: 0, length: lines.count), &lineOrigins)
+
+        for (li, line) in lines.enumerated() {
+            let lineOrigin = lineOrigins[li]
+            let lineY = msgRect.origin.y + msgRect.height - lineOrigin.y - textFont.lineHeight
+            let nsPageText = pageText as NSString
+
+            for run in CTLineGetGlyphRuns(line) as! [CTRun] {
+                let runRange = CTRunGetStringRange(run)
+                let runStr = nsPageText.substring(with: NSRange(location: runRange.location, length: runRange.length))
+
+                if runStr == "\u{2003}" {
+                    let globalPos = page.range.location + runRange.location
+                    if let emojiIdx = adOverlayEmojiPositions.firstIndex(of: globalPos),
+                       emojiIdx < adOverlayEmojiImages.count,
+                       let img = adOverlayEmojiImages[emojiIdx] {
+                        let runX = msgRect.origin.x + CTLineGetOffsetForStringIndex(line, runRange.location, nil)
+                        let emojiSize: CGFloat = overlayFontSize * 1.2
+                        let emojiY = lineY + (textFont.lineHeight - emojiSize) / 2
+                        img.draw(in: CGRect(x: runX, y: emojiY, width: emojiSize, height: emojiSize))
+                    }
+                } else {
+                    let runX = msgRect.origin.x + CTLineGetOffsetForStringIndex(line, runRange.location, nil)
+                    (runStr as NSString).draw(at: CGPoint(x: runX, y: lineY), withAttributes: [
+                        .font: textFont,
+                        .foregroundColor: UIColor(white: 1, alpha: 0.9)
+                    ])
+                }
+            }
+        }
 
         UIGraphicsPopContext()
         cg.restoreGState()
