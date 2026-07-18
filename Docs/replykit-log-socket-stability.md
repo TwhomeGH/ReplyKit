@@ -643,3 +643,114 @@ Tab 切換時透過 DispatchWorkItem 延遲 0.3s 才更新 @AppStorage，但 Pag
 | 每項設定 onChange 觸發次數 | 2 次 (TextField + Stepper 各 1) | 1 次 |
 | gpuSettings 建立次數 | 每次 sheet 打開 | 1 次 (singleton) |
 | 來回切頁卡死 | 會 | 不會 |
+
+
+---
+
+## 13. 廣播擴展 Bundle ID 側載相容性（2026-07）
+
+### 問題
+
+側載（sideload）環境下，廣播擴展（ReplyKIT）的 Bundle ID 與主 App 可能不符 `mainApp.ReplyKIT` 模式，造成 `RPSystemBroadcastPickerView` 找不到擴展，按鈕失效。
+
+### 根因
+
+`BroadcastButton.makeUIView()` 硬編碼擴展 ID：
+
+```swift
+// 改前
+let actualExtension = (Bundle.main.bundleIdentifier ?? "") + ".ReplyKIT"
+picker.preferredExtension = actualExtension
+```
+
+忽略使用者在設定頁面輸入的 `broadcastExtension` 值。
+
+### 修正
+
+引入三層遞迴解析：
+
+1. **動態發現**（第一優先）——掃描 `Bundle.main.builtInPlugInsURL/PlugIns` 目錄，找到第一個 `.appex` bundle，取其 `bundleIdentifier`
+2. **使用者設定**（第二優先）——使用 `preferredExtension` 參數（來自 `@AppStorage("broadcastExtension")`）
+3. **主 App 推測**（最終備用）——`Bundle.main.bundleIdentifier + ".ReplyKIT"`
+
+### 行為對照
+
+| 面向 | 改前 | 改後 |
+|------|------|------|
+| 擴展 ID 來源 | 主 App bundle ID + ".ReplyKIT"（硬編碼） | PlugIns 目錄 → 使用者設定 → 推測 |
+| 側載相容性 | ❌ 可能找不到 | ✅ 動態發現 |
+| 使用者自訂值 | ❌ 忽略 | ✅ 優先於推測 |
+| 開發環境 | ✅ 正常（id 符合模式） | ✅ 正常 |
+
+
+---
+
+## 13. 廣播擴展 Bundle ID 側載相容性（2026-07）
+
+### 問題
+
+側載（sideload）環境下，廣播擴展（ReplyKIT）的 Bundle ID 與主 App 可能不符 `mainApp.ReplyKIT` 模式，造成 `RPSystemBroadcastPickerView` 找不到擴展，按鈕失效。
+
+### 根因
+
+`BroadcastButton.makeUIView()` 硬編碼擴展 ID：
+
+```swift
+// 改前
+let actualExtension = (Bundle.main.bundleIdentifier ?? "") + ".ReplyKIT"
+picker.preferredExtension = actualExtension
+```
+
+忽略使用者在設定頁面輸入的 `broadcastExtension` 值。
+
+### 修正
+
+引入三層遞迴解析：
+
+1. **動態發現**（第一優先）——掃描 `Bundle.main.builtInPlugInsURL/PlugIns` 目錄，找到第一個 `.appex` bundle，取其 `bundleIdentifier`
+2. **使用者設定**（第二優先）——使用 `preferredExtension` 參數（來自 `@AppStorage("broadcastExtension")`）
+3. **主 App 推測**（最終備用）——`Bundle.main.bundleIdentifier + ".ReplyKIT"`
+
+### 行為對照
+
+| 面向 | 改前 | 改後 |
+|------|------|------|
+| 擴展 ID 來源 | 主 App bundle ID + ".ReplyKIT"（硬編碼） | PlugIns 目錄 → 使用者設定 → 推測 |
+| 側載相容性 | ❌ 可能找不到 | ✅ 動態發現 |
+| 使用者自訂值 | ❌ 忽略 | ✅ 優先於推測 |
+| 開發環境 | ✅ 正常（id 符合模式） | ✅ 正常 |
+
+
+---
+
+## 14. SocketServer 虛假運行檢測（2026-07）
+
+### 問題
+
+長時間未主動打開 socket 時，nsureRunning() 只檢查 listener == nil 或 .failed 狀態。
+
+但 NWListener 可能卡在 .setup、.waiting 或 .cancelled 但仍非 nil，造成「socket already running」但實際已死。
+
+### 修正
+
+`swift
+// 改前
+if self.listener == nil { ... }
+else if case .failed = self.listener?.state { ... }
+
+// 改後
+guard let lis = self.listener, lis.state == .ready else { ... }
+`
+
+同時修正 
+esume() 方法相同的問題。
+
+### 行為對照
+
+| 面向 | 改前 | 改後 |
+|------|------|------|
+| 偵測範圍 | nil 或 .failed | 所有非 .ready 狀態 |
+| .setup 卡住 | ❌ 不重啟 | ✅ 重啟 |
+| .waiting 卡住 | ❌ 不重啟 | ✅ 重啟 |
+| .cancelled | ❌ 不重啟 | ✅ 重啟 |
+| .ready | ✅ 正常 | 同左 |

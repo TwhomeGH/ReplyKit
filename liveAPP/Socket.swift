@@ -255,13 +255,11 @@ class SocketServer:ObservableObject {
     func ensureRunning() {
         performOnQueue { [weak self] in
             guard let self else { return }
-            if self.listener == nil {
-                self.logTo("Listener missing, restarting")
-                self.scheduleRestart(delay: 1.0)
-            } else if case .failed = self.listener?.state {
-                self.logTo("Listener in failed state, restarting")
+            guard let lis = self.listener, lis.state == .ready else {
+                self.logTo("Listener not ready (state: \(self.listener?.state.description ?? "nil")), restarting")
                 self.stopInternal()
                 self.start()
+                return
             }
         }
     }
@@ -1270,8 +1268,10 @@ class SocketServer:ObservableObject {
         logTo("SocketServer 恢復（重新監聽）")
         performOnQueue { [weak self] in
             guard let self else { return }
-            if self.listener == nil {
+            guard let lis = self.listener, lis.state == .ready else {
+                self.logTo("Listener not ready, starting fresh")
                 self.start()
+                return
             }
         }
     }

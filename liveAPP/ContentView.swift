@@ -141,14 +141,36 @@ struct BroadcastButton: UIViewRepresentable {
     var base: Int = 100_000
     var multiplier: Int = 34
 
+    private func resolveExtension() -> String? {
+        // 1. 從 PlugIns 動態發現——適用於所有簽名環境
+        if let plugInsURL = Bundle.main.builtInPlugInsURL,
+           let entries = try? FileManager.default.contentsOfDirectory(at: plugInsURL, includingPropertiesForKeys: nil) {
+            for entry in entries where entry.pathExtension == "appex" {
+                if let bundle = Bundle(url: entry), let bundleID = bundle.bundleIdentifier {
+                    sendlog(title: "BroadcastButton", message: "Found extension: " + bundleID)
+                    return bundleID
+                }
+            }
+        }
+
+        // 2. 使用使用者設定的值
+        if !preferredExtension.isEmpty { return preferredExtension }
+
+        // 3. 從主 App bundle ID 推測
+        if let bundleID = Bundle.main.bundleIdentifier {
+            let candidate = bundleID + ".ReplyKIT"
+            return candidate
+        }
+        return nil
+    }
+
     func makeUIView(context: Context) -> RPSystemBroadcastPickerView {
         let picker = RPSystemBroadcastPickerView(frame: .zero)
-        let actualExtension = (Bundle.main.bundleIdentifier ?? "") + ".ReplyKIT"
-        picker.preferredExtension = actualExtension
+        picker.preferredExtension = resolveExtension()
         picker.showsMicrophoneButton = true
         picker.isHidden = true
 
-        sendlog(title: "BroadcastButton", message: "preferredExtension = \(actualExtension)")
+        sendlog(title: "BroadcastButton", message: "preferredExtension = \(picker.preferredExtension ?? "nil")")
         sendlog(title: "BroadcastButton", message: "Bundle.main.bundleIdentifier = \(Bundle.main.bundleIdentifier ?? "nil")")
 
         Coordinator.currentPicker = picker
@@ -162,8 +184,7 @@ struct BroadcastButton: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: RPSystemBroadcastPickerView, context: Context) {
-        let actualExtension = (Bundle.main.bundleIdentifier ?? "") + ".ReplyKIT"
-        uiView.preferredExtension = actualExtension
+        uiView.preferredExtension = resolveExtension()
         context.coordinator.rtmpURL = rtmpURL
         context.coordinator.rtmpKey = rtmpKey
     }
