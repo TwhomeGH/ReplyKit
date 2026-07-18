@@ -5,6 +5,24 @@ import os
 
 //let logger = Logger(subsystem: "nuclear.liveAPP", category: "SocketServer")
 
+extension NWListener.State {
+    var stateString: String {
+        switch self {
+        case .setup:
+            return "setup"
+        case .waiting(let error):
+            return "waiting (\(error))"
+        case .ready:
+            return "ready"
+        case .failed(let error):
+            return "failed (\(error))"
+        case .cancelled:
+            return "cancelled"
+        @unknown default:
+            return "unknown"
+        }
+    }
+}
 
 extension SocketServer.JSONValue {
     var rawValue: Any? {
@@ -256,7 +274,7 @@ class SocketServer:ObservableObject {
         performOnQueue { [weak self] in
             guard let self else { return }
             guard let lis = self.listener, lis.state == .ready else {
-                self.logTo("Listener not ready (state: \(self.listener?.stateString ?? "nil")), restarting")
+                self.logTo("Listener not ready (state: \(self.listener?.state.stateString ?? "nil")), restarting")
 
                 self.stopInternal()
                 self.start()
@@ -554,7 +572,7 @@ class SocketServer:ObservableObject {
 
 
         if isNotifyApp {
-            let (cleanBody, inlineImages) = PIPServiceMessages.extractAllImageURLs(from: msg)
+            let (cleanBody, inlineImages, _) = PIPServiceMessages.extractAllImageURLs(from: msg)
             postSystemNotification(title: user, body: cleanBody, imageURL: img, inlineImages: inlineImages)
         }
 
@@ -815,20 +833,17 @@ class SocketServer:ObservableObject {
 
                 
                 if isNotifyApp {
-                    let (cleanBody, inlineImages) = PIPServiceMessages.extractAllImageURLs(from: text)
+                    let (cleanBody, inlineImages, _) = PIPServiceMessages.extractAllImageURLs(from: text)
                     postSystemNotification(title: user, body: cleanBody, imageURL: iconURL ?? "", inlineImages: inlineImages)
                 }
 
 
                 Task { @MainActor in
                     if useTTS {
-                        
                         TTSService.shared.speakStreamMessage(user: user, message: text, isMain: true)
                     }
-                    
+                    PIPService.shared.addAdOverlay(user: user, text: text, iconURL: iconURL, useTTS: useTTS)
                 }
-
-                PIPService.shared.addAdOverlay(user: user, text: text, iconURL: iconURL, useTTS: useTTS)
 
 
 

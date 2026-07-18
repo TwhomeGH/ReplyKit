@@ -199,6 +199,7 @@ final class MessageLayerTuple:Equatable {
 
     var inlineEmojis: [CALayer] = []
     var inlineEmojiSizes: [CGSize] = []
+    var inlineEmojiCharIndices: [Int] = []
 
 
     var overflowHeight: CGFloat?
@@ -264,6 +265,7 @@ struct MessageSegmentData {
     let giftSizeLocal:CGFloat?
 
     let inlineEmojiURLs: [String]
+    let inlineEmojiCharIndices: [Int]
 
     let font:UIFont?
 
@@ -662,6 +664,7 @@ final class PIPServiceMessages {
         imgURL: String?,
         giftURL: String?,
         emojiURLs: [String] = [],
+        emojiPositions: [Int] = [],
         font: UIFont,
         avatarSizeLocal: CGFloat,
         giftSizeLocal: CGFloat,
@@ -737,6 +740,7 @@ final class PIPServiceMessages {
                     giftURL: nil,
                     giftSizeLocal:giftSizeLocal,
                     inlineEmojiURLs: [],
+                    inlineEmojiCharIndices: [],
                     font:font,
                     verticalSpacing:vSpacing,
                     horizontalSpacing: hSpacing,
@@ -765,8 +769,21 @@ final class PIPServiceMessages {
             font: font, maxWidth: maxMessageWidth
         )
 
+        // Assign emojis to correct lines based on character position
+        var lineStartIndex = 0
 
         for (index, line) in messageLines.enumerated() {
+            let lineLen = line.count
+            var lineEmojiURLs: [String] = []
+            var lineEmojiIndices: [Int] = []
+            for (ei, pos) in emojiPositions.enumerated() {
+                let localPos = pos - lineStartIndex
+                if localPos >= 0 && localPos <= lineLen && ei < emojiURLs.count {
+                    lineEmojiURLs.append(emojiURLs[ei])
+                    lineEmojiIndices.append(localPos)
+                }
+            }
+            lineStartIndex += lineLen
 
             let isLast = index == messageLines.count - 1
 
@@ -805,7 +822,8 @@ final class PIPServiceMessages {
                     avatarSizeLocal: avatarSizeLocal,
                     giftURL: isLast ? giftURL : nil,
                     giftSizeLocal: giftSizeLocal,
-                    inlineEmojiURLs: index == 0 ? emojiURLs : [],
+                    inlineEmojiURLs: lineEmojiURLs,
+                    inlineEmojiCharIndices: lineEmojiIndices,
                     font: font,
                     cachedLines: messageLines,
                     cachedMessageSize: messageSize,
@@ -963,6 +981,7 @@ final class PIPServiceMessages {
         tuple.giftSize = giftSizeLocal
         tuple.inlineEmojis = emojiLayers
         tuple.inlineEmojiSizes = Array(repeating: CGSize(width: giftSizeLocal, height: giftSizeLocal), count: emojiLayers.count)
+        tuple.inlineEmojiCharIndices = data.inlineEmojiCharIndices
 
         tuple.verticalSpacing = verticalSpacing
         tuple.horizontalSpacing = horizontalSpacing
@@ -1028,18 +1047,19 @@ final class PIPServiceMessages {
 
 
 
-    static func extractAllImageURLs(from message: String, maxURLs: Int = 20) -> (cleaned: String, imageURLs: [String]) {
+    static func extractAllImageURLs(from message: String, maxURLs: Int = 20) -> (cleaned: String, imageURLs: [String], imagePositions: [Int]) {
         let imageExtensions = ["png", "jpg", "jpeg", "gif", "webp", "PNG", "JPG", "JPEG", "GIF", "WEBP"]
         let pattern = "(https?://[^\\s]+\\.(" + imageExtensions.joined(separator: "|") + ")(\\?[^\\s]*)?)"
 
         guard let regex = try? NSRegularExpression(pattern: pattern) else {
-            return (message, [])
+            return (message, [], [])
         }
 
         let nsRange = NSRange(message.startIndex..., in: message)
         let matches = regex.matches(in: message, range: nsRange)
 
         var urls: [String] = []
+        var positions: [Int] = []
         var cleanParts: [String] = []
         var lastEnd = message.startIndex
 
@@ -1055,6 +1075,8 @@ final class PIPServiceMessages {
             if lastEnd < urlRange.lowerBound {
                 cleanParts.append(String(message[lastEnd..<urlRange.lowerBound]))
             }
+            let currentCleanedLen = cleanParts.map(\.count).reduce(0, +)
+            positions.append(currentCleanedLen)
             urls.append(String(message[urlRange]))
             lastEnd = urlRange.upperBound
         }
@@ -1064,7 +1086,7 @@ final class PIPServiceMessages {
         }
 
         let cleaned = cleanParts.joined().trimmingCharacters(in: .whitespaces)
-        return (cleaned, urls)
+        return (cleaned, urls, positions)
     }
 
     // MARK: - Add Message（Chunk 修正版，可直接替換）
@@ -1104,7 +1126,7 @@ final class PIPServiceMessages {
 
 
 
-            let (cleanMessage, emojiURLs) = Self.extractAllImageURLs(from: message)
+            let (cleanMessage, emojiURLs, emojiPositions) = Self.extractAllImageURLs(from: message)
             let messageToShow = cleanMessage.isEmpty && !emojiURLs.isEmpty ? " " : cleanMessage
 
             let segments = self.splitLongMessage(
@@ -1113,6 +1135,7 @@ final class PIPServiceMessages {
                 imgURL:imgURL,
                 giftURL: giftURL,
                 emojiURLs: emojiURLs,
+                emojiPositions: emojiPositions,
                 font: font,
                 avatarSizeLocal: avatarSizeLocal,
                 giftSizeLocal: giftSizeLocal,
@@ -1880,19 +1903,27 @@ final class PIPServiceMessages {
 
         // Inline Emoji
         let messageFrame = msg.message?.frame ?? .zero
-        var emojiCursorX = messageFrame.maxX
 
         for (idx, emoji) in msg.inlineEmojis.enumerated() {
             let emojiSize = idx < msg.inlineEmojiSizes.count ? msg.inlineEmojiSizes[idx].width : giftSizeLocal
-            let emojiY = messageFrame.midY - emojiSize / 2
+
+            let charIndex = idx < msg.inlineEmojiCharIndices.count ? msg.inlineEmojiCharIndices[idx] : 0
+            let text = msg.message?.string as? NSString ?? ""
+            let attrLine = CTLineCreateWithAttributedString(NSAttributedString(string: text as String, attributes: [.font: msg.font ?? UIFont.systemFont(ofSize: 12)]))
+
+            let emojiX = messageFrame.origin.x + CTLineGetOffsetForStringIndex(attrLine, charIndex, nil)
+
+            var ascent: CGFloat = 0
+            var descent: CGFloat = 0
+            CTLineGetTypographicBounds(attrLine, &ascent, &descent, nil)
+            let emojiY = messageFrame.origin.y + (ascent - emojiSize) / 2
 
             emoji.frame = CGRect(
-                x: emojiCursorX,
+                x: emojiX,
                 y: emojiY,
                 width: emojiSize,
                 height: emojiSize
             )
-            emojiCursorX += emojiSize + 4
         }
 
 
