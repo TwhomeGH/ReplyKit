@@ -1908,9 +1908,6 @@ final class PIPServiceMessages {
         let messageFrame = msg.message?.frame ?? .zero
         let text = msg.message?.string as? NSString ?? ""
         let attrLine = CTLineCreateWithAttributedString(NSAttributedString(string: text as String, attributes: [.font: msg.font ?? UIFont.systemFont(ofSize: 12)]))
-        var ascent: CGFloat = 0
-        var descent: CGFloat = 0
-        CTLineGetTypographicBounds(attrLine, &ascent, &descent, nil)
 
         var lastEmojiMaxX: CGFloat = 0
         var lastCharIndex: Int = -1
@@ -1925,7 +1922,7 @@ final class PIPServiceMessages {
             lastEmojiMaxX = emojiX + emojiSize
             lastCharIndex = charIndex
 
-            let emojiY = messageFrame.origin.y + (ascent - emojiSize) / 2
+            let emojiY = messageFrame.midY - emojiSize / 2
 
             emoji.frame = CGRect(
                 x: emojiX,
