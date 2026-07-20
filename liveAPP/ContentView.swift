@@ -865,6 +865,7 @@ struct LogSettingsView: View {
     @AppStorage("PIPAdOverlayFont", store: userDefaults) private var PIPAdOverlayFont = 13.0
     @AppStorage("PIPAdOverlayUserFont", store: userDefaults) private var PIPAdOverlayUserFont = 14.0
     @AppStorage("PIPAdOverlaySpacing", store: userDefaults) private var PIPAdOverlaySpacing = 4.5
+    @AppStorage("PIPAdOverlayDuration", store: userDefaults) private var PIPAdOverlayDuration = 5.0
 
     @AppStorage("broadcastExtension", store: userDefaults) private var broadcastExtension = (Bundle.main.bundleIdentifier ?? "nuclear.liveAPP") + ".ReplyKIT"
 
@@ -1065,6 +1066,31 @@ struct LogSettingsView: View {
                     }
 
                     Text("建議值: 4.5")
+                            .font(.footnote)
+                            .foregroundColor(.secondary)
+                            .padding(.bottom, 5)
+
+                    // MARK: Ad Overlay Duration
+                    TextField(
+                        "廣告覆著停留秒數 直接輸入 5",
+                        value: $PIPAdOverlayDuration,
+                        format: .number
+                    )
+                        .frame(maxWidth: .infinity)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .keyboardType(.numberPad)
+
+                    Stepper(
+                        "廣告覆著停留秒數：\(PIPAdOverlayDuration)",
+                        value: $PIPAdOverlayDuration,
+                        in: 1...60,
+                        step:0.5
+                    )
+                    .onChange(of: PIPAdOverlayDuration) { newVal in
+                        LPConfig.shared.PIPAdOverlayDuration = newVal
+                    }
+
+                    Text("建議值: 5.0")
                             .font(.footnote)
                             .foregroundColor(.secondary)
                             .padding(.bottom, 5)

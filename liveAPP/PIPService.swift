@@ -90,7 +90,9 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     private var adOverlayEmojiImages: [UIImage?] = []
     private var adOverlayStartTime: CFTimeInterval = 0
     private var adOverlayActive = false
-    private let adOverlayPageDuration: CFTimeInterval = 5.0
+    private var adOverlayPageDuration: CFTimeInterval {
+        max(1, LPConfig.shared.PIPAdOverlayDuration)
+    }
 
     private let renderQueue = DispatchQueue(
         label: "com.pip.render",

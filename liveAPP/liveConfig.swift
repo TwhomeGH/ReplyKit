@@ -78,6 +78,7 @@ final class LPConfig {
     var PIPAdOverlayFontSize: Double = 13.0
     var PIPAdOverlayUserFontSize: Double = 14.0
     var PIPAdOverlaySpacing: Double = 4.5
+    var PIPAdOverlayDuration: Double = 5.0
 
     var PIPLog: Bool = false
     var PIPChatLog:Bool = false
@@ -117,6 +118,7 @@ final class LPConfig {
         PIPAdOverlayFontSize = (userDefaults?.object(forKey: "PIPAdOverlayFont") as? Double) ?? 13.0
         PIPAdOverlayUserFontSize = (userDefaults?.object(forKey: "PIPAdOverlayUserFont") as? Double) ?? 14.0
         PIPAdOverlaySpacing = (userDefaults?.object(forKey: "PIPAdOverlaySpacing") as? Double) ?? 4.5
+        PIPAdOverlayDuration = (userDefaults?.object(forKey: "PIPAdOverlayDuration") as? Double) ?? 5.0
 
     }
 
