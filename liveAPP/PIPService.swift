@@ -746,8 +746,9 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
         let iconSize: CGFloat = 28
         let iconX = bannerX + 8
-        // icon 垂直置中於贊助者名稱行（與聊天頭像對齊方式相同）
-        let iconY = (bannerY + 6) + (labelFont.lineHeight - iconSize) / 2
+        // icon 頂部與贊助者名稱頂部對齊（iconY = bannerY + 6 = 文字繪製起點 y）
+        // icon 比文字大時自然向下延伸，視覺上比垂直置中更穩定
+        let iconY = bannerY + 6
         let iconRect = CGRect(x: iconX, y: iconY, width: iconSize, height: iconSize)
 
         if let icon = adOverlayIconImage {

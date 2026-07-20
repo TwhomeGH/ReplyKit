@@ -11,6 +11,7 @@
 | `Experimental` | 實驗版 | 新功能或大改動，可能不穩定 |
 | `Hotfix` | 緊急修復 | 修正嚴重問題（音畫不同步、crash、無法推流） |
 | `Major` | 重大更新 | 架構重構、關鍵依賴升級（如 HaishinKit、Metal pipeline 改動） |
+| `UIFix` | UI/排版修正 | 改進 PiP 子母排版佈局、介面 UI、文字與圖片定位等視覺調整 |
 
 ## 標註範例
 
@@ -20,6 +21,7 @@
 ## 7.11.0-beta — Experimental
 ## 7.11.1 — Hotfix
 ## 8.0.0 — Major
+## 8.1.0 — UIFix
 ```
 
 ## 備註
