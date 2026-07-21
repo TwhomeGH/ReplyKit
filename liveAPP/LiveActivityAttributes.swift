@@ -59,7 +59,6 @@ struct StreamActivityLiveView: View {
             }
         }
         .padding(.horizontal)
-        .activityBackgroundTint(.black.opacity(0.15))
     }
 }
 
