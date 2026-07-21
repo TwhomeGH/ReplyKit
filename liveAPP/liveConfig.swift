@@ -60,6 +60,7 @@ final class LPConfig {
     var StreamEndMes:String = ""
     var streamViewerCount: Int?
     var streamViewerList: [String] = []
+    var streamBitrate: String = ""
 
     // 上一場直播時長
     var lastStreamTime:Double = 0.0

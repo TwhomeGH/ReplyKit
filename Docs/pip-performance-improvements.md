@@ -616,3 +616,42 @@ func forceFlushBatch() {
 | 問題 | 原因 | 修正 |
 |------|------|------|
 | `sendKeepalive()` 為 `private`，`BackgroundTaskManager` 無法呼叫 | 方法只在 keepalive timer 內部使用，未考慮外部觸發場景 | 改為 `internal`（移除 `private`），讓 `BackgroundTaskManager` 可在 BGTask handler 中主動調用 |
+
+---
+
+## 26. Live Activity 鎖定畫面／動態島即時串流資訊（2026-07）
+
+### `liveAPP/LiveActivityAttributes.swift` — 新檔
+
+| 元件 | 用途 |
+|------|------|
+| `StreamActivityAttributes` | ActivityKit 屬性定義：靜態（stream title）+ 動態狀態（碼率、時間、觀看人數） |
+| `StreamActivityLiveView` | 鎖定畫面 UI：直播標題、時間、碼率、觀看人數 |
+| `StreamActivityDynamicIsland` | 動態島：展開態顯示時間、碼率、人數；緊湊態顯示碼率 |
+| `StreamActivityManager` | 生命週期管理：`startStreamActivity()` / `updateStreamActivity()` / `endStreamActivity()` + 每 5 秒自動更新 |
+
+### `liveAPP/liveConfig.swift` — 新增欄位
+
+| 欄位 | 型別 | 用途 |
+|------|------|------|
+| `streamBitrate` | `String` | 格式化碼率文字（如 `"2.4 Mbps"`），供 Live Activity 讀取 |
+
+### `liveAPP/ContentView.swift` — BitrateManager
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| 碼率變更不會更新 Live Activity | `updateStreamBitrate()` 只存 UserDefaults + 發 Darwin notification | 加入 `LPConfig.shared.streamBitrate` 更新，Live Activity 自動定時讀取 |
+
+### 使用方式
+
+需在開播／停播處手動加入：
+
+```swift
+// 開播
+StreamActivityManager.shared.startStreamActivity()
+
+// 停播
+StreamActivityManager.shared.endStreamActivity()
+```
+
+支援最低版本：iOS 16.1（與目前 Deployment Target 16.6 相容）。

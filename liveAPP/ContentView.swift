@@ -116,6 +116,13 @@ class BitrateManager: ObservableObject {
         saveBitrate()
         notifyStream()
 
+        // 更新 Live Activity 碼率文字
+        let kbps = Double(bitrate) / 1000
+        if kbps >= 1000 {
+            LPConfig.shared.streamBitrate = String(format: "%.1f Mbps", kbps / 1000)
+        } else {
+            LPConfig.shared.streamBitrate = String(format: "%.0f kbps", kbps)
+        }
     }
 
     private func notifyStream() {
