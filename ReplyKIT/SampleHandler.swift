@@ -1405,8 +1405,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         var audioSet = await rtmpStream.audioSettings
 
-        // 設定音訊編碼格式為 AAC 128kbps
-        audioSet.bitRate = 128000
+        // 設定音訊編碼格式為 AAC 128kbps 自動選擇合適的格式
+        audioSet.bitRate = AudioCodecSettings.bestAacBitrate
         audioSet.format = AudioCodecSettings.bestAacFormat
         
         try? await rtmpStream.setAudioSettings(audioSet)
