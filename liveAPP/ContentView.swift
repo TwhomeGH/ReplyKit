@@ -2183,10 +2183,13 @@ struct homeView:View{
         )
     }
 
-    // iOS BroadcastButton
+    // iOS BroadcastButton - 透過 computed property StreamBtn 在 body 中建立
 #if os(iOS)
+    // （StreamBtn 為 computed property，見上方）
+#endif
+    // macOS BroadcastButton
+#if os(macOS)
     @StateObject private var StreamBtnMac = BroadcastButtonMac.Coordinator()
-
 #endif
 
 
