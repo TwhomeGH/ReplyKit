@@ -418,7 +418,12 @@ final class PIPServiceMessages {
 
     func setAdOverlayOffset(_ offset: CGFloat) {
         adOverlayOffset = offset
-        layoutTargetsAndStartAnimation()
+        // 直接重新排版不觸發動畫，避免 overlay 顯示與訊息移動重疊
+        let _ = relayoutTargetsOnly(updateTargetY: true, changeSY: true)
+        for msg in stackedMessages where msg.alpha > 0 {
+            msg.startY = msg.targetY
+            layout(msg: msg, y: msg.targetY)
+        }
     }
 
 
