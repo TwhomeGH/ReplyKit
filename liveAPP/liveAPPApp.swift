@@ -972,9 +972,8 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
                         PIPService.shared.releaseNonCriticalMemory()
                         logModel.clearLogs()
 
-                        // beginBackgroundTask 只能提供短時間背景窗口；BGTaskScheduler 是機會型 refresh，不保證常駐。
+                        // BGTaskScheduler 是機會型 refresh，不保證常駐。
                         #if os(iOS)
-                        BackgroundTaskManager.shared.beginSocketBackgroundWindow()
                         BackgroundTaskManager.shared.scheduleSocketRefresh()
                         #endif
 

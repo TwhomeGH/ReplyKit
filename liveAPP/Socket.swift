@@ -635,9 +635,13 @@ class SocketServer:ObservableObject {
         PIPService.shared.markOverlayDirty()
 
         if isLive {
-            StreamActivityManager.shared.startStreamActivity()
-        } else {    
-            StreamActivityManager.shared.endStreamActivity()
+            Task { @MainActor in
+                StreamActivityManager.shared.startStreamActivity()
+            }
+        } else {
+            Task { @MainActor in
+                StreamActivityManager.shared.endStreamActivity()
+            }
         }
     }
 
