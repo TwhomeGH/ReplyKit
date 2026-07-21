@@ -642,16 +642,7 @@ func forceFlushBatch() {
 |------|------|------|
 | 碼率變更不會更新 Live Activity | `updateStreamBitrate()` 只存 UserDefaults + 發 Darwin notification | 加入 `LPConfig.shared.streamBitrate` 更新，Live Activity 自動定時讀取 |
 
-### 使用方式
+### 待辦事項
 
-需在開播／停播處手動加入：
-
-```swift
-// 開播
-StreamActivityManager.shared.startStreamActivity()
-
-// 停播
-StreamActivityManager.shared.endStreamActivity()
-```
-
-支援最低版本：iOS 16.1（與目前 Deployment Target 16.6 相容）。
+- [ ] **動態島支援**：`LiveActivityAttributes.swift` 中的 `StreamActivityDynamicIsland` 已定義但註解，需在 Xcode 中加入 `ActivityKit.framework` 到 target 的 Frameworks 後取消註解啟用
+- [x] **開播/停播整合**：在實際開播與停播的程式碼路徑中加入 `StreamActivityManager.shared.startStreamActivity()` / `endStreamActivity()`（目前僅定義管理器，尚未接入既有流程）
