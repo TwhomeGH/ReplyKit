@@ -658,11 +658,17 @@ func forceFlushBatch() {
 | `isProcessing` check-then-set 非原子，兩幀可能同時進入 GPU 旋轉造成 PTS 順序錯亂 | 檢查與設定之間無鎖保護，`Task.detached` 可能同時通過 guard | 加入 `processingLock`（NSLock）保護所有 `isProcessing`、`processingStartedAt`、`processingGeneration` 的讀寫 |
 | `processingGeneration &+= 1` 非原子遞增，併發下可能跳號導致 `defer` 永不清理 `isProcessing`，管線永久停滯 | generation 在非原子環境下遞增，兩個 task 可能拿到相同 generation | 同鎖保護 generation 遞增與 `defer` 中的清除判斷 |
 
-### `ReplyKIT/AudioNoiseMetal.swift` — DispatchSemaphore 阻塞執行緒
+### `ReplyKIT/AudioNoiseMetal.swift` — DispatchSemaphore 設計取捨
 
 | 問題 | 原因 | 修正 |
 |------|------|------|
-| `DispatchSemaphore.wait()` 在 Swift Concurrency `Task.detached` 中阻塞協同執行緒，可能導致執行緒饑荒與音訊管線卡死 | Metal 的 `addCompletedHandler` + `semaphore.wait()` 模式違反 Swift Concurrency 規則 | 改為 `withUnsafeContinuation` + 一次性 resume 保護；GPU 逾時透過 asyncAfter 觸發第二次 resume（以 `resumed` flag 防雙重 resume） |
+| `DispatchSemaphore.wait()` 在 Swift Concurrency `Task.detached` 中阻塞協同執行緒，可能導致執行緒饑荒 | Metal 的 `addCompletedHandler` + `semaphore.wait()` 是經典 GPU 等待模式，但在 async context 中不理想 | 保留 `DispatchSemaphore` 模式（實際 GPU timeout 僅 16ms，不足以造成饑荒），加入設計註解說明。完整修復需將 Metal 處理移出協同執行緒到專用 serial queue |
+
+### `ReplyKIT/VideoProcess.swift` — NSLock 改 OSAllocatedUnfairLock
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| `NSLock.lock()` 在 Swift 6 的 async context 中不可用（defer 區塊內的 Task.detached）| NSLock 未標記為 async-safe，Swift 6 嚴格模式拒絕編譯 | 改用 `OSAllocatedUnfairLock`（iOS 16+ 原生支援 Swift Concurrency），加入 `import os` |
 
 ### `ReplyKIT/SampleHandler.swift` — broadcastResumed() 與 RTMP 重連競爭
 

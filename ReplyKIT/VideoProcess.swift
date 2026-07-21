@@ -2,6 +2,7 @@ import HaishinKit
 import RTMPHaishinKit
 import ReplayKit
 import CoreMedia
+import os
 
 
 final class VideoFrameProcessor {
@@ -120,7 +121,7 @@ final class VideoFrameProcessor {
     private var consecutiveDropCount: Int = 0
     private let maxConsecutiveDrops = 60
     private var processingGeneration: UInt64 = 0
-    private let processingLock = NSLock()
+    private let processingLock = OSAllocatedUnfairLock()
 
     init(mediaMixer: MediaMixer,
         sendlog: @escaping (String) -> Void) {

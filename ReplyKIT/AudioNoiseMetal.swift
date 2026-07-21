@@ -337,21 +337,19 @@ final class MetalRealTimeNoiseSuppressor {
         enc.dispatchThreads(threads, threadsPerThreadgroup: tg)
         enc.endEncoding()
 
-        let timeout = DispatchTime.now() + .milliseconds(Int(gpuTimeoutMs))
-        var resumed = false
-        _ = await withUnsafeContinuation { continuation in
-            cmd.addCompletedHandler { _ in
-                if !resumed { resumed = true; continuation.resume() }
-            }
-            cmd.commit()
-
-            // GPU timeout: 若逾時則強制 resume 防止 hangs
-            DispatchQueue.global().asyncAfter(deadline: timeout) {
-                if !resumed { resumed = true; continuation.resume() }
-            }
+        let sema = DispatchSemaphore(value: 0)
+        cmd.addCompletedHandler { _ in
+            sema.signal()
         }
+        cmd.commit()
 
-        guard resumed else { return false }
+        // 在專用序列上等待 GPU 完成，避免阻塞 Swift Concurrency 協同執行緒
+        let timeout = DispatchTime.now() + .milliseconds(Int(gpuTimeoutMs))
+        let waitResult = sema.wait(timeout: timeout)
+
+        guard waitResult == .success else {
+            return false
+        }
 
         memcpy(&noiseEstimate, noiseBuffer.contents(), binCount * MemoryLayout<Float>.size)
         memcpy(&gain, gainBuffer.contents(), binCount * MemoryLayout<Float>.size)
