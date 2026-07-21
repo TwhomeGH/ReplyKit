@@ -646,3 +646,33 @@ func forceFlushBatch() {
 
 - [ ] **動態島支援**：`LiveActivityAttributes.swift` 中的 `StreamActivityDynamicIsland` 已定義但註解，需在 Xcode 中加入 `ActivityKit.framework` 到 target 的 Frameworks 後取消註解啟用
 - [x] **開播/停播整合**：在實際開播與停播的程式碼路徑中加入 `StreamActivityManager.shared.startStreamActivity()` / `endStreamActivity()`（已接入既有流程）
+
+---
+
+## 27. ReplyKIT 推流管線執行緒安全與重連修正（2026-07）
+
+### `ReplyKIT/VideoProcess.swift` — VideoFrameProcessor 原子性
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| `isProcessing` check-then-set 非原子，兩幀可能同時進入 GPU 旋轉造成 PTS 順序錯亂 | 檢查與設定之間無鎖保護，`Task.detached` 可能同時通過 guard | 加入 `processingLock`（NSLock）保護所有 `isProcessing`、`processingStartedAt`、`processingGeneration` 的讀寫 |
+| `processingGeneration &+= 1` 非原子遞增，併發下可能跳號導致 `defer` 永不清理 `isProcessing`，管線永久停滯 | generation 在非原子環境下遞增，兩個 task 可能拿到相同 generation | 同鎖保護 generation 遞增與 `defer` 中的清除判斷 |
+
+### `ReplyKIT/AudioNoiseMetal.swift` — DispatchSemaphore 阻塞執行緒
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| `DispatchSemaphore.wait()` 在 Swift Concurrency `Task.detached` 中阻塞協同執行緒，可能導致執行緒饑荒與音訊管線卡死 | Metal 的 `addCompletedHandler` + `semaphore.wait()` 模式違反 Swift Concurrency 規則 | 改為 `withUnsafeContinuation` + 一次性 resume 保護；GPU 逾時透過 asyncAfter 觸發第二次 resume（以 `resumed` flag 防雙重 resume） |
+
+### `ReplyKIT/SampleHandler.swift` — broadcastResumed() 與 RTMP 重連競爭
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| `broadcastResumed()` 呼叫 `setVideoSettings()` 可能與 HaishinKit 內部 RTMP 重連週期衝突 | 無重連進行中標記，resume 與 reconnect handler 同時操作 encoder | 新增 `isReconnecting` flag，重連期間跳過 `setVideoSettings()` 與 `rebuildVideo()` |
+| 重連成功後 resume 可能重複建立 encoder session | resume handler 未檢查 `isReconnecting` | 同上 flag，`broadcastResumed()` 開頭也檢查 `isReconnecting` 提前返回 |
+
+### `ReplyKIT/Event.swift` — RPConfig.shared.state 執行緒安全
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| `RPConfig.shared.state` struct 從 6+ 個併發 context 無同步存取，可能讀取損壞的解析度/碼率/編碼設定 | 無任何鎖保護，struct 寫入非原子 | 加入 `stateLock`（NSLock）以及 `readState`/`withState` 輔助方法，供後續逐步遷移安全存取 |

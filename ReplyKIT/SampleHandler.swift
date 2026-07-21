@@ -1548,11 +1548,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             case .started(let attempt, let maxAttempts):
                 sendlog(message: "🔄 RTMP 正在重連 (第 \(attempt)/\(maxAttempts) 次)...")
                 self.notifyReconnectStatus(.attempting, attempt: attempt)
+                self.isReconnecting = true
                 // 重連期間保持 MediaMixer 運行，讓音視頻管線持續處理數據
                 self.disconnectMonitorTask?.cancel()
                 self.disconnectMonitorTask = nil
             case .succeeded:
                 sendlog(message: "🎉 RTMP 重連成功")
+                self.isReconnecting = false
                 self.isSessionReady = true
                 self.notifyReconnectStatus(.success)
                 await streamStataus?.resetDisconnectCheck()
@@ -1781,7 +1783,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         isBroadcastPaused = false
         sendlog(message: "📹 廣播恢復（前景）")
 
-        guard isSessionReady, !isStopping else { return }
+        guard isSessionReady, !isStopping, !isReconnecting else { return }
 
         Task(priority: .medium) { [weak self] in
             guard let self else { return }
@@ -1795,19 +1797,21 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 sendlog(message: "📹 MediaMixer 已重新啟動")
             }
 
-            // 重新套用 video settings，强迫 VideoToolbox 重建 encoder session
-            if let stream = rtmpStream {
-                do {
-                    let settings = await stream.videoSettings
-                    try await stream.setVideoSettings(settings)
-                    sendlog(message: "📹 Video encoder 已重建")
-                } catch {
-                    sendlog(message: "⚠️ Video encoder 重建失敗: \(error)")
+            if !isReconnecting {
+                // 重新套用 video settings，强迫 VideoToolbox 重建 encoder session
+                if let stream = rtmpStream {
+                    do {
+                        let settings = await stream.videoSettings
+                        try await stream.setVideoSettings(settings)
+                        sendlog(message: "📹 Video encoder 已重建")
+                    } catch {
+                        sendlog(message: "⚠️ Video encoder 重建失敗: \(error)")
+                    }
                 }
-            }
 
-            // 重建 video processor 確保 ProcessorActor 狀態乾淨（resetProcessing 無法清除 actor 內部卡死）
-            rebuildVideo()
+                // 重建 video processor 確保 ProcessorActor 狀態乾淨
+                rebuildVideo()
+            }
 
             // 重啟斷線監控
             startDisconnectMonitor()
@@ -1816,6 +1820,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     private var isBroadcasting = false
     private var isBroadcastPaused = false
+    private var isReconnecting = false
 
     // MARK: 直播結束處理
     private var broadcastEndTask: Task<Void, Never>?

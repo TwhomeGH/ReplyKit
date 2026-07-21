@@ -1712,6 +1712,13 @@ struct LogView: View {
                 }
             }
 
+            Button("清除子母錯誤疊加層") {
+                LPConfig.shared.isReconnecting = false
+                LPConfig.shared.reconnectStatus = ""
+                PIPService.shared.clearAdOverlay()
+                sendlog(message: "子母錯誤疊加層已清除")
+            }
+
             ZStack(alignment: .bottomTrailing) {
 
 

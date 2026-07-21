@@ -625,6 +625,8 @@ class SocketServer:ObservableObject {
 
         LPConfig.shared.streamViewerCount = nil
         LPConfig.shared.streamViewerList = []
+        LPConfig.shared.isReconnecting = false
+        LPConfig.shared.reconnectStatus = ""
 
     }
 

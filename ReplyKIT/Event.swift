@@ -534,6 +534,20 @@ final class LogManager {
 final class RPConfig {
     static let shared = RPConfig()
 
+    private let stateLock = NSLock()
+
+    func withState<T>(_ block: (inout State) -> T) -> T {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return block(&state)
+    }
+
+    func readState<T>(_ block: (State) -> T) -> T {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return block(state)
+    }
+
 
     struct State {
         // RTMP 配置

@@ -120,6 +120,7 @@ final class VideoFrameProcessor {
     private var consecutiveDropCount: Int = 0
     private let maxConsecutiveDrops = 60
     private var processingGeneration: UInt64 = 0
+    private let processingLock = NSLock()
 
     init(mediaMixer: MediaMixer,
         sendlog: @escaping (String) -> Void) {
@@ -147,7 +148,9 @@ final class VideoFrameProcessor {
     private func resetProcessorActor(reason: String) {
         let oldActor = processorActor
         processorActor = nil
+        processingLock.lock()
         processingGeneration &+= 1
+        processingLock.unlock()
         Task { await oldActor?.cleanup() }
         sendlog(reason)
     }
@@ -156,16 +159,20 @@ final class VideoFrameProcessor {
         isActive = false
         let oldActor = processorActor
         processorActor = nil
+        processingLock.lock()
         processingGeneration &+= 1
+        processingLock.unlock()
         Task { await oldActor?.cleanup() }
     }
 
     func resetProcessing() {
+        processingLock.lock()
         isProcessing = false
         processingStartedAt = nil
         watchdogResetCount = 0
         consecutiveDropCount = 0
         processingGeneration &+= 1
+        processingLock.unlock()
     }
 
     func setRotatorDebug(_ value: Bool) async {
@@ -198,29 +205,35 @@ final class VideoFrameProcessor {
         }
 
         // Watchdog: 偵測 GPU 旋轉逾時，重置整個管線
+        processingLock.lock()
         if isProcessing, let startedAt = processingStartedAt {
             if Date().timeIntervalSince(startedAt) > processingTimeout {
                 isProcessing = false
                 processingStartedAt = nil
+                processingLock.unlock()
                 watchdogResetCount += 1
                 resetProcessorActor(
                     reason: "[VideoProcessor] ⚠️ #\(processedCount) GPU 處理逾時 (\(Int(processingTimeout))s)，重置旋轉器管線 (#\(watchdogResetCount))"
                 )
+                // 重新取得鎖用於下方檢查
+                processingLock.lock()
             }
         }
 
         // 連續逾時重置超過上限，標記需要重建
         if watchdogResetCount > 3 {
+            processingLock.unlock()
             isActive = false
             sendlog("[VideoProcessor] ❌ 連續 GPU 逾時超過上限，標記重建")
             return
         }
 
-        guard !isProcessing else { return }
+        guard !isProcessing else { processingLock.unlock(); return }
         isProcessing = true
         processingStartedAt = Date()
         processingGeneration &+= 1
         let taskGeneration = processingGeneration
+        processingLock.unlock()
 
         let isFirstFrame = localCount == 1
         let enablePipeLog = RPConfig.shared.enablePipelineLog
@@ -242,10 +255,12 @@ final class VideoFrameProcessor {
         Task.detached(priority: .high) { [weak self] in
             guard let self else { return }
             defer {
+                self.processingLock.lock()
                 if self.processingGeneration == taskGeneration {
                     self.isProcessing = false
                     self.processingStartedAt = nil
                 }
+                self.processingLock.unlock()
             }
             guard self.isActive else { return }
 
