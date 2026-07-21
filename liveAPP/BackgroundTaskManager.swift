@@ -30,7 +30,8 @@ final class BackgroundTaskManager {
     func registerTasks() {
         #if os(iOS)
         BGTaskScheduler.shared.register(forTaskWithIdentifier: socketKeepAliveTaskID, using: nil) { task in
-            self.handleSocketRefreshTask(task)
+            guard let refreshTask = task as? BGAppRefreshTask else { return }
+            self.handleSocketRefreshTask(refreshTask)
         }
         #endif
     }
@@ -38,8 +39,7 @@ final class BackgroundTaskManager {
     func scheduleSocketRefresh() {
         #if os(iOS)
         BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: socketKeepAliveTaskID)
-        let request = BGProcessingTaskRequest(identifier: socketKeepAliveTaskID)
-        request.requiresNetworkConnectivity = true
+        let request = BGAppRefreshTaskRequest(identifier: socketKeepAliveTaskID)
         request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
         do {
             try BGTaskScheduler.shared.submit(request)
@@ -89,14 +89,16 @@ final class BackgroundTaskManager {
     }
 
     #if os(iOS)
-    private func handleSocketRefreshTask(_ task: BGTask) {
+    private func handleSocketRefreshTask(_ task: BGAppRefreshTask) {
         sendlog(message: "BGTaskScheduler socket refresh 開始執行")
 
         // BGTaskScheduler 是機會型喚醒，不保證準時或長時間保活。
         scheduleSocketRefresh()
 
-        // 只做短工作：確保 listener 可建立，然後立即完成任務。
-        SocketServer.shared.start()
+        // 確保 listener 活著，對已連線 client 發 keepalive 確認通道正常
+        let server = SocketServer.shared
+        server.start()
+        server.sendKeepalive()
 
         let completionState = CompletionState()
 
@@ -106,7 +108,7 @@ final class BackgroundTaskManager {
             task.setTaskCompleted(success: false)
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
             guard completionState.markCompleted() else { return }
             task.setTaskCompleted(success: true)
             sendlog(message: "BGTaskScheduler socket refresh 完成")

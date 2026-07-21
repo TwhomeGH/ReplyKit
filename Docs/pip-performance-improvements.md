@@ -598,3 +598,21 @@ func forceFlushBatch() {
 | `buttonTapped` | 觸發時的 orientation 值 |
 | `trigger()` | 呼叫記錄；`currentPicker` 為 nil 時記錄失敗；`UIButton` 找不到時記錄失敗 |
 | `onChange(of: broadcastExtension)` | 使用者修改值時記錄 |
+
+---
+
+## 25. BGTaskScheduler 改用 BGAppRefreshTask（2026-07）
+
+### `liveAPP/BackgroundTaskManager.swift`
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| `BGProcessingTask` 設計給長時間任務（資料庫清理、備份），系統優先級低，socket refresh 這類快速檢查常被延遲或跳過 | 選錯 task type，`BGProcessingTask` 的 ~5 分鐘預算對 2 秒工作而言過重 | 改為 `BGAppRefreshTaskRequest` + `BGAppRefreshTask`，系統優先級較高、適合短暫網路檢查 |
+| 僅呼叫 `SocketServer.shared.start()` 不確認連線狀態 | handler 只管 listener 是否在跑，不驗證已建立的連線是否可用 | 加入 `server.sendKeepalive()`，同時對所有已連線 client 發送 keepalive 並清理 60 秒無資料的停滯連線 |
+| 工作預算僅 2 秒，網路延遲時容易到期失敗 | `asyncAfter(deadline: .now() + 2)` 預留時間不足 | 延長至 10 秒，配合 `BGAppRefreshTask` 的 ~30 秒預算 |
+
+### `liveAPP/Socket.swift` — sendKeepalive 可見度
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| `sendKeepalive()` 為 `private`，`BackgroundTaskManager` 無法呼叫 | 方法只在 keepalive timer 內部使用，未考慮外部觸發場景 | 改為 `internal`（移除 `private`），讓 `BackgroundTaskManager` 可在 BGTask handler 中主動調用 |

@@ -1192,7 +1192,7 @@ class SocketServer:ObservableObject {
 
     private let staleConnectionTimeout: TimeInterval = 60
 
-    private func sendKeepalive() {
+    func sendKeepalive() {
         let payload: [String: Any] = ["type": "keepalive"]
         let now = Date()
         for (id, conn) in connections {
