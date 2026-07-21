@@ -645,4 +645,4 @@ func forceFlushBatch() {
 ### 待辦事項
 
 - [ ] **動態島支援**：`LiveActivityAttributes.swift` 中的 `StreamActivityDynamicIsland` 已定義但註解，需在 Xcode 中加入 `ActivityKit.framework` 到 target 的 Frameworks 後取消註解啟用
-- [x] **開播/停播整合**：在實際開播與停播的程式碼路徑中加入 `StreamActivityManager.shared.startStreamActivity()` / `endStreamActivity()`（目前僅定義管理器，尚未接入既有流程）
+- [x] **開播/停播整合**：在實際開播與停播的程式碼路徑中加入 `StreamActivityManager.shared.startStreamActivity()` / `endStreamActivity()`（已接入既有流程）
