@@ -665,33 +665,30 @@ class SocketServer:ObservableObject {
             "type": "RTMP",
             "rtmpURL": userDefaults?.string(forKey: "rtmpURL") ?? "rtmp://192.168.0.102/live",
             "rtmpKey": userDefaults?.string(forKey: "rtmpKey") ?? "test",
-            "BitRate": userDefaults?.integer(forKey: "bitRate") ?? 3_900_000,
-            "ChangeBit": userDefaults?.bool(forKey: "ChangeBit") ?? false,
-            "isLowLatencyRateControlEnabled":userDefaults?.bool(forKey:"isLowLatencyRateControlEnabled") ?? true,
+            "BitRate": userDefaults?.object(forKey: "bitRate") as? Int ?? 3_900_000,
+            "ChangeBit": userDefaults?.object(forKey: "ChangeBit") as? Bool ?? false,
+            "isLowLatencyRateControlEnabled":userDefaults?.object(forKey:"isLowLatencyRateControlEnabled") as? Bool ?? true,
             "useEnhancedRTMP":userDefaults?.object(forKey:"useEnhancedRTMP") as? Bool ?? true,
             "isOringinAudio": (userDefaults?.object(forKey: "isOringinAudio") as? Bool) ?? true,
 
-            "h264level": userDefaults?
-                .string(forKey: "h264level") ?? "AutoHigh",
+            "h264level": userDefaults?.object(forKey: "h264level") as? String ?? "AutoHigh",
             "videoCodec": userDefaults?
-                .string(forKey: "videoCodec") ?? "H264",
+                .object(forKey: "videoCodec") as? String ?? "H264",
             "hevcLevel": userDefaults?
-                .string(forKey: "hevcLevel") ?? "Main",
-            "BitRateMode": min(userDefaults?
-                .integer(forKey: "BitRateMode") ?? 0, 2),
+                .object(forKey: "hevcLevel") as? String ?? "Main",
+            "BitRateMode": min(userDefaults?.object(forKey: "BitRateMode") as? Int ?? 0, 2),
+                
 
-            "videoBuffer": userDefaults?
-                .integer(forKey: "BufferCount") ?? 5,
+            "videoBuffer": userDefaults?.object(forKey: "BufferCount") as? Int ?? 5,
 
-            "useBic": userDefaults?
-                .bool(forKey: "useBic") ?? false,
+            "useBic": userDefaults?.object(forKey: "useBic") as? Bool ?? false,
 
 
-            "dstW": userDefaults?.integer(forKey: "dstW") ?? 0,
-            "dstH": userDefaults?.integer(forKey: "dstH") ?? 0,
+            "dstW": userDefaults?.object(forKey: "dstW") as? Int ?? 0,
+            "dstH": userDefaults?.object(forKey: "dstH") as? Int ?? 0,
 
-            "odstW": userDefaults?.integer(forKey: "odstW") ?? 0,
-            "odstH": userDefaults?.integer(forKey: "odstH") ?? 0,
+            "odstW": userDefaults?.object(forKey: "odstW") as? Int ?? 0,
+            "odstH": userDefaults?.object(forKey: "odstH") as? Int ?? 0,
 
 
 
@@ -699,27 +696,25 @@ class SocketServer:ObservableObject {
             
             "RotateOriginal":userDefaults?.object(forKey: "RotateOriginal") as? Bool ?? false ,
             
-            "enableEchoFix" : userDefaults?.bool(forKey: "enableEchoFix") ?? false,
-            "enableNoiseFix": userDefaults?.bool(forKey: "enableNoiseFix") ?? false,
-            "enableAGCFix" : userDefaults?.bool(forKey: "enableAGCFix") ?? false,
-            "enableMetalAudio": userDefaults?.bool(forKey: "enableMetalAudio") ?? false,
+            "enableEchoFix" : userDefaults?.object(forKey: "enableEchoFix") as? Bool ?? false,
+            "enableNoiseFix": userDefaults?.object(forKey: "enableNoiseFix") as? Bool ?? false,
+            "enableAGCFix" : userDefaults?.object(forKey: "enableAGCFix") as? Bool ?? false,
+            "enableMetalAudio": userDefaults?.object(forKey: "enableMetalAudio") as? Bool ?? false,
             
 
 
-            "appVolume": userDefaults?
-                .double(forKey: "appVolume") ?? 1.0,
+            "appVolume": userDefaults?.object(forKey: appVolume) as? Double ?? 1.0,
             "micVolume": userDefaults?
-                .double(forKey: "micVolume") ?? 1.0,
+                .object(forKey: "micVolume") as? Double ?? 1.0,
 
             "appVolumeAdd": userDefaults?
-                .double(forKey: "appAddVolume") ?? 1.0,
+                .object(forKey: "appAddVolume") as? Double ?? 1.0,
             "micVolumeAdd": userDefaults?
-                .double(forKey: "micAddVolume") ?? 1.0,
+                .object(forKey: "micAddVolume") as? Double ?? 1.0,
 
-            "KeyFrameInterval": userDefaults?
-                .integer(forKey: "KeyFrameInterval") ?? 2,
+            "KeyFrameInterval": userDefaults?.object(forKey: "KeyFrameInterval") as? Int ?? 2,
             "enableRTMPLog": userDefaults?
-                .bool(forKey: "enableRTMPLog") ?? false,
+                .object(forKey: "enableRTMPLog") as? Bool ?? false,
 
         ]
 
@@ -783,17 +778,15 @@ class SocketServer:ObservableObject {
     }
 
     func GetLogConfig() -> [String: Any]  {
-        let logMode = userDefaults?.integer(forKey: "logMode") ?? 1
+        let logMode = userDefaults?.object(forKey: "logMode") as? Int ?? 1
         let logURL = userDefaults?
-            .string(
-                forKey: "logURL"
-            ) ?? "http://192.168.0.242:3000/post"
-        let onlogPage = userDefaults?.bool(forKey: "onlogPage") ?? false
-        let onAudioPage = userDefaults?.bool(forKey: "onAudioPage") ?? false
-        let enableLog = userDefaults?.bool(forKey: "Enablelog") ?? false
-        let enableSocketLog = userDefaults?.bool(forKey: "EnableSocketlog") ?? false
-        let enableTimeDebug = userDefaults?.bool(forKey: "EnableTimeDebug") ?? false
-        let enablePipelineLog = userDefaults?.bool(forKey: "EnablePipelineLog") ?? false
+            .object(forKey: "logURL") as? String ?? "http://192.168.0.242:3000/post"
+        let onlogPage = userDefaults?.object(forKey: "onlogPage") as? Bool ?? false
+        let onAudioPage = userDefaults?.object(forKey: "onAudioPage") as? Bool ?? false
+        let enableLog = userDefaults?.object(forKey: "Enablelog") as? Bool ?? false
+        let enableSocketLog = userDefaults?.object(forKey: "EnableSocketlog") as? Bool ?? false
+        let enableTimeDebug = userDefaults?.object(forKey: "EnableTimeDebug") as? Bool ?? false
+        let enablePipelineLog = userDefaults?.object(forKey: "EnablePipelineLog") as? Bool ?? false
 
         LPConfig.shared.logMode = logMode
         LPConfig.shared.logURL = logURL
