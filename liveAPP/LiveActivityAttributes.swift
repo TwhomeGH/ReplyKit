@@ -107,7 +107,9 @@ final class StreamActivityManager {
     private var updateTask: Task<Void, Never>?
 
     func startStreamActivity(streamTitle: String = "直播中") {
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
+        let auth = ActivityAuthorizationInfo()
+        sendlog(message: "Live Activity: areActivitiesEnabled=\(auth.areActivitiesEnabled)")
+        guard auth.areActivitiesEnabled else {
             sendlog(message: "Live Activity 權限未開啟，請至 設定 → ReplyKit → 即時動態 開啟")
             return
         }
@@ -117,16 +119,19 @@ final class StreamActivityManager {
         let state = StreamActivityAttributes.ContentState()
         let content = ActivityContent(state: state, staleDate: nil)
 
-        do {
-            let activity = try Activity.request(
-                attributes: attributes,
-                content: content,
-                pushType: nil
-            )
-            currentActivity = activity
-            startPeriodicUpdates()
-        } catch {
-            sendlog(message: "Live Activity 啟動失敗: \(error)")
+        Task {
+            do {
+                let activity = try Activity.request(
+                    attributes: attributes,
+                    content: content,
+                    pushType: nil
+                )
+                currentActivity = activity
+                startPeriodicUpdates()
+                sendlog(message: "Live Activity 已啟動")
+            } catch {
+                sendlog(message: "Live Activity 啟動失敗: \(error)")
+            }
         }
     }
 

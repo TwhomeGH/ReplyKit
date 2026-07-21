@@ -625,7 +625,7 @@ class SocketServer:ObservableObject {
 
         LPConfig.shared.streamViewerCount = nil
         LPConfig.shared.streamViewerList = []
-        
+
     }
 
     // MARK: - 直播狀態管理 直播開始/結束 狀態更新
@@ -633,6 +633,12 @@ class SocketServer:ObservableObject {
         LPConfig.shared.StreamEnded = !isLive
         LPConfig.shared.StreamEndMes = message ?? (isLive ? "直播中" : "直播已結束")
         PIPService.shared.markOverlayDirty()
+
+        if isLive {
+            StreamActivityManager.shared.startStreamActivity()
+        } else {    
+            StreamActivityManager.shared.endStreamActivity()
+        }
     }
 
     func GetRTMPConfig() -> [String: Any]  {
@@ -853,20 +859,12 @@ class SocketServer:ObservableObject {
             case "StreamStarting":
                 sendlog(message: "直播開始")
 
-                Task {
-                    await StreamActivityManager.shared.startStreamActivity()
-                }
-
                 StreamStarting()
 
             case "Ended":
                 let dict = try decoder.decode(StreamEnded.self, from: data)
                 let MES = dict.Message
                 sendlog(message: "直播已結束: \(MES)")
-
-                Task {
-                    await StreamActivityManager.shared.endStreamActivity()
-                }
 
                 if MES != "StreamEnded" {
                     StreamStatusChanged(isLive: false, message: MES)
