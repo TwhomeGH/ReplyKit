@@ -178,8 +178,10 @@ struct BroadcastButton: UIViewRepresentable {
 
         // 2. 使用使用者設定的值
         if !preferredExtension.isEmpty {
-            sendlog(title: "BroadcastButton", message: "Fallback to user setting: \(preferredExtension)")
+            sendlog(title: "BroadcastButton", message: "Fallback to user setting: '\(preferredExtension)'")
             return preferredExtension
+        } else {
+            sendlog(title: "BroadcastButton", message: "preferredExtension is empty, skipping step 2")
         }
 
         // 3. 從主 App bundle ID 推測
@@ -2560,6 +2562,7 @@ struct homeView:View{
 
 #if os(iOS)
                     StreamBtn.frame(width: 0,height: 0)
+                        .id(StreamBtn.preferredExtension)
                     Button(action: {
 
 
