@@ -2172,20 +2172,19 @@ struct homeView:View{
 
     @StateObject var manager = BitrateManager()
 
+    // iOS BroadcastButton - 每次 body 重新計算時建立，確保 preferredExtension 即時更新
+    private var StreamBtn: BroadcastButton {
+        BroadcastButton(
+            preferredExtension: broadcastExtension,
+            rtmpURL: rtmpURL,
+            rtmpKey: rtmpKey,
+            width: 50,
+            height: 50
+        )
+    }
+
     // iOS BroadcastButton
 #if os(iOS)
-    @State var StreamBtn = BroadcastButton(
-        preferredExtension: userDefaults?.string(forKey: "broadcastExtension") ?? (Bundle.main.bundleIdentifier ?? "nuclear.liveAPP") + ".ReplyKIT",
-        rtmpURL: "",
-        rtmpKey: "",
-        width: 50,
-        height: 50
-    )
-
-
-#endif
-    // macOS BroadcastButton
-#if os(macOS)
     @StateObject private var StreamBtnMac = BroadcastButtonMac.Coordinator()
 
 #endif
@@ -2584,8 +2583,6 @@ struct homeView:View{
                         }
                         
                         sendlog(message: "RTMP To:\(rtmpURL) \(g)")
-                        StreamBtn.rtmpKey=rtmpKey
-                        StreamBtn.rtmpURL=rtmpURL
                         StreamBtn.triggerButton()
                     }) {
                         Text("開始直播")
@@ -2623,13 +2620,6 @@ struct homeView:View{
                 }
                 .onChange(of: broadcastExtension) { newValue in
                     sendlog(title: "BroadcastButton", message: "broadcastExtension changed to: \(newValue)")
-                    StreamBtn = BroadcastButton(
-                        preferredExtension: newValue,
-                        rtmpURL: StreamBtn.rtmpURL,
-                        rtmpKey: StreamBtn.rtmpKey,
-                        width: 50,
-                        height: 50
-                    )
                 }
 
             }
