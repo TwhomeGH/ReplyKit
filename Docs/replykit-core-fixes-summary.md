@@ -970,8 +970,9 @@ Extension 的除錯日誌（`sendlog()`）在 socket 就緒前只寫入 ring buf
 在你的 SampleHandler 中可以這樣用：
 
 ```swift
-// 自動選擇 device 支援的最佳 AAC 格式（heAacV2 → heAac → aac）
+// 自動選擇 device 支援的最佳 AAC 格式（heAacV2 → heAac → aac） 以及碼率
 var audioSettings = await rtmpStream.audioSettings
+audioSettings.bitRate = AudioCodecSettings.bestAacBitrate
 audioSettings.format = AudioCodecSettings.bestAacFormat
 await mediaMixer.setAudioMixerSettings(audioSettings)
 
