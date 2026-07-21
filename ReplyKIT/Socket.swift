@@ -810,6 +810,7 @@ class SocketClient : @unchecked Sendable {
     }
 
     struct RTMPConfig: Codable {
+        let type: String
         let rtmpURL: String
         let rtmpKey: String
 
@@ -852,6 +853,7 @@ class SocketClient : @unchecked Sendable {
     }
 
     struct LogConfig: Codable {
+        let type: String
         let logMode: Int
         let logURL: String
         let onlogPage: Bool
