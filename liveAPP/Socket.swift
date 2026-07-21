@@ -663,8 +663,8 @@ class SocketServer:ObservableObject {
 
         var payload: [String: Any] = [
             "type": "RTMP",
-            "rtmpURL": userDefaults?.string(forKey: "rtmpURL") ?? "rtmp://192.168.0.102/live",
-            "rtmpKey": userDefaults?.string(forKey: "rtmpKey") ?? "test",
+            "rtmpURL": userDefaults?.object(forKey: "rtmpURL") as? String ?? "rtmp://192.168.0.102/live",
+            "rtmpKey": userDefaults?.object(forKey: "rtmpKey") as? String ?? "test",
             "BitRate": userDefaults?.object(forKey: "bitRate") as? Int ?? 3_900_000,
             "ChangeBit": userDefaults?.object(forKey: "ChangeBit") as? Bool ?? false,
             "isLowLatencyRateControlEnabled":userDefaults?.object(forKey:"isLowLatencyRateControlEnabled") as? Bool ?? true,
@@ -703,7 +703,7 @@ class SocketServer:ObservableObject {
             
 
 
-            "appVolume": userDefaults?.object(forKey: appVolume) as? Double ?? 1.0,
+            "appVolume": userDefaults?.object(forKey: "appVolume") as? Double ?? 1.0,
             "micVolume": userDefaults?
                 .object(forKey: "micVolume") as? Double ?? 1.0,
 
