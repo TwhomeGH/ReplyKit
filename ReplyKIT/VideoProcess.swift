@@ -202,48 +202,47 @@ final class VideoFrameProcessor {
         }
 
         // Watchdog + check-and-set（原子操作）
-        var shouldReset = false
-        var shouldDeactivate = false
-        var shouldSkip = false
-        var taskGeneration: UInt64 = 0
-
-        processingLock.withLock {
+        // Watchdog + check-and-set（原子操作）
+        enum LockAction { case proceed, skip, deactivate, reset }
+        let (action, capturedGeneration) = processingLock.withLock { () -> (LockAction, UInt64) in
             // Watchdog: 偵測 GPU 旋轉逾時
             if isProcessing, let startedAt = processingStartedAt {
                 if Date().timeIntervalSince(startedAt) > processingTimeout {
                     isProcessing = false
                     processingStartedAt = nil
-                    shouldReset = true
+                    return (.reset, 0)
                 }
             }
 
             // 連續逾時重置超過上限
             if watchdogResetCount > 3 {
-                shouldDeactivate = true
-                return
+                return (.deactivate, 0)
             }
 
-            guard !isProcessing else { shouldSkip = true; return }
+            guard !isProcessing else { return (.skip, 0) }
             isProcessing = true
             processingStartedAt = Date()
             processingGeneration &+= 1
-            taskGeneration = processingGeneration
+            return (.proceed, processingGeneration)
         }
 
-        if shouldReset {
+        switch action {
+        case .reset:
             watchdogResetCount += 1
             resetProcessorActor(
                 reason: "[VideoProcessor] ⚠️ #\(processedCount) GPU 處理逾時 (\(Int(processingTimeout))s)，重置旋轉器管線 (#\(watchdogResetCount))"
             )
-        }
-
-        if shouldDeactivate {
+        case .deactivate:
             isActive = false
             sendlog("[VideoProcessor] ❌ 連續 GPU 逾時超過上限，標記重建")
             return
+        case .skip:
+            return
+        case .proceed:
+            break
         }
 
-        if shouldSkip { return }
+        let taskGeneration = capturedGeneration
 
         let isFirstFrame = localCount == 1
         let enablePipeLog = RPConfig.shared.enablePipelineLog

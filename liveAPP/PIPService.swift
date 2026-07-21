@@ -408,7 +408,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         requestAnimationFPS()
     }
 
-    private func clearAdOverlay() {
+    func clearAdOverlay() {
         adOverlayActive = false
         adOverlayText = nil
         adOverlayCleanText = nil
