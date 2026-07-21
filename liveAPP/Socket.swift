@@ -852,12 +852,19 @@ class SocketServer:ObservableObject {
 
             case "StreamStarting":
                 sendlog(message: "直播開始")
+
+                StreamActivityManager.shared.startStreamActivity()
+
                 StreamStarting()
 
             case "Ended":
                 let dict = try decoder.decode(StreamEnded.self, from: data)
                 let MES = dict.Message
                 sendlog(message: "直播已結束: \(MES)")
+
+                StreamActivityManager.shared.endStreamActivity()
+
+                
                 if MES != "StreamEnded" {
                     StreamStatusChanged(isLive: false, message: MES)
                 } else {
