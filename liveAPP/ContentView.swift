@@ -196,15 +196,20 @@ struct BroadcastButton: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> RPSystemBroadcastPickerView {
-        let picker = RPSystemBroadcastPickerView(frame: .zero)
-        picker.preferredExtension = resolveExtension()
-        picker.showsMicrophoneButton = true
-        picker.isHidden = true
+        let ext = resolveExtension()
+        Coordinator.ensurePicker(preferredExtension: ext)
+        guard let picker = Coordinator.currentPicker else {
+            let p = RPSystemBroadcastPickerView(frame: .zero)
+            p.preferredExtension = ext
+            p.showsMicrophoneButton = true
+            p.isHidden = true
+            return p
+        }
+        picker.preferredExtension = ext
 
         sendlog(title: "BroadcastButton", message: "preferredExtension = \(picker.preferredExtension ?? "nil")")
         sendlog(title: "BroadcastButton", message: "Bundle.main.bundleIdentifier = \(Bundle.main.bundleIdentifier ?? "nil")")
 
-        Coordinator.currentPicker = picker
         for view in picker.subviews {
             if let button = view as? UIButton {
                 button.addTarget(context.coordinator, action: #selector(Coordinator.buttonTapped), for: .touchUpInside)
@@ -231,10 +236,20 @@ struct BroadcastButton: UIViewRepresentable {
     }
 
     class Coordinator: NSObject {
-        static weak var currentPicker: RPSystemBroadcastPickerView?
+        static var currentPicker: RPSystemBroadcastPickerView?
         var rtmpURL: String = ""
         var rtmpKey: String = ""
         var UR: UIDeviceOrientation = .unknown
+
+        static func ensurePicker(preferredExtension ext: String?) {
+            guard currentPicker == nil else { return }
+            let picker = RPSystemBroadcastPickerView(frame: .zero)
+            picker.preferredExtension = ext
+            picker.showsMicrophoneButton = true
+            picker.isHidden = true
+            currentPicker = picker
+            sendlog(title: "BroadcastButton", message: "Static picker initialized with ext=\(ext ?? "nil")")
+        }
 
         @objc func buttonTapped() {
             self.UR = UIDevice.current.orientation

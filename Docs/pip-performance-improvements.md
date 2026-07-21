@@ -682,3 +682,17 @@ func forceFlushBatch() {
 | 問題 | 原因 | 修正 |
 |------|------|------|
 | `RPConfig.shared.state` struct 從 6+ 個併發 context 無同步存取，可能讀取損壞的解析度/碼率/編碼設定 | 無任何鎖保護，struct 寫入非原子 | 加入 `stateLock`（NSLock）以及 `readState`/`withState` 輔助方法，供後續逐步遷移安全存取 |
+
+---
+
+## 28. BufferCount 自動模式（2026-07）
+
+### `liveAPP/Setting.swift` / `liveAPP/Socket.swift` / `ReplyKIT/SampleHandler.swift`
+
+| 項目 | 改前 | 改後 |
+|------|------|------|
+| 預設值 | `10`（固定幀數） | `-1`（自動模式，由 `maxVideoBufferBytes` + 解析度計算） |
+| Stepper 範圍 | `1...100` | `-1...100`（-1 顯示「自動」） |
+| 越界修正 | `< 1` 時強制設為 `3` | `< 1 && ≠ -1` 時設為 `-1`（自動） |
+| TextField 提示 | 無 | `-1=自動` |
+| UI 顯示 | `BufferCount` 原始數值 | `BufferCount == -1 ? "自動" : "\(BufferCount)"` |

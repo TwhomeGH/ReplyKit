@@ -1364,7 +1364,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         
         await mediaMixer.setVideoMixerSettings(videoMixerSettings)
 
-        let BCount = max(RPConfig.shared.state.BufferCount,3)
+        let BCount = max(RPConfig.shared.state.BufferCount,10)
         // ReplayKit is sensitive to memory, so we limit the queue to a maximum of five items.
         await rtmpStream.setVideoInputBufferCounts(BCount)
 

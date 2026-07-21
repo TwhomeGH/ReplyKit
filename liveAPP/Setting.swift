@@ -25,7 +25,7 @@ final class GPUSettingsViewModel: ObservableObject {
 
     @AppStorage("RotateOriginal",store:userDefaults) var RotateOriginal = false
 
-    @AppStorage("BufferCount", store: userDefaults) var BufferCount = 5
+    @AppStorage("BufferCount", store: userDefaults) var BufferCount = -1
 
     @AppStorage(
         "Rotate",
@@ -451,7 +451,7 @@ struct GPURotateView: View {
 
 
                 TextField(
-                    "直接輸入數量",
+                    "直接輸入數量，-1=自動",
                     value: $viewModel.BufferCount,
                     format: .number
                 )
@@ -467,9 +467,9 @@ struct GPURotateView: View {
                     }
 
                 Stepper(
-                    "輸入緩衝區數量：\(viewModel.BufferCount)",
+                    "輸入緩衝區數量：\(viewModel.BufferCount == -1 ? "自動" : "\(viewModel.BufferCount)")",
                     value: $viewModel.BufferCount,
-                    in: 1...100
+                    in: -1...100
                 )
                     .onChange(of: viewModel.BufferCount) { _ in
 
@@ -477,7 +477,7 @@ struct GPURotateView: View {
 
                     }
 
-                Text("建議值: 5或3 太大可能爆內存"
+                Text("建議值: -1=自動，5或10 太大可能爆內存"
                 )
                         .font(.footnote)
                         .foregroundColor(.secondary)

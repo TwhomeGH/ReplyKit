@@ -679,7 +679,7 @@ class SocketServer:ObservableObject {
             "BitRateMode": min(userDefaults?.object(forKey: "BitRateMode") as? Int ?? 0, 2),
                 
 
-            "videoBuffer": userDefaults?.object(forKey: "BufferCount") as? Int ?? 5,
+            "videoBuffer": userDefaults?.object(forKey: "BufferCount") as? Int ?? -1,
 
             "useBic": userDefaults?.object(forKey: "useBic") as? Bool ?? false,
 
@@ -721,10 +721,10 @@ class SocketServer:ObservableObject {
         sendlog(message: "降噪設定 enableNoiseFix:\(String(describing: payload["enableNoiseFix"]))")
 
         if let BCount = payload["videoBuffer"] as? Int {
-            if BCount < 1 {
-                userDefaults?.set(3, forKey: "BufferCount")
-                payload["videoBuffer"] = 3
-                sendlog(message: "修正BufferCount -> 3")
+            if BCount < 1 && BCount != -1 {
+                userDefaults?.set(-1, forKey: "BufferCount")
+                payload["videoBuffer"] = -1
+                sendlog(message: "修正BufferCount -> -1 (自動)")
             }
         }
 
