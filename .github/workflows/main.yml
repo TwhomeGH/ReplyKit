@@ -340,10 +340,13 @@ jobs:
       - name: Upload Release 上傳 Release
         uses: softprops/action-gh-release@v3
         with:
+
+          # 已略過上傳 build/liveApp_${{ steps.get_tag.outputs.tag }}.xcarchive.zip
+
           tag_name: ${{ steps.get_tag.outputs.tag }}
           files: |
             build/*.ipa
-            # build/liveApp_${{ steps.get_tag.outputs.tag }}.xcarchive.zip
+            
           
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
