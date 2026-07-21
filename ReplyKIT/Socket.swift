@@ -810,7 +810,6 @@ class SocketClient : @unchecked Sendable {
     }
 
     struct RTMPConfig: Codable {
-        let type: String
         let rtmpURL: String
         let rtmpKey: String
 
@@ -853,7 +852,6 @@ class SocketClient : @unchecked Sendable {
     }
 
     struct LogConfig: Codable {
-        let type:String
         let logMode: Int
         let logURL: String
         let onlogPage: Bool
@@ -1125,10 +1123,13 @@ class SocketClient : @unchecked Sendable {
                 }
 
             case "RTMP":
-                if let env = try? decoder.decode(RTMPConfig.self, from: data) {
+                do {
+                    let env = try decoder.decode(RTMPConfig.self, from: data)
+                    logTo("[RTMP] Fetched url=\(env.rtmpURL) key=\(fixlogSafeKey(env.rtmpKey))")
                     applyRTMP(env)
-                } else {
-                    logTo("[Socket] log decode failed")
+                } catch {
+                    let raw = String(data: data, encoding: .utf8) ?? "?"
+                    logTo("[Socket] RTMP decode error: \(error) data=\(raw.prefix(200))")
                     if !self.isProcessingBatch {
                         guard let cont = self.rtmpContinuation else {
                             self.logTo("[RTMP] no pending continuation, ignore")
