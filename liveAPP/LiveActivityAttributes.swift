@@ -107,7 +107,10 @@ final class StreamActivityManager {
     private var updateTask: Task<Void, Never>?
 
     func startStreamActivity(streamTitle: String = "直播中") {
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
+            sendlog(message: "Live Activity 權限未開啟，請至 設定 → ReplyKit → 即時動態 開啟")
+            return
+        }
         endStreamActivity()
 
         let attributes = StreamActivityAttributes(streamTitle: streamTitle)
