@@ -562,7 +562,7 @@ final class RPConfig {
         var BitRate : Int = 6_000_000
         var ChangeBit : Bool = false
 
-        var isLowLatencyRateControlEnabled : Bool = true
+        var isLowLatencyRateControlEnabled : Bool = false
         var useEnhancedRTMP : Bool = true
         var isOringinAudio : Bool = true
 
@@ -836,7 +836,7 @@ final class RPConfig {
             BitRate:SharedDefaults.group?.integer(forKey: "bitRate") ?? 6_000_000,
             
             ChangeBit:SharedDefaults.group?.bool(forKey: "ChangeBit") ?? false,
-            isLowLatencyRateControlEnabled:SharedDefaults.group?.bool(forKey: "isLowLatencyRateControlEnabled") ?? true,
+            isLowLatencyRateControlEnabled:SharedDefaults.group?.bool(forKey: "isLowLatencyRateControlEnabled") ?? false,
             useEnhancedRTMP:SharedDefaults.group?.object(forKey: "useEnhancedRTMP") as? Bool ?? true,
             isOringinAudio: (SharedDefaults.group?.object(forKey: "isOringinAudio") as? Bool) ?? true,
             useBic:SharedDefaults.group?.bool(forKey: "useBic") ?? false,

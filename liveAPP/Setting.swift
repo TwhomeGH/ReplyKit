@@ -655,7 +655,7 @@ struct LogSettingView:View {
     @AppStorage("EnablePipelineLog",store:userDefaults) private var EnablePipelineLog = false
 
     @AppStorage("ChangeBit",store:userDefaults) private var ChangeBit = true
-    @AppStorage("isLowLatencyRateControlEnabled",store:userDefaults)  private var isLowLatencyRateControlEnabled = true
+    @AppStorage("isLowLatencyRateControlEnabled",store:userDefaults)  private var isLowLatencyRateControlEnabled = false
 
     @AppStorage("isNotifyChat",store:userDefaults) private var isNotifyChat = false
     

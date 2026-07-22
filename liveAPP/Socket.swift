@@ -667,7 +667,7 @@ class SocketServer:ObservableObject {
             "rtmpKey": userDefaults?.object(forKey: "rtmpKey") as? String ?? "test",
             "BitRate": userDefaults?.object(forKey: "bitRate") as? Int ?? 3_900_000,
             "ChangeBit": userDefaults?.object(forKey: "ChangeBit") as? Bool ?? false,
-            "isLowLatencyRateControlEnabled":userDefaults?.object(forKey:"isLowLatencyRateControlEnabled") as? Bool ?? true,
+            "isLowLatencyRateControlEnabled":userDefaults?.object(forKey:"isLowLatencyRateControlEnabled") as? Bool ?? false,
             "useEnhancedRTMP":userDefaults?.object(forKey:"useEnhancedRTMP") as? Bool ?? true,
             "isOringinAudio": (userDefaults?.object(forKey: "isOringinAudio") as? Bool) ?? true,
 

@@ -36,7 +36,7 @@ public struct VideoCodecSettings: Sendable {
     public var bitRateMode: BitRateMode = .average
     public var maxKeyFrameIntervalDuration: Int32 = 2
     public var allowFrameReordering: Bool = false
-    public var isLowLatencyRateControlEnabled: Bool = true
+    public var isLowLatencyRateControlEnabled: Bool = false
     public var frameInterval: Double = 0.0
     public var quality: Float? = nil
     public init() {}
