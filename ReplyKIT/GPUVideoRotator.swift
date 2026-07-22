@@ -819,7 +819,6 @@ private func fallbackSampleBuffer(
         let oDstH_val = UInt32(OutHH)
 
         let rotW: Float, rotH: Float
-        let angleDeg = Float(angle.rawValue)
         if angle.rawValue % 180 == 0 {
             rotW = Float(srcW); rotH = Float(srcH)
         } else {
@@ -835,10 +834,10 @@ private func fallbackSampleBuffer(
 
         let (r00, r01, r10, r11): (Float, Float, Float, Float)
         switch angle {
-        case ._0:   r00 = 1; r01 = 0; r10 = 0; r11 = 1
-        case ._90:  r00 = 0; r01 = 1; r10 = -1; r11 = 0
-        case ._180: r00 = -1; r01 = 0; r10 = 0; r11 = -1
-        case ._270: r00 = 0; r01 = -1; r10 = 1; r11 = 0
+        case .portrait:          r00 = 1; r01 = 0; r10 = 0; r11 = 1
+        case .landscapeRight:    r00 = 0; r01 = 1; r10 = -1; r11 = 0
+        case .portraitUpsideDown: r00 = -1; r01 = 0; r10 = 0; r11 = -1
+        case .landscapeLeft:     r00 = 0; r01 = -1; r10 = 1; r11 = 0
         }
 
         var params = Params(

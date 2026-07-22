@@ -59,10 +59,8 @@ float bicubicSampleY_4tap(texture2d<half, access::sample> tex, float2 uv, float2
     float2 f = fract(px);
     float2 i = floor(px);
 
-    float2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f));
     float2 w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
     float2 w2 = f * (0.5 + f * (2.0 - 1.5 * f));
-    float2 w3 = f * f * (-0.5 + 0.5 * f);
 
     float2 w12 = w1 + w2;
     float2 offset12 = w2 / (w12 + 1e-10);
