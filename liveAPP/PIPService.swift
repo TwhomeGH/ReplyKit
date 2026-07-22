@@ -746,6 +746,12 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
         UIGraphicsPushContext(cg)
 
+        let textX = iconX + iconSize + 8
+        let textW = bannerW - (textX - bannerX) - 8
+
+        let msgY = bannerY + 6 + labelFont.lineHeight + overlaySpacing
+        let msgH = bannerY + bannerH - 4 - msgY
+
         let iconSize: CGFloat = 28
         let iconX = bannerX + 8
         // icon 垂直置中於整個文字區塊（名稱 + 間距 + 內文），視覺上與文字水平
@@ -763,17 +769,12 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             UIImage(systemName: "star.fill")?.withTintColor(.white, renderingMode: .alwaysOriginal).draw(in: iconRect)
         }
 
-        let textX = iconX + iconSize + 8
-        let textW = bannerW - (textX - bannerX) - 8
-
         let user = adOverlayUser ?? "贊助訊息"
         (user as NSString).draw(at: CGPoint(x: textX, y: bannerY + 6), withAttributes: [
             .font: labelFont,
             .foregroundColor: UIColor.white
         ])
 
-        let msgY = bannerY + 6 + labelFont.lineHeight + overlaySpacing
-        let msgH = bannerY + bannerH - 4 - msgY
         let msgRect = CGRect(x: textX, y: msgY, width: textW, height: msgH)
 
         // Draw text with inline emoji using Core Text
