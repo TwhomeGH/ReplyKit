@@ -144,9 +144,21 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         var srcHeight: UInt32
         var dstWidth: UInt32
         var dstHeight: UInt32
-        var oDstW:UInt32
-        var oDstH:UInt32
-        var angle: UInt32
+        var oDstW: UInt32
+        var oDstH: UInt32
+        var rot00: Float
+        var rot01: Float
+        var rot10: Float
+        var rot11: Float
+        var rotCenterX: Float
+        var rotCenterY: Float
+        var srcCenterX: Float
+        var srcCenterY: Float
+        var halfW: Float
+        var halfH: Float
+        var uniformScale: Float
+        var offsetX: Float
+        var offsetY: Float
     }
 
 
@@ -799,10 +811,47 @@ private func fallbackSampleBuffer(
         let tgHeight = max(1, compute.maxTotalThreadsPerThreadgroup / tgWidth)
 
 
-        var params = Params(srcWidth: UInt32(srcY.width), srcHeight: UInt32(srcY.height),
-                            dstWidth: UInt32(dstY.width), dstHeight: UInt32(dstY.height),
-                            oDstW: UInt32(OutWW), oDstH: UInt32(OutHH),
-                            angle: UInt32(angle.rawValue))
+        let srcW = UInt32(srcY.width)
+        let srcH = UInt32(srcY.height)
+        let dstW = UInt32(dstY.width)
+        let dstH = UInt32(dstY.height)
+        let oDstW_val = UInt32(OutWW)
+        let oDstH_val = UInt32(OutHH)
+
+        let rotW: Float, rotH: Float
+        let angleDeg = Float(angle.rawValue)
+        if angle.rawValue % 180 == 0 {
+            rotW = Float(srcW); rotH = Float(srcH)
+        } else {
+            rotW = Float(srcH); rotH = Float(srcW)
+        }
+        let scaleX = Float(oDstW_val > 0 ? oDstW_val : dstW) / Float(rotW)
+        let scaleY = Float(oDstH_val > 0 ? oDstH_val : dstH) / Float(rotH)
+        let uniformScale = min(scaleX, scaleY)
+        let scaledW = rotW * uniformScale
+        let scaledH = rotH * uniformScale
+        let offsetX = (Float(oDstW_val > 0 ? oDstW_val : dstW) - scaledW) * 0.5
+        let offsetY = (Float(oDstH_val > 0 ? oDstH_val : dstH) - scaledH) * 0.5
+
+        let (r00, r01, r10, r11): (Float, Float, Float, Float)
+        switch angle {
+        case ._0:   r00 = 1; r01 = 0; r10 = 0; r11 = 1
+        case ._90:  r00 = 0; r01 = 1; r10 = -1; r11 = 0
+        case ._180: r00 = -1; r01 = 0; r10 = 0; r11 = -1
+        case ._270: r00 = 0; r01 = -1; r10 = 1; r11 = 0
+        }
+
+        var params = Params(
+            srcWidth: srcW, srcHeight: srcH,
+            dstWidth: dstW, dstHeight: dstH,
+            oDstW: oDstW_val, oDstH: oDstH_val,
+            rot00: r00, rot01: r01, rot10: r10, rot11: r11,
+            rotCenterX: rotW * 0.5, rotCenterY: rotH * 0.5,
+            srcCenterX: Float(srcW) * 0.5, srcCenterY: Float(srcH) * 0.5,
+            halfW: Float(srcW) * 0.5, halfH: Float(srcH) * 0.5,
+            uniformScale: uniformScale,
+            offsetX: offsetX, offsetY: offsetY
+        )
 
 
         

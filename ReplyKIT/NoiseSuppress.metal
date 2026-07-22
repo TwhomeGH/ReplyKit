@@ -33,11 +33,9 @@ kernel void noiseSuppress(
     // Wiener filter gain
     float g = snr / (1.0f + snr);
 
-    // VAD: energy gate on magnitude
-    bool speech = (mag > params.vadThreshold);
-    if (!speech) {
-        g *= 0.1f;
-    }
+    // VAD: use select() to avoid thread divergence
+    float speechScale = select(0.1f, 1.0f, mag > params.vadThreshold);
+    g *= speechScale;
 
     // floor
     g = max(g, params.minGain);

@@ -732,3 +732,87 @@ func forceFlushBatch() {
 |------|------|------|
 | CPU 圖表 Y 軸不斷縮放，視覺上一直抖動 | `Chart` 預設 Y 軸範圍隨資料自動調整 | 固定 `chartYScale(domain: 0...100)` |
 | CPU 數值每次 sample 間跳動劇烈（例如 1% → 50% → 3%） | `DeviceInfo.cpuUsagePercent` 為即時採樣，單點波動大 | 加入 3 筆滾動平均：`smoothedCPU = (raw + last2[0] + last2[1]) / 3` |
+
+---
+
+## Section 31 — Metal Shader GPU 旋轉與降噪效能改善
+
+**目標：** 改善 `rotateNV12.metal` 和 `NoiseSuppress.metal` 的 GPU 計算效率
+
+### 修改文件
+
+| 文件 | 變更 |
+|------|------|
+| `ReplyKIT/rotateNV12.metal` | Params 結構、mapDstToSrc 邏輯、Bicubic Y 採樣器、Bilinear UV 常數 |
+| `ReplyKIT/NoiseSuppress.metal` | 分支消除 |
+| `ReplyKIT/GPUVideoRotator.swift` | Params Swift 端同步、預計算常數 |
+
+### 變更摘要
+
+**1. Params 結構：預計算旋轉矩陣與縮放參數**
+
+原 `Params` 包含 `angle`，每 thread 在 `mapDstToSrc` 中用 `switch(angle)` 重算旋轉矩陣、縮放、置中。改為在 Swift 端一次性計算所有常數：
+
+```swift
+// Swift 端（GPUVideoRotator.swift renderPlaneYUV）
+let uniformScale = min(scaleX, scaleY)
+let offsetX = (outW - scaledW) * 0.5
+let (r00, r01, r10, r11):  // 依 rotation angle 設定
+var params = Params(
+    rot00: r00, rot01: r01, rot10: r10, rot11: r11,
+    rotCenterX: rotW * 0.5, rotCenterY: rotH * 0.5,
+    srcCenterX: Float(srcW) * 0.5, srcCenterY: Float(srcH) * 0.5,
+    halfW: Float(srcW) * 0.5, halfH: Float(srcH) * 0.5,
+    uniformScale: uniformScale,
+    offsetX: offsetX, offsetY: offsetY
+)
+```
+
+Metal 端 `mapDstToSrc` 簡化為純矩陣運算，無分支、無重算。
+
+**2. UV 取樣正規化常數化**
+
+原 bilinear kernel 每 thread 重算：
+```metal
+float2 uvNorm = (clamp(uvSrc, 0.0f, float2(float(W) * 0.5f - 1.0f, ...)) + 0.5f) / float2(float(W) * 0.5f, ...);
+```
+
+改為使用 `params.halfW / params.halfH`：
+```metal
+float2 uvClamped = clamp(uvSrc, 0.0f, float2(params.halfW - 1.0f, params.halfH - 1.0f));
+float2 uvNorm = (uvClamped + 0.5f) / float2(params.halfW, params.halfH);
+```
+
+**3. Bicubic Y 取樣：16-tap → 4-tap texture bicubic**
+
+| 項目 | 改前 | 改後 |
+|------|------|------|
+| 採樣方式 | 16× `nearest`（逐個 texel 手動 Catmull-Rom） | 4× `linear`（利用 GPU bilinear 硬體，一筆採樣涵蓋 2×2 texel） |
+| texture reads/frame | Y: 1920×1080 × 16 = 33M reads | Y: 1920×1080 × 4 = **8.3M reads**（↓75%） |
+| 視覺品質 | 相同（都使用 Catmull-Rom 加權） | 相同 |
+
+4-tap 原理：
+- 計算 Catmull-Rom 加權係數 w0~w3
+- 合併為 2 組 bilinear 權重：`w12 = w1 + w2`、`offset12 = w2 / w12`
+- 4 次 bilinear 採樣（硬體內建 2×2 混合）
+- 跨行線性混合（`(1-f.y) × h0 + f.y × h1`）
+
+**4. NoiseSuppress：消除 thread divergence**
+
+```metal
+// before (50% thread divergence)
+bool speech = (mag > params.vadThreshold);
+if (!speech) { g *= 0.1f; }
+
+// after (全一致性)
+float speechScale = select(0.1f, 1.0f, mag > params.vadThreshold);
+g *= speechScale;
+```
+
+### 效能提升估算
+
+| 場景 | 改善 | 說明 |
+|------|------|------|
+| Bilinear 路徑 | ~10-15% ALU 減少 | 旋轉矩陣預算、UV 常數化 |
+| Bicubic 路徑 | ~75% texture read 頻寬減少 | 16-tap → 4-tap |
+| NoiseSuppress | 消除 ~50% thread warp divergence | select() 無分支 |
