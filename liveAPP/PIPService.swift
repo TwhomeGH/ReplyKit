@@ -746,14 +746,15 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
         UIGraphicsPushContext(cg)
 
+        let iconSize: CGFloat = 28
+        let iconX = bannerX + 8
+
         let textX = iconX + iconSize + 8
         let textW = bannerW - (textX - bannerX) - 8
 
         let msgY = bannerY + 6 + labelFont.lineHeight + overlaySpacing
         let msgH = bannerY + bannerH - 4 - msgY
 
-        let iconSize: CGFloat = 28
-        let iconX = bannerX + 8
         // icon 垂直置中於整個文字區塊（名稱 + 間距 + 內文），視覺上與文字水平
         let textBlockCenter = (bannerY + 6) + (labelFont.lineHeight + overlaySpacing + msgH) / 2
         let iconY = textBlockCenter - iconSize / 2
