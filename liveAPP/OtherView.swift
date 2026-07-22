@@ -280,10 +280,10 @@ struct DeviceView: View {
     let diskIO = SystemDiskIO()
 
     @State private var appMemoryMB: Double = 0
-    @State private var cpuHistory: [DataPoint] = [DataPoint(id: UUID(), time: Date(), value: 0)]
-    @State private var memoryHistory: [DataPoint] = [DataPoint(id: UUID(), time: Date(), value: 0)]
-    @State private var pageInHistory: [DataPoint] = [DataPoint(id: UUID(), time: Date(), value: 0)]
-    @State private var pageOutHistory: [DataPoint] = [DataPoint(id: UUID(), time: Date(), value: 0)]
+    @State private var cpuHistory: [DataPoint] = [DataPoint(id: 0, time: Date(), value: 0)]
+    @State private var memoryHistory: [DataPoint] = [DataPoint(id: 0, time: Date(), value: 0)]
+    @State private var pageInHistory: [DataPoint] = [DataPoint(id: 0, time: Date(), value: 0)]
+    @State private var pageOutHistory: [DataPoint] = [DataPoint(id: 0, time: Date(), value: 0)]
     @State private var appWriteHistory: [DataPoint] = []
     @State private var prevAppWriteBytes: UInt64 = 0
     @State private var dataPointCounter = 0
