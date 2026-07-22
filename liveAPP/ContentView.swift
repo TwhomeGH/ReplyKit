@@ -245,8 +245,8 @@ struct BroadcastButton: UIViewRepresentable {
             guard currentPicker == nil else { return }
             let picker = RPSystemBroadcastPickerView(frame: .zero)
             picker.preferredExtension = ext
+            picker.frame = CGRect(x: 0, y: 0, width: 1, height: 1)
             picker.showsMicrophoneButton = true
-            picker.isHidden = true
             currentPicker = picker
             sendlog(title: "BroadcastButton", message: "Static picker initialized with ext=\(ext ?? "nil")")
         }
