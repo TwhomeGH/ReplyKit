@@ -108,14 +108,15 @@ final class LPConfig {
             SocketLog = true
         }
 
-        FadeAlpha = userDefaults?.double(forKey: "fadeAlpha") ?? 0.08
+        FadeAlpha = userDefaults?.object(forKey: "fadeAlpha") as? Double ?? 0.08
 
-        ScrollTime = userDefaults?.double(forKey: "scrollTime") ?? 0.2
-        MessageFadeTime =  userDefaults?.double(forKey: "fadeTime") ?? 0.5
+        ScrollTime = userDefaults?.object(forKey: "scrollTime") as? Double ?? 0.2
+        MessageFadeTime =  userDefaults?.object(forKey: "fadeTime") as? Double ?? 0.5
 
-        PIPChatFontMainSize = userDefaults?.double(forKey: "PIPFontMain") ?? 14.0
+        PIPChatFontMainSize = userDefaults?.object(forKey: "PIPFontMain") as? Double ?? 14.0
         PIPChatFontSecondSize =  userDefaults?
-            .double(forKey: "PIPFontSecond") ?? 10.0
+            .object(forKey: "PIPFontSecond") as? Double ?? 10.0
+            
         PIPAdOverlayFontSize = (userDefaults?.object(forKey: "PIPAdOverlayFont") as? Double) ?? 13.0
         PIPAdOverlayUserFontSize = (userDefaults?.object(forKey: "PIPAdOverlayUserFont") as? Double) ?? 14.0
         PIPAdOverlaySpacing = (userDefaults?.object(forKey: "PIPAdOverlaySpacing") as? Double) ?? 4.5
