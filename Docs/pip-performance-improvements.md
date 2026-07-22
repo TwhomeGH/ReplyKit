@@ -696,3 +696,28 @@ func forceFlushBatch() {
 | 越界修正 | `< 1` 時強制設為 `3` | `< 1 && ≠ -1` 時設為 `-1`（自動） |
 | TextField 提示 | 無 | `-1=自動` |
 | UI 顯示 | `BufferCount` 原始數值 | `BufferCount == -1 ? "自動" : "\(BufferCount)"` |
+
+---
+
+## 29. BroadcastSetupUI 傳遞 RTMP 設定（2026-07）
+
+### `ReplyKITSetupUI/BroadcastSetupViewController.swift`
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| SetupUI 完全跳過設定畫面，沒傳遞任何有用資訊給 extension | 使用硬編碼 `"https://apple.com/broadcast/streamID"` 與空的 setupInfo | 從 `UserDefaults` 讀取當前 RTMP URL/Key，透過 setupInfo 傳遞 `rtmpURL` 與 `rtmpKey` |
+| 側載下無 App Group，UserDefaults 無法共享 | SetupUI 單獨使用 `UserDefaults.standard` | 先嘗試 App Group UserDefaults（`userDefaults ?? UserDefaults.standard`） |
+
+### `ReplyKIT/SampleHandler.swift` — setupInfo 備用
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| Socket config 失敗時完全無法取得推流設定 | 無備用來源 | 在 `broadcastStarted()` 中讀取 `setupInfo["rtmpURL"]` / `["rtmpKey"]`；socket 請求失敗時直接用 setupInfo 的值呼叫 `updateState()` |
+
+### 設定優先順序
+
+```
+1. Socket batch response（主要）  → requestRTMPKEYAndLog()
+2. SetupUI setupInfo（備用）      → socket 失敗時從 setupInfo 讀取
+3. 硬編碼 fallback（最後防線）   → self.rtmpURL ?? "rtmp://192.168.0.242/live"
+```

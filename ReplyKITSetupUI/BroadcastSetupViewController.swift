@@ -13,7 +13,7 @@ import os
 let logger = Logger(subsystem: "nuclear.liveAPP.ReplyKitSetupUI", category: "extension")
 
 
-let userDefaults=UserDefaults(suiteName: "group.nuclear.liveAPP")
+let userDefaults = UserDefaults(suiteName: "group.nuclear.liveAPP")
 
 
 #if os(iOS)
@@ -23,23 +23,25 @@ import UIKit
 
 class BroadcastSetupViewController: UIViewController {
 
-
         // Call this method when the user has finished interacting with the view controller and a broadcast stream can start
 
      func userDidFinishSetup() {
          // URL of the resource where broadcast can be viewed that will be returned to the application
-         // 先建立 broadcastURL，確保有效
 
+         // 優先使用 App Group UserDefaults（非側載），側載時使用 standard
+         let ud = userDefaults ?? UserDefaults.standard
+         let rtmpURL = ud.string(forKey: "rtmpURL") ?? "rtmp://192.168.0.102:1936/live"
+         let rtmpKey = ud.string(forKey: "rtmpKey") ?? "stream1?vhost=live2"
 
-              let broadcastURL = URL(string: "https://apple.com/broadcast/streamID")
-
-
+         let broadcastURL = URL(string: rtmpURL)
 
 //         Dictionary with setup information that will be provided to broadcast extension when broadcast is started
 
 
          let setupInfo: [String : NSCoding & NSObjectProtocol] = [
-               "broadcastName": "example" as NSCoding & NSObjectProtocol
+               "broadcastName": "ReplyKit" as NSCoding & NSObjectProtocol,
+               "rtmpURL": rtmpURL as NSString,
+               "rtmpKey": rtmpKey as NSString
             ]
 
          // Tell ReplayKit that the extension is finished setting up and can begin broadcasting
@@ -48,6 +50,7 @@ class BroadcastSetupViewController: UIViewController {
             setupInfo: setupInfo )
 
 //
+
      }
 
     
@@ -71,15 +74,21 @@ class BroadcastSetupViewController: NSViewController {
 
     // 用於 macOS 自己的處理
     func userDidFinishSetup() {
-        let broadcastURL = URL(string:"http://apple.com/broadcast/streamID")
-        let setupInfo: [String: Any] = ["broadcastName": "example"]
+        let ud = UserDefaults.standard
+        let rtmpURL = ud.string(forKey: "rtmpURL") ?? "rtmp://192.168.0.102/live"
+        let rtmpKey = ud.string(forKey: "rtmpKey") ?? "stream1?vhost=live2"
 
-        // macOS 沒有 extensionContext，可以自行調用 delegate 或 closure 回傳資料
+        let broadcastURL = URL(string: rtmpURL)
+        let setupInfo: [String: Any] = [
+            "broadcastName": "ReplyKit",
+            "rtmpURL": rtmpURL,
+            "rtmpKey": rtmpKey
+        ]
+
         delegate?.broadcastSetupDidFinish(url: broadcastURL, info: setupInfo)
     }
 
     func userDidCancelSetup() {
-        // macOS 沒有 extensionContext，可以自行調用 delegate 或 closure
         delegate?.broadcastSetupDidCancel(error: NSError(domain: "YourAppDomain", code: -1))
     }
 

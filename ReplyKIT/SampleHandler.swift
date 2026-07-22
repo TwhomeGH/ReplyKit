@@ -1658,6 +1658,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         // User has requested to start the broadcast. Setup info from the UI extension can be suppdlied but optional.
         // Task已更命 priority default已棄用 -> 更名為 medium，避免在高優先級下阻塞其他任務
 
+        // 從 setupInfo 取得 RTMP URL/Key（由 BroadcastSetupUI 傳入），作為 socket config 的備用
+        let setupRTMPURL = setupInfo?["rtmpURL"] as? String
+        let setupRTMPKey = setupInfo?["rtmpKey"] as? String
+        if let url = setupRTMPURL, let key = setupRTMPKey {
+            sendlog(message: "SetupUI 提供 RTMP \(url) key:\(fixlogSafeKey(key))")
+        }
+
         Task(priority: .medium) {
 
             //進行Socket初始化
@@ -1681,6 +1688,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             for _ in 0..<2 where !result {
                 sendlog(message: "Socket 請求失敗，立即重試...")
                 result = await SocketClient.shared.requestRTMPKEYAndLog()
+            }
+
+            // 如果 socket 失敗但 setupInfo 有提供，直接用 setupInfo 的值
+            if !result, let url = setupRTMPURL, let key = setupRTMPKey {
+                sendlog(message: "Socket 失敗，使用 SetupUI 提供的 RTMP 設定")
+                RPConfig.shared.updateState(RTMPURL: url, RTMPKey: key)
+                result = true
             }
 
             logger.debug("Final result -> RTMP & LogConfig: \(result)")

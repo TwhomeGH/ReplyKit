@@ -1310,6 +1310,26 @@ class SocketServer:ObservableObject {
         }
     }
 
+    /// 開始直播前清理可能殘留的連線狀態，避免 extension 連到髒資料
+    func prepareForBroadcast() {
+        logTo("SocketServer 準備直播：清理舊連線與緩衝")
+        performOnQueue { [weak self] in
+            guard let self else { return }
+            // 取消所有現有連線（extension 重新啟動後會建立新連線）
+            for (_, conn) in self.connections {
+                conn.stateUpdateHandler = nil
+                conn.cancel()
+            }
+            self.connections.removeAll()
+            self.receiveBuffers.removeAll()
+            self.lastReceiveTimes.removeAll()
+            self.sendQueues.removeAll()
+            self.sendingFlags.removeAll()
+            self.pendingFailedPayloads.removeAll()
+            self.stopKeepaliveTimer()
+        }
+    }
+
     /// 收到 Memory Warning 時釋放 buffer
     func releaseMemory() {
         logTo("SocketServer 釋放 buffer")

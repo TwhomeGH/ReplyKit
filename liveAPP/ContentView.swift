@@ -2601,6 +2601,7 @@ struct homeView:View{
                         }
                         
                         sendlog(message: "RTMP To:\(rtmpURL) \(g)")
+                        SocketServer.shared.prepareForBroadcast()
                         StreamBtn.triggerButton()
                     }) {
                         Text("開始直播")
