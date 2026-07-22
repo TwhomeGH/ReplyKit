@@ -572,7 +572,10 @@ class SocketClient : @unchecked Sendable {
             guard let self = self else { return }
             if self.connection?.state != .ready {
                 self._connect(host: "localhost", port: 9322)
+                // 給予連線短暫時間建立
+                Thread.sleep(forTimeInterval: 0.1)
             }
+            guard self.connection?.state == .ready else { return }
             let payload: [String: Any] = [
                 "type": "audioLive",
                 "appVol": appVol,

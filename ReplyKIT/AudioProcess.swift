@@ -105,7 +105,7 @@ final class VolumeNotifier {
     private var pendingAppVolume: Float = 0
     private var pendingMicVolume: Float = 0
     private var lastSendTime: TimeInterval = 0
-    private let minInterval: TimeInterval = 1.0
+    private let minInterval: TimeInterval = 0.1
 
     var isActive = true
 
@@ -132,7 +132,7 @@ final class VolumeNotifier {
         let app = pendingAppVolume
         let mic = pendingMicVolume
 
-        if RPConfig.shared.enableSocketLog {
+        if RPConfig.isSideload {
             SocketClient.shared.sendAudioLive(appVol: app, micVol: mic)
         } else {
             SharedDefaults.group?.set(app, forKey: "appVolumeLive")
