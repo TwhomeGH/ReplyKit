@@ -1331,7 +1331,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         videoSettings.isLowLatencyRateControlEnabled = RPConfig.shared.state.isLowLatencyRateControlEnabled
         videoSettings.bitRate = RPConfig.shared.state.BitRate
 
-        videoSettings.maxFrameDelayCount = max(RPConfig.shared.state.BufferCount, 5)  // 限制 VT 內部最多疊 5 幀
+        videoSettings.maxFrameDelayCount = max(RPConfig.shared.state.BufferCount, 10)  // 限制 VT 內部最多疊 10 幀
         videoSettings.adaptiveFrameThrottle = true  // GPU 自動降幀率，避免卡頓
 
 

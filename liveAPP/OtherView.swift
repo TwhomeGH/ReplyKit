@@ -280,10 +280,10 @@ struct DeviceView: View {
     let diskIO = SystemDiskIO()
 
     @State private var appMemoryMB: Double = 0
-    @State private var cpuHistory: [DataPoint] = []
-    @State private var memoryHistory: [DataPoint] = []
-    @State private var pageInHistory: [DataPoint] = []
-    @State private var pageOutHistory: [DataPoint] = []
+    @State private var cpuHistory: [DataPoint] = [DataPoint(id: UUID(), time: Date(), value: 0)]
+    @State private var memoryHistory: [DataPoint] = [DataPoint(id: UUID(), time: Date(), value: 0)]
+    @State private var pageInHistory: [DataPoint] = [DataPoint(id: UUID(), time: Date(), value: 0)]
+    @State private var pageOutHistory: [DataPoint] = [DataPoint(id: UUID(), time: Date(), value: 0)]
     @State private var appWriteHistory: [DataPoint] = []
     @State private var prevAppWriteBytes: UInt64 = 0
     @State private var dataPointCounter = 0
@@ -333,7 +333,6 @@ struct DeviceView: View {
                     }
                     .chartYAxisLabel("App CPU %")
                     .frame(height: 120)
-                    .chartYScale(domain: 0...100)
                 }
 
                 Text("App 使用率: \(DeviceInfo.cpuUsagePercent, specifier: "%.1f") %")
