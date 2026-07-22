@@ -1331,7 +1331,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         videoSettings.isLowLatencyRateControlEnabled = RPConfig.shared.state.isLowLatencyRateControlEnabled
         videoSettings.bitRate = RPConfig.shared.state.BitRate
 
-        videoSettings.maxFrameDelayCount = 3  // 限制 VT 內部最多疊 3 幀
+        videoSettings.maxFrameDelayCount = max(RPConfig.shared.state.BufferCount, 5)  // 限制 VT 內部最多疊 5 幀
 
 
         let codec = RPConfig.shared.state.videoCodec
