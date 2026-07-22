@@ -1327,9 +1327,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         let kv = RPConfig.shared.state.KeyFrameInterval
         videoSettings.maxKeyFrameIntervalDuration = Int32(kv)
 
-        videoSettings.allowFrameReordering = true
+        //videoSettings.allowFrameReordering = true
         videoSettings.isLowLatencyRateControlEnabled = RPConfig.shared.state.isLowLatencyRateControlEnabled
         videoSettings.bitRate = RPConfig.shared.state.BitRate
+
+        videoSettings.maxFrameDelayCount = 2  // 限制 VT 內部最多疊 2 幀
+
 
         let codec = RPConfig.shared.state.videoCodec
         if codec == "HEVC" {
