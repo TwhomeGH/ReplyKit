@@ -572,8 +572,10 @@ class SocketClient : @unchecked Sendable {
             guard let self = self else { return }
             if self.connection?.state != .ready {
                 self._connect(host: "localhost", port: 9322)
-                // 給予連線短暫時間建立
-                Thread.sleep(forTimeInterval: 0.1)
+                for _ in 0..<10 {
+                    Thread.sleep(forTimeInterval: 0.05)
+                    if self.connection?.state == .ready { break }
+                }
             }
             guard self.connection?.state == .ready else { return }
             let payload: [String: Any] = [
@@ -1056,7 +1058,6 @@ class SocketClient : @unchecked Sendable {
                 self.logTo("Batch Get All Req")
                 guard let cont = self.rtmpBatchContinuation else {
                     self.logTo("[rtmpBatch] no pending continuation, ignore")
-                    self._closeConnection()
                     return
                 }
                 self.rtmpBatchContinuation = nil
@@ -1064,7 +1065,6 @@ class SocketClient : @unchecked Sendable {
                 updateLogFixState()
                 updateONLogFixState()
                 cont.resume(returning: true)
-                self._closeConnection()
 
             case "UPSet":
                 logger.debug("DATA:\(data, privacy: .public)")
