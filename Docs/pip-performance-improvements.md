@@ -721,3 +721,14 @@ func forceFlushBatch() {
 2. SetupUI setupInfo（備用）      → socket 失敗時從 setupInfo 讀取
 3. 硬編碼 fallback（最後防線）   → self.rtmpURL ?? "rtmp://192.168.0.242/live"
 ```
+
+---
+
+## 30. 設備資訊圖表穩定性改善（2026-07）
+
+### `liveAPP/OtherView.swift` — DeviceView
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| CPU 圖表 Y 軸不斷縮放，視覺上一直抖動 | `Chart` 預設 Y 軸範圍隨資料自動調整 | 固定 `chartYScale(domain: 0...100)` |
+| CPU 數值每次 sample 間跳動劇烈（例如 1% → 50% → 3%） | `DeviceInfo.cpuUsagePercent` 為即時採樣，單點波動大 | 加入 3 筆滾動平均：`smoothedCPU = (raw + last2[0] + last2[1]) / 3` |

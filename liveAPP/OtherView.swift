@@ -333,6 +333,7 @@ struct DeviceView: View {
                     }
                     .chartYAxisLabel("App CPU %")
                     .frame(height: 120)
+                    .chartYScale(domain: 0...100)
                 }
 
                 Text("App 使用率: \(DeviceInfo.cpuUsagePercent, specifier: "%.1f") %")
@@ -477,7 +478,16 @@ struct DeviceView: View {
         let id = dataPointCounter
         appMemoryMB = DeviceInfo.appMemoryMB
         let now = Date()
-        cpuHistory.append(DataPoint(id: id, time: now, value: DeviceInfo.cpuUsagePercent))
+        let rawCPU = DeviceInfo.cpuUsagePercent
+        // 簡單平滑：取最後 3 筆的平均，降低單次抖動
+        let smoothedCPU: Double
+        if cpuHistory.count >= 2 {
+            let last2 = cpuHistory.suffix(2).map(\.value)
+            smoothedCPU = (rawCPU + last2[0] + last2[1]) / 3
+        } else {
+            smoothedCPU = rawCPU
+        }
+        cpuHistory.append(DataPoint(id: id, time: now, value: smoothedCPU))
         memoryHistory.append(DataPoint(id: id, time: now, value: appMemoryMB))
 
         let (inKB, outKB) = diskIO.rates()
