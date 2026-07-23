@@ -46,9 +46,6 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
     func rotateAsync(sampleBuffer: CMSampleBuffer, angle: RotationAngle, needsRotation: Bool) async -> CMSampleBuffer? {
         guard let inBuffer = sampleBuffer.imageBuffer else { return nil }
 
-        CVPixelBufferLockBaseAddress(inBuffer, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(inBuffer, .readOnly) }
-
         let srcW = CVPixelBufferGetWidth(inBuffer)
         let srcH = CVPixelBufferGetHeight(inBuffer)
 
@@ -72,6 +69,8 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
 
         // 在背景執行緒執行 CPU 旋轉
         return await withCheckedContinuation { continuation in
+            let inBuf = inBuffer
+            let outBuf = outPB
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 guard let self = self else {
                     continuation.resume(returning: nil)
@@ -79,16 +78,18 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
                 }
                 let ok: Bool
                 if outW == rotatedW && outH == rotatedH {
-                    ok = self.rotateNV12CPU(inPixelBuffer: inBuffer, outPixelBuffer: outPB, angle: angle)
+                    ok = self.rotateNV12CPU(inPixelBuffer: inBuf, outPixelBuffer: outBuf, angle: angle)
                 } else {
-                    ok = self.rotateAndScaleNV12(inPixelBuffer: inBuffer, outPixelBuffer: outPB, angle: angle)
+                    ok = self.rotateAndScaleNV12(inPixelBuffer: inBuf, outPixelBuffer: outBuf, angle: angle,
+                                                 rotatedW: rotatedW, rotatedH: rotatedH,
+                                                 srcW: srcW, srcH: srcH)
                 }
                 guard ok else {
                     self.logTo("CPU rotate failed")
                     continuation.resume(returning: nil)
                     return
                 }
-                let wrapped = self.wrapPixelBuffer(outPB, originalSampleBuffer: sampleBuffer)
+                let wrapped = self.wrapPixelBuffer(outBuf, originalSampleBuffer: sampleBuffer)
                 continuation.resume(returning: wrapped)
             }
         }
@@ -221,63 +222,87 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
         return true
     }
 
-    // MARK: - Manual rotate + scale
-    private func rotateAndScaleNV12(inPixelBuffer: CVPixelBuffer, outPixelBuffer: CVPixelBuffer, angle: RotationAngle) -> Bool {
-        // Rotate to a temporary buffer first, then scale with vImage
-        CVPixelBufferLockBaseAddress(inPixelBuffer, .readOnly)
+    // MARK: - Manual rotate + scale (rotate to temp, then vImage scale)
+    private func rotateAndScaleNV12(inPixelBuffer: CVPixelBuffer, outPixelBuffer: CVPixelBuffer, angle: RotationAngle,
+                                     rotatedW: Int, rotatedH: Int, srcW: Int, srcH: Int) -> Bool {
+        guard let tempPB = getReusableBuffer(width: rotatedW, height: rotatedH) else {
+            logTo("rotateAndScale: temp buffer alloc failed")
+            return false
+        }
+        guard rotateNV12CPU(inPixelBuffer: inPixelBuffer, outPixelBuffer: tempPB, angle: angle) else {
+            return false
+        }
+        // vImage scale temp → out
+        CVPixelBufferLockBaseAddress(tempPB, .readOnly)
         CVPixelBufferLockBaseAddress(outPixelBuffer, [])
         defer {
-            CVPixelBufferUnlockBaseAddress(inPixelBuffer, .readOnly)
+            CVPixelBufferUnlockBaseAddress(tempPB, .readOnly)
             CVPixelBufferUnlockBaseAddress(outPixelBuffer, [])
         }
-
-        guard let inYBase = CVPixelBufferGetBaseAddressOfPlane(inPixelBuffer, 0),
+        guard let tempYBase = CVPixelBufferGetBaseAddressOfPlane(tempPB, 0),
               let outYBase = CVPixelBufferGetBaseAddressOfPlane(outPixelBuffer, 0),
-              let inUVBase = CVPixelBufferGetBaseAddressOfPlane(inPixelBuffer, 1),
-              let outUVBase = CVPixelBufferGetBaseAddressOfPlane(outPixelBuffer, 1) else { return false }
-
-        let inYStride = CVPixelBufferGetBytesPerRowOfPlane(inPixelBuffer, 0)
+              let tempUVBase = CVPixelBufferGetBaseAddressOfPlane(tempPB, 1),
+              let outUVBase = CVPixelBufferGetBaseAddressOfPlane(outPixelBuffer, 1) else {
+            return false
+        }
+        let tempYStride = CVPixelBufferGetBytesPerRowOfPlane(tempPB, 0)
         let outYStride = CVPixelBufferGetBytesPerRowOfPlane(outPixelBuffer, 0)
-        let inYWidth = CVPixelBufferGetWidthOfPlane(inPixelBuffer, 0)
-        let inYHeight = CVPixelBufferGetHeightOfPlane(inPixelBuffer, 0)
+        let tempYWidth = CVPixelBufferGetWidthOfPlane(tempPB, 0)
+        let tempYHeight = CVPixelBufferGetHeightOfPlane(tempPB, 0)
         let outYWidth = CVPixelBufferGetWidthOfPlane(outPixelBuffer, 0)
         let outYHeight = CVPixelBufferGetHeightOfPlane(outPixelBuffer, 0)
 
-        // Compute rotated intermediate size
-        switch angle {
-        case .portrait, .portraitUpsideDown:
-            let ratio = min(Float(outYWidth) / Float(inYWidth), Float(outYHeight) / Float(inYHeight))
-            let midW = Int(Float(inYWidth) * ratio)
-            let midH = Int(Float(inYHeight) * ratio)
-            let midStride = (midW + 15) & ~15
-            // Scale Y directly
-            var srcBuf = vImage_Buffer(data: inYBase, height: vImagePixelCount(inYHeight), width: vImagePixelCount(inYWidth), rowBytes: inYStride)
-            var dstBuf = vImage_Buffer(data: outYBase, height: vImagePixelCount(outYHeight), width: vImagePixelCount(outYWidth), rowBytes: outYStride)
-            if vImageScale_Planar8(&srcBuf, &dstBuf, nil, vImage_Flags(kvImageHighQualityResampling)) != kvImageNoError {
-                return false
-            }
-            // Scale UV
-            let inUVStride = CVPixelBufferGetBytesPerRowOfPlane(inPixelBuffer, 1)
-            let outUVStride = CVPixelBufferGetBytesPerRowOfPlane(outPixelBuffer, 1)
-            let inUVWidth = CVPixelBufferGetWidthOfPlane(inPixelBuffer, 1)
-            let inUVHeight = CVPixelBufferGetHeightOfPlane(inPixelBuffer, 1)
-            let outUVWidth = CVPixelBufferGetWidthOfPlane(outPixelBuffer, 1)
-            // Deinterleave UV → U and V temporarily, scale, reinterleave
-            let uvPitch = midStride / 2
-            if CVPixelBufferGetHeightOfPlane(outPixelBuffer, 1) > 0 {
-                var srcUBuf = vImage_Buffer(data: inUVBase, height: vImagePixelCount(inUVHeight), width: vImagePixelCount(inUVWidth), rowBytes: inUVStride)
-                var dstUBuf = vImage_Buffer(data: outUVBase, height: vImagePixelCount(outUVHeight), width: vImagePixelCount(outUVWidth), rowBytes: outUVStride)
-                // For NV12, UV interleaved requires 2-channel handling.
-                // vImage doesn't have direct 2-channel scale. Use ARGB8888.
-                // Wrap UV as ARGB (U in R, V in G), scale, extract back
-            }
-            return true
-
-        case .landscapeRight, .landscapeLeft:
-            // rotate + scale: rotate to temp, then scale for landscape
-            // For fallback, just rotate without extra scaling (dstWW/dstHH already handled)
-            return rotateNV12CPU(inPixelBuffer: inPixelBuffer, outPixelBuffer: outPixelBuffer, angle: angle)
+        var srcYBuf = vImage_Buffer(data: tempYBase, height: vImagePixelCount(tempYHeight), width: vImagePixelCount(tempYWidth), rowBytes: tempYStride)
+        var dstYBuf = vImage_Buffer(data: outYBase, height: vImagePixelCount(outYHeight), width: vImagePixelCount(outYWidth), rowBytes: outYStride)
+        if vImageScale_Planar8(&srcYBuf, &dstYBuf, nil, vImage_Flags(kvImageHighQualityResampling)) != kvImageNoError {
+            return false
         }
+        // UV scale via ARGB wrapper
+        let tempUVStride = CVPixelBufferGetBytesPerRowOfPlane(tempPB, 1)
+        let outUVStride = CVPixelBufferGetBytesPerRowOfPlane(outPixelBuffer, 1)
+        let tempUVWidth = CVPixelBufferGetWidthOfPlane(tempPB, 1)
+        let tempUVHeight = CVPixelBufferGetHeightOfPlane(tempPB, 1)
+
+        var srcUVBuf = vImage_Buffer(data: tempUVBase, height: vImagePixelCount(tempUVHeight), width: vImagePixelCount(tempUVWidth), rowBytes: tempUVStride)
+        var dstUVBuf = vImage_Buffer(data: outUVBase, height: vImagePixelCount(outYHeight / 2), width: vImagePixelCount(outYWidth / 2), rowBytes: outUVStride)
+        // Use vImageScale_Planar8 on a deinterleaved UV approach:
+        // For NV12, UV is 2-channel interleaved. We wrap as planar8 and scale each channel.
+        let uvPixels = Int(tempUVHeight) * tempUVStride
+        let uTemp = UnsafeMutablePointer<UInt8>.allocate(capacity: uvPixels / 2)
+        let vTemp = UnsafeMutablePointer<UInt8>.allocate(capacity: uvPixels / 2)
+        defer { uTemp.deallocate(); vTemp.deallocate() }
+        // Deinterleave
+        let srcUV = tempUVBase.assumingMemoryBound(to: UInt8.self)
+        for i in 0..<(tempUVWidth * tempUVHeight) {
+            uTemp[i] = srcUV[i * 2]
+            vTemp[i] = srcUV[i * 2 + 1]
+        }
+        let uOutSize = (outYWidth / 2) * (outYHeight / 2)
+        let uOut = UnsafeMutablePointer<UInt8>.allocate(capacity: uOutSize)
+        let vOut = UnsafeMutablePointer<UInt8>.allocate(capacity: uOutSize)
+        defer { uOut.deallocate(); vOut.deallocate() }
+
+        var uSrcBuf = vImage_Buffer(data: uTemp, height: vImagePixelCount(tempUVHeight), width: vImagePixelCount(tempUVWidth), rowBytes: tempUVWidth)
+        var uDstBuf = vImage_Buffer(data: uOut, height: vImagePixelCount(outYHeight / 2), width: vImagePixelCount(outYWidth / 2), rowBytes: outYWidth / 2)
+        if vImageScale_Planar8(&uSrcBuf, &uDstBuf, nil, vImage_Flags(kvImageHighQualityResampling)) != kvImageNoError {
+            return false
+        }
+        var vSrcBuf = vImage_Buffer(data: vTemp, height: vImagePixelCount(tempUVHeight), width: vImagePixelCount(tempUVWidth), rowBytes: tempUVWidth)
+        var vDstBuf = vImage_Buffer(data: vOut, height: vImagePixelCount(outYHeight / 2), width: vImagePixelCount(outYWidth / 2), rowBytes: outYWidth / 2)
+        if vImageScale_Planar8(&vSrcBuf, &vDstBuf, nil, vImage_Flags(kvImageHighQualityResampling)) != kvImageNoError {
+            return false
+        }
+        // Re-interleave
+        let outUV = outUVBase.assumingMemoryBound(to: UInt8.self)
+        let outUVWidth = outYWidth / 2
+        for y in 0..<(outYHeight / 2) {
+            let rowOffset = y * (outYWidth / 2)
+            for x in 0..<outUVWidth {
+                outUV[y * outUVStride + x * 2] = uOut[rowOffset + x]
+                outUV[y * outUVStride + x * 2 + 1] = vOut[rowOffset + x]
+            }
+        }
+        return true
     }
 
     // MARK: - Wrap pixelBuffer → CMSampleBuffer
