@@ -1360,13 +1360,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         var videoMixerSettings = await mediaMixer.videoMixerSettings
         videoMixerSettings.mode = .passthrough
         
-        
+
         await mediaMixer.setVideoMixerSettings(videoMixerSettings)
 
-        let BCount = RPConfig.shared.state.BufferCount == -1 ? -1 : max(RPConfig.shared.state.BufferCount, 3)
-        // -1 = 底層自動計算（根據 maxVideoBufferBytes + 解析度），其餘值最小 3
-        await rtmpStream.setVideoInputBufferCounts(BCount)
-        sendlog(message: "Video Buffer -> \(BCount)")
+        // 初始 buffer count（auto mode 下 videoSize 變更時會自動重算）
+        await rtmpStream.setVideoInputBufferCounts(RPConfig.shared.state.BufferCount == -1 ? -1 : max(RPConfig.shared.state.BufferCount, 3))
 
         // 在 frame 到來前先用 socket 配置設定 video size
         var dstW: Int
@@ -1389,6 +1387,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         if dstW > 0 && dstH > 0 {
             await applyAllVideoSettings(width: dstW, height: dstH)
             sendlog(message: "預設影片尺寸: \(dstW)x\(dstH)")
+            // videoSize 設好後底層 auto mode 會自動重新計算 buffer count
+        }
         } else {
             sendlog(message: "⚠️ 警告：未指定影片尺寸，將沿用ReplyKIT的寬高 Auto自動設置")
         }
