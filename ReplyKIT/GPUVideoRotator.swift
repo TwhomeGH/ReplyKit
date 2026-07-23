@@ -366,6 +366,9 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             flush: true
         )
 
+        // 預先分配 output buffer pool（init 時就建好，避免 runtime 分配失敗）
+        prewarmPool()
+
     }
 
     var hasMetalResources = false
@@ -376,17 +379,36 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     private let commandBufferTimeout: TimeInterval = 1.8
     private let metalFailureLogLock = NSLock()
     private var lastMetalFailureLogAt = Date.distantPast
+    /// 限制 in-flight command buffer 數量，防止 GPU 被淹沒
+    private let inflightSemaphore = DispatchSemaphore(value: 2)
+    /// 自動降品質：失敗時切到 bilinear
+    private var originalQualityMode: QualityMode?
+    private var effectiveQualityMode: QualityMode {
+        if let original = originalQualityMode { return original }
+        return qualityMode
+    }
 
     /// 偵測 Metal 操作失敗，自動 cleanup 讓下一幀重新初始化
     private func handleMetalFailure(_ reason: String) {
         consecutiveMetalFailures += 1
         let failureCount = consecutiveMetalFailures
         logMetalFailure(reason: reason, count: failureCount)
+        // 自動降品質：首次失敗時切到 bilinear
+        if failureCount == 1 && originalQualityMode == nil && qualityMode == .quality {
+            originalQualityMode = .quality
+            logTo("Metal 失敗，自動降品質 quality → live (bilinear)")
+        }
         if consecutiveMetalFailures >= maxConsecutiveMetalFailures {
             sendlog(message: "[GPU Rotator] Metal 連續失敗 \(failureCount) 次，重建管線與 command queue")
             cleanupResources()
             MetalContext.shared.rebuildQueue()
             consecutiveMetalFailures = 0
+            // 恢復原始品質模式
+            if let original = originalQualityMode {
+                qualityMode = original
+                originalQualityMode = nil
+                logTo("Metal 恢復，品質還原 quality")
+            }
         }
     }
 
@@ -430,6 +452,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         }
 
         hasMetalResources = true
+        prewarmPool()
         return true
 
     }
@@ -573,9 +596,12 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             return nil
         }
 
+        inflightSemaphore.wait()
+
         guard renderPlaneYUV(cmd: cmd, srcY: ycvTexIn.tex, srcUV: uvcvTexIn.tex,
                         dstY: outSet.yTex, dstUV: outSet.uvTex, angle: angle) else {
             recycleOutput(outSet)
+            inflightSemaphore.signal()
             handleMetalFailure("renderPlaneYUV 建立 encoder 失敗")
             return nil
         }
@@ -616,6 +642,11 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                 }
 
                 self.recycleOutput(frameC.outSet)
+                // 逾時後 completion 仍會觸發，但此時 signal 會造成計數偏移
+                // 只由 markTimeout 的 handler 負責 signal
+                if !completion.completedAfterTimeout {
+                    self.inflightSemaphore.signal()
+                }
                 if completion.shouldResume {
                     cont.resume(returning: wrapped)
                 }
@@ -627,6 +658,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + commandBufferTimeout) { [self] in
                 guard completionState.markTimeout() else { return }
 
+                self.inflightSemaphore.signal()
                 self.handleMetalFailure("commandBuffer 逾時 \(String(format: "%.1f", commandBufferTimeout))s")
                 cont.resume(returning: nil)
             }
@@ -705,7 +737,26 @@ private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
     outputPoolLock.unlock()
 }
 
-
+    // MARK: - Pre-warm pool
+    private func prewarmPool() {
+        guard hasMetalResources else { return }
+        let sizes: [(Int, Int)] = [(dstWW, dstHH), (OutWW, OutHH)]
+        for (w, h) in sizes where w > 0 && h > 0 {
+            let key = OutputKey(width: w, height: h)
+            if outputPool[key] == nil {
+                var pool: [ReusableOutputSet] = []
+                for _ in 0..<3 {
+                    if let set = getReusableOutput(width: w, height: h) {
+                        pool.append(set)
+                    }
+                }
+                if !pool.isEmpty {
+                    outputPool[key] = pool
+                    logTo("prewarm pool \(w)x\(h): \(pool.count) buffers")
+                }
+            }
+        }
+    }
 
     func makeTexture(from pixelBuffer: CVPixelBuffer, planeIndex: Int) -> (cv: CVMetalTexture, tex: MTLTexture)? {
         guard let cache = MetalContext.shared.ensureTextureCache() else { return nil }
@@ -818,7 +869,7 @@ private func fallbackSampleBuffer(
                         dstY: MTLTexture, dstUV: MTLTexture,
                         angle: RotationAngle) -> Bool {
 
-        guard let compute = (qualityMode == .live ? pipelineBilinear : pipelineBicubic),
+        guard let compute = (effectiveQualityMode == .live ? pipelineBilinear : pipelineBicubic),
             let encoder = cmd.makeComputeCommandEncoder() else { return false }
 
         encoder.setComputePipelineState(compute)

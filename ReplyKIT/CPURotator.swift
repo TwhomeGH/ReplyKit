@@ -67,6 +67,15 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
 
         guard let outPB = getReusableBuffer(width: outW, height: outH) else { return nil }
 
+        // 計算 letterbox：uniform scale + 置中
+        let scaleX = Float(outW) / Float(rotatedW)
+        let scaleY = Float(outH) / Float(rotatedH)
+        let uniformScale = min(scaleX, scaleY)
+        let scaledW = Int(Float(rotatedW) * uniformScale)
+        let scaledH = Int(Float(rotatedH) * uniformScale)
+        let offsetX = max(0, (outW - scaledW) / 2)
+        let offsetY = max(0, (outH - scaledH) / 2)
+
         // 在背景執行緒執行 CPU 旋轉
         return await withCheckedContinuation { continuation in
             let inBuf = inBuffer
@@ -77,12 +86,21 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
                     return
                 }
                 let ok: Bool
-                if outW == rotatedW && outH == rotatedH {
-                    ok = self.rotateNV12CPU(inPixelBuffer: inBuf, outPixelBuffer: outBuf, angle: angle)
+                if scaledW == rotatedW && scaledH == rotatedH {
+                    // 無縮放，僅旋轉 + letterbox 置中
+                    ok = self.rotateNV12CPUWithLetterbox(
+                        inPixelBuffer: inBuf, outPixelBuffer: outBuf, angle: angle,
+                        scaledW: scaledW, scaledH: scaledH,
+                        offsetX: offsetX, offsetY: offsetY
+                    )
                 } else {
-                    ok = self.rotateAndScaleNV12(inPixelBuffer: inBuf, outPixelBuffer: outBuf, angle: angle,
-                                                 rotatedW: rotatedW, rotatedH: rotatedH,
-                                                 srcW: srcW, srcH: srcH)
+                    // 旋轉 + 縮放 + letterbox
+                    ok = self.rotateAndScaleNV12(
+                        inPixelBuffer: inBuf, outPixelBuffer: outBuf, angle: angle,
+                        rotatedW: rotatedW, rotatedH: rotatedH,
+                        scaledW: scaledW, scaledH: scaledH,
+                        offsetX: offsetX, offsetY: offsetY
+                    )
                 }
                 guard ok else {
                     self.logTo("CPU rotate failed")
@@ -222,9 +240,70 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
         return true
     }
 
-    // MARK: - Manual rotate + scale (rotate to temp, then vImage scale)
+    // MARK: - Rotate + letterbox (rotate to temp, then center-copy into output)
+    private func rotateNV12CPUWithLetterbox(inPixelBuffer: CVPixelBuffer, outPixelBuffer: CVPixelBuffer,
+                                            angle: RotationAngle,
+                                            scaledW: Int, scaledH: Int,
+                                            offsetX: Int, offsetY: Int) -> Bool {
+        guard let tempPB = getReusableBuffer(width: scaledW, height: scaledH) else {
+            logTo("rotateNV12CPUWithLetterbox: temp buffer alloc failed")
+            return false
+        }
+        guard rotateNV12CPU(inPixelBuffer: inPixelBuffer, outPixelBuffer: tempPB, angle: angle) else {
+            return false
+        }
+        // Black-fill output, then copy temp into center region
+        CVPixelBufferLockBaseAddress(tempPB, .readOnly)
+        CVPixelBufferLockBaseAddress(outPixelBuffer, [])
+        defer {
+            CVPixelBufferUnlockBaseAddress(tempPB, .readOnly)
+            CVPixelBufferUnlockBaseAddress(outPixelBuffer, [])
+        }
+        guard let tempYBase = CVPixelBufferGetBaseAddressOfPlane(tempPB, 0),
+              let outYBase = CVPixelBufferGetBaseAddressOfPlane(outPixelBuffer, 0),
+              let tempUVBase = CVPixelBufferGetBaseAddressOfPlane(tempPB, 1),
+              let outUVBase = CVPixelBufferGetBaseAddressOfPlane(outPixelBuffer, 1) else { return false }
+
+        let outYStride = CVPixelBufferGetBytesPerRowOfPlane(outPixelBuffer, 0)
+        let outH = CVPixelBufferGetHeightOfPlane(outPixelBuffer, 0)
+        let outYWidth = CVPixelBufferGetWidthOfPlane(outPixelBuffer, 0)
+        let tempYStride = CVPixelBufferGetBytesPerRowOfPlane(tempPB, 0)
+
+        let outUVStride = CVPixelBufferGetBytesPerRowOfPlane(outPixelBuffer, 1)
+        let outUVHeight = CVPixelBufferGetHeightOfPlane(outPixelBuffer, 1)
+        let outUVWidth = CVPixelBufferGetWidthOfPlane(outPixelBuffer, 1)
+        let tempUVStride = CVPixelBufferGetBytesPerRowOfPlane(tempPB, 1)
+
+        // Fill Y plane with black
+        for row in 0..<outH {
+            memset(outYBase.advanced(by: row * outYStride), 0, outYWidth)
+        }
+        // Fill UV plane with neutral (128)
+        for row in 0..<outUVHeight {
+            memset(outUVBase.advanced(by: row * outUVStride), 128, outUVWidth * 2)
+        }
+        // Copy temp Y into center
+        for row in 0..<scaledH {
+            let dstRow = outYBase.advanced(by: (offsetY + row) * outYStride + offsetX)
+            memcpy(dstRow, tempYBase.advanced(by: row * tempYStride), scaledW)
+        }
+        // Copy temp UV into center
+        let scaledUVW = scaledW / 2
+        let scaledUVH = scaledH / 2
+        let uvOffX = offsetX / 2
+        let uvOffY = offsetY / 2
+        for row in 0..<scaledUVH {
+            let dstRow = outUVBase.advanced(by: (uvOffY + row) * outUVStride + uvOffX * 2)
+            memcpy(dstRow, tempUVBase.advanced(by: row * tempUVStride), scaledUVW * 2)
+        }
+        return true
+    }
+
+    // MARK: - Rotate + scale + letterbox
     private func rotateAndScaleNV12(inPixelBuffer: CVPixelBuffer, outPixelBuffer: CVPixelBuffer, angle: RotationAngle,
-                                     rotatedW: Int, rotatedH: Int, srcW: Int, srcH: Int) -> Bool {
+                                     rotatedW: Int, rotatedH: Int,
+                                     scaledW: Int, scaledH: Int,
+                                     offsetX: Int, offsetY: Int) -> Bool {
         guard let tempPB = getReusableBuffer(width: rotatedW, height: rotatedH) else {
             logTo("rotateAndScale: temp buffer alloc failed")
             return false
@@ -232,7 +311,7 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
         guard rotateNV12CPU(inPixelBuffer: inPixelBuffer, outPixelBuffer: tempPB, angle: angle) else {
             return false
         }
-        // vImage scale temp → out
+        // Scale temp → scaled buffer via vImage, then letterbox-copy to output
         CVPixelBufferLockBaseAddress(tempPB, .readOnly)
         CVPixelBufferLockBaseAddress(outPixelBuffer, [])
         defer {
@@ -247,59 +326,69 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
         }
         let tempYStride = CVPixelBufferGetBytesPerRowOfPlane(tempPB, 0)
         let outYStride = CVPixelBufferGetBytesPerRowOfPlane(outPixelBuffer, 0)
-        let tempYWidth = CVPixelBufferGetWidthOfPlane(tempPB, 0)
-        let tempYHeight = CVPixelBufferGetHeightOfPlane(tempPB, 0)
         let outYWidth = CVPixelBufferGetWidthOfPlane(outPixelBuffer, 0)
         let outYHeight = CVPixelBufferGetHeightOfPlane(outPixelBuffer, 0)
+        let outUVStride = CVPixelBufferGetBytesPerRowOfPlane(outPixelBuffer, 1)
+        let outUVHeight = CVPixelBufferGetHeightOfPlane(outPixelBuffer, 1)
+        let outUVWidth = CVPixelBufferGetWidthOfPlane(outPixelBuffer, 1)
 
-        var srcYBuf = vImage_Buffer(data: tempYBase, height: vImagePixelCount(tempYHeight), width: vImagePixelCount(tempYWidth), rowBytes: tempYStride)
-        var dstYBuf = vImage_Buffer(data: outYBase, height: vImagePixelCount(outYHeight), width: vImagePixelCount(outYWidth), rowBytes: outYStride)
+        // Allocate planar buffers for scaled Y and UV
+        let yPixels = scaledW * scaledH
+        let uvPixels = (scaledW / 2) * (scaledH / 2)
+        let scaledY = UnsafeMutablePointer<UInt8>.allocate(capacity: yPixels)
+        let scaledU = UnsafeMutablePointer<UInt8>.allocate(capacity: uvPixels)
+        let scaledV = UnsafeMutablePointer<UInt8>.allocate(capacity: uvPixels)
+        defer { scaledY.deallocate(); scaledU.deallocate(); scaledV.deallocate() }
+
+        // Scale Y plane
+        var srcYBuf = vImage_Buffer(data: tempYBase, height: vImagePixelCount(CVPixelBufferGetHeightOfPlane(tempPB, 0)), width: vImagePixelCount(CVPixelBufferGetWidthOfPlane(tempPB, 0)), rowBytes: tempYStride)
+        var dstYBuf = vImage_Buffer(data: scaledY, height: vImagePixelCount(scaledH), width: vImagePixelCount(scaledW), rowBytes: scaledW)
         if vImageScale_Planar8(&srcYBuf, &dstYBuf, nil, vImage_Flags(kvImageHighQualityResampling)) != kvImageNoError {
             return false
         }
-        // UV scale via ARGB wrapper
+        // Deinterleave UV → U and V, scale, reinterleave
         let tempUVStride = CVPixelBufferGetBytesPerRowOfPlane(tempPB, 1)
-        let outUVStride = CVPixelBufferGetBytesPerRowOfPlane(outPixelBuffer, 1)
         let tempUVWidth = CVPixelBufferGetWidthOfPlane(tempPB, 1)
         let tempUVHeight = CVPixelBufferGetHeightOfPlane(tempPB, 1)
-
-        var srcUVBuf = vImage_Buffer(data: tempUVBase, height: vImagePixelCount(tempUVHeight), width: vImagePixelCount(tempUVWidth), rowBytes: tempUVStride)
-        var dstUVBuf = vImage_Buffer(data: outUVBase, height: vImagePixelCount(outYHeight / 2), width: vImagePixelCount(outYWidth / 2), rowBytes: outUVStride)
-        // Use vImageScale_Planar8 on a deinterleaved UV approach:
-        // For NV12, UV is 2-channel interleaved. We wrap as planar8 and scale each channel.
-        let uvPixels = Int(tempUVHeight) * tempUVStride
-        let uTemp = UnsafeMutablePointer<UInt8>.allocate(capacity: uvPixels / 2)
-        let vTemp = UnsafeMutablePointer<UInt8>.allocate(capacity: uvPixels / 2)
-        defer { uTemp.deallocate(); vTemp.deallocate() }
-        // Deinterleave
         let srcUV = tempUVBase.assumingMemoryBound(to: UInt8.self)
-        for i in 0..<(tempUVWidth * tempUVHeight) {
-            uTemp[i] = srcUV[i * 2]
-            vTemp[i] = srcUV[i * 2 + 1]
+        let tempUVSize = tempUVWidth * tempUVHeight
+        let uFrom = UnsafeMutablePointer<UInt8>.allocate(capacity: tempUVSize)
+        let vFrom = UnsafeMutablePointer<UInt8>.allocate(capacity: tempUVSize)
+        defer { uFrom.deallocate(); vFrom.deallocate() }
+        for i in 0..<tempUVSize {
+            uFrom[i] = srcUV[i * 2]
+            vFrom[i] = srcUV[i * 2 + 1]
         }
-        let uOutSize = (outYWidth / 2) * (outYHeight / 2)
-        let uOut = UnsafeMutablePointer<UInt8>.allocate(capacity: uOutSize)
-        let vOut = UnsafeMutablePointer<UInt8>.allocate(capacity: uOutSize)
-        defer { uOut.deallocate(); vOut.deallocate() }
-
-        var uSrcBuf = vImage_Buffer(data: uTemp, height: vImagePixelCount(tempUVHeight), width: vImagePixelCount(tempUVWidth), rowBytes: tempUVWidth)
-        var uDstBuf = vImage_Buffer(data: uOut, height: vImagePixelCount(outYHeight / 2), width: vImagePixelCount(outYWidth / 2), rowBytes: outYWidth / 2)
+        var uSrcBuf = vImage_Buffer(data: uFrom, height: vImagePixelCount(tempUVHeight), width: vImagePixelCount(tempUVWidth), rowBytes: tempUVWidth)
+        var uDstBuf = vImage_Buffer(data: scaledU, height: vImagePixelCount(scaledH / 2), width: vImagePixelCount(scaledW / 2), rowBytes: scaledW / 2)
         if vImageScale_Planar8(&uSrcBuf, &uDstBuf, nil, vImage_Flags(kvImageHighQualityResampling)) != kvImageNoError {
             return false
         }
-        var vSrcBuf = vImage_Buffer(data: vTemp, height: vImagePixelCount(tempUVHeight), width: vImagePixelCount(tempUVWidth), rowBytes: tempUVWidth)
-        var vDstBuf = vImage_Buffer(data: vOut, height: vImagePixelCount(outYHeight / 2), width: vImagePixelCount(outYWidth / 2), rowBytes: outYWidth / 2)
+        var vSrcBuf = vImage_Buffer(data: vFrom, height: vImagePixelCount(tempUVHeight), width: vImagePixelCount(tempUVWidth), rowBytes: tempUVWidth)
+        var vDstBuf = vImage_Buffer(data: scaledV, height: vImagePixelCount(scaledH / 2), width: vImagePixelCount(scaledW / 2), rowBytes: scaledW / 2)
         if vImageScale_Planar8(&vSrcBuf, &vDstBuf, nil, vImage_Flags(kvImageHighQualityResampling)) != kvImageNoError {
             return false
         }
-        // Re-interleave
-        let outUV = outUVBase.assumingMemoryBound(to: UInt8.self)
-        let outUVWidth = outYWidth / 2
-        for y in 0..<(outYHeight / 2) {
-            let rowOffset = y * (outYWidth / 2)
-            for x in 0..<outUVWidth {
-                outUV[y * outUVStride + x * 2] = uOut[rowOffset + x]
-                outUV[y * outUVStride + x * 2 + 1] = vOut[rowOffset + x]
+        // Black-fill output Y and UV
+        for row in 0..<outYHeight {
+            memset(outYBase.advanced(by: row * outYStride), 0, outYWidth)
+        }
+        for row in 0..<outUVHeight {
+            memset(outUVBase.advanced(by: row * outUVStride), 128, outUVWidth * 2)
+        }
+        // Copy scaled Y into center of output
+        for row in 0..<scaledH {
+            memcpy(outYBase.advanced(by: (offsetY + row) * outYStride + offsetX),
+                   scaledY.advanced(by: row * scaledW), scaledW)
+        }
+        // Copy re-interleaved UV into center
+        let halfSW = scaledW / 2, halfSH = scaledH / 2
+        let uvOffX = offsetX / 2, uvOffY = offsetY / 2
+        for row in 0..<halfSH {
+            let dstRow = outUVBase.advanced(by: (uvOffY + row) * outUVStride + uvOffX * 2)
+            for x in 0..<halfSW {
+                dstRow[x * 2] = scaledU[row * halfSW + x]
+                dstRow[x * 2 + 1] = scaledV[row * halfSW + x]
             }
         }
         return true

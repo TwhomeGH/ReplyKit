@@ -1014,3 +1014,65 @@ guard frameInterval == VideoCodec.frameInterval else { return }
 | 60fps 編碼跟不上 | 30→15→... 永不恢復，最終卡 20fps | 降為 30fps，10s 後嘗試恢復 |
 | 短暫場景複雜 | 降速後無法恢復 | 10s 後 pending ≤ 10 時自動恢復 |
 | 持續高負載 | 一路降到 15fps 以下 | 穩定在 30fps，pending 仍高時保持 throttle 不疊加 |
+
+
+---
+
+## Section 35 — GPU Rotator 可靠性改進（2026-07）
+
+**目標：** 提升 Metal GPU 旋轉器穩定性，減少 CPU 降級觸發次數
+
+### 修改文件
+
+| 文件 | 變更 |
+|------|------|
+| `ReplyKIT/GPUVideoRotator.swift` | 預先分配 pool、command buffer depth limit、自動降品質 |
+
+### 變更摘要
+
+**1. 預先分配 output buffer pool（prewarmPool）**
+
+`ensureMetalResources()` 成功後立即呼叫 `prewarmPool()`，預先建立 3 組 Metal-compatible CVPixelBuffer + MTLTexture，避免 runtime `getReusableOutput` 因 CVPixelBufferCreate 忙碌而回傳 nil。
+
+**2. Command buffer queue depth limit**
+
+使用 `DispatchSemaphore(value: 2)` 限制 in-flight command buffer 最多 2 個。超過時 `inflightSemaphore.wait()` 阻塞呼叫端，產生 back-pressure → VideoProcess actor 的 `isProcessing` 自然阻止新 frame 進入。
+
+```swift
+private let inflightSemaphore = DispatchSemaphore(value: 2)
+
+// 送出前等待 slot
+inflightSemaphore.wait()
+// completion handler / timeout handler 各負責 signal
+inflightSemaphore.signal()
+```
+
+**逾時保護**：timeout handler 與 completion handler 透過 `CommandCompletionState` 協調唯一的 `signal()` 呼叫，避免計數偏移。
+
+**3. 自動品質降級**
+
+首次 `handleMetalFailure` 發生時，自動從 `quality` (bicubic) 降級到 `live` (bilinear)，降低 GPU 負載：
+
+```swift
+if failureCount == 1 && originalQualityMode == nil && qualityMode == .quality {
+    originalQualityMode = .quality  // 保存原始設定
+    qualityMode = .live             // 降到 bilinear
+}
+```
+
+`renderPlaneYUV` 使用 `effectiveQualityMode` 選取管線。失敗計數歸零時自動還原品質：
+
+```swift
+if let original = originalQualityMode {
+    qualityMode = original
+    originalQualityMode = nil
+}
+```
+
+### 行為對比
+
+| 場景 | 改前 | 改後 |
+|------|------|------|
+| Output buffer 耗盡 | `getReusableOutput` 回傳 nil → CPU fallback | init 時預先分配 3 組 buffer，減少 runtime 分配 |
+| GPU 負載過高 | 無限制 → command buffer 排隊 + timeout | 最多 2 個 in-flight，back-pressure 自然調節 |
+| Bicubic 太重 | 連續失敗直到 cleanup 重建管線 | 自動降級 bilinear，恢復後自動還原 |
