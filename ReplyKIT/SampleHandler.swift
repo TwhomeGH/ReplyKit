@@ -1360,12 +1360,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         // Video mixer passthrough
         var videoMixerSettings = await mediaMixer.videoMixerSettings
         videoMixerSettings.mode = .passthrough
-
-        let track = videoMixerSettings.mainTrack
-
-        sendlog(message:"VTrack:\(track)")
-
-
         
         
         await mediaMixer.setVideoMixerSettings(videoMixerSettings)
