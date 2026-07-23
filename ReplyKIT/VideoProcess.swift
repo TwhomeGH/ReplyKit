@@ -254,7 +254,7 @@ final class VideoFrameProcessor {
         let isFirstFrame = localCount == 1
         let enablePipeLog = RPConfig.shared.enablePipelineLog
 
-        if enablePipeLog, isFirstFrame || localCount % 300 == 0 {
+        if enablePipeLog, isFirstFrame || localCount % 1500 == 0 {
             sendlog("[VideoProcessor] #\(localCount) 進入 PTS:\(String(format:"%.3f",pts.seconds))s")
         }
 
@@ -371,7 +371,8 @@ final class VideoFrameProcessor {
                 return
             }
             self.sentCount += 1
-            if enablePipeLog, isFirstFrame || localCount % 300 == 0 {
+
+            if enablePipeLog, isFirstFrame || localCount % 3000 == 0 {
                 sendlog("[VideoProcessor] #\(localCount) 送出MediaMixer PTS:\(String(format:"%.3f",pts.seconds))s")
             }
             await self.mediaMixer.append(outputBuffer)

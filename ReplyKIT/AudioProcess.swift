@@ -455,7 +455,7 @@ final class AudioProcessor : @unchecked Sendable {
         let pts = oringinaltime.presentationTimeStamp.seconds
         let now = CACurrentMediaTime()
         let enablePipeLog = RPConfig.shared.enablePipelineLog
-        let shouldLog = enablePipeLog && (enqueueCount == 1 || enqueueCount % 300 == 0 || (now - lastEnqueueLog) > 5.0)
+        let shouldLog = enablePipeLog && (enqueueCount == 1 || enqueueCount % 3000 == 0 || (now - lastEnqueueLog) > 30.0)
         let localCount = enqueueCount
 
         Task.detached(priority: .high) { [weak self] in
@@ -466,10 +466,12 @@ final class AudioProcessor : @unchecked Sendable {
             defer {
                 self.setEnqueuing(false, trackType: trackType)
             }
+
             guard await self.mediaMixer.isRunning else {
                 if shouldLog { sendlog(message: "[AudioProcessor] ⚠️ #\(localCount) MediaMixer 未運行 PTS:\(String(format:"%.3f",pts))s") }
                 return
             }
+
 
             if shouldLog {
                 self.lastEnqueueLog = now
@@ -481,7 +483,6 @@ final class AudioProcessor : @unchecked Sendable {
                 let RSample = self.applyGain(sampleBuffer, trackType: trackType)
                 self.processRMS(RSample, trackType: trackType, originalTime: oringinaltime)
 
-                if shouldLog { sendlog(message: "[AudioProcessor] #\(localCount) 送出MediaMixer track:\(trackType.rawValue)") }
                 await self.mediaMixer.append(RSample, track: trackType.rawValue)
 
             } else {
