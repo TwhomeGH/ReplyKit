@@ -1332,7 +1332,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         videoSettings.bitRate = RPConfig.shared.state.BitRate
 
         videoSettings.maxFrameDelayCount = max(RPConfig.shared.state.BufferCount, 10)  // 限制 VT 內部最多疊 10 幀
-        videoSettings.adaptiveFrameThrottle = true  // GPU 自動降幀率，避免卡頓
+        videoSettings.adaptiveFrameThrottle = false // 關閉軟體節流，讓 VT 硬體自己處理 fallback
         videoSettings.h264EntropyMode = "cavlc" // 輕量化編碼器避免過載
 
 
