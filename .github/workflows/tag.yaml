@@ -3,12 +3,10 @@ name: Check Changes & Trigger Tag
 on:
   workflow_dispatch:
   push:
-    paths:
-      - "liveAPP/**"
-      - "ReplyKIT/**"
-      - "ReplyKITNotifications/**"
-      - "Package.resolved"
-      - "liveAPP.xcodeproj/**"
+    paths-ignore:
+      - "Docs/**"
+      - "README.md"
+      - ".github/**"
 
 jobs:
   detect-changes:
