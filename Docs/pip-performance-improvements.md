@@ -948,3 +948,69 @@ func rotateAsync(sampleBuffer: CMSampleBuffer,
 - 支援 `OutWW`/`OutHH` 輸出尺寸控制（與 GPU rotator 共用 config）
 - 使用 `getReusableBuffer` 快取 pixel buffer pool（最多 3 幀）
 - 總體約為 GPU 旋轉的 30~60% 效能，足以作為降級路徑維持串流不中斷
+
+---
+
+## Section 34 — HaishinKit adaptiveFrameThrottle 設計修正（2026-07）
+
+**目標：** 修復 VT encoder frame throttle 的鏈式衰退與永不恢復問題，保持 60fps 串流穩定。
+
+### 修改文件
+
+| 文件 | 變更 |
+|------|------|
+| `HaishinKit/Sources/Codec/VideoCodec.swift` | cooldown 邏輯、recovery 條件修正 |
+| `ReplyKIT/SampleHandler.swift` | 恢復 `adaptiveFrameThrottle = true` |
+
+### 問題分析
+
+日誌顯示 `videoInputFrames=60 >> videoFrames=20`（60fps 輸入僅 20fps 輸出），原因：
+
+```
+checkFrameRate() 觸發 (encode fps < 25)
+  → setProportionalThrottle(0.5) → frameInterval = 1/30 (30fps)
+  → pending > threshold 再次觸發 (VT 仍積壓)
+    → 無 guard → setProportionalThrottle(0.5) 再次觸發
+    → frameInterval = 1/(30*0.5) = 1/15 (15fps) ← 鏈式衰退
+recovery 需要 pending == 0 連續 30 次
+  → 20fps 下 VT 永遠有 pending → 永不恢復
+```
+
+### 修正
+
+**1. Cooldown 強制啟用**（VideoCodec.swift）
+
+```swift
+// before: cooldown 只在 allowTemporalCompression = false 時設定
+if !settings.allowTemporalCompression {
+    throttleCooldownUntil = Date().addingTimeInterval(10)
+}
+
+// after: 降速後一律設 10 秒 cooldown，期間跳過所有 throttle/recovery 邏輯
+throttleCooldownUntil = Date().addingTimeInterval(10)
+```
+
+**2. Recovery 條件放寬**（VideoCodec.swift）
+
+```swift
+// before: 需要 pending == 0（20fps 輸出時永遠無法達成）
+} else if pending == 0 {
+
+// after: 佇列低於 threshold（仍有 pending 但可恢復）
+} else if pending <= threshold && frameInterval > VideoCodec.frameInterval {
+```
+
+**3. pending > threshold 降速防護**（VideoCodec.swift）
+
+```swift
+// 已降速中不再次降速
+guard frameInterval == VideoCodec.frameInterval else { return }
+```
+
+### 行為對比
+
+| 場景 | 改前 | 改後 |
+|------|------|------|
+| 60fps 編碼跟不上 | 30→15→... 永不恢復，最終卡 20fps | 降為 30fps，10s 後嘗試恢復 |
+| 短暫場景複雜 | 降速後無法恢復 | 10s 後 pending ≤ 10 時自動恢復 |
+| 持續高負載 | 一路降到 15fps 以下 | 穩定在 30fps，pending 仍高時保持 throttle 不疊加 |
