@@ -1,4 +1,4 @@
-//
+﻿//
 //  CPURotator.swift
 //  liveAPP
 //
@@ -10,8 +10,12 @@ import AVFoundation
 import CoreVideo
 import Accelerate
 
-// MARK: - CPU 旋轉器（GPU 降級備援）
-final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
+// MARK: - Sendable wrapper for CoreVideo types
+private struct UnsafeSendableValue<T>: @unchecked Sendable {
+    let value: T
+}
+
+// MARK: - CPU ???剁?GPU ???嚗?final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
 
     private struct PooledBuffer {
         var pixelBuffer: CVPixelBuffer
@@ -67,7 +71,7 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
 
         guard let outPB = getReusableBuffer(width: outW, height: outH) else { return nil }
 
-        // 計算 letterbox：uniform scale + 置中
+        // 閮? letterbox嚗niform scale + 蝵桐葉
         let scaleX = Float(outW) / Float(rotatedW)
         let scaleY = Float(outH) / Float(rotatedH)
         let uniformScale = min(scaleX, scaleY)
@@ -76,10 +80,10 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
         let offsetX = max(0, (outW - scaledW) / 2)
         let offsetY = max(0, (outH - scaledH) / 2)
 
-        // 在背景執行緒執行 CPU 旋轉
+        // ?刻??臬銵??瑁? CPU ??
         return await withCheckedContinuation { continuation in
-            let inBuf = inBuffer
-            let outBuf = outPB
+            let sendableIn = UnsafeSendableValue(value: inBuffer as CVImageBuffer)
+            let sendableOut = UnsafeSendableValue(value: outPB)
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 guard let self = self else {
                     continuation.resume(returning: nil)
@@ -87,16 +91,16 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
                 }
                 let ok: Bool
                 if scaledW == rotatedW && scaledH == rotatedH {
-                    // 無縮放，僅旋轉 + letterbox 置中
+                    // ?∠葬?橘???頧?+ letterbox 蝵桐葉
                     ok = self.rotateNV12CPUWithLetterbox(
-                        inPixelBuffer: inBuf, outPixelBuffer: outBuf, angle: angle,
+                        inPixelBuffer: sendableIn.value as! CVPixelBuffer, outPixelBuffer: sendableOut.value, angle: angle,
                         scaledW: scaledW, scaledH: scaledH,
                         offsetX: offsetX, offsetY: offsetY
                     )
                 } else {
-                    // 旋轉 + 縮放 + letterbox
+                    // ?? + 蝮格 + letterbox
                     ok = self.rotateAndScaleNV12(
-                        inPixelBuffer: inBuf, outPixelBuffer: outBuf, angle: angle,
+                        inPixelBuffer: sendableIn.value as! CVPixelBuffer, outPixelBuffer: sendableOut.value, angle: angle,
                         rotatedW: rotatedW, rotatedH: rotatedH,
                         scaledW: scaledW, scaledH: scaledH,
                         offsetX: offsetX, offsetY: offsetY
@@ -107,7 +111,7 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
                     continuation.resume(returning: nil)
                     return
                 }
-                let wrapped = self.wrapPixelBuffer(outBuf, originalSampleBuffer: sampleBuffer)
+                let wrapped = self.wrapPixelBuffer(sendableOut.value, originalSampleBuffer: sampleBuffer)
                 continuation.resume(returning: wrapped)
             }
         }
@@ -311,7 +315,7 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
         guard rotateNV12CPU(inPixelBuffer: inPixelBuffer, outPixelBuffer: tempPB, angle: angle) else {
             return false
         }
-        // Scale temp → scaled buffer via vImage, then letterbox-copy to output
+        // Scale temp ??scaled buffer via vImage, then letterbox-copy to output
         CVPixelBufferLockBaseAddress(tempPB, .readOnly)
         CVPixelBufferLockBaseAddress(outPixelBuffer, [])
         defer {
@@ -346,7 +350,7 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
         if vImageScale_Planar8(&srcYBuf, &dstYBuf, nil, vImage_Flags(kvImageHighQualityResampling)) != kvImageNoError {
             return false
         }
-        // Deinterleave UV → U and V, scale, reinterleave
+        // Deinterleave UV ??U and V, scale, reinterleave
         let tempUVStride = CVPixelBufferGetBytesPerRowOfPlane(tempPB, 1)
         let tempUVWidth = CVPixelBufferGetWidthOfPlane(tempPB, 1)
         let tempUVHeight = CVPixelBufferGetHeightOfPlane(tempPB, 1)
@@ -387,14 +391,15 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
         for row in 0..<halfSH {
             let dstRow = outUVBase.advanced(by: (uvOffY + row) * outUVStride + uvOffX * 2)
             for x in 0..<halfSW {
-                dstRow[x * 2] = scaledU[row * halfSW + x]
-                dstRow[x * 2 + 1] = scaledV[row * halfSW + x]
+                let typedDst = dstRow.assumingMemoryBound(to: UInt8.self)
+                    typedDst[x * 2] = scaledU[row * halfSW + x]
+                    typedDst[x * 2 + 1] = scaledV[row * halfSW + x]
             }
         }
         return true
     }
 
-    // MARK: - Wrap pixelBuffer → CMSampleBuffer
+    // MARK: - Wrap pixelBuffer ??CMSampleBuffer
     private func wrapPixelBuffer(_ pixelBuffer: CVPixelBuffer, originalSampleBuffer: CMSampleBuffer) -> CMSampleBuffer? {
         var timingInfo = CMSampleTimingInfo.invalid
         if CMSampleBufferGetSampleTimingInfo(originalSampleBuffer, at: 0, timingInfoOut: &timingInfo) != noErr {
