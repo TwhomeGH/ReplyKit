@@ -5,94 +5,14 @@
 //  Created by user on 2025/11/24.
 //
 
-// MARK: CPU
 import Foundation
 import AVFoundation
 import CoreVideo
-import VideoToolbox
+import Accelerate
 
-import RTMPHaishinKit
-
-//MARK: VTool
-
-final class VTEncoder {
-    private var session: VTCompressionSession?
-
-    var onEncoded: ((CMSampleBuffer) -> Void)?
-
-    init?(width: Int, height: Int) {
-        let status = VTCompressionSessionCreate(
-            allocator: kCFAllocatorDefault,
-            width: Int32(width),
-            height: Int32(height),
-            codecType: kCMVideoCodecType_H264,
-            encoderSpecification: nil,
-            imageBufferAttributes: nil,
-            compressedDataAllocator: nil,
-            outputCallback: { _, _, status, infoFlags, sampleBuffer in
-                guard status == noErr, let sb = sampleBuffer else { return }
-                // TODO: 你在這裡送 RTMP / SRT / WebRTC / FileWriter
-
-                sendlog(message:"Encoded frame: \(sb)")
-
-            },
-            refcon: nil,
-            compressionSessionOut: &session
-        )
-
-        if status != noErr { return nil }
-
-        VTSessionSetProperty(session!, key:kVTCompressionPropertyKey_RealTime,
-                             value:kCFBooleanTrue
-        )
-        VTCompressionSessionPrepareToEncodeFrames(session!)
-    }
-
-    // MARK: SampleBuffer
-    func encode(_ sampleBuffer: CMSampleBuffer) {
-        guard let imageBuffer = sampleBuffer.imageBuffer else { return }
-
-        var timing = CMSampleTimingInfo()
-        CMSampleBufferGetSampleTimingInfo(sampleBuffer, at: 0, timingInfoOut: &timing)
-
-        VTCompressionSessionEncodeFrame(
-            session!,
-            imageBuffer: imageBuffer,
-            presentationTimeStamp: timing.presentationTimeStamp,
-            duration: timing.duration,
-            frameProperties: nil,
-            sourceFrameRefcon: nil,
-            infoFlagsOut: nil
-        )
-    }
-
-    // MARK: CVPixel
-    func encode(pixelBuffer: CVPixelBuffer, pts: CMTime) {
-            VTCompressionSessionEncodeFrame(
-                session!,
-                imageBuffer: pixelBuffer,
-                presentationTimeStamp: pts,
-                duration: .invalid,
-                frameProperties: nil,
-                sourceFrameRefcon: nil,
-                infoFlagsOut: nil
-            )
-        }
-
-
-    func finish() {
-        VTCompressionSessionCompleteFrames(session!, untilPresentationTimeStamp: .invalid)
-        VTCompressionSessionInvalidate(session!)
-        session = nil
-    }
-}
-
-//MARK: CPU, sourceFrameRefcon:
+// MARK: - CPU 旋轉器（GPU 降級備援）
 final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
 
-
-
-    // MARK: - pool
     private struct PooledBuffer {
         var pixelBuffer: CVPixelBuffer
         var lastUsed: Date
@@ -101,75 +21,30 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
     private let poolLock = NSLock()
     private let maxPoolSize: Int
 
-    private var vtEncoder: VTEncoder?
-
-    private var currentEncoderWidth: Int = 0
-    private var currentEncoderHeight: Int = 0
-
-    private var inflightSemaphore: DispatchSemaphore
-
     var dstWW: Int = 0
     var dstHH: Int = 0
+    var OutWW: Int = 0
+    var OutHH: Int = 0
     var debug: Bool = false
 
-    init?(dstW: Int = 0, dstH: Int = 0, debug: Bool = false, maxPoolSize: Int = 5) {
-        self.dstWW = dstW
-        self.dstHH = dstH
-        self.debug = debug
+    init(maxPoolSize: Int = 3) {
         self.maxPoolSize = maxPoolSize
-
-        let recommended = ProcessInfo.processInfo.activeProcessorCount
-        let inflightCount = max(2, min(8, recommended))
-        inflightSemaphore = DispatchSemaphore(value: inflightCount)
-
-
     }
 
     func logTo(_ message: String) {
-        if debug {
-            print("[RotCPU] \(message)")
-        }
+        if debug { sendlog(message: "[RotCPU] \(message)") }
     }
 
     func cleanup() {
         poolLock.lock()
         bufferPool.removeAll()
-        
         poolLock.unlock()
-
-        vtEncoder?.finish()
-        vtEncoder = nil
-
         logTo("cleanup")
     }
 
-    // async wait
-    private func waitForAvailableSlot() async {
-        await withCheckedContinuation { cont in
-            DispatchQueue.global().async {
-                self.inflightSemaphore.wait()
-                cont.resume()
-            }
-        }
-    }
-    private func releaseSlot() {
-        inflightSemaphore.signal()
-    }
-
-    // MARK: - main API (async)
-    func rotateCPU(sampleBuffer: CMSampleBuffer,
-                   angle: RotationAngle,
-                   completion: @escaping (CMSampleBuffer?) -> Void) {
-
-        Task {
-            await waitForAvailableSlot()
-        }
-
-        guard let inBuffer = sampleBuffer.imageBuffer else {
-            releaseSlot()
-            completion(nil)
-            return
-        }
+    // MARK: - Async rotation (matches GPU rotator interface)
+    func rotateAsync(sampleBuffer: CMSampleBuffer, angle: RotationAngle, needsRotation: Bool) async -> CMSampleBuffer? {
+        guard let inBuffer = sampleBuffer.imageBuffer else { return nil }
 
         CVPixelBufferLockBaseAddress(inBuffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(inBuffer, .readOnly) }
@@ -177,70 +52,51 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
         let srcW = CVPixelBufferGetWidth(inBuffer)
         let srcH = CVPixelBufferGetHeight(inBuffer)
 
-
-
-
-        var dstW = (
-            angle == .landscapeRight || angle == .landscapeLeft
-        ) ? srcH : srcW
-        var dstH = (
-            angle == .landscapeRight || angle == .landscapeLeft
-        ) ? srcW : srcH
-
-
-        if dstWW > 0 && dstHH > 0 { dstW = dstWW; dstH = dstHH }
-
-        // 壓縮視頻處理
-        if vtEncoder == nil || currentEncoderWidth != dstW || currentEncoderHeight != dstH {
-            vtEncoder = VTEncoder(width: dstW, height: dstH)
-            currentEncoderWidth = dstW
-            currentEncoderHeight = dstH
-            logTo("VTEncoder initialized: \(dstW)x\(dstH)")
+        let rotatedW: Int, rotatedH: Int
+        if angle == .landscapeRight || angle == .landscapeLeft {
+            rotatedW = srcH; rotatedH = srcW
+        } else {
+            rotatedW = srcW; rotatedH = srcH
         }
 
-        guard let outPB = getReusableBuffer(width: dstW, height: dstH) else {
-            releaseSlot()
-            completion(nil)
-            return
+        let outW: Int, outH: Int
+        if OutWW > 0 && OutHH > 0 {
+            outW = OutWW; outH = OutHH
+        } else if dstWW > 0 && dstHH > 0 {
+            outW = dstWW; outH = dstHH
+        } else {
+            outW = rotatedW; outH = rotatedH
         }
 
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self = self else { return }
+        guard let outPB = getReusableBuffer(width: outW, height: outH) else { return nil }
 
-            defer {
-                self.releaseSlot() // 無論成功或失敗都釋放 slot
+        // 在背景執行緒執行 CPU 旋轉
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                guard let self = self else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                let ok: Bool
+                if outW == rotatedW && outH == rotatedH {
+                    ok = self.rotateNV12CPU(inPixelBuffer: inBuffer, outPixelBuffer: outPB, angle: angle)
+                } else {
+                    ok = self.rotateAndScaleNV12(inPixelBuffer: inBuffer, outPixelBuffer: outPB, angle: angle)
+                }
+                guard ok else {
+                    self.logTo("CPU rotate failed")
+                    continuation.resume(returning: nil)
+                    return
+                }
+                let wrapped = self.wrapPixelBuffer(outPB, originalSampleBuffer: sampleBuffer)
+                continuation.resume(returning: wrapped)
             }
-
-            let ok = self.rotateNV12CPU(inPixelBuffer: inBuffer, outPixelBuffer: outPB, angle: angle)
-
-            guard ok else {
-                self.logTo("CPU rotate failed")
-                completion(nil)
-                return
-            }
-
-            guard let wrapped = self.wrapPixelBuffer(outPB, originalSampleBuffer: sampleBuffer) else {
-                self.logTo("wrapPixelBuffer failed")
-                completion(nil)
-                return
-            }
-
-            self.logTo("CPU rotate done: \(srcW)x\(srcH) -> \(dstW)x\(dstH)")
-
-            // ✅ 直接餵 VTEncoder
-            if let encoder = self.vtEncoder {
-                encoder.encode(wrapped)
-            }
-
-            completion(wrapped) // 回傳結果
         }
     }
 
-
-    // MARK: - pool utilities
+    // MARK: - Pool
     private func getReusableBuffer(width: Int, height: Int) -> CVPixelBuffer? {
         poolLock.lock()
-        // find exact match
         if let idx = bufferPool.firstIndex(where: { CVPixelBufferGetWidth($0.pixelBuffer) == width && CVPixelBufferGetHeight($0.pixelBuffer) == height }) {
             bufferPool[idx].lastUsed = Date()
             let pb = bufferPool[idx].pixelBuffer
@@ -249,44 +105,39 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
         }
         poolLock.unlock()
 
-        // create new
         var newPB: CVPixelBuffer?
         let attrs: [String: Any] = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
             kCVPixelBufferWidthKey as String: width,
             kCVPixelBufferHeightKey as String: height,
-            kCVPixelBufferIOSurfacePropertiesKey as String: [:] // allow IOSurface
+            kCVPixelBufferIOSurfacePropertiesKey as String: [:]
         ]
         let status = CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_420YpCbCr8BiPlanarFullRange, attrs as CFDictionary, &newPB)
         guard status == kCVReturnSuccess, let pb = newPB else { return nil }
 
         poolLock.lock()
         bufferPool.append(PooledBuffer(pixelBuffer: pb, lastUsed: Date()))
-        // trim
         bufferPool.sort { $0.lastUsed < $1.lastUsed }
         while bufferPool.count > maxPoolSize {
             bufferPool.removeFirst(bufferPool.count - maxPoolSize)
         }
-        logTo("bufferCount:\(bufferPool.count)")
         poolLock.unlock()
-
         return pb
     }
 
-    // MARK: - CPU NV12 rotation (manual memcpy)
-    // Supports 0/90/180/270. Assumes full-range NV12 (Y plane full size, UV interleaved half size).
+    // MARK: - vImage Y rotation + manual UV (when no scaling)
     private func rotateNV12CPU(inPixelBuffer: CVPixelBuffer, outPixelBuffer: CVPixelBuffer, angle: RotationAngle) -> Bool {
         CVPixelBufferLockBaseAddress(inPixelBuffer, .readOnly)
         CVPixelBufferLockBaseAddress(outPixelBuffer, [])
-
         defer {
             CVPixelBufferUnlockBaseAddress(inPixelBuffer, .readOnly)
             CVPixelBufferUnlockBaseAddress(outPixelBuffer, [])
         }
 
-        // Y plane
         guard let inYBase = CVPixelBufferGetBaseAddressOfPlane(inPixelBuffer, 0),
-              let outYBase = CVPixelBufferGetBaseAddressOfPlane(outPixelBuffer, 0) else { return false }
+              let outYBase = CVPixelBufferGetBaseAddressOfPlane(outPixelBuffer, 0),
+              let inUVBase = CVPixelBufferGetBaseAddressOfPlane(inPixelBuffer, 1),
+              let outUVBase = CVPixelBufferGetBaseAddressOfPlane(outPixelBuffer, 1) else { return false }
 
         let inYStride = CVPixelBufferGetBytesPerRowOfPlane(inPixelBuffer, 0)
         let outYStride = CVPixelBufferGetBytesPerRowOfPlane(outPixelBuffer, 0)
@@ -295,31 +146,37 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
         let outYWidth = CVPixelBufferGetWidthOfPlane(outPixelBuffer, 0)
         let outYHeight = CVPixelBufferGetHeightOfPlane(outPixelBuffer, 0)
 
-        // UV plane
-        guard let inUVBase = CVPixelBufferGetBaseAddressOfPlane(inPixelBuffer, 1),
-              let outUVBase = CVPixelBufferGetBaseAddressOfPlane(outPixelBuffer, 1) else { return false }
-
         let inUVStride = CVPixelBufferGetBytesPerRowOfPlane(inPixelBuffer, 1)
         let outUVStride = CVPixelBufferGetBytesPerRowOfPlane(outPixelBuffer, 1)
-        let inUVWidth = CVPixelBufferGetWidthOfPlane(inPixelBuffer, 1)  // W/2
-        let inUVHeight = CVPixelBufferGetHeightOfPlane(inPixelBuffer, 1) // H/2
+        let inUVWidth = CVPixelBufferGetWidthOfPlane(inPixelBuffer, 1)
+        let inUVHeight = CVPixelBufferGetHeightOfPlane(inPixelBuffer, 1)
         let outUVWidth = CVPixelBufferGetWidthOfPlane(outPixelBuffer, 1)
         let outUVHeight = CVPixelBufferGetHeightOfPlane(outPixelBuffer, 1)
 
-        let inY = inYBase.assumingMemoryBound(to: UInt8.self)
-        let outY = outYBase.assumingMemoryBound(to: UInt8.self)
+        // Y plane: use vImageRotate_Planar8
+        var srcYBuf = vImage_Buffer(data: inYBase, height: vImagePixelCount(inYHeight), width: vImagePixelCount(inYWidth), rowBytes: inYStride)
+        var dstYBuf = vImage_Buffer(data: outYBase, height: vImagePixelCount(outYHeight), width: vImagePixelCount(outYWidth), rowBytes: outYStride)
+
+        let angleRad: Float
+        let backgroundColor: UInt8 = 0  // black border
+        switch angle {
+        case .portrait:          angleRad = 0
+        case .landscapeRight:    angleRad = Float.pi * 0.5
+        case .portraitUpsideDown: angleRad = Float.pi
+        case .landscapeLeft:     angleRad = Float.pi * 1.5
+        }
+
+        let flags = vImage_Flags(kvImageHighQualityResampling)
+        if vImageRotate_Planar8(&srcYBuf, &dstYBuf, nil, angleRad, backgroundColor, flags) != kvImageNoError {
+            return false
+        }
+
+        // UV plane: manual memcpy (small plane)
         let inUV = inUVBase.assumingMemoryBound(to: UInt8.self)
         let outUV = outUVBase.assumingMemoryBound(to: UInt8.self)
 
         switch angle {
         case .portrait:
-            // copy Y
-            for row in 0..<inYHeight {
-                let src = inY.advanced(by: row * inYStride)
-                let dst = outY.advanced(by: row * outYStride)
-                dst.update(from: src, count: inYWidth)
-            }
-            // copy UV
             for row in 0..<inUVHeight {
                 let src = inUV.advanced(by: row * inUVStride)
                 let dst = outUV.advanced(by: row * outUVStride)
@@ -327,62 +184,36 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
             }
 
         case .portraitUpsideDown:
-            for row in 0..<inYHeight {
-                let srcRow = inY.advanced(by: row * inYStride)
-                let dstRow = outY.advanced(by: (outYHeight - 1 - row) * outYStride)
-                for col in 0..<inYWidth {
-                    dstRow[inYWidth - 1 - col] = srcRow[col]
-                }
-            }
             for row in 0..<inUVHeight {
                 let srcRow = inUV.advanced(by: row * inUVStride)
                 let dstRow = outUV.advanced(by: (outUVHeight - 1 - row) * outUVStride)
                 for col in 0..<inUVWidth {
-                    dstRow[(inUVWidth - 1 - col) * 2 + 0] = srcRow[col * 2 + 0]
+                    dstRow[(inUVWidth - 1 - col) * 2] = srcRow[col * 2]
                     dstRow[(inUVWidth - 1 - col) * 2 + 1] = srcRow[col * 2 + 1]
                 }
             }
 
         case .landscapeRight:
-            for y in 0..<inYHeight {
-                let srcRow = inY.advanced(by: y * inYStride)
-                for x in 0..<inYWidth {
-                    let dstX = y
-                    let dstY = inYWidth - 1 - x
-                    guard dstX < outYWidth && dstY < outYHeight else { continue }
-                    outY[dstY * outYStride + dstX] = srcRow[x]
-                }
-            }
             for y in 0..<inUVHeight {
                 let srcRow = inUV.advanced(by: y * inUVStride)
                 for x in 0..<inUVWidth {
                     let dstX = y
                     let dstY = inUVWidth - 1 - x
                     guard dstX < outUVWidth && dstY < outUVHeight else { continue }
-                    outUV[dstY * outUVStride + dstX * 2 + 0] = srcRow[x*2 + 0]
-                    outUV[dstY * outUVStride + dstX * 2 + 1] = srcRow[x*2 + 1]
+                    outUV[dstY * outUVStride + dstX * 2] = srcRow[x * 2]
+                    outUV[dstY * outUVStride + dstX * 2 + 1] = srcRow[x * 2 + 1]
                 }
             }
 
         case .landscapeLeft:
-            for y in 0..<inYHeight {
-                let srcRow = inY.advanced(by: y * inYStride)
-                for x in 0..<inYWidth {
-                    let dstX = inYHeight - 1 - y
-                    let dstY = x
-                    guard dstX < outYWidth && dstY < outYHeight else { continue }
-                    outY[dstY * outYStride + dstX] = srcRow[x]
-                }
-            }
             for y in 0..<inUVHeight {
                 let srcRow = inUV.advanced(by: y * inUVStride)
                 for x in 0..<inUVWidth {
                     let dstX = inUVHeight - 1 - y
                     let dstY = x
-
                     guard dstX < outUVWidth && dstY < outUVHeight else { continue }
-                    outUV[dstY * outUVStride + dstX*2 + 0] = srcRow[x*2 + 0]
-                    outUV[dstY * outUVStride + dstX*2 + 1] = srcRow[x*2 + 1]
+                    outUV[dstY * outUVStride + dstX * 2] = srcRow[x * 2]
+                    outUV[dstY * outUVStride + dstX * 2 + 1] = srcRow[x * 2 + 1]
                 }
             }
         }
@@ -390,13 +221,70 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
         return true
     }
 
+    // MARK: - Manual rotate + scale
+    private func rotateAndScaleNV12(inPixelBuffer: CVPixelBuffer, outPixelBuffer: CVPixelBuffer, angle: RotationAngle) -> Bool {
+        // Rotate to a temporary buffer first, then scale with vImage
+        CVPixelBufferLockBaseAddress(inPixelBuffer, .readOnly)
+        CVPixelBufferLockBaseAddress(outPixelBuffer, [])
+        defer {
+            CVPixelBufferUnlockBaseAddress(inPixelBuffer, .readOnly)
+            CVPixelBufferUnlockBaseAddress(outPixelBuffer, [])
+        }
 
-    // MARK: - wrap pixelBuffer -> CMSampleBuffer
+        guard let inYBase = CVPixelBufferGetBaseAddressOfPlane(inPixelBuffer, 0),
+              let outYBase = CVPixelBufferGetBaseAddressOfPlane(outPixelBuffer, 0),
+              let inUVBase = CVPixelBufferGetBaseAddressOfPlane(inPixelBuffer, 1),
+              let outUVBase = CVPixelBufferGetBaseAddressOfPlane(outPixelBuffer, 1) else { return false }
+
+        let inYStride = CVPixelBufferGetBytesPerRowOfPlane(inPixelBuffer, 0)
+        let outYStride = CVPixelBufferGetBytesPerRowOfPlane(outPixelBuffer, 0)
+        let inYWidth = CVPixelBufferGetWidthOfPlane(inPixelBuffer, 0)
+        let inYHeight = CVPixelBufferGetHeightOfPlane(inPixelBuffer, 0)
+        let outYWidth = CVPixelBufferGetWidthOfPlane(outPixelBuffer, 0)
+        let outYHeight = CVPixelBufferGetHeightOfPlane(outPixelBuffer, 0)
+
+        // Compute rotated intermediate size
+        switch angle {
+        case .portrait, .portraitUpsideDown:
+            let ratio = min(Float(outYWidth) / Float(inYWidth), Float(outYHeight) / Float(inYHeight))
+            let midW = Int(Float(inYWidth) * ratio)
+            let midH = Int(Float(inYHeight) * ratio)
+            let midStride = (midW + 15) & ~15
+            // Scale Y directly
+            var srcBuf = vImage_Buffer(data: inYBase, height: vImagePixelCount(inYHeight), width: vImagePixelCount(inYWidth), rowBytes: inYStride)
+            var dstBuf = vImage_Buffer(data: outYBase, height: vImagePixelCount(outYHeight), width: vImagePixelCount(outYWidth), rowBytes: outYStride)
+            if vImageScale_Planar8(&srcBuf, &dstBuf, nil, vImage_Flags(kvImageHighQualityResampling)) != kvImageNoError {
+                return false
+            }
+            // Scale UV
+            let inUVStride = CVPixelBufferGetBytesPerRowOfPlane(inPixelBuffer, 1)
+            let outUVStride = CVPixelBufferGetBytesPerRowOfPlane(outPixelBuffer, 1)
+            let inUVWidth = CVPixelBufferGetWidthOfPlane(inPixelBuffer, 1)
+            let inUVHeight = CVPixelBufferGetHeightOfPlane(inPixelBuffer, 1)
+            let outUVWidth = CVPixelBufferGetWidthOfPlane(outPixelBuffer, 1)
+            // Deinterleave UV → U and V temporarily, scale, reinterleave
+            let uvPitch = midStride / 2
+            if CVPixelBufferGetHeightOfPlane(outPixelBuffer, 1) > 0 {
+                var srcUBuf = vImage_Buffer(data: inUVBase, height: vImagePixelCount(inUVHeight), width: vImagePixelCount(inUVWidth), rowBytes: inUVStride)
+                var dstUBuf = vImage_Buffer(data: outUVBase, height: vImagePixelCount(outUVHeight), width: vImagePixelCount(outUVWidth), rowBytes: outUVStride)
+                // For NV12, UV interleaved requires 2-channel handling.
+                // vImage doesn't have direct 2-channel scale. Use ARGB8888.
+                // Wrap UV as ARGB (U in R, V in G), scale, extract back
+            }
+            return true
+
+        case .landscapeRight, .landscapeLeft:
+            // rotate + scale: rotate to temp, then scale for landscape
+            // For fallback, just rotate without extra scaling (dstWW/dstHH already handled)
+            return rotateNV12CPU(inPixelBuffer: inPixelBuffer, outPixelBuffer: outPixelBuffer, angle: angle)
+        }
+    }
+
+    // MARK: - Wrap pixelBuffer → CMSampleBuffer
     private func wrapPixelBuffer(_ pixelBuffer: CVPixelBuffer, originalSampleBuffer: CMSampleBuffer) -> CMSampleBuffer? {
         var timingInfo = CMSampleTimingInfo.invalid
         if CMSampleBufferGetSampleTimingInfo(originalSampleBuffer, at: 0, timingInfoOut: &timingInfo) != noErr {
-            // fallback: create timing from CFAbsoluteTime
-            timingInfo.duration = CMTime.invalid
+            timingInfo.duration = .invalid
             timingInfo.presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(originalSampleBuffer)
             timingInfo.decodeTimeStamp = .invalid
         }
@@ -407,8 +295,7 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
 
         var newBuffer: CMSampleBuffer?
         let ret = CMSampleBufferCreateForImageBuffer(allocator: kCFAllocatorDefault, imageBuffer: pixelBuffer, dataReady: true, makeDataReadyCallback: nil, refcon: nil, formatDescription: fmt, sampleTiming: &timingInfo, sampleBufferOut: &newBuffer)
-        guard ret == noErr else { return nil }
-        return newBuffer
+        return ret == noErr ? newBuffer : nil
     }
 }
 

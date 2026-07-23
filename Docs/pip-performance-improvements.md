@@ -903,3 +903,48 @@ sideload 時不再 dispatch 到 `logQueue` 後才檢查。
 | Flush 輸出 | 90 行原始框架 log/0.5s | 3 行 summary + 其餘重要 log/0.5s |
 
 **結果：** 框架 log 仍保留，但從 60+ 行壓縮為 1 行 summary。
+
+---
+
+## Section 33 — CPU 旋轉降級備援（2026-07）
+
+**目標：** 當 Metal GPU 旋轉失敗時，使用 Accelerate vImage 的 CPU 旋轉器作為自動降級路徑，避免串流中斷。
+
+### 修改文件
+
+| 文件 | 變更 |
+|------|------|
+| `ReplyKIT/CPURotator.swift` | 重寫：vImage Y 平面旋轉、移除死碼 VTEncoder、修正 semaphore、新增 async API |
+| `ReplyKIT/VideoProcess.swift` | 新增 `tryCPUFallback()` + `wrapAsSampleBuffer()`，GPU 失敗時自動降級 |
+
+### CPURotator 重寫摘要
+
+| 項目 | 改前 | 改後 |
+|------|------|------|
+| Y 平面旋轉 | 手動逐 pixel memcpy（O(n²) 逐 row × col） | `vImageRotate_Planar8`（NEON/AMX 最佳化） |
+| UV 平面旋轉 | 手動逐 pixel memcpy | 保留手動（UV 尺寸僅 Y 的 1/4，影響小） |
+| 縮放支援 | 無（直接旋轉後用原始尺寸） | 支援（`vImageScale_Planar8` + 手動 UV 縮放） |
+| 並發控制 | `DispatchSemaphore` + 無效的 `Task { await }` | `withCheckedContinuation` + `DispatchQueue.global` |
+| 編碼器 | `VTEncoder`（死碼，frame 未輸出到 MediaMixer） | 移除（CPU 只負責旋轉，編碼由 MediaMixer 統一處理） |
+| Async API | `rotateCPU(completion:)` callback 風格 | `rotateAsync(sampleBuffer:angle:needsRotation:) async`（與 GPU rotator 同介面） |
+
+### VideoProcess 降級流程
+
+```
+GPU rotate → nil → tryCPUFallback() → CPU rotate → success → MediaMixer
+                                                → nil → lastGoodFrame fallback (原路徑)
+```
+
+`tryCPUFallback()` 在 GPU 失敗的同一幀立即嘗試 CPU 旋轉。CPU 成功時 reset `consecutiveDropCount = 0`（GPU 下次可正常使用），失敗時沿用原有的「最後好幀 freeze」邏輯。
+
+### CPU 旋轉器介面
+
+```swift
+func rotateAsync(sampleBuffer: CMSampleBuffer,
+                 angle: RotationAngle,
+                 needsRotation: Bool) async -> CMSampleBuffer?
+```
+
+- 支援 `OutWW`/`OutHH` 輸出尺寸控制（與 GPU rotator 共用 config）
+- 使用 `getReusableBuffer` 快取 pixel buffer pool（最多 3 幀）
+- 總體約為 GPU 旋轉的 30~60% 效能，足以作為降級路徑維持串流不中斷

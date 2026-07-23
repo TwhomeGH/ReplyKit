@@ -285,6 +285,18 @@ final class VideoFrameProcessor {
                 originalTime: oringinaltime,
                 angle: self.angle
             ) else {
+                // GPU 失敗 → CPU 降級備援
+                if let cpuResult = await self.tryCPUFallback(
+                    imageBuffer: imageBuffer, pts: pts, originalTime: oringinaltime
+                ) {
+                    self.watchdogResetCount = 0
+                    self.consecutiveDropCount = 0
+                    self.storeLastGoodSnapshot(from: cpuResult)
+                    guard await self.mediaMixer.isRunning else { return }
+                    self.sentCount += 1
+                    await self.mediaMixer.append(cpuResult)
+                    return
+                }
                 self.consecutiveDropCount += 1
                 if self.consecutiveDropCount == self.fallbackFreezeThreshold {
                     sendlog("[VideoProcessor] ⚠️ Metal 旋轉連續失敗，啟用最後好幀 fallback 保持下游 video")
@@ -497,6 +509,29 @@ final class VideoFrameProcessor {
 
         return copied
     }
-
-
+    // MARK: - CPU 降級備援
+    private func tryCPUFallback(imageBuffer: CVImageBuffer, pts: CMTime, originalTime: CMSampleTimingInfo) async -> CMSampleBuffer? {
+        guard let sb = wrapAsSampleBuffer(imageBuffer: imageBuffer, originalTime: originalTime) else {
+            sendlog("[VideoProcessor] ? CPU fallback: wrapSampleBuffer failed")
+            return nil
+        }
+        let cpuRotator = RPVideoRotatorCPU_NV12()
+        cpuRotator.OutWW = RPConfig.shared.state.ODWidth
+        cpuRotator.OutHH = RPConfig.shared.state.ODHeight
+        cpuRotator.debug = RPConfig.shared.enableRotateLog
+        let result = await cpuRotator.rotateAsync(sampleBuffer: sb, angle: angle, needsRotation: true)
+        cpuRotator.cleanup()
+        if result != nil {
+            sendlog("[VideoProcessor] ? CPU 降級成功")
+        }
+        return result
+    }
+    private func wrapAsSampleBuffer(imageBuffer: CVImageBuffer, originalTime: CMSampleTimingInfo) -> CMSampleBuffer? {
+        var formatDesc: CMFormatDescription?
+        guard CMVideoFormatDescriptionCreateForImageBuffer(allocator: kCFAllocatorDefault, imageBuffer: imageBuffer, formatDescriptionOut: &formatDesc) == noErr, let fmt = formatDesc else { return nil }
+        var timing = originalTime
+        var sampleBuffer: CMSampleBuffer?
+        guard CMSampleBufferCreateForImageBuffer(allocator: kCFAllocatorDefault, imageBuffer: imageBuffer, dataReady: true, makeDataReadyCallback: nil, refcon: nil, formatDescription: fmt, sampleTiming: &timing, sampleBufferOut: &sampleBuffer) == noErr, let sb = sampleBuffer else { return nil }
+        return sb
+    }
 }
