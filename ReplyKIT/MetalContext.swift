@@ -2,7 +2,7 @@
 import CoreVideo
 
 final class MetalContext: @unchecked Sendable {
-    static let shared = MetalContext()
+    static var shared = MetalContext()
 
     let device: MTLDevice
     private(set) var queue: MTLCommandQueue
@@ -33,6 +33,7 @@ final class MetalContext: @unchecked Sendable {
 
     func rebuildQueue() {
         queue = device.makeCommandQueue()!
-        sendlog(message: "MetalContext: 重建 command queue")
+        textureCache = nil
+        sendlog(message: "MetalContext: 重建 command queue + 清除 texture cache")
     }
 }

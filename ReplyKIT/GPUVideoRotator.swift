@@ -376,6 +376,8 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     /// 連續 Metal 操作失敗計數，達到閾值時自動重建管線
     private var consecutiveMetalFailures = 0
     private let maxConsecutiveMetalFailures = 5
+    /// 達到上限後標記 GPU 永久死亡，不再重試 GPU
+    private var metalPermanentFailure = false
     private let commandBufferTimeout: TimeInterval = 1.0
     private let metalFailureLogLock = NSLock()
     private var lastMetalFailureLogAt = Date.distantPast
@@ -390,6 +392,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     /// 偵測 Metal 操作失敗，自動 cleanup 讓下一幀重新初始化
     private func handleMetalFailure(_ reason: String) {
+        guard !metalPermanentFailure else { return }
         consecutiveMetalFailures += 1
         let failureCount = consecutiveMetalFailures
         logMetalFailure(reason: reason, count: failureCount)
@@ -403,6 +406,8 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             cleanupResources()
             MetalContext.shared.rebuildQueue()
             consecutiveMetalFailures = 0
+            metalPermanentFailure = true
+            logTo("Metal 連續失敗達上限，標記永久死亡，後續直接走 CPU fallback")
             // 恢復原始品質模式
             if let original = originalQualityMode {
                 qualityMode = original
@@ -430,7 +435,10 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     }
 
     private func ensureMetalResources() -> Bool {
-
+        guard !metalPermanentFailure else {
+            logTo("Metal 已永久死亡，跳過 GPU 初始化")
+            return false
+        }
         guard hasMetalResources == false else {
             return true
         }
@@ -459,10 +467,14 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     private func buildComputePipeline(functionName: String, store: inout MTLComputePipelineState?) -> Bool {
         do {
-            guard let fn = MetalContext.shared.library.makeFunction(name: functionName) else { return false }
+            guard let fn = MetalContext.shared.library.makeFunction(name: functionName) else {
+                logTo("buildComputePipeline: function \(functionName) not found in library")
+                return false
+            }
             store = try MetalContext.shared.device.makeComputePipelineState(function: fn)
             return true
         } catch {
+            logTo("buildComputePipeline(\(functionName)) 失敗: \(error.localizedDescription)")
             return false
         }
     }
@@ -596,7 +608,12 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             return nil
         }
 
-        inflightSemaphore.wait()
+        let semaphoreTimeout = DispatchTime.now() + 0.5
+        guard inflightSemaphore.wait(timeout: semaphoreTimeout) == .success else {
+            recycleOutput(outSet)
+            logTo("inflight slot timeout (500ms)，使用 CPU fallback")
+            return nil
+        }
 
         guard renderPlaneYUV(cmd: cmd, srcY: ycvTexIn.tex, srcUV: uvcvTexIn.tex,
                         dstY: outSet.yTex, dstUV: outSet.uvTex, angle: angle) else {
