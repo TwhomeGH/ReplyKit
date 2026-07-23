@@ -198,6 +198,38 @@ final class LogManager {
 
     enum Mode { case local, remote, both }
 
+    // 高頻 frame log 累計器：合併多筆 dispatch 為一筆 summary
+    final class LogBatcher {
+        private let queue = DispatchQueue(label: "com.liveapp.logBatcher", attributes: .concurrent)
+        private var counters: [String: Int] = [:]
+        private var lastMessages: [String: String] = [:]
+
+        func add(title: String, message: String) {
+            queue.async(flags: .barrier) { [weak self] in
+                guard let self = self else { return }
+                self.counters[title, default: 0] += 1
+                self.lastMessages[title] = message
+            }
+        }
+
+        func flush() -> [String] {
+            queue.sync(flags: .barrier) { [weak self] in
+                guard let self = self else { return [] }
+                let result = self.counters.map { title, count in
+                    let last = self.lastMessages[title] ?? ""
+                    return "\(title) \(count) frames [\(last)]"
+                }
+                self.counters.removeAll()
+                self.lastMessages.removeAll()
+                return result
+            }
+        }
+    }
+
+    let batcher = LogBatcher()
+    // 合計為 summary 的 title 前綴
+    static let batchedTitles: Set<String> = ["[VFrame]", "[AudioFRAME]", "[VProc]"]
+
     private let logQueue = DispatchQueue(
         label: "com.liveapp.logQueue",
         qos: .background,
@@ -286,10 +318,11 @@ final class LogManager {
                 self.localLogBuffer.removeFirst(self.localLogBuffer.count - self.maxRingBufferEntries)
             }
 
+            guard !RPConfig.isSideload else { return }
             self.writeEarlyLogToFile(logMessage)
             logger.debug("LogBuffer:\(msg)")
         }
-        
+
     }
 
     private init() {
@@ -302,13 +335,24 @@ final class LogManager {
         let bufferCopy = localLogBuffer
         localLogBuffer = []
 
+        // 合計 batcher 高頻 log
+        let batched = batcher.flush()
+        let entries: [String]
+        if batched.isEmpty {
+            entries = bufferCopy
+        } else {
+            var combined = batched
+            combined.append(contentsOf: bufferCopy)
+            entries = combined
+        }
+
         notifyMainAppIfNeeded(forceNotify: true)
 
         if RPConfig.shared.enableSocketLog {
-            let limited = Array(bufferCopy.suffix(maxForceFlushLines))
+            let limited = Array(entries.suffix(maxForceFlushLines))
             SocketClient.shared.sendLogBatch(entries: limited, force: true)
         } else {
-            let text = bufferCopy.joined()
+            let text = entries.joined()
             writeLogToFile(text)
         }
 
@@ -355,7 +399,8 @@ final class LogManager {
         }
 
         logQueue.async { [weak self] in
-            self?.writeEarlyLogToFile(logMessage)
+            guard let self = self, !RPConfig.isSideload else { return }
+            self.writeEarlyLogToFile(logMessage)
         }
     }
 
@@ -396,14 +441,25 @@ final class LogManager {
         let bufferCopy = localLogBuffer
         localLogBuffer = []
 
+        // 合計 batcher 中的高頻 frame log（[VFrame] × N, [AudioFRAME] × N, ...）
+        let batched = batcher.flush()
+        let entries: [String]
+        if batched.isEmpty {
+            entries = bufferCopy
+        } else {
+            var combined = batched
+            combined.append(contentsOf: bufferCopy)
+            entries = combined
+        }
+
         notifyMainAppIfNeeded(forceNotify: forceNotify)
 
         if RPConfig.shared.enableSocketLog {
             DispatchQueue.global(qos: .utility).async {
-                SocketClient.shared.sendLogBatch(entries: bufferCopy, force: true)
+                SocketClient.shared.sendLogBatch(entries: entries, force: true)
             }
         } else {
-            let text = bufferCopy.joined()
+            let text = entries.joined()
             writeLogToFile(text)
         }
     }
@@ -898,8 +954,18 @@ func sendlog(title: String = "ReplyKit", message: String, flush: Bool = false) {
         logger.debug("sendlog skipped: enableLog=\(RPConfig.shared.enableLog)")
         return
     }
-    // onLogPage 只控制是否 flush 到外部（檔案/Socket），不控制是否寫入 buffer
-    // 確保無日誌頁時 LogManager 仍正常緩衝，問題可事後追溯
+    // 非側載且不在日誌頁時，跳過高頻框架日誌
+    if !RPConfig.isSideload && !RPConfig.shared.onLogPage {
+        if title.hasPrefix("[VFrame]") || title.hasPrefix("[AudioFRAME]") ||
+           title.hasPrefix("[VProc]") || title.hasPrefix("BitRate統計") {
+            return
+        }
+    }
+    // 側載（或 onLogPage）時，合計高頻框架日誌為 summary，減少 dispatch 開銷
+    if LogManager.batchedTitles.contains(where: { title.hasPrefix($0) }) {
+        LogManager.shared.batcher.add(title: title, message: message)
+        return
+    }
     LogManager.shared.log(title: title, message: message, flushImmediately: flush && RPConfig.shared.onLogPage)
 }
 

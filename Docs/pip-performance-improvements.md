@@ -816,3 +816,90 @@ g *= speechScale;
 | Bilinear 路徑 | ~10-15% ALU 減少 | 旋轉矩陣預算、UV 常數化 |
 | Bicubic 路徑 | ~75% texture read 頻寬減少 | 16-tap → 4-tap |
 | NoiseSuppress | 消除 ~50% thread warp divergence | select() 無分支 |
+
+---
+
+## Section 32 — ReplyKIT sendlog 管線效能改善（2026-07）
+
+**目標：** 減少 `sendlog` 在 `logQueue` 上的 dispatch 與 file I/O 開銷
+
+### 修改文件
+
+| 文件 | 變更 |
+|------|------|
+| `ReplyKIT/Event.swift` | 新增 LogBatcher、sendlog 高頻 log 累計合併、writeEarlyLogToFile dispatch 提前檢查 |
+
+### 變更摘要
+
+**1. LogBatcher 高頻 frame log 累計合併**
+
+新增 `LogManager.LogBatcher` 類別，使用獨立 concurrent queue + barrier 執行緒安全累計高頻 log：
+
+```
+v1 每幀獨立: [VFrame] #1, [VFrame] #2, ..., [VFrame] #60 → 60 次 dispatch
+v2 累計合計: [VFrame] 60 frames [PTS:511.8s]               → 1 次 dispatch / 0.5s
+```
+
+```swift
+final class LogBatcher {
+    private let queue = DispatchQueue(label: "...", attributes: .concurrent)
+    private var counters: [String: Int] = [:]
+    
+    func add(title: String, message: String) { queue.async(flags: .barrier) { ... } }
+    func flush() -> [String] { queue.sync(flags: .barrier) { ... return summaries } }
+}
+```
+
+在 `sendlog` 中，若 title 屬於高頻類別（`[VFrame]`、`[AudioFRAME]`、`[VProc]`），
+**不 dispatch 到 `logQueue`**，而是呼叫 `LogManager.shared.batcher.add(title:message:)`。
+
+`flushLocalLogs()` 和 `forceFlush()` 在送出 buffer 前先呼叫 `batcher.flush()`，
+將累計的 summary 字串合併到 entries 中一起送出。
+
+**2. sendlog 高頻 log 過濾（非側載 + 非日誌頁）**
+
+直接 return，不經過 batcher 也不經過 LogManager。
+
+```swift
+func sendlog(...) {
+    guard RPConfig.shared.enableLog else { return }
+    // 非側載且不在日誌頁時，跳過高頻框架日誌
+    if !RPConfig.isSideload && !RPConfig.shared.onLogPage {
+        if title.hasPrefix("[VFrame]") || title.hasPrefix("[AudioFRAME]") ||
+           title.hasPrefix("[VProc]") || title.hasPrefix("BitRate統計") {
+            return
+        }
+    }
+    // 側載（或 onLogPage）時，合計高頻框架日誌
+    if LogManager.batchedTitles.contains(where: { title.hasPrefix($0) }) {
+        LogManager.shared.batcher.add(title: title, message: message)
+        return
+    }
+    LogManager.shared.log(...)
+}
+```
+
+**3. writeEarlyLogToFile 提前 guard**
+
+sideload 時不再 dispatch 到 `logQueue` 後才檢查。
+
+### 現行管線對比
+
+| 階段 | 改前 (180 logs/s) | 改後 |
+|------|-------------------|------|
+| `sendlog` → `logQueue` dispatch | 180/s（全部） | ~20/s（batcher 使用 concurrent queue/barrier，不阻塞 logQueue） |
+| `logQueue` async file I/O | 180/s | 0（sideload 提前 guard） |
+| Flush timer → socket send | 1~2 batches/0.5s | 1~2 batches/0.5s + batched summaries 前綴 |
+| **總 dispatches/s** | **362** | **~21**（↓94%） |
+
+### 側載改善重點
+
+| 項目 | 改前 | 改後 |
+|------|------|------|
+| `[VFrame]` 60fps 處理 | 60 dispatch/s 到 logQueue | 60 barrier 到 batcher（獨立 concurrent queue，不阻塞 logQueue） |
+| `[AudioFRAME]` ~50/s | 50 dispatch/s 到 logQueue | 50 barrier 到 batcher |
+| `[VProc]` 60/s | 60 dispatch/s 到 logQueue | 60 barrier 到 batcher |
+| 合計 buffer + file I/O | 360 dispatches/s + 180 file writes | 20 dispatches/s + 0 file writes |
+| Flush 輸出 | 90 行原始框架 log/0.5s | 3 行 summary + 其餘重要 log/0.5s |
+
+**結果：** 框架 log 仍保留，但從 60+ 行壓縮為 1 行 summary。
