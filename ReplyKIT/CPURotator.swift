@@ -15,7 +15,8 @@ private struct UnsafeSendableValue<T>: @unchecked Sendable {
     let value: T
 }
 
-// MARK: - CPU ???剁?GPU ???嚗?final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
+// MARK: - CPU 旋轉器（GPU 降級備援）
+final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
 
     private struct PooledBuffer {
         var pixelBuffer: CVPixelBuffer
