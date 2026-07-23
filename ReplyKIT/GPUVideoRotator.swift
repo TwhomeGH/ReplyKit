@@ -376,7 +376,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     /// 連續 Metal 操作失敗計數，達到閾值時自動重建管線
     private var consecutiveMetalFailures = 0
     private let maxConsecutiveMetalFailures = 5
-    private let commandBufferTimeout: TimeInterval = 1.8
+    private let commandBufferTimeout: TimeInterval = 1.0
     private let metalFailureLogLock = NSLock()
     private var lastMetalFailureLogAt = Date.distantPast
     /// 限制 in-flight command buffer 數量，防止 GPU 被淹沒

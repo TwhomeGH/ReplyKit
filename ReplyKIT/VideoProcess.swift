@@ -118,11 +118,11 @@ final class VideoFrameProcessor {
     var sentCount: Int = 0
     private var isProcessing = false
     private var processingStartedAt: Date?
-    private let processingTimeout: TimeInterval = 2.0
+    private let processingTimeout: TimeInterval = 1.0
     private var watchdogResetCount: Int = 0
     private var consecutiveDropCount: Int = 0
     private let fallbackFreezeThreshold = 3
-    private let maxConsecutiveDrops = 60
+    private let maxConsecutiveDrops = 10
     private var lastGoodSnapshot: CVPixelBuffer?
     private var lastGoodFormatDescription: CMVideoFormatDescription?
     private var processingGeneration: UInt64 = 0
@@ -306,8 +306,10 @@ final class VideoFrameProcessor {
                 }
 
                 if self.consecutiveDropCount >= self.maxConsecutiveDrops {
-                    self.isActive = false
-                    sendlog("[VideoProcessor] ❌ 連續 \(self.consecutiveDropCount) 幀旋轉失敗，標記重建")
+                    let dropCount = self.consecutiveDropCount
+                    self.consecutiveDropCount = 0
+                    self.resetProcessorActor(reason: "[VideoProcessor] 連續 \(dropCount) 幀失敗，重置旋轉器管線")
+                    sendlog("[VideoProcessor] ❌ 連續 \(dropCount) 幀失敗，重置旋轉器管線，持續嘗試")
                     self.lastGoodSnapshot = nil
                     self.lastGoodFormatDescription = nil
                     return

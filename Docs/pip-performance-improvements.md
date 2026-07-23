@@ -1030,6 +1030,28 @@ guard frameInterval == VideoCodec.frameInterval else { return }
 
 ### 變更摘要
 
+**0. Timeout 統一為 1s + Pipeline 永不停止**
+
+SRS 轉發伺服器在串流中斷 10s 後自動 kill forwarder，因此 Recovery 必須在 10s 內完成：
+
+| 項目 | 改前 | 改後 |
+|------|------|------|
+| `commandBufferTimeout` (GPUVideoRotator) | 1.8s | **1.0s** |
+| `processingTimeout` (VideoProcess watchdog) | 2.0s | **1.0s** |
+| `maxConsecutiveDrops` | 60（60s 後 `isActive = false`） | **10**（不再 `isActive = false`，改為 reset 管線後繼續嘗試） |
+
+`maxConsecutiveDrops` 觸滿時不再 `isActive = false` 永久停止管線，而是 `resetProcessorActor()` 重建旋轉器後繼續嘗試：
+
+```swift
+if self.consecutiveDropCount >= self.maxConsecutiveDrops {
+    let dropCount = self.consecutiveDropCount
+    self.consecutiveDropCount = 0
+    self.resetProcessorActor(reason: "...")
+    sendlog("[VideoProcessor] ❌ 連續 \(dropCount) 幀失敗，重置旋轉器管線，持續嘗試")
+    return  // 下一幀會建立新 actor，重新嘗試
+}
+```
+
 **1. 預先分配 output buffer pool（prewarmPool）**
 
 `ensureMetalResources()` 成功後立即呼叫 `prewarmPool()`，預先建立 3 組 Metal-compatible CVPixelBuffer + MTLTexture，避免 runtime `getReusableOutput` 因 CVPixelBufferCreate 忙碌而回傳 nil。
