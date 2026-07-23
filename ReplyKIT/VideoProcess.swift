@@ -1,7 +1,9 @@
 import HaishinKit
 import RTMPHaishinKit
 import ReplayKit
+import Foundation
 import CoreMedia
+import CoreVideo
 import os
 
 
@@ -121,7 +123,8 @@ final class VideoFrameProcessor {
     private var consecutiveDropCount: Int = 0
     private let fallbackFreezeThreshold = 3
     private let maxConsecutiveDrops = 60
-    private var lastGoodSampleBuffer: CMSampleBuffer?
+    private var lastGoodSnapshot: CVPixelBuffer?
+    private var lastGoodFormatDescription: CMVideoFormatDescription?
     private var processingGeneration: UInt64 = 0
     private let processingLock = OSAllocatedUnfairLock()
 
@@ -170,7 +173,8 @@ final class VideoFrameProcessor {
             processingStartedAt = nil
             watchdogResetCount = 0
             consecutiveDropCount = 0
-            lastGoodSampleBuffer = nil
+            lastGoodSnapshot = nil
+            lastGoodFormatDescription = nil
             processingGeneration &+= 1
         }
     }
@@ -292,13 +296,13 @@ final class VideoFrameProcessor {
                 if self.consecutiveDropCount >= self.maxConsecutiveDrops {
                     self.isActive = false
                     sendlog("[VideoProcessor] ❌ 連續 \(self.consecutiveDropCount) 幀旋轉失敗，標記重建")
-                    self.lastGoodSampleBuffer = nil
+                    self.lastGoodSnapshot = nil
+                    self.lastGoodFormatDescription = nil
                     return
                 }
 
                 guard self.consecutiveDropCount >= self.fallbackFreezeThreshold,
-                      let fallback = self.makeRetimedCopy(
-                        from: self.lastGoodSampleBuffer,
+                      let fallback = self.makeFallbackSampleBuffer(
                         pts: pts,
                         originalTime: oringinaltime
                       ) else {
@@ -344,7 +348,7 @@ final class VideoFrameProcessor {
                 sampleBufferOut: &correctedBuffer
             )
             let outputBuffer = correctedBuffer ?? rotated
-            self.lastGoodSampleBuffer = outputBuffer
+            self.storeLastGoodSnapshot(from: outputBuffer)
 
             guard await self.mediaMixer.isRunning else {
                 if enablePipeLog {
@@ -360,12 +364,21 @@ final class VideoFrameProcessor {
         }
     }
 
-    private func makeRetimedCopy(
-        from sampleBuffer: CMSampleBuffer?,
+    private func storeLastGoodSnapshot(from sampleBuffer: CMSampleBuffer) {
+        guard let imageBuffer = sampleBuffer.imageBuffer,
+              let copied = copyPixelBuffer(imageBuffer) else {
+            return
+        }
+
+        lastGoodSnapshot = copied
+        lastGoodFormatDescription = sampleBuffer.formatDescription
+    }
+
+    private func makeFallbackSampleBuffer(
         pts: CMTime,
         originalTime: CMSampleTimingInfo
     ) -> CMSampleBuffer? {
-        guard let sampleBuffer else { return nil }
+        guard let snapshot = lastGoodSnapshot else { return nil }
 
         let duration: CMTime
         if originalTime.duration.isValid, originalTime.duration.seconds > 0 {
@@ -379,18 +392,111 @@ final class VideoFrameProcessor {
             presentationTimeStamp: pts,
             decodeTimeStamp: CMTime.invalid
         )
-        var copied: CMSampleBuffer?
-        CMSampleBufferCreateCopyWithNewTiming(
+
+        let formatDescription: CMVideoFormatDescription
+        if let lastGoodFormatDescription {
+            formatDescription = lastGoodFormatDescription
+        } else {
+            var createdFormat: CMVideoFormatDescription?
+            let status = CMVideoFormatDescriptionCreateForImageBuffer(
+                allocator: kCFAllocatorDefault,
+                imageBuffer: snapshot,
+                formatDescriptionOut: &createdFormat
+            )
+            guard status == noErr, let createdFormat else {
+                sendlog("[VideoProcessor] ⚠️ fallback format 建立失敗 status:\(status)")
+                return nil
+            }
+            formatDescription = createdFormat
+            lastGoodFormatDescription = createdFormat
+        }
+
+        var sampleBuffer: CMSampleBuffer?
+        let status = CMSampleBufferCreateReadyWithImageBuffer(
             allocator: kCFAllocatorDefault,
-            sampleBuffer: sampleBuffer,
-            sampleTimingEntryCount: 1,
-            sampleTimingArray: &timing,
-            sampleBufferOut: &copied
+            imageBuffer: snapshot,
+            formatDescription: formatDescription,
+            sampleTiming: &timing,
+            sampleBufferOut: &sampleBuffer
         )
+        guard status == noErr else {
+            sendlog("[VideoProcessor] ⚠️ fallback sample 建立失敗 status:\(status)")
+            return nil
+        }
+        return sampleBuffer
+    }
+
+    private func copyPixelBuffer(_ source: CVPixelBuffer) -> CVPixelBuffer? {
+        let width = CVPixelBufferGetWidth(source)
+        let height = CVPixelBufferGetHeight(source)
+        let pixelFormat = CVPixelBufferGetPixelFormatType(source)
+        let attrs: [String: Any] = [
+            kCVPixelBufferPixelFormatTypeKey as String: pixelFormat,
+            kCVPixelBufferWidthKey as String: width,
+            kCVPixelBufferHeightKey as String: height,
+            kCVPixelBufferIOSurfacePropertiesKey as String: [:]
+        ]
+
+        var copied: CVPixelBuffer?
+        let createStatus = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            width,
+            height,
+            pixelFormat,
+            attrs as CFDictionary,
+            &copied
+        )
+        guard createStatus == kCVReturnSuccess, let copied else {
+            sendlog("[VideoProcessor] ⚠️ fallback snapshot 建立失敗 status:\(createStatus)")
+            return nil
+        }
+
+        CVPixelBufferLockBaseAddress(source, .readOnly)
+        CVPixelBufferLockBaseAddress(copied, [])
+        defer {
+            CVPixelBufferUnlockBaseAddress(copied, [])
+            CVPixelBufferUnlockBaseAddress(source, .readOnly)
+        }
+
+        if CVPixelBufferGetPlaneCount(source) > 0 {
+            for plane in 0..<CVPixelBufferGetPlaneCount(source) {
+                guard let srcBase = CVPixelBufferGetBaseAddressOfPlane(source, plane),
+                      let dstBase = CVPixelBufferGetBaseAddressOfPlane(copied, plane) else {
+                    return nil
+                }
+                let srcStride = CVPixelBufferGetBytesPerRowOfPlane(source, plane)
+                let dstStride = CVPixelBufferGetBytesPerRowOfPlane(copied, plane)
+                let height = CVPixelBufferGetHeightOfPlane(source, plane)
+                let bytesPerRow = min(srcStride, dstStride)
+
+                for row in 0..<height {
+                    memcpy(
+                        dstBase.advanced(by: row * dstStride),
+                        srcBase.advanced(by: row * srcStride),
+                        bytesPerRow
+                    )
+                }
+            }
+        } else {
+            guard let srcBase = CVPixelBufferGetBaseAddress(source),
+                  let dstBase = CVPixelBufferGetBaseAddress(copied) else {
+                return nil
+            }
+            let srcStride = CVPixelBufferGetBytesPerRow(source)
+            let dstStride = CVPixelBufferGetBytesPerRow(copied)
+            let bytesPerRow = min(srcStride, dstStride)
+
+            for row in 0..<height {
+                memcpy(
+                    dstBase.advanced(by: row * dstStride),
+                    srcBase.advanced(by: row * srcStride),
+                    bytesPerRow
+                )
+            }
+        }
+
         return copied
     }
 
 
 }
-
-
