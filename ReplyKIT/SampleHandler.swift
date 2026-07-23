@@ -1356,7 +1356,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         await mediaMixer.setSessionPreset(.inputPriority)
 
-        
         // Video mixer passthrough
         var videoMixerSettings = await mediaMixer.videoMixerSettings
         videoMixerSettings.mode = .passthrough
