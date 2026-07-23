@@ -226,7 +226,6 @@ class SocketServer:ObservableObject {
             listener?.newConnectionHandler = { [weak self] connection in
                 self?.handleNewConnection(connection)
             }
-            listener?.start(queue: queue)
 
             listener?.stateUpdateHandler = { [weak self] state in
                 guard let self else { return }
@@ -250,6 +249,8 @@ class SocketServer:ObservableObject {
                     break
                 }
             }
+
+            listener?.start(queue: queue)
 
             logTo("SocketServer started on port \(port)")
 

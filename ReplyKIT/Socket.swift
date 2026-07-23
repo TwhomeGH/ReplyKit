@@ -85,6 +85,8 @@ class SocketClient : @unchecked Sendable {
     static let shared = SocketClient()
 
     private var isProcessingBatch = false
+    private var didReceiveRTMPInBatch = false
+    private var didReceiveLogConfigInBatch = false
 
 
     actor ContinuationStore {
@@ -388,6 +390,8 @@ class SocketClient : @unchecked Sendable {
 
                     self.rtmpBatchContinuation = cont
                     self.isProcessingBatch = true
+                    self.didReceiveRTMPInBatch = false
+                    self.didReceiveLogConfigInBatch = false
 
                     let payload: [String: Any] = [
                         "type": "batch",
@@ -855,6 +859,84 @@ class SocketClient : @unchecked Sendable {
         let micVolume: Double
         let appVolumeAdd: Double
         let micVolumeAdd: Double
+
+        enum CodingKeys: String, CodingKey {
+            case type, rtmpURL, rtmpKey, BitRate, ChangeBit
+            case isLowLatencyRateControlEnabled, useEnhancedRTMP, isOringinAudio
+            case h264level, videoCodec, hevcLevel, BitRateMode, videoBuffer, useBic
+            case dstW, dstH, odstW, odstH, Rotate, RotateOriginal
+            case enableEchoFix, enableNoiseFix, enableAGCFix, enableMetalAudio
+            case KeyFrameInterval, enableRTMPLog
+            case appVolume, micVolume, appVolumeAdd, micVolumeAdd
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            type = try c.decodeIfPresent(String.self, forKey: .type) ?? "RTMP"
+            rtmpURL = try c.decodeIfPresent(String.self, forKey: .rtmpURL) ?? "rtmp://192.168.0.102/live"
+            rtmpKey = try c.decodeIfPresent(String.self, forKey: .rtmpKey) ?? "test"
+            BitRate = try c.decodeIfPresent(Int.self, forKey: .BitRate) ?? 3_900_000
+            ChangeBit = try c.decodeIfPresent(Bool.self, forKey: .ChangeBit) ?? false
+            isLowLatencyRateControlEnabled = try c.decodeIfPresent(Bool.self, forKey: .isLowLatencyRateControlEnabled) ?? false
+            useEnhancedRTMP = try c.decodeIfPresent(Bool.self, forKey: .useEnhancedRTMP)
+            isOringinAudio = try c.decodeIfPresent(Bool.self, forKey: .isOringinAudio)
+            h264level = try c.decodeIfPresent(String.self, forKey: .h264level) ?? "AutoHigh"
+            videoCodec = try c.decodeIfPresent(String.self, forKey: .videoCodec)
+            hevcLevel = try c.decodeIfPresent(String.self, forKey: .hevcLevel)
+            BitRateMode = min(try c.decodeIfPresent(Int.self, forKey: .BitRateMode) ?? 0, 2)
+            videoBuffer = try c.decodeIfPresent(Int.self, forKey: .videoBuffer) ?? -1
+            useBic = try c.decodeIfPresent(Bool.self, forKey: .useBic) ?? false
+            dstW = try c.decodeIfPresent(Int.self, forKey: .dstW) ?? 0
+            dstH = try c.decodeIfPresent(Int.self, forKey: .dstH) ?? 0
+            odstW = try c.decodeIfPresent(Int.self, forKey: .odstW) ?? 0
+            odstH = try c.decodeIfPresent(Int.self, forKey: .odstH) ?? 0
+            Rotate = try c.decodeIfPresent(Int.self, forKey: .Rotate) ?? 90
+            RotateOriginal = try c.decodeIfPresent(Bool.self, forKey: .RotateOriginal) ?? false
+            enableEchoFix = try c.decodeIfPresent(Bool.self, forKey: .enableEchoFix) ?? false
+            enableNoiseFix = try c.decodeIfPresent(Bool.self, forKey: .enableNoiseFix) ?? false
+            enableAGCFix = try c.decodeIfPresent(Bool.self, forKey: .enableAGCFix) ?? false
+            enableMetalAudio = try c.decodeIfPresent(Bool.self, forKey: .enableMetalAudio) ?? false
+            KeyFrameInterval = try c.decodeIfPresent(Int.self, forKey: .KeyFrameInterval)
+            enableRTMPLog = try c.decodeIfPresent(Bool.self, forKey: .enableRTMPLog)
+            appVolume = try c.decodeIfPresent(Double.self, forKey: .appVolume) ?? 1.0
+            micVolume = try c.decodeIfPresent(Double.self, forKey: .micVolume) ?? 1.0
+            appVolumeAdd = try c.decodeIfPresent(Double.self, forKey: .appVolumeAdd) ?? 1.0
+            micVolumeAdd = try c.decodeIfPresent(Double.self, forKey: .micVolumeAdd) ?? 1.0
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(type, forKey: .type)
+            try c.encode(rtmpURL, forKey: .rtmpURL)
+            try c.encode(rtmpKey, forKey: .rtmpKey)
+            try c.encode(BitRate, forKey: .BitRate)
+            try c.encode(ChangeBit, forKey: .ChangeBit)
+            try c.encode(isLowLatencyRateControlEnabled, forKey: .isLowLatencyRateControlEnabled)
+            try c.encodeIfPresent(useEnhancedRTMP, forKey: .useEnhancedRTMP)
+            try c.encodeIfPresent(isOringinAudio, forKey: .isOringinAudio)
+            try c.encode(h264level, forKey: .h264level)
+            try c.encodeIfPresent(videoCodec, forKey: .videoCodec)
+            try c.encodeIfPresent(hevcLevel, forKey: .hevcLevel)
+            try c.encode(BitRateMode, forKey: .BitRateMode)
+            try c.encode(videoBuffer, forKey: .videoBuffer)
+            try c.encode(useBic, forKey: .useBic)
+            try c.encode(dstW, forKey: .dstW)
+            try c.encode(dstH, forKey: .dstH)
+            try c.encode(odstW, forKey: .odstW)
+            try c.encode(odstH, forKey: .odstH)
+            try c.encode(Rotate, forKey: .Rotate)
+            try c.encode(RotateOriginal, forKey: .RotateOriginal)
+            try c.encode(enableEchoFix, forKey: .enableEchoFix)
+            try c.encode(enableNoiseFix, forKey: .enableNoiseFix)
+            try c.encode(enableAGCFix, forKey: .enableAGCFix)
+            try c.encode(enableMetalAudio, forKey: .enableMetalAudio)
+            try c.encodeIfPresent(KeyFrameInterval, forKey: .KeyFrameInterval)
+            try c.encodeIfPresent(enableRTMPLog, forKey: .enableRTMPLog)
+            try c.encode(appVolume, forKey: .appVolume)
+            try c.encode(micVolume, forKey: .micVolume)
+            try c.encode(appVolumeAdd, forKey: .appVolumeAdd)
+            try c.encode(micVolumeAdd, forKey: .micVolumeAdd)
+        }
     }
 
     struct LogConfig: Codable {
@@ -1055,16 +1137,21 @@ class SocketClient : @unchecked Sendable {
                 }
 
             case "BatchEnded":
-                self.logTo("Batch Get All Req")
+                self.logTo("Batch Get All Req RTMP:\(self.didReceiveRTMPInBatch) Log:\(self.didReceiveLogConfigInBatch)")
                 guard let cont = self.rtmpBatchContinuation else {
                     self.logTo("[rtmpBatch] no pending continuation, ignore")
                     return
                 }
+                let success = self.didReceiveRTMPInBatch
                 self.rtmpBatchContinuation = nil
                 self.isProcessingBatch = false
                 updateLogFixState()
                 updateONLogFixState()
-                cont.resume(returning: true)
+                if !success {
+                    self.logTo("[rtmpBatch] RTMP config missing or decode failed")
+                    self._closeConnection()
+                }
+                cont.resume(returning: success)
 
             case "UPSet":
                 logger.debug("DATA:\(data, privacy: .public)")
@@ -1101,6 +1188,7 @@ class SocketClient : @unchecked Sendable {
                     RPConfig.shared.enableTimeDebug = env.enableTimeDebug
                     RPConfig.shared.enablePipelineLog = env.enablePipelineLog
                     RPConfig.shared.applyLogMode()
+                    self.didReceiveLogConfigInBatch = true
                     self.logTo("[Get]logMode:\(env.logMode) logURL:\(env.logURL) SocketLog:\(RPConfig.shared.enableSocketLog) TimeDebug:\(env.enableTimeDebug)")
                     self.logTo("[Get]onLog:\(env.onlogPage) onAudio:\(env.onAudioPage) EnableLog:\(env.enableLog)")
                     if !self.isProcessingBatch {
@@ -1132,6 +1220,7 @@ class SocketClient : @unchecked Sendable {
                     let env = try decoder.decode(RTMPConfig.self, from: data)
                     logTo("[RTMP] Fetched url=\(env.rtmpURL) key=\(fixlogSafeKey(env.rtmpKey))")
                     applyRTMP(env)
+                    self.didReceiveRTMPInBatch = true
                 } catch {
                     let raw = String(data: data, encoding: .utf8) ?? "?"
                     logTo("[Socket] RTMP decode error: \(error) data=\(raw.prefix(200))")
