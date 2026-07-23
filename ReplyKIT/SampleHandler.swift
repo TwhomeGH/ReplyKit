@@ -1387,8 +1387,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         if dstW > 0 && dstH > 0 {
             await applyAllVideoSettings(width: dstW, height: dstH)
             sendlog(message: "預設影片尺寸: \(dstW)x\(dstH)")
-            // videoSize 設好後底層 auto mode 會自動重新計算 buffer count
-        }
         } else {
             sendlog(message: "⚠️ 警告：未指定影片尺寸，將沿用ReplyKIT的寬高 Auto自動設置")
         }
