@@ -2137,12 +2137,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             videoFrameCount += 1
 
             // ✅ 強制診斷日誌：每 1500 幀或首幀輸出，不依賴 enablePipelineLog
-            if videoFrameCount == 60 || videoFrameCount % 1500 == 0 {
+            if videoFrameCount % 1500 == 0 {
                 let sinceStart = timestamp.seconds
                 sendlog(message: "[VFrame] #\(videoFrameCount) PTS:\(String(format:"%.3f",sinceStart))s ready:\(sampleBuffer.dataReadiness == .ready) vp:\(videoProcessor != nil ? (videoProcessor!.isActive ? "Y" : "INACTIVE") : "N") init:\(processorsInitialized)")
-            }
-
-            if RPConfig.shared.enablePipelineLog, videoFrameCount == 1 || videoFrameCount % 300 == 0 {
+            } else if RPConfig.shared.enablePipelineLog, videoFrameCount % 600 == 0 {
                 let sinceStart = timestamp.seconds
                 sendlog(message: "[Video流水] #\(videoFrameCount) PTS:\(String(format:"%.3f",sinceStart))s proc:\(videoProcessor != nil ? "Y" : "N") init:\(processorsInitialized)")
             }
@@ -2181,15 +2179,15 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 audioFrameCount += 1
 
                 //安全日誌：每 1500 幀或首幀輸出，不依賴 enablePipelineLog
-                if audioFrameCount == 60 || audioFrameCount % 1500 == 0 {
+                if audioFrameCount % 1500 == 0 {
                     let sinceStart = timestamp.seconds
                     sendlog(message: "[AudioFRAME] #\(audioFrameCount) track:\(trackType) PTS:\(String(format:"%.3f",sinceStart))s ready:\(sampleBuffer.dataReadiness == .ready) ap:\(audioProcessor != nil ? (audioProcessor!.isActive ? "Y" : "INACTIVE") : "N") init:\(processorsInitialized)")
-                }
-
-                if RPConfig.shared.enablePipelineLog, audioFrameCount == 1 || audioFrameCount % 300 == 0 {
+                } else if RPConfig.shared.enablePipelineLog, audioFrameCount % 600 == 0 {
                     let sinceStart = timestamp.seconds
                     sendlog(message: "[Audio流水] #\(audioFrameCount) track:\(trackType) PTS:\(String(format:"%.3f",sinceStart))s proc:\(audioProcessor != nil ? "Y" : "N") init:\(processorsInitialized)")
+                
                 }
+
 
                 
                 if needAudioConfiguration  && !didConfigureAudio {
