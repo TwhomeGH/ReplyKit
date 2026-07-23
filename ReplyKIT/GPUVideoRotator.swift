@@ -374,17 +374,37 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     private var consecutiveMetalFailures = 0
     private let maxConsecutiveMetalFailures = 5
     private let commandBufferTimeout: TimeInterval = 1.8
+    private let metalFailureLogLock = NSLock()
+    private var lastMetalFailureLogAt = Date.distantPast
 
     /// 偵測 Metal 操作失敗，自動 cleanup 讓下一幀重新初始化
     private func handleMetalFailure(_ reason: String) {
         consecutiveMetalFailures += 1
-        logTo("Metal 失敗[\(consecutiveMetalFailures)/\(maxConsecutiveMetalFailures)]: \(reason)")
+        let failureCount = consecutiveMetalFailures
+        logMetalFailure(reason: reason, count: failureCount)
         if consecutiveMetalFailures >= maxConsecutiveMetalFailures {
-            logTo("Metal 連續失敗次數過多，重建管線與 command queue")
+            sendlog(message: "[GPU Rotator] Metal 連續失敗 \(failureCount) 次，重建管線與 command queue")
             cleanupResources()
             MetalContext.shared.rebuildQueue()
             consecutiveMetalFailures = 0
         }
+    }
+
+    private func logMetalFailure(reason: String, count: Int) {
+        let now = Date()
+        var shouldLog = count == 1 || count >= maxConsecutiveMetalFailures
+
+        metalFailureLogLock.lock()
+        if now.timeIntervalSince(lastMetalFailureLogAt) >= 2.0 {
+            shouldLog = true
+        }
+        if shouldLog {
+            lastMetalFailureLogAt = now
+        }
+        metalFailureLogLock.unlock()
+
+        guard shouldLog else { return }
+        sendlog(message: "[GPU Rotator] Metal 失敗[\(count)/\(maxConsecutiveMetalFailures)]: \(reason)")
     }
 
     private func ensureMetalResources() -> Bool {
@@ -397,12 +417,12 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         switch qualityMode {
         case .live where pipelineBilinear == nil:
             guard buildComputePipeline(functionName: "rotateNV12_bilinear", store: &pipelineBilinear) else {
-                logTo("建立 Bilinear ComputePipeline 失敗")
+                handleMetalFailure("建立 Bilinear ComputePipeline 失敗")
                 return false
             }
         case .quality where pipelineBicubic == nil:
             guard buildComputePipeline(functionName: "rotateNV12_bicubic", store: &pipelineBicubic) else {
-                logTo("建立 Bicubic ComputePipeline 失敗")
+                handleMetalFailure("建立 Bicubic ComputePipeline 失敗")
                 return false
             }
         default:

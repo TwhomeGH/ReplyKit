@@ -119,7 +119,9 @@ final class VideoFrameProcessor {
     private let processingTimeout: TimeInterval = 2.0
     private var watchdogResetCount: Int = 0
     private var consecutiveDropCount: Int = 0
+    private let fallbackFreezeThreshold = 3
     private let maxConsecutiveDrops = 60
+    private var lastGoodSampleBuffer: CMSampleBuffer?
     private var processingGeneration: UInt64 = 0
     private let processingLock = OSAllocatedUnfairLock()
 
@@ -168,6 +170,7 @@ final class VideoFrameProcessor {
             processingStartedAt = nil
             watchdogResetCount = 0
             consecutiveDropCount = 0
+            lastGoodSampleBuffer = nil
             processingGeneration &+= 1
         }
     }
@@ -279,9 +282,40 @@ final class VideoFrameProcessor {
                 angle: self.angle
             ) else {
                 self.consecutiveDropCount += 1
+                if self.consecutiveDropCount == self.fallbackFreezeThreshold {
+                    sendlog("[VideoProcessor] ⚠️ Metal 旋轉連續失敗，啟用最後好幀 fallback 保持下游 video")
+                } else if self.consecutiveDropCount > self.fallbackFreezeThreshold,
+                          self.consecutiveDropCount % 60 == 0 {
+                    sendlog("[VideoProcessor] ⚠️ Metal 旋轉仍失敗 \(self.consecutiveDropCount) 幀，持續 fallback")
+                }
+
                 if self.consecutiveDropCount >= self.maxConsecutiveDrops {
                     self.isActive = false
                     sendlog("[VideoProcessor] ❌ 連續 \(self.consecutiveDropCount) 幀旋轉失敗，標記重建")
+                    self.lastGoodSampleBuffer = nil
+                    return
+                }
+
+                guard self.consecutiveDropCount >= self.fallbackFreezeThreshold,
+                      let fallback = self.makeRetimedCopy(
+                        from: self.lastGoodSampleBuffer,
+                        pts: pts,
+                        originalTime: oringinaltime
+                      ) else {
+                    return
+                }
+
+                guard await self.mediaMixer.isRunning else {
+                    if enablePipeLog {
+                        sendlog("[VideoProcessor] ⚠️ #\(localCount) MediaMixer 未運行，fallback 跳過 PTS:\(String(format:"%.3f",pts.seconds))s")
+                    }
+                    return
+                }
+
+                self.sentCount += 1
+                await self.mediaMixer.append(fallback)
+                if enablePipeLog, self.consecutiveDropCount == self.fallbackFreezeThreshold {
+                    sendlog("[VideoProcessor] #\(localCount) fallback 最後好幀 PTS:\(String(format:"%.3f",pts.seconds))s")
                 }
                 return
             }
@@ -309,6 +343,8 @@ final class VideoFrameProcessor {
                 sampleTimingArray: &correctedTiming,
                 sampleBufferOut: &correctedBuffer
             )
+            let outputBuffer = correctedBuffer ?? rotated
+            self.lastGoodSampleBuffer = outputBuffer
 
             guard await self.mediaMixer.isRunning else {
                 if enablePipeLog {
@@ -320,16 +356,41 @@ final class VideoFrameProcessor {
             if enablePipeLog, isFirstFrame || localCount % 300 == 0 {
                 sendlog("[VideoProcessor] #\(localCount) 送出MediaMixer PTS:\(String(format:"%.3f",pts.seconds))s")
             }
-            if let cb = correctedBuffer {
-                await self.mediaMixer.append(cb)
-            } else {
-                await self.mediaMixer.append(rotated)
-            }
+            await self.mediaMixer.append(outputBuffer)
         }
+    }
+
+    private func makeRetimedCopy(
+        from sampleBuffer: CMSampleBuffer?,
+        pts: CMTime,
+        originalTime: CMSampleTimingInfo
+    ) -> CMSampleBuffer? {
+        guard let sampleBuffer else { return nil }
+
+        let duration: CMTime
+        if originalTime.duration.isValid, originalTime.duration.seconds > 0 {
+            duration = originalTime.duration
+        } else {
+            duration = CMTime(seconds: 1.0 / 60.0, preferredTimescale: 600)
+        }
+
+        var timing = CMSampleTimingInfo(
+            duration: duration,
+            presentationTimeStamp: pts,
+            decodeTimeStamp: CMTime.invalid
+        )
+        var copied: CMSampleBuffer?
+        CMSampleBufferCreateCopyWithNewTiming(
+            allocator: kCFAllocatorDefault,
+            sampleBuffer: sampleBuffer,
+            sampleTimingEntryCount: 1,
+            sampleTimingArray: &timing,
+            sampleBufferOut: &copied
+        )
+        return copied
     }
 
 
 }
-
 
 
