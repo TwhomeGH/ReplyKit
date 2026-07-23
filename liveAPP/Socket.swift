@@ -1315,18 +1315,74 @@ class SocketServer:ObservableObject {
         logTo("SocketServer 準備直播：清理舊連線與緩衝")
         performOnQueue { [weak self] in
             guard let self else { return }
-            // 取消所有現有連線（extension 重新啟動後會建立新連線）
-            for (_, conn) in self.connections {
-                conn.stateUpdateHandler = nil
-                conn.cancel()
+            self.clearBroadcastConnections()
+        }
+    }
+
+    /// 開始直播前同步到 listener ready，避免 Broadcast Extension 首次請求撞上 server 尚未啟動。
+    func prepareForBroadcastAndWaitReady(timeout: TimeInterval = 3.0) async -> Bool {
+        await withCheckedContinuation { continuation in
+            logTo("SocketServer 準備直播並等待 listener ready")
+            performOnQueue { [weak self] in
+                guard let self else {
+                    continuation.resume(returning: false)
+                    return
+                }
+
+                self.clearBroadcastConnections()
+                if self.listener?.state != .ready {
+                    self.logTo("Listener not ready before broadcast (state: \(self.listener?.state.stateString ?? "nil")), restarting")
+                    self.stopInternal()
+                    self.start()
+                }
+
+                let deadline = DispatchTime.now() + timeout
+                self.waitForReady(deadline: deadline, continuation: continuation)
             }
-            self.connections.removeAll()
-            self.receiveBuffers.removeAll()
-            self.lastReceiveTimes.removeAll()
-            self.sendQueues.removeAll()
-            self.sendingFlags.removeAll()
-            self.pendingFailedPayloads.removeAll()
-            self.stopKeepaliveTimer()
+        }
+    }
+
+    private func clearBroadcastConnections() {
+        dispatchPrecondition(condition: .onQueue(queue))
+
+        // 取消所有現有連線（extension 重新啟動後會建立新連線）
+        for (_, conn) in connections {
+            conn.stateUpdateHandler = nil
+            conn.cancel()
+        }
+        connections.removeAll()
+        receiveBuffers.removeAll()
+        lastReceiveTimes.removeAll()
+        sendQueues.removeAll()
+        sendingFlags.removeAll()
+        pendingFailedPayloads.removeAll()
+        stopKeepaliveTimer()
+    }
+
+    private func waitForReady(
+        deadline: DispatchTime,
+        continuation: CheckedContinuation<Bool, Never>
+    ) {
+        dispatchPrecondition(condition: .onQueue(queue))
+
+        if listener?.state == .ready {
+            logTo("SocketServer listener ready for broadcast")
+            continuation.resume(returning: true)
+            return
+        }
+
+        if DispatchTime.now().uptimeNanoseconds >= deadline.uptimeNanoseconds {
+            logTo("SocketServer listener ready timeout (state: \(listener?.state.stateString ?? "nil"))")
+            continuation.resume(returning: false)
+            return
+        }
+
+        queue.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self else {
+                continuation.resume(returning: false)
+                return
+            }
+            self.waitForReady(deadline: deadline, continuation: continuation)
         }
     }
 

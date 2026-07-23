@@ -197,24 +197,13 @@ struct BroadcastButton: UIViewRepresentable {
 
     func makeUIView(context: Context) -> RPSystemBroadcastPickerView {
         let ext = resolveExtension()
-        Coordinator.ensurePicker(preferredExtension: ext)
-        guard let picker = Coordinator.currentPicker else {
-            let p = RPSystemBroadcastPickerView(frame: .zero)
-            p.preferredExtension = ext
-            p.showsMicrophoneButton = true
-            p.isHidden = true
-            return p
-        }
+        let picker = RPSystemBroadcastPickerView(frame: .zero)
         picker.preferredExtension = ext
+        picker.showsMicrophoneButton = true
+        context.coordinator.attach(picker)
 
         sendlog(title: "BroadcastButton", message: "preferredExtension = \(picker.preferredExtension ?? "nil")")
         sendlog(title: "BroadcastButton", message: "Bundle.main.bundleIdentifier = \(Bundle.main.bundleIdentifier ?? "nil")")
-
-        for view in picker.subviews {
-            if let button = view as? UIButton {
-                button.addTarget(context.coordinator, action: #selector(Coordinator.buttonTapped), for: .touchUpInside)
-            }
-        }
 
         return picker
     }
@@ -223,6 +212,7 @@ struct BroadcastButton: UIViewRepresentable {
         let ext = resolveExtension()
         sendlog(title: "BroadcastButton", message: "updateUIView preferredExtension = \(ext ?? "nil")")
         uiView.preferredExtension = ext
+        context.coordinator.attach(uiView)
         context.coordinator.rtmpURL = rtmpURL
         context.coordinator.rtmpKey = rtmpKey
     }
@@ -236,19 +226,27 @@ struct BroadcastButton: UIViewRepresentable {
     }
 
     class Coordinator: NSObject {
-        static var currentPicker: RPSystemBroadcastPickerView?
+        static weak var currentPicker: RPSystemBroadcastPickerView?
+        static weak var currentCoordinator: Coordinator?
         var rtmpURL: String = ""
         var rtmpKey: String = ""
         var UR: UIDeviceOrientation = .unknown
 
         static func ensurePicker(preferredExtension ext: String?) {
-            guard currentPicker == nil else { return }
-            let picker = RPSystemBroadcastPickerView(frame: .zero)
-            picker.preferredExtension = ext
-            picker.frame = CGRect(x: 0, y: 0, width: 1, height: 1)
-            picker.showsMicrophoneButton = true
-            currentPicker = picker
-            sendlog(title: "BroadcastButton", message: "Static picker initialized with ext=\(ext ?? "nil")")
+            sendlog(title: "BroadcastButton", message: "ensurePicker skipped; waiting for SwiftUI picker ext=\(ext ?? "nil")")
+        }
+
+        func attach(_ picker: RPSystemBroadcastPickerView) {
+            Coordinator.currentPicker = picker
+            Coordinator.currentCoordinator = self
+            picker.layoutIfNeeded()
+            for view in picker.subviews {
+                if let button = view as? UIButton {
+                    button.removeTarget(self, action: #selector(Coordinator.buttonTapped), for: .touchUpInside)
+                    button.addTarget(self, action: #selector(Coordinator.buttonTapped), for: .touchUpInside)
+                }
+            }
+            sendlog(title: "BroadcastButton", message: "picker attached subviews=\(picker.subviews.count)")
         }
 
         @objc func buttonTapped() {
@@ -258,8 +256,8 @@ struct BroadcastButton: UIViewRepresentable {
             userDefaults?.set(self.UR.rawValue, forKey: "L3Rotate")
         }
 
-        static func trigger() {
-            sendlog(title: "BroadcastButton", message: "trigger() called")
+        static func trigger(attempt: Int = 0) {
+            sendlog(title: "BroadcastButton", message: "trigger() called attempt=\(attempt)")
 
             let payload = [
                 "type": "log",
@@ -271,12 +269,22 @@ struct BroadcastButton: UIViewRepresentable {
                 sendlog(title: "BroadcastButton", message: "trigger() failed: currentPicker is nil")
                 return
             }
+            currentCoordinator?.attach(picker)
             guard let button = picker.subviews.first(where: { $0 is UIButton }) as? UIButton else {
-                sendlog(title: "BroadcastButton", message: "trigger() failed: no UIButton in picker subviews")
+                picker.layoutIfNeeded()
+                guard attempt < 3 else {
+                    sendlog(title: "BroadcastButton", message: "trigger() failed: no UIButton in picker subviews")
+                    return
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    trigger(attempt: attempt + 1)
+                }
                 return
             }
             sendlog(title: "BroadcastButton", message: "trigger() simulating button tap")
-            button.sendActions(for: .touchUpInside)
+            DispatchQueue.main.async {
+                button.sendActions(for: .touchUpInside)
+            }
         }
     }
 }
@@ -2601,8 +2609,16 @@ struct homeView:View{
                         }
                         
                         sendlog(message: "RTMP To:\(rtmpURL) \(g)")
-                        SocketServer.shared.prepareForBroadcast()
-                        StreamBtn.triggerButton()
+                        Task {
+                            let ready = await SocketServer.shared.prepareForBroadcastAndWaitReady()
+                            guard ready else {
+                                sendlog(title: "BroadcastButton", message: "SocketServer listener not ready, cancel broadcast trigger")
+                                return
+                            }
+                            await MainActor.run {
+                                BroadcastButton.Coordinator.trigger()
+                            }
+                        }
                     }) {
                         Text("開始直播")
                             .font(.headline)
