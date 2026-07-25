@@ -51,6 +51,7 @@ class SocketServer:ObservableObject {
     static let maxConnections = 10
 
     private var receiveBuffers: [ObjectIdentifier: Data] = [:]
+    private var receiveOffsets: [ObjectIdentifier: Int] = [:]
 
     private var listener: NWListener?
     private var connections: [ObjectIdentifier: NWConnection] = [:]
@@ -336,6 +337,7 @@ class SocketServer:ObservableObject {
 
 
         receiveBuffers[id] = Data()
+        receiveOffsets[id] = 0
 
         connection.start(queue: queue)
         startReceiveLoop(for: connection)
@@ -386,6 +388,7 @@ class SocketServer:ObservableObject {
             if let data = result.data, !data.isEmpty {
                 self.lastReceiveTimes[id] = Date()
                 var buffer = self.receiveBuffers[id] ?? Data()
+                var offset = self.receiveOffsets[id] ?? 0
 
                 if LPConfig.shared.SocketLog {
                     logger.debug("Socket received \(data.count) bytes")
@@ -399,17 +402,22 @@ class SocketServer:ObservableObject {
                     return
                 }
 
-                while let newlineIndex = buffer.firstIndex(of: 0x0A) {
-                    let lineData = buffer[..<newlineIndex]
-                    let removeCount = buffer.distance(from: buffer.startIndex, to: buffer.index(after: newlineIndex))
-                    buffer.removeFirst(removeCount)
+                while let newlineIndex = buffer[offset...].firstIndex(of: 0x0A) {
+                    let lineData = buffer[offset..<newlineIndex]
+                    offset = newlineIndex + 1
                     guard !lineData.isEmpty else { continue }
                     handleReceivedData(Data(lineData), from: connection)
                     guard connections[id] != nil else { return }
                 }
 
+                if offset > buffer.count / 2 {
+                    buffer.removeSubrange(0..<offset)
+                    offset = 0
+                }
+
                 if connections[id] != nil {
                     receiveBuffers[id] = buffer
+                    receiveOffsets[id] = offset
                 }
             }
 
@@ -422,10 +430,11 @@ class SocketServer:ObservableObject {
             }
 
             if result.isComplete {
-                if connections[id] != nil, let buffer = receiveBuffers[id], !buffer.isEmpty {
-                    handleReceivedData(buffer, from: connection)
+                if connections[id] != nil, let buffer = receiveBuffers[id], let offset = receiveOffsets[id], offset < buffer.count {
+                    handleReceivedData(Data(buffer[offset...]), from: connection)
                 }
                 receiveBuffers[id] = nil
+                receiveOffsets[id] = nil
                 removeConnection(connection)
                 return
             }
@@ -1251,6 +1260,7 @@ class SocketServer:ObservableObject {
         stopReceiveLoop(for: connection)
         connections[id] = nil
         receiveBuffers[id] = nil
+        receiveOffsets[id] = nil
         lastReceiveTimes[id] = nil
         sendQueues[id] = nil
         sendingFlags[id] = nil
@@ -1292,6 +1302,7 @@ class SocketServer:ObservableObject {
             }
             self.connections.removeAll()
             self.receiveBuffers.removeAll()
+            self.receiveOffsets.removeAll()
             self.lastReceiveTimes.removeAll()
             self.sendQueues.removeAll()
             self.sendingFlags.removeAll()
@@ -1353,6 +1364,7 @@ class SocketServer:ObservableObject {
         }
         connections.removeAll()
         receiveBuffers.removeAll()
+        receiveOffsets.removeAll()
         lastReceiveTimes.removeAll()
         sendQueues.removeAll()
         sendingFlags.removeAll()
@@ -1393,6 +1405,7 @@ class SocketServer:ObservableObject {
         queue.async { [weak self] in
             guard let self = self else { return }
             self.receiveBuffers.removeAll()
+            self.receiveOffsets.removeAll()
             self.lastReceiveTimes.removeAll()
             self.sendQueues.removeAll()
             self.sendingFlags.removeAll()
@@ -1415,6 +1428,7 @@ class SocketServer:ObservableObject {
         stopKeepaliveTimer()
         connections.removeAll()
         receiveBuffers.removeAll()
+        receiveOffsets.removeAll()
         lastReceiveTimes.removeAll()
         sendQueues.removeAll()
         sendingFlags.removeAll()

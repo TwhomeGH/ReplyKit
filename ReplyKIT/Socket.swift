@@ -248,6 +248,7 @@ class SocketClient : @unchecked Sendable {
         stopBatchTimer()
 
         receiveBuffer.removeAll()
+        receiveOffset = 0
         pendingBatchEntries.removeAll()
         inFlightBatches = 0
 
@@ -291,6 +292,7 @@ class SocketClient : @unchecked Sendable {
         connection = nil
         connectionCreationTime = nil
         receiveBuffer.removeAll()
+        receiveOffset = 0
         stopReceiveLoop()
     }
 
@@ -1028,6 +1030,7 @@ class SocketClient : @unchecked Sendable {
     }
 
     private var receiveBuffer = Data()
+    private var receiveOffset = 0
 
     private static let maxBufferSize = 1_048_576
 
@@ -1256,28 +1259,24 @@ class SocketClient : @unchecked Sendable {
 
     private func processReceiveBuffer() {
         while true {
-            guard let newlineIndex = receiveBuffer.firstIndex(of: 0x0A) else {
+            let searchRange = receiveBuffer[receiveOffset...]
+            guard let newlineIndex = searchRange.firstIndex(of: 0x0A) else {
                 break
             }
 
-            // ① 拿出一行
-            let lineData = receiveBuffer[..<newlineIndex]
+            let lineData = receiveBuffer[receiveOffset..<newlineIndex]
+            receiveOffset = newlineIndex + 1
 
-            // ② 計算「實際要移除的元素數」
-            let removeCount = receiveBuffer.distance(
-                from: receiveBuffer.startIndex,
-                to: receiveBuffer.index(after: newlineIndex)
-            )
-
-            // ③ 移除
-            receiveBuffer.removeFirst(removeCount)
-
-            // ④ 空行跳過
             guard !lineData.isEmpty else { continue }
 
             handleJSONPacket(Data(lineData))
         }
-        
+
+        if receiveOffset > receiveBuffer.count / 2 {
+            receiveBuffer.removeSubrange(0..<receiveOffset)
+            receiveOffset = 0
+        }
+
     }
 
     // MARK: - 接收資料
@@ -1338,7 +1337,7 @@ class SocketClient : @unchecked Sendable {
             }
 
             if result.isComplete {
-                if !self.receiveBuffer.isEmpty {
+                if self.receiveOffset < self.receiveBuffer.count {
                     self.processReceiveBuffer()
                 }
                 self.cleanupConnection()

@@ -982,3 +982,61 @@ logger.info("audio: format=\(AudioCodecSettings.bestAacFormat.audioDescription)"
 
 ### RTMP 端用同一 CodecID (10)
  傳送，HE-AAC 的差異 只反應在 AudioSpecificConfig 的 AudioObjectType，server/player 自動判讀。
+
+---
+
+## 15. Socket Receive Buffer Offset Cursor（消除 Data.removeFirst O(n) memmove）
+
+### 問題
+
+Socket 接收緩衝區使用 `Data.removeFirst(removeCount)` 來消耗已解析的資料：
+
+| 檔案 | 位置 | 模式 |
+|------|------|------|
+| `ReplyKIT/Socket.swift` | `processReceiveBuffer()` | `receiveBuffer.removeFirst(removeCount)` — 每行觸發 O(n) memmove |
+| `liveAPP/Socket.swift` | `runReceiveLoop()` | `buffer.removeFirst(removeCount)` — 每個連線每行觸發 O(n) memmove |
+
+`Data.removeFirst(n)` 的內部實作會將剩餘所有 bytes 往前搬移。當 buffer 累積數百 KB（例如大量 log burst 時 TCP 黏包），每次解析一筆就 shift 一次，累積開銷為 O(n²)。
+
+### 修正
+
+**Offset cursor 游標取代 `removeFirst`**：
+
+```swift
+private var receiveBuffer = Data()
+private var receiveOffset = 0          // ← 游標
+
+private func processReceiveBuffer() {
+    while true {
+        let searchRange = receiveBuffer[receiveOffset...]   // ← 從游標開始搜
+        guard let newlineIndex = searchRange.firstIndex(of: 0x0A) else {
+            break
+        }
+        let lineData = receiveBuffer[receiveOffset..<newlineIndex]
+        receiveOffset = newlineIndex + 1                     // ← 只移動游標
+
+        guard !lineData.isEmpty else { continue }
+        handleJSONPacket(Data(lineData))
+    }
+    // 游標超過一半才 compact → 攤銷 O(1)
+    if receiveOffset > receiveBuffer.count / 2 {
+        receiveBuffer.removeSubrange(0..<receiveOffset)
+        receiveOffset = 0
+    }
+}
+```
+
+### 變更範圍
+
+| 檔案 | 新增 | 變更 |
+|------|------|------|
+| `ReplyKIT/Socket.swift` | `receiveOffset` 屬性 | `processReceiveBuffer()` 改用 `buffer[offset...]` 搜尋 + 游標前進；compact 邏輯；`cleanupConnection()` / `_closeConnection()` 重置 offset |
+| `liveAPP/Socket.swift` | `receiveOffsets: [ObjectIdentifier: Int]` 字典 | `runReceiveLoop()` 改用游標；compact 邏輯；`result.isComplete` 改用 `offset < buffer.count`；所有 cleanup 路徑（`removeConnection`、`suspend`、`releaseMemory`、`stopInternal`、`clearBroadcastConnections`）重置 offset |
+
+### 預期改善
+
+| 情境 | 改前 | 改後 |
+|------|------|------|
+| 常態（每次解析 1 行，buffer < 幾 KB） | `removeFirst` 每次 O(n)，但 n 小，差異可忽略 | 同左（無退化） |
+| 大量黏包（burst 後 buffer 數百 KB） | 每行 O(n) memmove → 累積 O(n²) CPU spike | 游標前進 O(1)，每 ~512KB 才 compact 一次 |
+| 長時間連線（logbatch 持續收到） | 重複 memmove 累積數百次 shift | 零 shift，游標直到 compact 閾值才觸發 |
