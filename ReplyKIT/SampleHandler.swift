@@ -2148,7 +2148,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             
             if let vp = videoProcessor {
                 if vp.isActive {
-                    vp.process(sampleBuffer,oringinaltime:timing )
+                    vp.process(sampleBuffer, originalTime: timing)
                 } else if !isStopping {
                     sendlog(message: "[Video] ⚠️ videoProcessor 已標記重建 (GPU 連續逾時)，觸發 rebuild")
                     rebuildVideo()
@@ -2202,7 +2202,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 if audioProcessor != nil {
 
                     audioProcessor?
-                        .enqueue(sampleBuffer, trackType: trackType,oringinaltime:timing)
+                        .enqueue(sampleBuffer, trackType: trackType, originalTime: timing)
 
                 } else if processorsInitialized {
                     if lastTimestamp.seconds > lastlogTimeAudio + logInterval  {

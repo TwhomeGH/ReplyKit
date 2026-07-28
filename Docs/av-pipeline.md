@@ -134,7 +134,8 @@ AudioProcessorActor.enqueue(sampleBuffer, trackType:, originalTime:)
     │  processRMS()                            stream consumer Task:
     │     │                                       │
     │     │  rmsSIMD() → vDSP_measqv               ├── processRMS()
-    │     │  VolumeNotifier.updateVolume()          │     rmsSIMD() → VolumeNotifier
+    │     │  更新 lastAppRMS/lastMicRMS             │     rmsSIMD() → 更新 lastRMS
+    │     │  VolumeNotifier.updateVolume()          │     VolumeNotifier.updateVolume()
     │     ▼                                       ├── mediaMixer.append()
     ▼                                           ▼
 MediaMixer.append(processed, track:)
@@ -211,6 +212,51 @@ rebuildVideo()
 `onPermanentFailure` 是 `FrameProcessorActor` 的 `let onPermanentFailure: (@Sendable () -> Void)?`，在建構時透過 `nonisolated func setPermanentFailureHandler()` 設定。
 
 AudioProcessor 的 `isActive` 固定為 `true`（audio pipe 無永久失敗路徑，純供 diagnostics 顯示 "Y"）。
+
+---
+
+## VolumeNotifier（RMS 回報）
+
+`VolumeNotifier` 是 audio pipeline 的輸出端，將即時 RMS 音量送往主 App。
+
+### 資料流
+
+```
+AudioProcessorActor.processRMS()  (1s 一次，actor executor)
+    │
+    │  rmsSIMD(from: buffer) → vDSP_measqv
+    │  取樣 RMS (0~1)
+    │
+    │  normalized = rms * userVolume
+    │  if trackType == .app → lastAppRMS = normalized
+    │  else                 → lastMicRMS = normalized
+    │
+    ▼
+VolumeNotifier.updateVolume(app: lastAppRMS, mic: lastMicRMS)
+    │
+    ▼
+SocketClient.shared.sendAudioLive(appVol: app, micVol: mic)
+    │
+    ▼
+liveAPP SocketServer → LiveVolumeModel → UI
+```
+
+### 設計要點
+
+- **無內部狀態**：actor 負責維護 `lastAppRMS`/`lastMicRMS`，`VolumeNotifier` 僅為 relay
+- **無重複 throttle**：依賴 actor 的 `rmsInterval=1.0`，移除 VolumNotifier 自身的 `minInterval`
+- **雙軌獨立更新**：app/mic 軌的 RMS 各自保存，每次發送兩軌最新值，避免交錯延遲
+- **單一傳輸路徑**：一律走 E-Socket，移除 `Darwin Notification`（易掉通知）
+- **僅 `onAudioPage=true` 時作用**：`processRMS` 第一道 guard 檢查 `onAudioPage`
+
+### 修改歷程
+
+| 改前 | 改後 | 理由 |
+|------|------|------|
+| `pendingAppVolume`/`pendingMicVolume` + `lastSendTime` + `minInterval=0.1` | 無狀態 | actor 的 1s throttle 已足夠，雙軌共享 pending 值造成另一軌值最多舊 1s |
+| sideload→socket；其他→Darwin Notification | 一律 socket | Darwin Notification fire-and-forget，背景易掉 |
+| `updateVolume(volume:track:)` 帶 track | `updateVolume(app:mic:)` 帶兩軌值 | actor 保管 lastRMS，發送時兩軌最新值同步 |
+| `rmsInterval=1.0` 與 `minInterval=0.1` 疊加 | 僅 `rmsInterval=1.0` | 簡化，消除重複節流 |
 
 ---
 

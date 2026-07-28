@@ -54,7 +54,7 @@ actor FrameProcessorActor {
         if let r = gpuRotator, let last = lastKey, last == key {
             return r
         }
-        gpuRotator?.cleanup()
+        await gpuRotator?.cleanup()
         lastKey = key
         gpuRotator = RPVideoRotatorNV12BatchQueueOptimized(
             dstW: key.dstW, dstH: key.dstH,
@@ -110,6 +110,31 @@ actor FrameProcessorActor {
         gpuRotator = nil
         cpuRotator = nil
     }
+
+    nonisolated func setRotatorDebug(_ on: Bool) {
+        Task { await _setRotatorDebug(on) }
+    }
+
+    private func _setRotatorDebug(_ on: Bool) {
+        gpuRotator?.debug = on
+    }
+
+    nonisolated func setRotatorTsDebug(_ on: Bool) {
+        Task { await _setRotatorTsDebug(on) }
+    }
+
+    private func _setRotatorTsDebug(_ on: Bool) {
+        gpuRotator?.tsDebug(on)
+    }
+
+    nonisolated func setRotatorDestination(width: Int, height: Int) {
+        Task { await _setRotatorDestination(width: width, height: height) }
+    }
+
+    private func _setRotatorDestination(width: Int, height: Int) {
+        gpuRotator?.OutWW = width
+        gpuRotator?.OutHH = height
+    }
 }
 
 final class VideoFrameProcessor {
@@ -146,5 +171,17 @@ final class VideoFrameProcessor {
     func cleanup() {
         isActive = false
         Task { await actor.cleanup() }
+    }
+
+    func setRotatorDebug(_ on: Bool) {
+        actor.setRotatorDebug(on)
+    }
+
+    func setRotatorTsDebug(_ on: Bool) {
+        actor.setRotatorTsDebug(on)
+    }
+
+    func setRotatorDestination(width: Int, height: Int) {
+        actor.setRotatorDestination(width: width, height: height)
     }
 }

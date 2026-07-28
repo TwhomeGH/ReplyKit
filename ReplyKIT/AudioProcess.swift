@@ -123,11 +123,6 @@ func pcmBitrate(from sampleBuffer: CMSampleBuffer) -> [String:Any] {
 
 // MARK: 音量更新
 final class VolumeNotifier {
-    private var pendingAppVolume: Float = 0
-    private var pendingMicVolume: Float = 0
-    private var lastSendTime: TimeInterval = 0
-    private let minInterval: TimeInterval = 0.1
-
     var isActive = true
 
     func cleanup() {
@@ -136,34 +131,12 @@ final class VolumeNotifier {
 
     deinit {
         cleanup()
-        sendlog(message:"Audio實時更新清理")
+        sendlog(message: "Audio實時更新清理")
     }
 
-    func updateVolume(volume: Float, track: Int) {
-        switch track {
-        case 0: pendingAppVolume = volume
-        case 1: pendingMicVolume = volume
-        default: return
-        }
-
-        let now = CACurrentMediaTime()
-        guard now - lastSendTime >= minInterval else { return }
-        lastSendTime = now
-
-        let app = pendingAppVolume
-        let mic = pendingMicVolume
-
-        if RPConfig.isSideload {
-            SocketClient.shared.sendAudioLive(appVol: app, micVol: mic)
-        } else {
-            SharedDefaults.group?.set(app, forKey: "appVolumeLive")
-            SharedDefaults.group?.set(mic, forKey: "micVolumeLive")
-            CFNotificationCenterPostNotification(
-                CFNotificationCenterGetDarwinNotifyCenter(),
-                CFNotificationName("LiveVolumeUpdated" as CFString),
-                nil, nil, true
-            )
-        }
+    func updateVolume(app: Float, mic: Float) {
+        guard isActive else { return }
+        SocketClient.shared.sendAudioLive(appVol: app, micVol: mic)
     }
 }
 
@@ -201,6 +174,8 @@ actor AudioProcessorActor {
     private var lastRMSUpdateTime: CFTimeInterval = 0
     var rmsInterval: CFTimeInterval = 1.0
     private var streamTask: Task<Void, Never>?
+    private var lastAppRMS: Float = 0
+    private var lastMicRMS: Float = 0
 
     init(mediaMixer: MediaMixer,
          volumeNotifier: VolumeNotifier,
@@ -366,7 +341,13 @@ actor AudioProcessorActor {
         lastRMSUpdateTime = now
         if let rms = rmsSIMD(from: buffer) {
             let userVolume = (trackType == .app) ? appVolume : micVolume
-            volumeNotifier.updateVolume(volume: rms * userVolume, track: Int(trackType.rawValue))
+            let normalized = rms * userVolume
+            if trackType == .app {
+                lastAppRMS = normalized
+            } else {
+                lastMicRMS = normalized
+            }
+            volumeNotifier.updateVolume(app: lastAppRMS, mic: lastMicRMS)
         }
     }
 
@@ -375,6 +356,26 @@ actor AudioProcessorActor {
         streamTask = nil
         audioEngine?.cleanup()
         audioEngine = nil
+    }
+
+    func updateVolume(micAdd value: Float) {
+        micAddVolume = value
+    }
+
+    func updateVolume(appAdd value: Float) {
+        appAddVolume = value
+    }
+
+    func updateVolume(mic value: Float) {
+        micVolume = value
+    }
+
+    func updateVolume(app value: Float) {
+        appVolume = value
+    }
+
+    func updatePage(status: Bool) {
+        onAudioPage = status
     }
 }
 
@@ -406,6 +407,26 @@ final class AudioProcessor {
 
     func enqueue(_ sampleBuffer: CMSampleBuffer, trackType: AudioTrackType, originalTime: CMSampleTimingInfo) {
         Task { await actor.enqueue(sampleBuffer, trackType: trackType, originalTime: originalTime) }
+    }
+
+    func updateVolume(micAdd value: Float) {
+        Task { await actor.updateVolume(micAdd: value) }
+    }
+
+    func updateVolume(appAdd value: Float) {
+        Task { await actor.updateVolume(appAdd: value) }
+    }
+
+    func updateVolume(mic value: Float) {
+        Task { await actor.updateVolume(mic: value) }
+    }
+
+    func updateVolume(app value: Float) {
+        Task { await actor.updateVolume(app: value) }
+    }
+
+    func updatePage(status: Bool) {
+        Task { await actor.updatePage(status: status) }
     }
 
     func cleanup() {
