@@ -32,7 +32,7 @@ private func rmsSIMD(from sampleBuffer: CMSampleBuffer) -> Float? {
     let isInt24   = asbd.mBitsPerChannel == 24
 
     let audioBufferListPtr = AudioBufferList.allocate(maximumBuffers: 2)
-    defer { free(audioBufferListPtr) }
+    defer { free(UnsafeMutableRawPointer(audioBufferListPtr.unsafeMutablePointer)) }
     var blockBufferOut: CMBlockBuffer?
 
     let bufferListSize = AudioBufferList.sizeInBytes(maximumBuffers: 2)

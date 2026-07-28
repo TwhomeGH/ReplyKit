@@ -1,7 +1,7 @@
 import Foundation
 
 final class AsyncSemaphore: @unchecked Sendable {
-    private let lock = NSLock()
+    private let queue = DispatchQueue(label: "AsyncSemaphore")
     private var count: Int
     private var waiters: [CheckedContinuation<Void, Never>] = []
 
@@ -10,30 +10,26 @@ final class AsyncSemaphore: @unchecked Sendable {
     }
 
     func wait() async {
-        lock.lock()
-        if count > 0 {
-            count -= 1
-            lock.unlock()
-            return
-        }
-        lock.unlock()
-
-        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-            lock.lock()
-            waiters.append(cont)
-            lock.unlock()
+        await withCheckedContinuation { continuation in
+            queue.async {
+                if self.count > 0 {
+                    self.count -= 1
+                    continuation.resume()
+                } else {
+                    self.waiters.append(continuation)
+                }
+            }
         }
     }
 
     func signal() {
-        lock.lock()
-        if let waiter = waiters.first {
-            waiters.removeFirst()
-            lock.unlock()
-            waiter.resume()
-        } else {
-            count += 1
-            lock.unlock()
+        queue.async {
+            if let waiter = self.waiters.first {
+                self.waiters.removeFirst()
+                waiter.resume()
+            } else {
+                self.count += 1
+            }
         }
     }
 }
