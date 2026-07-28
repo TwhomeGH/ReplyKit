@@ -1935,11 +1935,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         }
     }
 
-    func configureVideo(_ sampleBuffer: CMSampleBuffer) async {
-
-
-        guard let formatDesc = sampleBuffer.formatDescription else { return }
-        let dims = CMVideoFormatDescriptionGetDimensions(formatDesc)
+    func configureVideo(dimensions dims: CMVideoDimensions) async {
 
         guard dims.width > 0 && dims.height > 0 else { return }
 
@@ -2111,9 +2107,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             if sampleBuffer.dataReadiness == .ready {
 
             if needVideoConfiguration {
-                
+                let formatDesc = sampleBuffer.formatDescription
+                let dims = formatDesc.map(CMVideoFormatDescriptionGetDimensions) ?? CMVideoDimensions(width: 0, height: 0)
+
                 Task {
-                    await self.configureVideo(sampleBuffer)
+                    await self.configureVideo(dimensions: dims)
                 }
 
                 needVideoConfiguration = false
