@@ -380,8 +380,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     private let metalFailureLogLock = NSLock()
     private var lastMetalFailureLogAt = Date.distantPast
     /// 限制 in-flight command buffer 數量，防止 GPU 被淹沒
-    private let inflightSemaphore = AsyncSemaphore(value: 3)
-    /// 自動降品質：失敗時切到 bilinear
     private var originalQualityMode: QualityMode?
     private var effectiveQualityMode: QualityMode {
         if let original = originalQualityMode { return original }
@@ -606,12 +604,9 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             return nil
         }
 
-        await inflightSemaphore.wait()
-
         guard renderPlaneYUV(cmd: cmd, srcY: ycvTexIn.tex, srcUV: uvcvTexIn.tex,
                         dstY: outSet.yTex, dstUV: outSet.uvTex, angle: angle) else {
             recycleOutput(outSet)
-            inflightSemaphore.signal()
             handleMetalFailure("renderPlaneYUV 建立 encoder 失敗")
             return nil
         }
@@ -652,11 +647,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                 }
 
                 self.recycleOutput(frameC.outSet)
-                // 逾時後 completion 仍會觸發，但此時 signal 會造成計數偏移
-                // 只由 markTimeout 的 handler 負責 signal
-                if !completion.completedAfterTimeout {
-                    self.inflightSemaphore.signal()
-                }
                 if completion.shouldResume {
                     cont.resume(returning: wrapped)
                 }
@@ -668,7 +658,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + commandBufferTimeout) { [self] in
                 guard completionState.markTimeout() else { return }
 
-                self.inflightSemaphore.signal()
                 self.handleMetalFailure("commandBuffer 逾時 \(String(format: "%.1f", commandBufferTimeout))s")
                 cont.resume(returning: nil)
             }

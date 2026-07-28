@@ -76,33 +76,21 @@ GPU rotator 正常 ────────────────────�
 
 | 機制 | 閥值 | 行為 |
 |------|------|------|
-| `AsyncSemaphore` | value: 3, `await wait()` (suspend) | GPU 飽和時自然 suspend，清出 slot 後 resume，不掉幀 |
+| Actor serialization | 自然序列化 | `FrameProcessorActor` 一次只處理一個 frame 的 async chain（`processFrame` → `rotateAsync` → 續） |
 | `commandBufferTimeout` | 1.0s | GPU command buffer 逾時 → 回 nil + `handleMetalFailure` |
 | `CommandCompletionState` | NSLock | 保證 completion vs watchdog 恰好一次 resume |
 | `outputPool` maxPoolSize | 10 | CVPixelBuffer 重用池上限，溢位 evict 最舊 |
 
-#### AsyncSemaphore 取代 DispatchSemaphore
+#### 為何沒有 in-flight semaphore
 
-`DispatchSemaphore.wait(timeout:)` 在 async context 裡會**阻塞 thread pool**，且 0.5s timeout 到才 drop frame — 浪費 thread 又增加 latency。
+早期版本有 `DispatchSemaphore(value:2)` 限制 GPU 同時 in-flight 數量，但分析後發現多餘：
 
-改用自訂 `AsyncSemaphore`（`ReplyKIT/AsyncSemaphore.swift`），用 `CheckedContinuation` 掛起 Task，不佔 thread：
+- Actor 已經序列化 frame 處理 — 一次只有一個 frame 在 actor 上執行 async chain
+- GPU 旋轉耗時 1-5ms，而 60fps frame 間隔 16.7ms — GPU 有充裕時間完成
+- `rotateAsync` 內 `withCheckedContinuation` 已是自然的 backpressure：GPU 完成後才 resume
+- Watchdog (1s) 已處理 GPU hang 的罕見狀況，不需要額外 semaphore 做 timeout
 
-```swift
-// 改前
-private let inflightSemaphore = DispatchSemaphore(value: 2)     // blocking
-guard inflightSemaphore.wait(timeout: 0.5s) == .success else → drop frame
-
-// 改後
-private let inflightSemaphore = AsyncSemaphore(value: 3)        // suspending
-await inflightSemaphore.wait()                                  // 自然背壓，無 timeout
-```
-
-| 項目 | 改前 | 改後 | 理由 |
-|------|------|------|------|
-| 類型 | `DispatchSemaphore` (blocking) | `AsyncSemaphore` (suspending) | blocking 在 Swift concurrency 裡卡 thread pool |
-| 容量 | 2 | 3 | 60fps 下 3 in-flight 更流暢，latency 仍 < 50ms |
-| Timeout | 0.5s | 無 | 語意是背壓不是故障偵測，watchdog (1s) 已 cover hung GPU |
-| Drop | 等 0.5s 才 drop | 永不 drop，自然 suspend | GPU 清出 slot 後 resume，不掉幀 |
+移除後管線更簡單：actor → rotateAsync → continuation → completion → append，零隔離衝突。
 
 ### 重建路徑
 
