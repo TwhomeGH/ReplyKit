@@ -358,19 +358,19 @@ actor AudioProcessorActor {
         audioEngine = nil
     }
 
-    func updateVolume(micAdd value: Float) {
+    func updateVolumes(micAdd value: Float) {
         micAddVolume = value
     }
 
-    func updateVolume(appAdd value: Float) {
+    func updateVolumes(appAdd value: Float) {
         appAddVolume = value
     }
 
-    func updateVolume(mic value: Float) {
+    func updateVolumes(mic value: Float) {
         micVolume = value
     }
 
-    func updateVolume(app value: Float) {
+    func updateVolumes(app value: Float) {
         appVolume = value
     }
 
@@ -409,20 +409,20 @@ final class AudioProcessor {
         Task { await actor.enqueue(sampleBuffer, trackType: trackType, originalTime: originalTime) }
     }
 
-    func updateVolume(micAdd value: Float) {
-        Task { await actor.updateVolume(micAdd: value) }
+    func updateVolumes(micAdd value: Float) {
+        Task { await actor.updateVolumes(micAdd: value) }
     }
 
-    func updateVolume(appAdd value: Float) {
-        Task { await actor.updateVolume(appAdd: value) }
+    func updateVolumes(appAdd value: Float) {
+        Task { await actor.updateVolumes(appAdd: value) }
     }
 
-    func updateVolume(mic value: Float) {
-        Task { await actor.updateVolume(mic: value) }
+    func updateVolumes(mic value: Float) {
+        Task { await actor.updateVolumes(mic: value) }
     }
 
-    func updateVolume(app value: Float) {
-        Task { await actor.updateVolume(app: value) }
+    func updateVolumes(app value: Float) {
+        Task { await actor.updateVolumes(app: value) }
     }
 
     func updatePage(status: Bool) {
