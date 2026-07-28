@@ -2016,10 +2016,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
 
-        if let orientationValue = CMGetAttachment(sampleBuffer, key: RPVideoSampleOrientationKey as CFString, attachmentModeOut: nil) as? NSNumber {
-            sendlog(message: "ReplayKit 當前畫面方向: \(orientationValue)")
-        }
-
         var avfrom = lastVideoOrientation
         let newSize: CGSize
 
@@ -2109,6 +2105,14 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             if needVideoConfiguration {
                 let formatDesc = sampleBuffer.formatDescription
                 let dims = formatDesc.map(CMVideoFormatDescriptionGetDimensions) ?? CMVideoDimensions(width: 0, height: 0)
+
+                if let orientationValue = CMGetAttachment(
+                    sampleBuffer,
+                    key: RPVideoSampleOrientationKey as CFString,
+                    attachmentModeOut: nil
+                ) as? NSNumber {
+                    sendlog(message: "ReplayKit 當前畫面方向: \(orientationValue)")
+                }
 
                 Task {
                     await self.configureVideo(dimensions: dims)

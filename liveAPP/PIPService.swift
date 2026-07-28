@@ -548,7 +548,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     private func drawTimeOverlay(in cg: CGContext, size: CGSize) {
 
         let timeText = currentTimeString()
-        if isKeepaliveMode {
+        if isKeepaliveMode && !adOverlayActive {
             let timeFont = UIFont.monospacedDigitSystemFont(ofSize: 16, weight: .regular)
             let labelFont = UIFont.boldSystemFont(ofSize: 18)
             let timeSize = (timeText as NSString).size(withAttributes: [.font: timeFont])
