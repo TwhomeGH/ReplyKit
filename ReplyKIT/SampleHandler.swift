@@ -2095,6 +2095,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     override func processSampleBuffer(_ sampleBuffer: CMSampleBuffer, with sampleBufferType: RPSampleBufferType) {
 
 
+        
+        guard sampleBuffer.dataReadiness == .ready else {
+            sendlog(message:"ReplyKIT數據流未就緒")
+            return
+        }   
+
         // 這裡的 sampleBuffer 是 ReplayKit 給的原始幀數據，還沒有經過我們的處理器修改
         let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
 
@@ -2111,9 +2117,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         switch sampleBufferType {
         case .video:
-
-
-            if sampleBuffer.dataReadiness == .ready {
 
             if needVideoConfiguration {
                 let formatDesc = sampleBuffer.formatDescription
@@ -2162,17 +2165,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             }
 
-
-
-            // AdaptiveVideoBufferManager 已停用：setVideoInputBufferCounts 在 runtime 無效
-            // if let bm = adaptiveBufferManager {
-            //     bm.monitorFPSAndAdjust(
-            //         with: sampleBuffer,
-            //         rtmpStream: rtmpStream,
-            //         sendlog: { msg in sendlog(message: msg) }
-            //     )
-            // }
-
             videoFrameCount += 1
 
             // ✅ 強制診斷日誌：每 1500 幀或首幀輸出，不依賴 enablePipelineLog
@@ -2205,7 +2197,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             }
 
 
-            }
+            
 
 
             break
@@ -2213,7 +2205,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case .audioApp, .audioMic:
-            if sampleBuffer.dataReadiness == .ready {
 
                 let trackType: AudioTrackType = (sampleBufferType == .audioApp) ? .app : .mic
 
@@ -2240,10 +2231,17 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 }
 
 
-                if audioProcessor != nil {
+                if let ap = audioProcessor {
+                    
+                    
+                    if ap.isActive {
+                        ap.enqueue(sampleBuffer, trackType: trackType, originalTime: timing)
+                    } else if !isStopping {
+                        
+                        sendlog(message: "[Audio] ⚠️ audioProcessor 已嘗試重建，觸發 rebuild")
+                        rebuildAudio()
 
-                    audioProcessor?
-                        .enqueue(sampleBuffer, trackType: trackType, originalTime: timing)
+                    }
 
                 } else if processorsInitialized {
                     if lastTimestamp.seconds > lastlogTimeAudio + logInterval  {
@@ -2253,11 +2251,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                         if !isStopping {
                             rebuildAudio()
                         }
+
                     }
                 }
 
 
-            }
+            
 
 
 
