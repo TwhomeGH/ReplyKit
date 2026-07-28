@@ -2116,12 +2116,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     sendlog(message: "ReplayKit 當前畫面方向: \(orientationValue)")
                 }
 
-                needVideoConfiguration = false
-                let formatDesc = sampleBuffer.formatDescription
-                let dims = formatDesc.map(CMVideoFormatDescriptionGetDimensions) ?? CMVideoDimensions(width: 0, height: 0)
                 if dims.width > 0 && dims.height > 0 {
                     configureVideoUnsafe(dims: dims)
                 }
+
+                needVideoConfiguration = false
 
 
 
