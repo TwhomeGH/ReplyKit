@@ -1935,11 +1935,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         }
     }
 
-    func configureVideo(dimensions dims: CMVideoDimensions) async {
-
-        guard dims.width > 0 && dims.height > 0 else { return }
-
-
+    private func configureVideoUnsafe(dims: CMVideoDimensions) {
 
         var width = Int(dims.width)
         var height = Int(dims.height)
@@ -1984,6 +1980,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 }
 
             }
+
 
 
 
@@ -2042,29 +2039,34 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         case .portrait, .portraitUpsideDown:
             newSize = CGSize(width: CGFloat(width), height: CGFloat(height))
             sendlog(message: "[旋轉時間軸] 初始更新直向 size:\(newSize)")
-            await mediaMixer.setVideoOrientation(.portrait)
+            Task { await mediaMixer.setVideoOrientation(.portrait) }
             break
         case .landscapeLeft,.landscapeRight:
             newSize = CGSize(width: CGFloat(height), height: CGFloat(width))
             sendlog(message: "[旋轉時間軸] 初始更新橫向 size:\(newSize)")
-            await mediaMixer.setVideoOrientation(.landscapeRight)
+            Task { await mediaMixer.setVideoOrientation(.landscapeRight) }
             break
         default:
             newSize = CGSize(width: CGFloat(height), height: CGFloat(width))
             sendlog(message: "[旋轉時間軸] 初始更新橫向(預設) size:\(newSize)")
-            await mediaMixer.setVideoOrientation(.landscapeRight)
+            Task { await mediaMixer.setVideoOrientation(.landscapeRight) }
             break
         }
 
 
 
-        await applyAllVideoSettings(width: width, height: height, setSize: false)
+        let dimsCopy = (width, height)
+        Task {
+            await applyAllVideoSettings(width: dimsCopy.0, height: dimsCopy.1, setSize: false)
+        }
 
         if lastConfiguredSize != newSize {
             lastConfiguredSize = newSize
-            var vs2 = await rtmpStream.videoSettings
-            vs2.videoSize = newSize
-            try? await rtmpStream.setVideoSettings(vs2)
+            Task {
+                var vs2 = await rtmpStream.videoSettings
+                vs2.videoSize = newSize
+                try? await rtmpStream.setVideoSettings(vs2)
+            }
         }
 
         sendlog(message: "Video 拿到畫面 \(width)x\(height)")
@@ -2114,11 +2116,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     sendlog(message: "ReplayKit 當前畫面方向: \(orientationValue)")
                 }
 
-                Task {
-                    await self.configureVideo(dimensions: dims)
-                }
-
                 needVideoConfiguration = false
+                let formatDesc = sampleBuffer.formatDescription
+                let dims = formatDesc.map(CMVideoFormatDescriptionGetDimensions) ?? CMVideoDimensions(width: 0, height: 0)
+                if dims.width > 0 && dims.height > 0 {
+                    configureVideoUnsafe(dims: dims)
+                }
 
 
 
