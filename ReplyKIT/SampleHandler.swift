@@ -2117,7 +2117,31 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 }
 
                 if dims.width > 0 && dims.height > 0 {
-                    configureVideoUnsafe(dims: dims)
+                    let w = Int(dims.width)
+                    let h = Int(dims.height)
+                    let SharedW = SharedDefaults.group?.integer(forKey: "ReplyKitWidth") ?? 0
+                    let SharedH = SharedDefaults.group?.integer(forKey: "ReplyKitHeight") ?? 0
+                    logger.debug("Width+H ReplyKit:\(h)x\(w)")
+                    logger.debug("Shared \(SharedW)x\(SharedH)")
+                    ReplyKitW = h; ReplyKitH = w
+                    if RPConfig.shared.enableSocketLog {
+                        SocketClient.shared.sendSettings(key: "ReplyKitWidth", value: h)
+                        SocketClient.shared.sendSettings(key: "ReplyKitHeight", value: w)
+                    } else {
+                        if SharedW != h { SharedDefaults.group?.set(h, forKey: "ReplyKitWidth") }
+                        if SharedH != w { SharedDefaults.group?.set(w, forKey: "ReplyKitHeight") }
+                    }
+                    let configW = ADWidth > 0 && ADHeight > 0 ? ADHeight : h
+                    let configH = ADWidth > 0 && ADHeight > 0 ? ADWidth : w
+                    let rotate = RPConfig.shared.state.Rotate
+                    Task {
+                        if rotate == 0 || rotate == 180 {
+                            await mediaMixer.setVideoOrientation(.portrait)
+                        } else {
+                            await mediaMixer.setVideoOrientation(.landscapeRight)
+                        }
+                        await applyAllVideoSettings(width: configW, height: configH, setSize: false)
+                    }
                 }
 
                 needVideoConfiguration = false
