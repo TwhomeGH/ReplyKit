@@ -9,7 +9,7 @@ final class AsyncSemaphore: @unchecked Sendable {
         self.count = value
     }
 
-    func wait() async {
+    nonisolated func wait() async {
         await withCheckedContinuation { continuation in
             queue.async {
                 if self.count > 0 {
@@ -22,7 +22,7 @@ final class AsyncSemaphore: @unchecked Sendable {
         }
     }
 
-    func signal() {
+    nonisolated func signal() {
         queue.async {
             if let waiter = self.waiters.first {
                 self.waiters.removeFirst()
