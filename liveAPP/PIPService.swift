@@ -209,18 +209,18 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
     // MARK: - 保活模式
     private(set) var isKeepaliveMode = false
-    private let keepaliveFPS: Double = 0.1
+    private let animationFPS: Double = 16
+    private let activeFPS: Double = 6
+    private let idleFPS: Double = 2
+    private let keepaliveFPS: Double = 0.5
 
-    // MARK: - 穩定 FPS 管理
-    private var currentFPS: Double = 1
-
-    private let animationFPS: Double = 24
-    private let activeFPS: Double = 10
-    private let idleFPS: Double = 4
-
+    private var currentFPS: Double = 2
     private var lastRenderTime = CACurrentMediaTime()
     private var lastActiveRenderTime = CACurrentMediaTime()
     private let decayCooldown: CFTimeInterval = 2.0
+    private var cachedPixelBuffer: CVPixelBuffer?
+    private var contentGeneration = 0
+    private var lastRenderedGeneration = -1
 
     func requestAnimationFPS() {
         let newFPS = messagesLayer?.isAnimating == true ? animationFPS : activeFPS
@@ -314,6 +314,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
     func setNeedsRedraw() {
         needsRedraw = true
+        contentGeneration &+= 1
     }
 
     func forceRender() {
@@ -1148,6 +1149,10 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         if periodicRedraw { needsRedraw = true }
 
         guard needsRedraw || wasAnimating else {
+            if let cached = cachedPixelBuffer, let sb = createSampleBuffer(from: cached) {
+                displayLayer.enqueue(sb)
+                frameCount += 1
+            }
             decayFPSIfNeeded()
             return false
         }
@@ -1165,6 +1170,8 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
         if self.basePTS == nil { self.basePTS = CACurrentMediaTime() }
 
+        cachedPixelBuffer = pixelBuffer
+        lastRenderedGeneration = contentGeneration
         guard let sampleBuffer = createSampleBuffer(from: pixelBuffer) else {
             decayFPSIfNeeded()
             return false
