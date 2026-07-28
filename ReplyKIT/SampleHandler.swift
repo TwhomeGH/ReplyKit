@@ -2265,9 +2265,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         @unknown default:
-
-            // Handle other sample buffer types
-            fatalError("Unknown type of sample buffer")
+            sendlog(message: "Unknown SampleBuffer Type!")
 
         }
     }
