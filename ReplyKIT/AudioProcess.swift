@@ -227,7 +227,7 @@ actor AudioProcessorActor {
                 metalAudio: RPConfig.shared.state.enableMetalAudio
             )
             audioEngine = engine
-            setupAudioStream(engine)
+            Task { await setupAudioStream(engine) }
         }
     }
 
