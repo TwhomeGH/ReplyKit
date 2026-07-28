@@ -94,14 +94,14 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
                 if scaledW == rotatedW && scaledH == rotatedH {
                     // ?∠葬?橘???頧?+ letterbox 蝵桐葉
                     ok = self.rotateNV12CPUWithLetterbox(
-                        inPixelBuffer: sendableIn.value as! CVPixelBuffer, outPixelBuffer: sendableOut.value, angle: angle,
+                        inPixelBuffer: sendableIn.value, outPixelBuffer: sendableOut.value, angle: angle,
                         scaledW: scaledW, scaledH: scaledH,
                         offsetX: offsetX, offsetY: offsetY
                     )
                 } else {
                     // ?? + 蝮格 + letterbox
                     ok = self.rotateAndScaleNV12(
-                        inPixelBuffer: sendableIn.value as! CVPixelBuffer, outPixelBuffer: sendableOut.value, angle: angle,
+                        inPixelBuffer: sendableIn.value, outPixelBuffer: sendableOut.value, angle: angle,
                         rotatedW: rotatedW, rotatedH: rotatedH,
                         scaledW: scaledW, scaledH: scaledH,
                         offsetX: offsetX, offsetY: offsetY
@@ -351,8 +351,7 @@ final class RPVideoRotatorCPU_NV12: @unchecked Sendable {
         if vImageScale_Planar8(&srcYBuf, &dstYBuf, nil, vImage_Flags(kvImageHighQualityResampling)) != kvImageNoError {
             return false
         }
-        // Deinterleave UV ??U and V, scale, reinterleave
-        let tempUVStride = CVPixelBufferGetBytesPerRowOfPlane(tempPB, 1)
+        // Deinterleave UV, scale, reinterleave
         let tempUVWidth = CVPixelBufferGetWidthOfPlane(tempPB, 1)
         let tempUVHeight = CVPixelBufferGetHeightOfPlane(tempPB, 1)
         let srcUV = tempUVBase.assumingMemoryBound(to: UInt8.self)

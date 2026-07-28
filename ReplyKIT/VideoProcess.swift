@@ -12,6 +12,7 @@ actor FrameProcessorActor {
     private var lastKey: (useBic: Bool, dstW: Int, dstH: Int, outW: Int, outH: Int, rotateOriginal: Bool)?
     private let sendlog: (String) -> Void
     private var debug: Bool
+    var onPermanentFailure: (@Sendable () -> Void)?
 
     init(debug: Bool, sendlog: @escaping (String) -> Void) {
         self.debug = debug
@@ -24,6 +25,10 @@ actor FrameProcessorActor {
         angle: RotationAngle
     ) async -> CMSampleBuffer? {
         guard let rotator = await getOrCreateGpuRotator() else {
+            return await tryCpuFallback(imageBuffer: imageBuffer, originalTime: originalTime, angle: angle)
+        }
+        if rotator.isPermanentlyDead {
+            onPermanentFailure?()
             return await tryCpuFallback(imageBuffer: imageBuffer, originalTime: originalTime, angle: angle)
         }
         return await rotator.rotateAsync(pixelBuffer: imageBuffer, originalTime: originalTime, angle: angle)
@@ -104,12 +109,20 @@ final class VideoFrameProcessor {
     private let sendlog: (String) -> Void
     private var actor: FrameProcessorActor
     private var angle: RotationAngle
+    private(set) var isActive = true
 
     init(mediaMixer: MediaMixer, sendlog: @escaping (String) -> Void) {
         self.mediaMixer = mediaMixer
         self.sendlog = sendlog
         self.actor = FrameProcessorActor(debug: RPConfig.shared.enableRotateLog, sendlog: sendlog)
         self.angle = RotationAngle(rawValue: UInt32(RPConfig.shared.state.Rotate)) ?? .landscapeRight
+        setupPermanentFailureCallback()
+    }
+
+    private func setupPermanentFailureCallback() {
+        actor.onPermanentFailure = { [weak self] in
+            self?.isActive = false
+        }
     }
 
     func process(_ sampleBuffer: CMSampleBuffer, originalTime: CMSampleTimingInfo) {
@@ -122,6 +135,7 @@ final class VideoFrameProcessor {
     }
 
     func cleanup() {
+        isActive = false
         Task { await actor.cleanup() }
     }
 }

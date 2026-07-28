@@ -31,21 +31,23 @@ private func rmsSIMD(from sampleBuffer: CMSampleBuffer) -> Float? {
     let isInt16   = asbd.mBitsPerChannel == 16
     let isInt24   = asbd.mBitsPerChannel == 24
 
-    var audioBufferList = AudioBufferList(mNumberBuffers: 0, mBuffers: AudioBuffer())
+    let audioBufferListPtr = AudioBufferList.allocate(maximumBuffers: 2)
+    defer { free(audioBufferListPtr) }
     var blockBufferOut: CMBlockBuffer?
 
+    let bufferListSize = AudioBufferList.sizeInBytes(maximumBuffers: 2)
     guard CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
         sampleBuffer,
         bufferListSizeNeededOut: nil,
-        bufferListOut: &audioBufferList,
-        bufferListSize: MemoryLayout<AudioBufferList>.size,
+        bufferListOut: audioBufferListPtr.unsafeMutablePointer,
+        bufferListSize: bufferListSize,
         blockBufferAllocator: kCFAllocatorDefault,
         blockBufferMemoryAllocator: kCFAllocatorDefault,
         flags: kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment,
         blockBufferOut: &blockBufferOut
     ) == noErr else { return nil }
 
-    let audioBuffers = UnsafeMutableAudioBufferListPointer(&audioBufferList)
+    let audioBuffers = audioBufferListPtr
     var sum: Float = 0
     var totalSamples: Int = 0
 
@@ -198,6 +200,7 @@ actor AudioProcessorActor {
     private var onAudioPage: Bool
     private var lastRMSUpdateTime: CFTimeInterval = 0
     var rmsInterval: CFTimeInterval = 1.0
+    private var streamTask: Task<Void, Never>?
 
     init(mediaMixer: MediaMixer,
          volumeNotifier: VolumeNotifier,
@@ -216,13 +219,27 @@ actor AudioProcessorActor {
         self.useOriginal = RPConfig.shared.state.isOringinAudio
 
         if !useOriginal {
-            audioEngine = AudioEngine(
+            let engine = AudioEngine(
                 micGain: micAddVolume,
                 echoFix: RPConfig.shared.state.enableEchoFix,
                 noiseFix: RPConfig.shared.state.enableNoiseFix,
                 agcFix: RPConfig.shared.state.enableAGCFix,
                 metalAudio: RPConfig.shared.state.enableMetalAudio
             )
+            audioEngine = engine
+            setupAudioStream(engine)
+        }
+    }
+
+    private func setupAudioStream(_ engine: AudioEngine) {
+        let stream = engine.startStream()
+        streamTask = Task { [weak self] in
+            for await item in stream {
+                guard let self = self else { break }
+                guard await mediaMixer.isRunning else { continue }
+                await processRMS(item.buffer, trackType: item.trackType, originalTime: item.originalTime)
+                await mediaMixer.append(item.buffer, track: item.trackType.rawValue)
+            }
         }
     }
 
@@ -230,13 +247,11 @@ actor AudioProcessorActor {
         guard await mediaMixer.isRunning else { return }
 
         if useOriginal {
-            let processed = applyGain(sampleBuffer, trackType: trackType)
+            let processed = applyGain(sampleBuffer, trackType: trackType, originalTime: originalTime)
             processRMS(processed, trackType: trackType, originalTime: originalTime)
             await mediaMixer.append(processed, track: trackType.rawValue)
         } else {
-            audioEngine?.process(sampleBuffer, track: trackType)
-            processRMS(sampleBuffer, trackType: trackType, originalTime: originalTime)
-            await mediaMixer.append(sampleBuffer, track: trackType.rawValue)
+            audioEngine?.process(sampleBuffer, track: trackType, originalTime: originalTime)
         }
     }
 
@@ -246,7 +261,7 @@ actor AudioProcessorActor {
               let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc) else {
             return nil
         }
-        let format = AVAudioFormat(streamDescription: asbd)
+        guard let format = AVAudioFormat(streamDescription: asbd) else { return nil }
         guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { return nil }
         
         var length = 0
@@ -280,7 +295,7 @@ actor AudioProcessorActor {
     // 將 AVAudioPCMBuffer 轉回 CMSampleBuffer
     private func pcmBufferToCMSampleBuffer(_ pcmBuffer: AVAudioPCMBuffer,
                                            originalTime: CMSampleTimingInfo) -> CMSampleBuffer? {
-        guard let format = pcmBuffer.format.streamDescription else { return nil }
+        let format = pcmBuffer.format.streamDescription
 
         var formatDesc: CMAudioFormatDescription?
         let statusFmt = CMAudioFormatDescriptionCreate(
@@ -325,6 +340,8 @@ actor AudioProcessorActor {
             sampleCount: frameCount,
             sampleTimingEntryCount: 1,
             sampleTimingArray: &timing,
+            sampleSizeEntryCount: 0,
+            sampleSizeArray: nil,
             sampleBufferOut: &sampleBuffer
         )
         guard statusSB == noErr else { return nil }
@@ -354,6 +371,8 @@ actor AudioProcessorActor {
     }
 
     func cleanup() {
+        streamTask?.cancel()
+        streamTask = nil
         audioEngine?.cleanup()
         audioEngine = nil
     }
@@ -365,6 +384,7 @@ actor AudioProcessorActor {
 
 final class AudioProcessor {
     private let actor: AudioProcessorActor
+    let isActive = true
 
     init(mediaMixer: MediaMixer,
          volumeNotifier: VolumeNotifier,

@@ -311,24 +311,35 @@ final class RealTimeNoiseSuppressor {
 }
 
 
+struct ProcessedAudio {
+    let buffer: CMSampleBuffer
+    let trackType: AudioTrackType
+    let originalTime: CMSampleTimingInfo
+}
+
 final class AudioEngine {
 
     private let preProcessor: AudioPreProcessor
+    private var streamContinuation: AsyncStream<ProcessedAudio>.Continuation?
 
-    init(micGain:Float?=nil,echoFix:Bool?=nil,noiseFix: Bool? = nil,agcFix:Bool? = nil,metalAudio:Bool? = nil) {
-
-        self.preProcessor = AudioPreProcessor(micGain:micGain,echoFix:echoFix,noiseFix: noiseFix,agcFix:agcFix,metalAudio:metalAudio)
+    init(micGain: Float? = nil, echoFix: Bool? = nil, noiseFix: Bool? = nil, agcFix: Bool? = nil, metalAudio: Bool? = nil) {
+        self.preProcessor = AudioPreProcessor(micGain: micGain, echoFix: echoFix, noiseFix: noiseFix, agcFix: agcFix, metalAudio: metalAudio)
     }
 
-   // ======================================================
+    func startStream() -> AsyncStream<ProcessedAudio> {
+        AsyncStream { [weak self] continuation in
+            self?.streamContinuation = continuation
+        }
+    }
+
+    // ======================================================
     // 🎛 封裝後的唯一控制入口
     // ======================================================
     func updateAudioState(micGain: Float? = nil,
                           echoFix: Bool? = nil,
                           noiseFix: Bool? = nil,
-                          agcFix:Bool? = nil,
+                          agcFix: Bool? = nil,
                           metalAudio: Bool? = nil) {
-
         preProcessor.updateState(
             micGain: micGain,
             echoFix: echoFix,
@@ -339,12 +350,27 @@ final class AudioEngine {
     }
 
     // ======================================================
-    // 🎧 routing only (no return transformation)
+    // 🎧 process + yield to AsyncStream
     // ======================================================
     func process(_ sampleBuffer: CMSampleBuffer,
-                 track: AudioTrackType) {
-
+                 track: AudioTrackType,
+                 originalTime: CMSampleTimingInfo) {
         preProcessor.process(sampleBuffer, track: track)
+        streamContinuation?.yield(ProcessedAudio(
+            buffer: sampleBuffer,
+            trackType: track,
+            originalTime: originalTime
+        ))
+    }
+
+    func finish() {
+        streamContinuation?.finish()
+        streamContinuation = nil
+    }
+
+    func cleanup() {
+        finish()
+        preProcessor.cleanup()
     }
 }
 
@@ -617,6 +643,10 @@ final class AudioPreProcessor {
         if processFloatBuffer.count < count {
             processFloatBuffer = [Float](repeating: 0, count: count)
         }
+    }
+
+    func cleanup() {
+        metalNS = nil
     }
 
 

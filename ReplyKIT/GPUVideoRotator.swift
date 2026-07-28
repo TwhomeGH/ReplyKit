@@ -131,6 +131,8 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     private var isActive = true
 
+    var isPermanentlyDead: Bool { metalPermanentFailure }
+
     var dstWW: Int = 0
     var dstHH: Int = 0
     var OutWW: Int = 0
