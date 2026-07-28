@@ -829,6 +829,7 @@ class SocketClient : @unchecked Sendable {
         let ChangeBit: Bool
         let isLowLatencyRateControlEnabled:Bool
         let allowFrameReordering:Bool
+        let h264useCAVLC:Bool 
         let useEnhancedRTMP: Bool?
         let isOringinAudio:Bool?
 
@@ -865,7 +866,7 @@ class SocketClient : @unchecked Sendable {
 
         enum CodingKeys: String, CodingKey {
             case type, rtmpURL, rtmpKey, BitRate, ChangeBit
-            case isLowLatencyRateControlEnabled, allowFrameReordering,useEnhancedRTMP, isOringinAudio
+            case isLowLatencyRateControlEnabled, allowFrameReordering,h264useCAVLC ,useEnhancedRTMP, isOringinAudio
             case h264level, videoCodec, hevcLevel, BitRateMode, videoBuffer, useBic
             case dstW, dstH, odstW, odstH, Rotate, RotateOriginal
             case enableEchoFix, enableNoiseFix, enableAGCFix, enableMetalAudio
@@ -882,6 +883,7 @@ class SocketClient : @unchecked Sendable {
             ChangeBit = try c.decodeIfPresent(Bool.self, forKey: .ChangeBit) ?? false
             isLowLatencyRateControlEnabled = try c.decodeIfPresent(Bool.self, forKey: .isLowLatencyRateControlEnabled) ?? false
             allowFrameReordering = try c.decodeIfPresent(Bool.self, forKey: .allowFrameReordering) ?? false
+            h264useCAVLC = try c.decodeIfPresent(Bool.self, forKey: .h264useCAVLC) ?? false
             useEnhancedRTMP = try c.decodeIfPresent(Bool.self, forKey: .useEnhancedRTMP)
             isOringinAudio = try c.decodeIfPresent(Bool.self, forKey: .isOringinAudio)
             h264level = try c.decodeIfPresent(String.self, forKey: .h264level) ?? "AutoHigh"
@@ -917,6 +919,7 @@ class SocketClient : @unchecked Sendable {
             try c.encode(ChangeBit, forKey: .ChangeBit)
             try c.encode(isLowLatencyRateControlEnabled, forKey: .isLowLatencyRateControlEnabled)
             try c.encode(allowFrameReordering, forKey:.allowFrameReordering)
+            try c.encode(h264useCAVLC,forKey: .h264useCAVLC)
             try c.encodeIfPresent(useEnhancedRTMP, forKey: .useEnhancedRTMP)
             try c.encodeIfPresent(isOringinAudio, forKey: .isOringinAudio)
             try c.encode(h264level, forKey: .h264level)
@@ -962,17 +965,17 @@ class SocketClient : @unchecked Sendable {
 
 
     private func applyRTMP(_ c: RTMPConfig) {
-        var logRES: [String] = []
 
-        logRES.append("[Get]RTMP:\(c.rtmpURL):\(fixlogSafeKey(c.rtmpKey))")
+        sendlog(message:"[Get]RTMP:\(c.rtmpURL):\(fixlogSafeKey(c.rtmpKey)) 使用輕量化編碼:\(c.h264useCAVLC)")
 
-        logRES.append("[Get]Bit:\(c.BitRate):\(c.ChangeBit) 允許BFrame:\(c.allowFrameReordering) 低延遲模式:\(c.isLowLatencyRateControlEnabled) E-RTMP:\(c.useEnhancedRTMP ?? false) useBic:\(c.useBic)")
+        sendlog(message:"[Get]Bit:\(c.BitRate):\(c.ChangeBit) 允許BFrame:\(c.allowFrameReordering) 低延遲模式:\(c.isLowLatencyRateControlEnabled) E-RTMP:\(c.useEnhancedRTMP ?? false) useBic:\(c.useBic)")
 
         let codecName = c.videoCodec ?? "H264"
         let hevc = c.hevcLevel ?? "Main"
-        logRES.append("[Get]\(codecName):\(codecName == "HEVC" ? hevc : c.h264level) : \(c.dstW)x\(c.dstH) \(c.videoBuffer) 方向:\(c.Rotate) KF:\(c.KeyFrameInterval ?? -1)")
+        
+        sendlog(message:"[Get]\(codecName):\(codecName == "HEVC" ? hevc : c.h264level) : \(c.dstW)x\(c.dstH) \(c.videoBuffer) 方向:\(c.Rotate) KF:\(c.KeyFrameInterval ?? -1)")
 
-        logRES.append("[Get]OutDraw:\(c.odstW)x\(c.odstH) RotateOriginal:\(c.RotateOriginal)")
+        sendlog(message:"[Get]OutDraw:\(c.odstW)x\(c.odstH) RotateOriginal:\(c.RotateOriginal)")
 
         RPConfig.shared.updateState(
             RTMPURL: c.rtmpURL,
@@ -1010,17 +1013,15 @@ class SocketClient : @unchecked Sendable {
             enableMetalAudio: c.enableMetalAudio
         )
 
-        logRES.append("[Get]RTMPLog:\(c.enableRTMPLog ?? false)")
-        logRES.append("[Get]Audio App:\(c.appVolume) Mic:\(c.micVolume) AppAdd:\(c.appVolumeAdd) MicAdd:\(c.micVolumeAdd)")
-        logRES.append("[Get]Audio 降噪處理:\(c.enableNoiseFix) 回音處理:\(c.enableEchoFix) 自動增益:\(c.enableAGCFix) Metal:\(c.enableMetalAudio) ")
+        sendlog(message:"[Get]RTMPLog:\(c.enableRTMPLog ?? false)")
+        sendlog(message:"[Get]Audio App:\(c.appVolume) Mic:\(c.micVolume) AppAdd:\(c.appVolumeAdd) MicAdd:\(c.micVolumeAdd)")
+        sendlog(message:"[Get]Audio 降噪處理:\(c.enableNoiseFix) 回音處理:\(c.enableEchoFix) 自動增益:\(c.enableAGCFix) Metal:\(c.enableMetalAudio) ")
 
         CFNotificationCenterPostNotification(
             CFNotificationCenterGetDarwinNotifyCenter(),
             CFNotificationName("VideoReconfig" as CFString),
             nil, nil, true
         )
-
-        self.logTo(logRES.joined(separator: "\n"))
 
         if !self.isProcessingBatch {
             guard let cont = self.rtmpContinuation else {
@@ -1029,7 +1030,6 @@ class SocketClient : @unchecked Sendable {
             }
             self.rtmpContinuation = nil
             cont.resume(returning: true)
-            self._closeConnection()
         }
     }
 

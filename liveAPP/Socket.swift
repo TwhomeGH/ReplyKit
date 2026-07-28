@@ -679,6 +679,9 @@ class SocketServer:ObservableObject {
             "ChangeBit": userDefaults?.object(forKey: "ChangeBit") as? Bool ?? false,
             "isLowLatencyRateControlEnabled":userDefaults?.object(forKey:"isLowLatencyRateControlEnabled") as? Bool ?? false,
             "allowFrameReordering":userDefaults?.object(forKey:"allowFrameReordering") as? Bool ?? false,
+
+            "h264useCAVLC":userDefaults?.object(forKey:"h264useCAVLC") as? Bool ?? false,
+            
             "useEnhancedRTMP":userDefaults?.object(forKey:"useEnhancedRTMP") as? Bool ?? true,
             "isOringinAudio": (userDefaults?.object(forKey: "isOringinAudio") as? Bool) ?? true,
 

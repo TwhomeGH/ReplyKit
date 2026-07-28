@@ -620,6 +620,7 @@ final class RPConfig {
 
         var isLowLatencyRateControlEnabled : Bool = false
         var allowFrameReordering : Bool = false
+        var h264useCAVLC:Bool = false
         var useEnhancedRTMP : Bool = true
         var isOringinAudio : Bool = true
 
@@ -731,6 +732,7 @@ final class RPConfig {
                      ChangeBit:Bool? = nil,
                       isLowLatencyRateControlEnabled:Bool? = nil,
                       allowFrameReordering:Bool? = nil, 
+                      h264useCAVLC:Bool? = nil,
                       useEnhancedRTMP:Bool? = nil,
                       useBic:Bool? = nil,
                      Rotate:Int? = nil,
@@ -788,6 +790,10 @@ final class RPConfig {
 
             if let allowFrameReordering = allowFrameReordering {
                 self.state.allowFrameReordering = allowFrameReordering
+            }
+
+            if let h264useCAVLC = h264useCAVLC {
+                self.state.h264useCAVLC = h264useCAVLC
             }
 
             if let useEnhancedRTMP = useEnhancedRTMP {
@@ -891,15 +897,16 @@ final class RPConfig {
         self.state = State(
             RTMPURL: nil,
             RTMPKey: nil,
-            h264level:SharedDefaults.group?.string(forKey: "h264level") ?? "AutoHigh",
+            h264level:SharedDefaults.group?.string(forKey: "h264level") ?? "AutoMain",
             videoCodec: SharedDefaults.group?.string(forKey: "videoCodec") ?? "H264",
             hevcLevel: SharedDefaults.group?.string(forKey: "hevcLevel") ?? "Main",
-            BufferCount:SharedDefaults.group?.integer(forKey: "BufferCount") ?? 3,
-            BitRate:SharedDefaults.group?.integer(forKey: "bitRate") ?? 6_000_000,
+            BufferCount:SharedDefaults.group?.integer(forKey: "BufferCount") ?? 5,
+            BitRate:SharedDefaults.group?.integer(forKey: "bitRate") ?? 4_500_000,
             
             ChangeBit:SharedDefaults.group?.bool(forKey: "ChangeBit") ?? false,
             isLowLatencyRateControlEnabled:SharedDefaults.group?.bool(forKey: "isLowLatencyRateControlEnabled") ?? false,
             allowFrameReordering:SharedDefaults.group?.bool(forKey: "allowFrameReordering") ?? false,
+            h264useCAVLC:SharedDefaults.group?.bool(forKey: "h264useCAVLC") ?? false,
             useEnhancedRTMP:SharedDefaults.group?.object(forKey: "useEnhancedRTMP") as? Bool ?? true,
             isOringinAudio: (SharedDefaults.group?.object(forKey: "isOringinAudio") as? Bool) ?? true,
             useBic:SharedDefaults.group?.bool(forKey: "useBic") ?? false,

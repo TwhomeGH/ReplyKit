@@ -1339,8 +1339,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         videoSettings.maxFrameDelayCount = RPConfig.shared.state.BufferCount  // 限制 VT 內部最多疊幾幀 -1會使用自動計算
         videoSettings.adaptiveFrameThrottle = true // 實驗性軟體節流 改善VT過載問題
-        // videoSettings.h264EntropyMode = "cavlc" // 輕量化編碼器避免過載
 
+        videoSettings.prioritizeEncodingSpeedOverQuality = true // VT編碼速度優先策略
+
+        if RPConfig.shared.state.h264useCAVLC {
+            sendlog(message: "使用輕量編碼 CAVLC")
+            videoSettings.h264EntropyMode = "cavlc" // 輕量化編碼器避免過載
+        }
 
 
         let codec = RPConfig.shared.state.videoCodec

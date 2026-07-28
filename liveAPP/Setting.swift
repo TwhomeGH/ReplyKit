@@ -658,6 +658,12 @@ struct LogSettingView:View {
 
     @AppStorage("allowFrameReordering",store:userDefaults)  private var allowFrameReordering = false
 
+
+    @AppStorage("h264useCAVLC",store:userDefaults)  private var h264useCAVLC:Bool = false
+
+
+    
+
     @AppStorage("isLowLatencyRateControlEnabled",store:userDefaults)  private var isLowLatencyRateControlEnabled = false
 
     @AppStorage("isNotifyChat",store:userDefaults) private var isNotifyChat = false
@@ -731,6 +737,12 @@ struct LogSettingView:View {
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .padding(.bottom, 5)
+
+            
+
+            Toggle(isOn:$h264useCAVLC){
+                    Text("使用輕負載編碼器 CAVLC！ 可用於降低編碼壓力")
+            }
 
 
             Toggle(isOn:$allowFrameReordering){
