@@ -280,10 +280,10 @@ struct DeviceView: View {
     let diskIO = SystemDiskIO()
 
     @State private var appMemoryMB: Double = 0
-    @State private var cpuHistory: [DataPoint] = [DataPoint(id: 0, time: Date(), value: 0)]
-    @State private var memoryHistory: [DataPoint] = [DataPoint(id: 0, time: Date(), value: 0)]
-    @State private var pageInHistory: [DataPoint] = [DataPoint(id: 0, time: Date(), value: 0)]
-    @State private var pageOutHistory: [DataPoint] = [DataPoint(id: 0, time: Date(), value: 0)]
+    @State private var cpuHistory: [DataPoint] = []
+    @State private var memoryHistory: [DataPoint] = []
+    @State private var pageInHistory: [DataPoint] = []
+    @State private var pageOutHistory: [DataPoint] = []
     @State private var appWriteHistory: [DataPoint] = []
     @State private var prevAppWriteBytes: UInt64 = 0
     @State private var dataPointCounter = 0
@@ -461,6 +461,8 @@ struct DeviceView: View {
             pageInHistory.removeAll()
             pageOutHistory.removeAll()
             appWriteHistory.removeAll()
+            dataPointCounter = 0
+            prevAppWriteBytes = 0
         }
     }
 
@@ -477,12 +479,12 @@ struct DeviceView: View {
         let id = dataPointCounter
         appMemoryMB = DeviceInfo.appMemoryMB
         let now = Date()
+        // EWMA 指數移動平均，α=0.4，不依賴歷史筆數
         let rawCPU = DeviceInfo.cpuUsagePercent
-        // 簡單平滑：取最後 3 筆的平均，降低單次抖動
+        let alpha = 0.4
         let smoothedCPU: Double
-        if cpuHistory.count >= 2 {
-            let last2 = cpuHistory.suffix(2).map(\.value)
-            smoothedCPU = (rawCPU + last2[0] + last2[1]) / 3
+        if let last = cpuHistory.last?.value {
+            smoothedCPU = alpha * rawCPU + (1 - alpha) * last
         } else {
             smoothedCPU = rawCPU
         }
