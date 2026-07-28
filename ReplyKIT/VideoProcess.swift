@@ -143,6 +143,8 @@ final class VideoFrameProcessor {
     private var actor: FrameProcessorActor
     private var angle: RotationAngle
     private(set) var isActive = true
+    private(set) var processedCount = 0
+    private(set) var droppedCount = 0
 
     init(mediaMixer: MediaMixer, sendlog: @escaping (String) -> Void) {
         self.mediaMixer = mediaMixer
@@ -162,7 +164,14 @@ final class VideoFrameProcessor {
     func process(_ sampleBuffer: CMSampleBuffer, originalTime: CMSampleTimingInfo) {
         guard let imageBuffer = sampleBuffer.imageBuffer else { return }
         Task {
-            guard let rotated = await actor.processFrame(imageBuffer: imageBuffer, originalTime: originalTime, angle: angle) else { return }
+            guard let rotated = await actor.processFrame(imageBuffer: imageBuffer, originalTime: originalTime, angle: angle) else {
+                droppedCount &+= 1
+                if droppedCount % 300 == 0 {
+                    sendlog("[VProc] ⚠️ 已累積 drop \(droppedCount) 幀 (proc: \(processedCount))")
+                }
+                return
+            }
+            processedCount &+= 1
             guard await mediaMixer.isRunning else { return }
             await mediaMixer.append(rotated)
         }

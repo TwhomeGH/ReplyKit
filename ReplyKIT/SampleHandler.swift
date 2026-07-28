@@ -2173,10 +2173,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             // ✅ 強制診斷日誌：每 1500 幀或首幀輸出，不依賴 enablePipelineLog
             if videoFrameCount % 1500 == 0 {
                 let sinceStart = timestamp.seconds
-                sendlog(message: "[VFrame] #\(videoFrameCount) PTS:\(String(format:"%.3f",sinceStart))s ready:\(sampleBuffer.dataReadiness == .ready) vp:\(videoProcessor != nil ? (videoProcessor!.isActive ? "Y" : "INACTIVE") : "N") init:\(processorsInitialized)")
+                let p = videoProcessor
+                sendlog(message: "[VFrame] #\(videoFrameCount) PTS:\(String(format:"%.3f",sinceStart))s rdy:\(sampleBuffer.dataReadiness == .ready) vp:\(p != nil ? (p!.isActive ? "Y" : "INACT.") : "N") init:\(processorsInitialized) drop:\(p?.droppedCount ?? 0) proc:\(p?.processedCount ?? 0)")
             } else if RPConfig.shared.enablePipelineLog, videoFrameCount % 600 == 0 {
                 let sinceStart = timestamp.seconds
-                sendlog(message: "[Video流水] #\(videoFrameCount) PTS:\(String(format:"%.3f",sinceStart))s proc:\(videoProcessor != nil ? "Y" : "N") init:\(processorsInitialized)")
+                let p = videoProcessor
+                sendlog(message: "[Video流水] #\(videoFrameCount) PTS:\(String(format:"%.3f",sinceStart))s vp:\(p != nil ? "Y" : "N") init:\(processorsInitialized) drop:\(p?.droppedCount ?? 0) proc:\(p?.processedCount ?? 0)")
             }
 
             
