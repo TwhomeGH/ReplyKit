@@ -12,12 +12,19 @@ actor FrameProcessorActor {
     private var lastKey: (useBic: Bool, dstW: Int, dstH: Int, outW: Int, outH: Int, rotateOriginal: Bool)?
     private let sendlog: (String) -> Void
     private var debug: Bool
-    private let onPermanentFailure: (@Sendable () -> Void)?
+    private var onPermanentFailure: (@Sendable () -> Void)?
 
-    init(debug: Bool, sendlog: @escaping (String) -> Void, onPermanentFailure: (@Sendable () -> Void)?) {
+    init(debug: Bool, sendlog: @escaping (String) -> Void) {
         self.debug = debug
         self.sendlog = sendlog
-        self.onPermanentFailure = onPermanentFailure
+    }
+
+    nonisolated func setPermanentFailureHandler(_ handler: @Sendable @escaping () -> Void) {
+        Task { await _setPermanentFailureHandler(handler) }
+    }
+
+    private func _setPermanentFailureHandler(_ handler: @Sendable @escaping () -> Void) {
+        onPermanentFailure = handler
     }
 
     func processFrame(
@@ -116,14 +123,14 @@ final class VideoFrameProcessor {
         self.mediaMixer = mediaMixer
         self.sendlog = sendlog
         self.angle = RotationAngle(rawValue: UInt32(RPConfig.shared.state.Rotate)) ?? .landscapeRight
-        let onFailure: (@Sendable () -> Void)? = { [weak self] in
-            self?.isActive = false
-        }
         self.actor = FrameProcessorActor(
             debug: RPConfig.shared.enableRotateLog,
-            sendlog: sendlog,
-            onPermanentFailure: onFailure
+            sendlog: sendlog
         )
+        let onFailure = { [weak self] in
+            self?.isActive = false
+        }
+        actor.setPermanentFailureHandler(onFailure)
     }
 
     func process(_ sampleBuffer: CMSampleBuffer, originalTime: CMSampleTimingInfo) {

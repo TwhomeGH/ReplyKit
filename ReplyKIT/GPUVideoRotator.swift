@@ -310,10 +310,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         }
     }
 
-    // 已停用 已經是withCheckedContinuation的方式，不需要額外的semaphore
-    // private let gpuSemaphore = AsyncSemaphore(value: 3)
-    
-
     func cleanup() async {
         guard isActive else { return }
         isActive = false
@@ -384,7 +380,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     private let metalFailureLogLock = NSLock()
     private var lastMetalFailureLogAt = Date.distantPast
     /// 限制 in-flight command buffer 數量，防止 GPU 被淹沒
-    private let inflightSemaphore = DispatchSemaphore(value: 2)
+    private let inflightSemaphore = AsyncSemaphore(value: 3)
     /// 自動降品質：失敗時切到 bilinear
     private var originalQualityMode: QualityMode?
     private var effectiveQualityMode: QualityMode {
@@ -610,12 +606,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             return nil
         }
 
-        let semaphoreTimeout = DispatchTime.now() + 0.5
-        guard inflightSemaphore.wait(timeout: semaphoreTimeout) == .success else {
-            recycleOutput(outSet)
-            logTo("inflight slot timeout (500ms)，使用 CPU fallback")
-            return nil
-        }
+        await inflightSemaphore.wait()
 
         guard renderPlaneYUV(cmd: cmd, srcY: ycvTexIn.tex, srcUV: uvcvTexIn.tex,
                         dstY: outSet.yTex, dstUV: outSet.uvTex, angle: angle) else {
