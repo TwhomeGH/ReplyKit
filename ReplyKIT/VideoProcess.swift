@@ -127,8 +127,9 @@ final class VideoFrameProcessor {
             debug: RPConfig.shared.enableRotateLog,
             sendlog: sendlog
         )
-        let onFailure = { [weak self] in
+        let onFailure: @Sendable () -> Void = { [weak self] in
             self?.isActive = false
+            return
         }
         actor.setPermanentFailureHandler(onFailure)
     }
