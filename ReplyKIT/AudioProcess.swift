@@ -137,6 +137,15 @@ final class VolumeNotifier {
     func updateVolume(app: Float, mic: Float) {
         guard isActive else { return }
         SocketClient.shared.sendAudioLive(appVol: app, micVol: mic)
+        if !RPConfig.isSideload {
+            SharedDefaults.group?.set(app, forKey: "appVolumeLive")
+            SharedDefaults.group?.set(mic, forKey: "micVolumeLive")
+            CFNotificationCenterPostNotification(
+                CFNotificationCenterGetDarwinNotifyCenter(),
+                CFNotificationName("LiveVolumeUpdated" as CFString),
+                nil, nil, true
+            )
+        }
     }
 }
 
@@ -337,7 +346,7 @@ actor AudioProcessorActor {
 
     private func processRMS(_ buffer: CMSampleBuffer, trackType: AudioTrackType, originalTime: CMSampleTimingInfo) {
         let now = CACurrentMediaTime()
-        guard onAudioPage, now - lastRMSUpdateTime > rmsInterval else { return }
+        guard onAudioPage || RPConfig.shared.onAudioPage, now - lastRMSUpdateTime > rmsInterval else { return }
         lastRMSUpdateTime = now
         if let rms = rmsSIMD(from: buffer) {
             let userVolume = (trackType == .app) ? appVolume : micVolume

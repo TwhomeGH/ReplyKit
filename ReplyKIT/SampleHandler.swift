@@ -919,7 +919,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "onAudioPage":
-            let APage = SharedDefaults.group?.bool(forKey: "onAudioPage") ?? false
+            let APage: Bool
+            if RPConfig.isSideload {
+                APage = !RPConfig.shared.onAudioPage
+            } else {
+                APage = SharedDefaults.group?.bool(forKey: "onAudioPage") ?? false
+            }
             RPConfig.shared.onAudioPage = APage
 
             if audioProcessor != nil && processorsInitialized {
