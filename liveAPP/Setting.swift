@@ -655,6 +655,9 @@ struct LogSettingView:View {
     @AppStorage("EnablePipelineLog",store:userDefaults) private var EnablePipelineLog = false
 
     @AppStorage("ChangeBit",store:userDefaults) private var ChangeBit = true
+
+    @AppStorage("allowFrameReordering",store:userDefaults)  private var allowFrameReordering = false
+
     @AppStorage("isLowLatencyRateControlEnabled",store:userDefaults)  private var isLowLatencyRateControlEnabled = false
 
     @AppStorage("isNotifyChat",store:userDefaults) private var isNotifyChat = false
@@ -728,6 +731,16 @@ struct LogSettingView:View {
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .padding(.bottom, 5)
+
+
+            Toggle(isOn:$allowFrameReordering){
+                    Text("啟用允許B-Frame 此功能存在不穩定性可能破壞穩定性！")
+            }
+
+            Text("允許重排 壓縮改善")                                                                                                     
+            .font(.footnote)
+            .foregroundColor(.secondary)
+            .padding(.bottom, 5)
 
             Toggle(isOn:$isLowLatencyRateControlEnabled){
                     Text("啟用低延遲處理！")

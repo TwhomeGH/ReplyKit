@@ -828,6 +828,7 @@ class SocketClient : @unchecked Sendable {
         let BitRate: Int
         let ChangeBit: Bool
         let isLowLatencyRateControlEnabled:Bool
+        let allowFrameReordering:Bool
         let useEnhancedRTMP: Bool?
         let isOringinAudio:Bool?
 
@@ -864,7 +865,7 @@ class SocketClient : @unchecked Sendable {
 
         enum CodingKeys: String, CodingKey {
             case type, rtmpURL, rtmpKey, BitRate, ChangeBit
-            case isLowLatencyRateControlEnabled, useEnhancedRTMP, isOringinAudio
+            case isLowLatencyRateControlEnabled, allowFrameReordering,useEnhancedRTMP, isOringinAudio
             case h264level, videoCodec, hevcLevel, BitRateMode, videoBuffer, useBic
             case dstW, dstH, odstW, odstH, Rotate, RotateOriginal
             case enableEchoFix, enableNoiseFix, enableAGCFix, enableMetalAudio
@@ -880,6 +881,7 @@ class SocketClient : @unchecked Sendable {
             BitRate = try c.decodeIfPresent(Int.self, forKey: .BitRate) ?? 3_900_000
             ChangeBit = try c.decodeIfPresent(Bool.self, forKey: .ChangeBit) ?? false
             isLowLatencyRateControlEnabled = try c.decodeIfPresent(Bool.self, forKey: .isLowLatencyRateControlEnabled) ?? false
+            allowFrameReordering = try c.decodeIfPresent(Bool.self, forKey: .allowFrameReordering) ?? false
             useEnhancedRTMP = try c.decodeIfPresent(Bool.self, forKey: .useEnhancedRTMP)
             isOringinAudio = try c.decodeIfPresent(Bool.self, forKey: .isOringinAudio)
             h264level = try c.decodeIfPresent(String.self, forKey: .h264level) ?? "AutoHigh"
@@ -914,6 +916,7 @@ class SocketClient : @unchecked Sendable {
             try c.encode(BitRate, forKey: .BitRate)
             try c.encode(ChangeBit, forKey: .ChangeBit)
             try c.encode(isLowLatencyRateControlEnabled, forKey: .isLowLatencyRateControlEnabled)
+            try c.encode(allowFrameReordering, forKey:.allowFrameReordering)
             try c.encodeIfPresent(useEnhancedRTMP, forKey: .useEnhancedRTMP)
             try c.encodeIfPresent(isOringinAudio, forKey: .isOringinAudio)
             try c.encode(h264level, forKey: .h264level)
@@ -963,7 +966,7 @@ class SocketClient : @unchecked Sendable {
 
         logRES.append("[Get]RTMP:\(c.rtmpURL):\(fixlogSafeKey(c.rtmpKey))")
 
-        logRES.append("[Get]Bit:\(c.BitRate):\(c.ChangeBit) 低延遲模式:\(c.isLowLatencyRateControlEnabled) E-RTMP:\(c.useEnhancedRTMP ?? false) useBic:\(c.useBic)")
+        logRES.append("[Get]Bit:\(c.BitRate):\(c.ChangeBit) 允許BFrame:\(c.allowFrameReordering) 低延遲模式:\(c.isLowLatencyRateControlEnabled) E-RTMP:\(c.useEnhancedRTMP ?? false) useBic:\(c.useBic)")
 
         let codecName = c.videoCodec ?? "H264"
         let hevc = c.hevcLevel ?? "Main"
@@ -982,6 +985,7 @@ class SocketClient : @unchecked Sendable {
             BitRate: c.BitRate,
             ChangeBit: c.ChangeBit,
             isLowLatencyRateControlEnabled: c.isLowLatencyRateControlEnabled,
+            allowFrameReordering: c.allowFrameReordering,
             useEnhancedRTMP: c.useEnhancedRTMP,
             useBic: c.useBic,
             Rotate: c.Rotate,

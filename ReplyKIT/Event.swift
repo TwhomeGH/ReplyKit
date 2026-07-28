@@ -619,6 +619,7 @@ final class RPConfig {
         var ChangeBit : Bool = false
 
         var isLowLatencyRateControlEnabled : Bool = false
+        var allowFrameReordering : Bool = false
         var useEnhancedRTMP : Bool = true
         var isOringinAudio : Bool = true
 
@@ -729,6 +730,7 @@ final class RPConfig {
                      BitRate:Int? = nil,
                      ChangeBit:Bool? = nil,
                       isLowLatencyRateControlEnabled:Bool? = nil,
+                      allowFrameReordering:Bool? = nil, 
                       useEnhancedRTMP:Bool? = nil,
                       useBic:Bool? = nil,
                      Rotate:Int? = nil,
@@ -782,6 +784,10 @@ final class RPConfig {
 
             if let isLowLatencyRateControlEnabled = isLowLatencyRateControlEnabled {
                 self.state.isLowLatencyRateControlEnabled = isLowLatencyRateControlEnabled
+            }
+
+            if let allowFrameReordering = allowFrameReordering {
+                self.state.allowFrameReordering = allowFrameReordering
             }
 
             if let useEnhancedRTMP = useEnhancedRTMP {
@@ -893,6 +899,7 @@ final class RPConfig {
             
             ChangeBit:SharedDefaults.group?.bool(forKey: "ChangeBit") ?? false,
             isLowLatencyRateControlEnabled:SharedDefaults.group?.bool(forKey: "isLowLatencyRateControlEnabled") ?? false,
+            allowFrameReordering:SharedDefaults.group?.bool(forKey: "allowFrameReordering") ?? false,
             useEnhancedRTMP:SharedDefaults.group?.object(forKey: "useEnhancedRTMP") as? Bool ?? true,
             isOringinAudio: (SharedDefaults.group?.object(forKey: "isOringinAudio") as? Bool) ?? true,
             useBic:SharedDefaults.group?.bool(forKey: "useBic") ?? false,

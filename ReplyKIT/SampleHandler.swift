@@ -1289,7 +1289,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         case "Extended":
             return kVTProfileLevel_H264_Extended_AutoLevel as String
         default:
-            return kVTProfileLevel_H264_High_AutoLevel as String
+            return kVTProfileLevel_H264_Main_AutoLevel as String
         }
     }
 
@@ -1332,13 +1332,14 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         let kv = RPConfig.shared.state.KeyFrameInterval
         videoSettings.maxKeyFrameIntervalDuration = Int32(kv)
 
-        //videoSettings.allowFrameReordering = true
         videoSettings.isLowLatencyRateControlEnabled = RPConfig.shared.state.isLowLatencyRateControlEnabled
         videoSettings.bitRate = RPConfig.shared.state.BitRate
 
-        videoSettings.maxFrameDelayCount = max(RPConfig.shared.state.BufferCount, 10)  // 限制 VT 內部最多疊 10 幀
-        videoSettings.adaptiveFrameThrottle = false // 關閉軟體節流，讓 VT 硬體自己處理 fallback
-        videoSettings.h264EntropyMode = "cavlc" // 輕量化編碼器避免過載
+        videoSettings.allowFrameReordering = RPConfig.shared.state.allowFrameReordering
+
+        videoSettings.maxFrameDelayCount = RPConfig.shared.state.BufferCount  // 限制 VT 內部最多疊幾幀 -1會使用自動計算
+        videoSettings.adaptiveFrameThrottle = true // 實驗性軟體節流 改善VT過載問題
+        // videoSettings.h264EntropyMode = "cavlc" // 輕量化編碼器避免過載
 
 
 
