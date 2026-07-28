@@ -288,3 +288,43 @@ liveAPP SocketServer → LiveVolumeModel → UI
 | `AudioProcess.swift` | `AudioProcessor`（外層非 actor）+ `AudioProcessorActor`（actor）+ `VolumeNotifier` |
 | `AudioNoiseFix.swift` | `AudioEngine` + `AudioPreProcessor` + DSP 元件（AGC、Echo、Noise Suppressor） |
 | `AsyncSemaphore.swift` | 自訂 async-aware semaphore，`CheckedContinuation` 掛起取代 blocking |
+
+---
+
+## HaishinKit encoder 管線改進
+
+### 問題：背景暫停後 encoder 無法恢復
+
+當使用者切到 GPU 密集型遊戲時，iOS 會暫停 broadcast extension 的執行。恢復前景後：
+
+1. `NetworkMonitor` timer 大量落後，一次觸發時 `interval > 10s`
+2. 但 encoder stall 累積計數器 (`videoStallCount`) 在暫停期間未被歸零
+3. 原本的機制需要 3 次連續 monitor 觸發（每次 ~1s）才會重建 encoder session
+4. 被暫停後 timer 只觸發一次，永遠湊不滿 3 次
+
+結果：encoder session 一直處於失效狀態，`videoInputFrames > 0` 但 `frameCount == 0`，畫面凍結直到下次正常 stall 檢測。
+
+### 修正
+
+**檔案：** `F:\HaishinKit.swift\RTMPHaishinKit\Sources\RTMP\RTMPStream.swift`
+
+```swift
+// 改前：gap > 1.5s 只做 log
+if interval > 1.5 {
+    await connection?.log(.warn, "publish status gap", ...)
+}
+
+// 改後：gap > 3.0s 且 encoder 無進度 → 跳過累積，立即重建
+if interval > 3.0, readyState == .publishing, videoInputFrames == 0 || frameCount == 0 {
+    await restartVideoPipeline(reason: "suspended gap of ...")
+    restartedVideoPipeline = true
+}
+```
+
+### 預期改善
+
+| 場景 | 改前 | 改後 |
+|------|------|------|
+| 玩遊戲時 extension 被暫停 → 恢復 | encoder session 失效，需等 3 次 monitor 觸發（永遠等不到） | gap > 3s 立即重建 encoder |
+| 短暫卡頓 (< 3s) | 正常 stall 累積 3 次後重啟 | 不影響（3s 閾值不觸發） |
+| 前景暫停後恢復 | 等待累積，約 3s | gap 偵測到 >3s 立即跳過累積流程 |
