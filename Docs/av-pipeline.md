@@ -44,8 +44,7 @@ VideoFrameProcessor.process(_:originalTime:)
     │  │     │          → tryCpuFallback() (RPVideoRotatorCPU_NV12)
     │  │     └── NO  → rotator.rotateAsync()
     │  │                ├── ensureMetalResources() (lazy compile pipeline)
-    │  │                ├── inflightSemaphore.wait(timeout: 0.5s) ← 背壓
-    │  │                │     └── 超時 → drop frame (return nil)
+    │  │                ├── await inflightSemaphore.wait() ← 自然 suspend
     │  │                ├── renderPlaneYUV() (Metal compute dispatch)
     │  │                ├── withCheckedContinuation { }
     │  │                │     ├── cmd.addCompletedHandler → resume(rotated)
@@ -77,10 +76,33 @@ GPU rotator 正常 ────────────────────�
 
 | 機制 | 閥值 | 行為 |
 |------|------|------|
-| `inflightSemaphore` | value: 2, timeout: 0.5s | GPU 飽和時靜默 drop frame |
+| `AsyncSemaphore` | value: 3, `await wait()` (suspend) | GPU 飽和時自然 suspend，清出 slot 後 resume，不掉幀 |
 | `commandBufferTimeout` | 1.0s | GPU command buffer 逾時 → 回 nil + `handleMetalFailure` |
 | `CommandCompletionState` | NSLock | 保證 completion vs watchdog 恰好一次 resume |
 | `outputPool` maxPoolSize | 10 | CVPixelBuffer 重用池上限，溢位 evict 最舊 |
+
+#### AsyncSemaphore 取代 DispatchSemaphore
+
+`DispatchSemaphore.wait(timeout:)` 在 async context 裡會**阻塞 thread pool**，且 0.5s timeout 到才 drop frame — 浪費 thread 又增加 latency。
+
+改用自訂 `AsyncSemaphore`（`ReplyKIT/AsyncSemaphore.swift`），用 `CheckedContinuation` 掛起 Task，不佔 thread：
+
+```swift
+// 改前
+private let inflightSemaphore = DispatchSemaphore(value: 2)     // blocking
+guard inflightSemaphore.wait(timeout: 0.5s) == .success else → drop frame
+
+// 改後
+private let inflightSemaphore = AsyncSemaphore(value: 3)        // suspending
+await inflightSemaphore.wait()                                  // 自然背壓，無 timeout
+```
+
+| 項目 | 改前 | 改後 | 理由 |
+|------|------|------|------|
+| 類型 | `DispatchSemaphore` (blocking) | `AsyncSemaphore` (suspending) | blocking 在 Swift concurrency 裡卡 thread pool |
+| 容量 | 2 | 3 | 60fps 下 3 in-flight 更流暢，latency 仍 < 50ms |
+| Timeout | 0.5s | 無 | 語意是背壓不是故障偵測，watchdog (1s) 已 cover hung GPU |
+| Drop | 等 0.5s 才 drop | 永不 drop，自然 suspend | GPU 清出 slot 後 resume，不掉幀 |
 
 ### 重建路徑
 
@@ -182,14 +204,13 @@ GPU rotator 連續 5 次 Metal 失敗
     │
     ▼
 metalPermanentFailure = true
+
+rotator.isPermanentlyDead → FrameProcessorActor.processFrame() 偵測到
     │
-    ▼
-rotator.isPermanentlyDead → FrameProcessorActor 偵測到
-    │
-    ▼
-onPermanentFailure?() ──► VideoFrameProcessor.isActive = false
-    │                         (private(set)，sync readable)
-    ▼
+    ├── onPermanentFailure?() ──► VideoFrameProcessor.isActive = false
+    │                               (private(set)，sync readable)
+    └── tryCpuFallback() (該幀走 vImage)
+
 SampleHandler 診斷日誌: "[VFrame] ... vp:INACTIVE ..."
     │
     │  if vp.isActive == false && !isStopping
@@ -199,6 +220,8 @@ rebuildVideo()
     ├── 舊 VideoFrameProcessor cleanup
     └── 新的 VideoFrameProcessor (全新 GPU rotator)
 ```
+
+`onPermanentFailure` 是 `FrameProcessorActor` 的 `let onPermanentFailure: (@Sendable () -> Void)?`，在建構時透過 `nonisolated func setPermanentFailureHandler()` 設定。
 
 AudioProcessor 的 `isActive` 固定為 `true`（audio pipe 無永久失敗路徑，純供 diagnostics 顯示 "Y"）。
 
@@ -231,3 +254,4 @@ AudioProcessor 的 `isActive` 固定為 `true`（audio pipe 無永久失敗路�
 | `CPURotator.swift` | vImage CPU 旋轉 fallback |
 | `AudioProcess.swift` | `AudioProcessor`（外層非 actor）+ `AudioProcessorActor`（actor）+ `VolumeNotifier` |
 | `AudioNoiseFix.swift` | `AudioEngine` + `AudioPreProcessor` + DSP 元件（AGC、Echo、Noise Suppressor） |
+| `AsyncSemaphore.swift` | 自訂 async-aware semaphore，`CheckedContinuation` 掛起取代 blocking |
