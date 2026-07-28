@@ -44,7 +44,6 @@ VideoFrameProcessor.process(_:originalTime:)
     │  │     │          → tryCpuFallback() (RPVideoRotatorCPU_NV12)
     │  │     └── NO  → rotator.rotateAsync()
     │  │                ├── ensureMetalResources() (lazy compile pipeline)
-    │  │                ├── await inflightSemaphore.wait() ← 自然 suspend
     │  │                ├── renderPlaneYUV() (Metal compute dispatch)
     │  │                ├── withCheckedContinuation { }
     │  │                │     ├── cmd.addCompletedHandler → resume(rotated)
