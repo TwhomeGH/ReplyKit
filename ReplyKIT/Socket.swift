@@ -625,10 +625,13 @@ class SocketClient : @unchecked Sendable {
     }
 
     // MARK: - Batch Log Transport
+    private let maxPendingBytes = 1_048_576 // 1MB 記憶體安全上限
+
     func sendLogBatch(entries: [String], force: Bool = false) {
         queue.async { [weak self] in
             guard let self = self else { return }
             self.pendingBatchEntries.append(contentsOf: entries)
+            self.trimToMemoryCap()
             self.checkBatch()
             if force {
                 self.flushBatch()
@@ -648,6 +651,14 @@ class SocketClient : @unchecked Sendable {
         }
     }
 
+    private func trimToMemoryCap() {
+        var totalBytes = pendingBatchEntries.reduce(0) { $0 + $1.utf8.count }
+        while totalBytes > maxPendingBytes, !pendingBatchEntries.isEmpty {
+            let removed = pendingBatchEntries.removeFirst()
+            totalBytes -= removed.utf8.count
+        }
+    }
+
     private func checkBatch() {
         let totalBytes = pendingBatchEntries.reduce(0) { $0 + $1.utf8.count }
         if pendingBatchEntries.count >= maxBatchEntries || totalBytes >= maxBatchBytes {
@@ -662,9 +673,9 @@ class SocketClient : @unchecked Sendable {
 
     private func flushBatch() {
         guard !pendingBatchEntries.isEmpty else { return }
-        guard inFlightBatches < maxInflightBatches else {
-            let dropCount = min(pendingBatchEntries.count, maxBatchEntries)
-            pendingBatchEntries.removeFirst(dropCount)
+        // 不限 inflight — 讓佇列自然成長，記憶體由 trimToMemoryCap 保護
+        if connection?.state != .ready {
+            _connect(host: "localhost", port: 9322)
             return
         }
 

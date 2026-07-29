@@ -24,12 +24,17 @@ enum AudioTrackType: UInt8 {
 
 private func rmsSIMD(from sampleBuffer: CMSampleBuffer) -> Float? {
     guard let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer),
-          let asbdPointer = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc) else { return nil }
+          let asbdPointer = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc) else {
+        sendlog(message: "[RMS] no formatDesc or asbd")
+        return nil
+    }
     let asbd = asbdPointer.pointee
 
     let isFloat32 = (asbd.mFormatFlags & kAudioFormatFlagIsFloat) != 0 && asbd.mBitsPerChannel == 32
     let isInt16   = asbd.mBitsPerChannel == 16
     let isInt24   = asbd.mBitsPerChannel == 24
+
+    sendlog(message: "[RMS] fmt: flags=\(asbd.mFormatFlags) bits=\(asbd.mBitsPerChannel) ch=\(asbd.mChannelsPerFrame) sr=\(asbd.mSampleRate) float32=\(isFloat32) int16=\(isInt16) int24=\(isInt24)")
 
     let audioBufferListPtr = AudioBufferList.allocate(maximumBuffers: 2)
     defer { free(UnsafeMutableRawPointer(audioBufferListPtr.unsafeMutablePointer)) }
@@ -45,14 +50,20 @@ private func rmsSIMD(from sampleBuffer: CMSampleBuffer) -> Float? {
         blockBufferMemoryAllocator: kCFAllocatorDefault,
         flags: kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment,
         blockBufferOut: &blockBufferOut
-    ) == noErr else { return nil }
+    ) == noErr else {
+        sendlog(message: "[RMS] getAudioBufferList failed")
+        return nil
+    }
 
     let audioBuffers = audioBufferListPtr
     var sum: Float = 0
     var totalSamples: Int = 0
 
     for buffer in audioBuffers {
-        guard let mData = buffer.mData else { continue }
+        guard let mData = buffer.mData else {
+            sendlog(message: "[RMS] nil mData")
+            continue
+        }
         let sampleCount = Int(buffer.mDataByteSize) / Int(asbd.mBytesPerFrame)
 
         if isFloat32 {
@@ -87,13 +98,17 @@ private func rmsSIMD(from sampleBuffer: CMSampleBuffer) -> Float? {
             sum += meanSquare * Float(sampleCount)
 
         } else {
+            sendlog(message: "[RMS] unsupported format: flags=\(asbd.mFormatFlags) bits=\(asbd.mBitsPerChannel)")
             return nil
         }
 
         totalSamples += sampleCount
     }
 
-    guard totalSamples > 0 else { return nil }
+    guard totalSamples > 0 else {
+        sendlog(message: "[RMS] totalSamples=0")
+        return nil
+    }
     let rms = sqrt(sum / Float(totalSamples))
     return min(max(rms, 0.0), 1.0)
 }
