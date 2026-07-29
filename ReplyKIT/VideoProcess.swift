@@ -163,6 +163,18 @@ final class VideoFrameProcessor {
 
     func process(_ sampleBuffer: CMSampleBuffer, originalTime: CMSampleTimingInfo) {
         guard let imageBuffer = sampleBuffer.imageBuffer else { return }
+        if processedCount % 60 == 0 {
+            let fmt = CVPixelBufferGetPixelFormatType(imageBuffer)
+            let fmtStr: String
+            switch fmt {
+            case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange: fmtStr = "NV12"
+            case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange: fmtStr = "NV12_video"
+            case kCVPixelFormatType_32BGRA: fmtStr = "BGRA"
+            case kCVPixelFormatType_32ARGB: fmtStr = "ARGB"
+            default: fmtStr = "other(\(String(format: "0x%08x", fmt)))"
+            }
+            sendlog("[VFormat] #\(processedCount) fmt=\(fmtStr) \(CVPixelBufferGetWidth(imageBuffer))x\(CVPixelBufferGetHeight(imageBuffer))")
+        }
         Task {
             guard let rotated = await actor.processFrame(imageBuffer: imageBuffer, originalTime: originalTime, angle: angle) else {
                 droppedCount &+= 1
