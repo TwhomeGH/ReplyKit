@@ -87,9 +87,11 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     private var adOverlayIconImage: UIImage?
     private var adOverlayEmojiURLs: [String] = []
     private var adOverlayEmojiPositions: [Int] = []
+    private var adOverlayEmojiPositionMap: [Int: Int] = [:]
     private var adOverlayEmojiImages: [UIImage?] = []
     private var adOverlayStartTime: CFTimeInterval = 0
     private var adOverlayActive = false
+    private var adOverlayLogSkipCounter: Int = 0
     private var adOverlayPageDuration: CFTimeInterval {
         max(1, LPConfig.shared.PIPAdOverlayDuration)
     }
@@ -360,6 +362,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         adOverlayCleanText = cleanText
         adOverlayEmojiURLs = emojiURLs
         adOverlayEmojiPositions = emojiPositions
+        adOverlayEmojiPositionMap = Dictionary(uniqueKeysWithValues: emojiPositions.enumerated().map { ($1, $0) })
         adOverlayEmojiImages = Array(repeating: nil, count: emojiURLs.count)
 
         PIPLogTo("AdOverlay: text='\(text)' clean='\(cleanText)' emojiURLs=\(emojiURLs) positions=\(emojiPositions)")
@@ -416,9 +419,13 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         adOverlayUser = nil
         adOverlayIconURL = nil
         adOverlayIconImage = nil
+
         adOverlayEmojiURLs.removeAll()
         adOverlayEmojiPositions.removeAll()
+        adOverlayEmojiPositionsMap.removeAll()
         adOverlayEmojiImages.removeAll()
+
+
         adOverlayPages.removeAll()
         adOverlayPageIndex = 0
         messagesLayer?.setAdOverlayOffset(0)
@@ -705,6 +712,8 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     private func drawAdOverlay(in cg: CGContext, size: CGSize) {
         guard adOverlayActive, adOverlayText != nil else { return }
 
+        adOverlayLogSkipCounter += 1
+
         let elapsed = CACurrentMediaTime() - adOverlayStartTime
         let remaining = adOverlayPageDuration - elapsed
 
@@ -756,9 +765,31 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         let msgY = bannerY + 6 + labelFont.lineHeight + overlaySpacing
         let msgH = bannerY + bannerH - 4 - msgY
 
-        // icon 垂直置中於整個文字區塊（名稱 + 間距 + 內文），視覺上與文字水平
-        let textBlockCenter = (bannerY + 6) + (labelFont.lineHeight + overlaySpacing + msgH) / 2
-        let iconY = textBlockCenter - iconSize / 2
+        let msgRect = CGRect(x: textX, y: msgY, width: textW, height: msgH)
+
+        // 先建立 CTFrame 算出實際渲染色高度，再決定 icon 位置
+        let attrStr = NSAttributedString(string: pageText, attributes: [.font: textFont, .foregroundColor: UIColor(white: 1, alpha: 0.9)])
+        let framesetter = CTFramesetterCreateWithAttributedString(attrStr)
+        let cgPathRect = CGRect(origin: .zero, size: msgRect.size)
+        let cgPath = CGPath(rect: cgPathRect, transform: nil)
+        let ctFrame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: attrStr.length), cgPath, nil)
+        let lines = CTFrameGetLines(ctFrame) as! [CTLine]
+        var lineOrigins = [CGPoint](repeating: .zero, count: lines.count)
+        CTFrameGetLineOrigins(ctFrame, CFRange(location: 0, length: lines.count), &lineOrigins)
+
+        // 計算實際文字底部（最後一行 baseline + lineHeight）
+        let lastLineY: CGFloat
+        if let lastOrigin = lineOrigins.last {
+            lastLineY = msgRect.origin.y + msgRect.height - lastOrigin.y
+        } else {
+            lastLineY = msgY + textFont.lineHeight
+        }
+
+        // icon 垂直置中於名稱區塊與文字區塊各自的視覺中心平均值
+        let nameCenterY = bannerY + 6 + labelFont.lineHeight / 2
+        let textCenterY = msgY + (lastLineY - msgY) / 2
+        let iconCenterY = (nameCenterY + textCenterY) / 2
+        let iconY = iconCenterY - iconSize / 2
         let iconRect = CGRect(x: iconX, y: iconY, width: iconSize, height: iconSize)
 
         if let icon = adOverlayIconImage {
@@ -777,20 +808,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             .foregroundColor: UIColor.white
         ])
 
-        let msgRect = CGRect(x: textX, y: msgY, width: textW, height: msgH)
-
-        // Draw text with inline emoji using Core Text
-        // 流程：CTFrame 計算排版 → 逐行逐字元檢查是否為 emoji 位置 → 繪製 emoji 或文字
-        let attrStr = NSAttributedString(string: pageText, attributes: [.font: textFont, .foregroundColor: UIColor(white: 1, alpha: 0.9)])
-        let framesetter = CTFramesetterCreateWithAttributedString(attrStr)
-        let cgPathRect = CGRect(origin: .zero, size: msgRect.size)
-        let cgPath = CGPath(rect: cgPathRect, transform: nil)
-        let ctFrame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: attrStr.length), cgPath, nil)
-        let lines = CTFrameGetLines(ctFrame) as! [CTLine]
-        var lineOrigins = [CGPoint](repeating: .zero, count: lines.count)
-        CTFrameGetLineOrigins(ctFrame, CFRange(location: 0, length: lines.count), &lineOrigins)
-
-        PIPLogTo("AdOverlay: drawing page=\(adOverlayPageIndex)/\(adOverlayPages.count) range=\(page.range) text='\(pageText)' positions=\(adOverlayEmojiPositions) emojiLoaded=\(adOverlayEmojiImages.compactMap({ $0 != nil }).count)/\(adOverlayEmojiImages.count)")
+        if adOverlayLogSkipCounter.isMultiple(of: 30) { PIPLogTo("AdOverlay: drawing page=\(adOverlayPageIndex)/\(adOverlayPages.count) range=\(page.range) text='\(pageText)' positions=\(adOverlayEmojiPositions) emojiLoaded=\(adOverlayEmojiImages.compactMap({ $0 != nil }).count)/\(adOverlayEmojiImages.count)") }
 
         for (li, line) in lines.enumerated() {
             let lineOrigin = lineOrigins[li]
@@ -801,31 +819,33 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             let nsPageText = pageText as NSString
 
             if li == 0 {
-                PIPLogTo("AdOverlay: msgRect=\(msgRect) lineOrigin=\(lineOrigin) lineHeight=\(textFont.lineHeight) lineY=\(lineY)")
+                if adOverlayLogSkipCounter.isMultiple(of: 30) { PIPLogTo("AdOverlay: msgRect=\(msgRect) lineOrigin=\(lineOrigin) lineHeight=\(textFont.lineHeight) lineY=\(lineY)") }
             }
 
             var charIdx = lineStart
             while charIdx < lineEnd {
                 let globalPos = page.range.location + charIdx
-                let foundEmojiPos = adOverlayEmojiPositions.firstIndex(of: globalPos)
-                PIPLogTo("AdOverlay: charIdx=\(charIdx) globalPos=\(globalPos) posMatch=\(foundEmojiPos ?? -1) imgCount=\(adOverlayEmojiImages.count) imgLoaded=\(foundEmojiPos.map { $0 < adOverlayEmojiImages.count && adOverlayEmojiImages[$0] != nil } ?? false)")
+                let foundEmojiPos = adOverlayEmojiPositionMap[globalPos]
+
+
+                if adOverlayLogSkipCounter.isMultiple(of: 30) { PIPLogTo("AdOverlay: charIdx=\(charIdx) globalPos=\(globalPos) posMatch=\(foundEmojiPos ?? -1) imgCount=\(adOverlayEmojiImages.count) imgLoaded=\(foundEmojiPos.map { $0 < adOverlayEmojiImages.count && adOverlayEmojiImages[$0] != nil } ?? false)") }
 
                 if let emojiIdx = foundEmojiPos,
                    emojiIdx < adOverlayEmojiImages.count,
                    let img = adOverlayEmojiImages[emojiIdx] {
-                    // 此行有 emoji 圖片 → 繪製圖片
                     let emojiX = msgRect.origin.x + CTLineGetOffsetForStringIndex(line, charIdx, nil)
                     let emojiSize: CGFloat = overlayFontSize * 1.2
                     let emojiY = lineY + (textFont.lineHeight - emojiSize) / 2
                     img.draw(in: CGRect(x: emojiX, y: emojiY, width: emojiSize, height: emojiSize))
-                    PIPLogTo("AdOverlay: emoji[\(emojiIdx)] at line=\(li) x=\(emojiX) y=\(emojiY)")
+                    if adOverlayLogSkipCounter.isMultiple(of: 30) { PIPLogTo("AdOverlay: emoji[\(emojiIdx)] at line=\(li) x=\(emojiX) y=\(emojiY)") }
                     charIdx += 1
                 } else {
-                    // 一般文字區段 → 找出連續非 emoji 文字並繪製
                     var segEnd = charIdx + 1
                     while segEnd < lineEnd {
                         let nextGlobalPos = page.range.location + segEnd
-                        if adOverlayEmojiPositions.contains(nextGlobalPos) { break }
+                        if adOverlayEmojiPositionMap[nextGlobalPos] != nil { break }
+
+
                         segEnd += 1
                     }
                     let segRange = NSRange(location: charIdx, length: segEnd - charIdx)

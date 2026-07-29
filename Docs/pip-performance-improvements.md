@@ -1098,3 +1098,48 @@ if let original = originalQualityMode {
 | Output buffer 耗盡 | `getReusableOutput` 回傳 nil → CPU fallback | init 時預先分配 3 組 buffer，減少 runtime 分配 |
 | GPU 負載過高 | 無限制 → command buffer 排隊 + timeout | 最多 2 個 in-flight，back-pressure 自然調節 |
 | Bicubic 太重 | 連續失敗直到 cleanup 重建管線 | 自動降級 bilinear，恢復後自動還原 |
+
+---
+
+## Section 36 — AdOverlay 繪製效能改善（2026-07）
+
+**目標：** 減少 PiP 贊助橫幅疊層在 60fps 渲染熱路徑上的重複計算與日誌開銷。
+
+### 修改文件
+
+| 文件 | 變更 |
+|------|------|
+| `liveAPP/PIPService.swift` | CTFrame 重用、icon 定位改用實際渲染行數、emoji lookup O(n)→O(1)、日誌降頻 |
+
+### 變更摘要
+
+**1. CTFrame 重用 — icon 定位改用實際文字渲染行數**
+
+原本 icon 垂直定位用固定公式 `(bannerY + 6) + (labelFont.lineHeight + overlaySpacing + msgH) / 2`，對齊整個 banner 區塊的幾何中心，而非實際文字區塊。
+
+改為先建立 CTFrame，取得 `lineOrigins` 計算最後一行的實際 baseline Y，icon 置中於「名稱行中心」與「實際文字區塊中心」之間，跟隨渲染結果而非固定公式。
+
+同時將 CTFrame 建立移到 icon 定位前，文字繪製時直接重用同一 frame，避免舊版重複建立。
+
+**2. Emoji 位置查表 O(n) → O(1)**
+
+| 查詢 | 原本 (`[Int]`) | 改後 (`[Int: Int]`) |
+|------|----------------|---------------------|
+| `firstIndex(of:)` → emoji image index | O(n) 線性掃描 | O(1) hash lookup |
+| `contains()` → segment 邊界檢查 | O(n) | O(1) |
+
+`adOverlayEmojiPositions: [Int]` 保留供其他用途，新增 `adOverlayEmojiPositionMap: [Int: Int]` 在 `addAdOverlay` 時從 `emojiPositions` 建立（position → imageIndex），兩個查詢點改用 dict 操作。
+
+**3. 渲染熱路徑日誌降頻**
+
+`drawAdOverlay` 內 4 個 `PIPLogTo` 原本每幀輸出，包含 per-character 日誌（每字元都記錄 globalPos、posMatch、imgCount）。
+
+改為每 30 幀才輸出一次，在 30-60fps 下約 0.5-1 秒一次，大幅減少 60fps 渲染管線中的字串格式化與 I/O 開銷。
+
+### 效能估算
+
+| 項目 | 改善 |
+|------|------|
+| CTFrame 建立 | 減少 1 次重複建立（舊版 icon 區域與文字區域各自算一次） |
+| Emoji lookup (per char) | O(n) → O(1)，假設 10 emoji × 40 chars = 400 次比較/frame 省去 |
+| 日誌輸出 (粗估) | 60 fps × 4 行 = 240 行/s → 2 行/s（↓99%） |

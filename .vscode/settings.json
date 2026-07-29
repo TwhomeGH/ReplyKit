@@ -1,8 +1,11 @@
 {
-    "swift.sourcekit-lsp.serverArguments": [],
-    "swift.diagnosticsCollection": "all",
+    "swift.sourcekit-lsp.serverArguments": [
+    ],
+
+    "swift.diagnosticsCollection": "keepAll",
     "files.exclude": {
         "**/.build": true,
         "**/.swiftpm": true
-    }
+    },
+    "swift.checkLspConfigurationSchema": true
 }

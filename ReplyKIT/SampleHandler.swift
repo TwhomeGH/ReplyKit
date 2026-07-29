@@ -1386,7 +1386,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         } else if RPConfig.shared.state.ADWidth > 0 && RPConfig.shared.state.ADHeight > 0 {
             dstW = RPConfig.shared.state.ADWidth
             dstH = RPConfig.shared.state.ADHeight
-        } else {
+        } else if !RPConfig.isSideload {
             // fallback: 讀取 App Group 中上次設定的值
             dstW = SharedDefaults.group?.integer(forKey: "dstW") ?? 0
             dstH = SharedDefaults.group?.integer(forKey: "dstH") ?? 0
