@@ -2197,8 +2197,10 @@ struct homeView:View{
 
     // iOS BroadcastButton - 每次 body 重新計算時建立，確保 preferredExtension 即時更新
     private var StreamBtn: BroadcastButton {
-        BroadcastButton(
-            preferredExtension: broadcastExtension,
+        let extID = broadcastExtension
+        sendlog(title: "BroadcastButton", message: "建立 picker ext=\(extID)")
+        return BroadcastButton(
+            preferredExtension: extID,
             rtmpURL: rtmpURL,
             rtmpKey: rtmpKey,
             width: 50,

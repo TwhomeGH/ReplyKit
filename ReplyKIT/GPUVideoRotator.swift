@@ -742,17 +742,21 @@ private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
         let sizes: [(Int, Int)] = [(dstWW, dstHH), (OutWW, OutHH)]
         for (w, h) in sizes where w > 0 && h > 0 {
             let key = OutputKey(width: w, height: h)
-            if outputPool[key] == nil {
-                var pool: [ReusableOutputSet] = []
-                for _ in 0..<3 {
-                    if let set = getReusableOutput(width: w, height: h) {
-                        pool.append(set)
-                    }
+            outputPoolLock.lock()
+            let alreadyExists = outputPool[key] != nil
+            outputPoolLock.unlock()
+            guard !alreadyExists else { continue }
+            var pool: [ReusableOutputSet] = []
+            for _ in 0..<3 {
+                if let set = getReusableOutput(width: w, height: h) {
+                    pool.append(set)
                 }
-                if !pool.isEmpty {
-                    outputPool[key] = pool
-                    logTo("prewarm pool \(w)x\(h): \(pool.count) buffers")
-                }
+            }
+            if !pool.isEmpty {
+                outputPoolLock.lock()
+                outputPool[key] = pool
+                outputPoolLock.unlock()
+                logTo("prewarm pool \(w)x\(h): \(pool.count) buffers")
             }
         }
     }
