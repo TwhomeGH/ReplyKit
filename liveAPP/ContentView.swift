@@ -2164,10 +2164,8 @@ struct homeView:View{
     @AppStorage("broadcastExtension",store: userDefaults) var broadcastExtension: String = (Bundle.main.bundleIdentifier ?? "nuclear.liveAPP") + ".ReplyKIT"
 
     @State private var streamBtn = BroadcastButton(
-        preferredExtension: (Bundle.main.bundleIdentifier ?? "nuclear.liveAPP") + ".ReplyKIT",
         rtmpURL: "rtmp://192.168.0.102/live",
-        rtmpKey: "stream1?vhost=live2",
-        width: 50, height: 50
+        rtmpKey: "stream1?vhost=live2"
     )
 
     @StateObject var manager = BitrateManager()
