@@ -2668,9 +2668,6 @@ struct homeView:View{
                 .onAppear {
                     BroadcastButton.Coordinator.ensurePicker(preferredExtension: broadcastExtension)
                 }
-                .onDisappear {
-                    BroadcastButton.Coordinator.cleanup()
-                }
 
             }
         }
