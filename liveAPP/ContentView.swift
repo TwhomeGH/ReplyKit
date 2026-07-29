@@ -149,12 +149,14 @@ struct BroadcastButton: UIViewRepresentable {
     var multiplier: Int = 34
 
     private func resolveExtension() -> String? {
-        // 1. 從 PlugIns 動態發現——只選 broadcast upload extension
+        Self.resolveCache
+    }
+
+    private static let resolveCache: String? = {
         if let plugInsURL = Bundle.main.builtInPlugInsURL,
            let entries = try? FileManager.default.contentsOfDirectory(at: plugInsURL, includingPropertiesForKeys: nil) {
             let appexEntries = entries.filter { $0.pathExtension == "appex" }
             sendlog(title: "BroadcastButton", message: "Found \(appexEntries.count) appex bundles in PlugIns")
-
             for entry in appexEntries {
                 if let bundle = Bundle(url: entry), let bundleID = bundle.bundleIdentifier {
                     let isBroadcastUpload: Bool
@@ -175,36 +177,27 @@ struct BroadcastButton: UIViewRepresentable {
         } else {
             sendlog(title: "BroadcastButton", message: "No PlugIns directory or unable to read")
         }
-
-        // 2. 使用使用者設定的值
-        if !preferredExtension.isEmpty {
-            sendlog(title: "BroadcastButton", message: "Fallback to user setting: '\(preferredExtension)'")
-            return preferredExtension
-        } else {
-            sendlog(title: "BroadcastButton", message: "preferredExtension is empty, skipping step 2")
-        }
-
-        // 3. 從主 App bundle ID 推測
         if let bundleID = Bundle.main.bundleIdentifier {
             let candidate = bundleID + ".ReplyKIT"
             sendlog(title: "BroadcastButton", message: "Fallback to constructed: \(candidate)")
             return candidate
         }
-
         sendlog(title: "BroadcastButton", message: "Failed to resolve broadcast extension")
         return nil
-    }
+    }()
 
     func makeUIView(context: Context) -> RPSystemBroadcastPickerView {
         let ext = resolveExtension()
+        if let existing = Coordinator.currentPicker {
+            context.coordinator.attach(existing)
+            sendlog(title: "BroadcastButton", message: "重用 picker ext=\(ext ?? "nil")")
+            return existing
+        }
         let picker = RPSystemBroadcastPickerView(frame: .zero)
         picker.preferredExtension = ext
         picker.showsMicrophoneButton = true
         context.coordinator.attach(picker)
-
-        sendlog(title: "BroadcastButton", message: "preferredExtension = \(picker.preferredExtension ?? "nil")")
-        sendlog(title: "BroadcastButton", message: "Bundle.main.bundleIdentifier = \(Bundle.main.bundleIdentifier ?? "nil")")
-
+        sendlog(title: "BroadcastButton", message: "建立 picker ext=\(ext ?? "nil")")
         return picker
     }
 
@@ -233,7 +226,23 @@ struct BroadcastButton: UIViewRepresentable {
         var UR: UIDeviceOrientation = .unknown
 
         static func ensurePicker(preferredExtension ext: String?) {
-            sendlog(title: "BroadcastButton", message: "ensurePicker skipped; waiting for SwiftUI picker ext=\(ext ?? "nil")")
+            if currentPicker != nil {
+                currentPicker?.preferredExtension = ext
+                sendlog(title: "BroadcastButton", message: "更新 picker ext=\(ext ?? "nil")")
+                return
+            }
+            let picker = RPSystemBroadcastPickerView(frame: .zero)
+            picker.preferredExtension = ext
+            picker.showsMicrophoneButton = true
+            let coordinator = Coordinator()
+            coordinator.attach(picker)
+            currentCoordinator = coordinator
+            sendlog(title: "BroadcastButton", message: "建立 picker ext=\(ext ?? "nil")")
+        }
+
+        static func cleanup() {
+            currentPicker = nil
+            currentCoordinator = nil
         }
 
         func attach(_ picker: RPSystemBroadcastPickerView) {
@@ -2587,7 +2596,6 @@ struct homeView:View{
 
 #if os(iOS)
                     StreamBtn.frame(width: 0,height: 0)
-                        .id(StreamBtn.preferredExtension)
                     Button(action: {
 
 
@@ -2655,7 +2663,13 @@ struct homeView:View{
                 }
                 .onChange(of: broadcastExtension) { newValue in
                     sendlog(title: "BroadcastButton", message: "broadcastExtension changed to: \(newValue)")
-                    streamBtn = BroadcastButton(preferredExtension: newValue, rtmpURL: rtmpURL, rtmpKey: rtmpKey, width: 50, height: 50)
+                    BroadcastButton.Coordinator.ensurePicker(preferredExtension: newValue)
+                }
+                .onAppear {
+                    BroadcastButton.Coordinator.ensurePicker(preferredExtension: broadcastExtension)
+                }
+                .onDisappear {
+                    BroadcastButton.Coordinator.cleanup()
                 }
 
             }
