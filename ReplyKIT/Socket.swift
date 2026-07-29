@@ -119,6 +119,8 @@ class SocketClient : @unchecked Sendable {
 
     private var logContinuation: CheckedContinuation<Bool, Error>?
 
+    var onPageStateChanged: ((String, Any) -> Void)?
+
 
     private var isConnection: Bool = false
 
@@ -1252,6 +1254,17 @@ class SocketClient : @unchecked Sendable {
 
             case "keepalive":
                 sendPayload(["type": "heartbeat"])
+
+            case "pushState":
+                if let dict = try? decoder.decode([String: JSONValue].self, from: data),
+                   let key = dict["key"]?.rawValue as? String,
+                   let rawValue = dict["value"]?.rawValue {
+                    logTo("[PushState] \(key) = \(rawValue)")
+                    if key == "onAudioPage", let boolVal = rawValue as? Bool {
+                        RPConfig.shared.onAudioPage = boolVal
+                    }
+                    onPageStateChanged?(key, rawValue)
+                }
 
             default:
                 logTo("[Socket] Unknown type: \(type)")

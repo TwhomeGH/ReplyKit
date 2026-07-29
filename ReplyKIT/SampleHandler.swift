@@ -1760,6 +1760,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 // 先初始化 Processor，確保音視頻管線在 RTMP 連線前準備就緒
                 self.initProcessors()
                 self.processorsInitialized = true
+                SocketClient.shared.onPageStateChanged = { [weak self] key, value in
+                    if key == "onAudioPage", let boolVal = value as? Bool {
+                        RPConfig.shared.onAudioPage = boolVal
+                        self?.audioProcessor?.updatePage(status: boolVal)
+                    }
+                }
                 sendlog(message:"✅ Processor 初始化完成 audio:\(self.audioProcessor != nil) video:\(self.videoProcessor != nil)")
                 logger.info("✅ Processor 初始化完成")
 

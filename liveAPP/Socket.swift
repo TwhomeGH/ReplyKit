@@ -1238,6 +1238,13 @@ class SocketServer:ObservableObject {
         }
     }
 
+    func broadcastPushState(key: String, value: Bool) {
+        let payload: [String: Any] = ["type": "pushState", "key": key, "value": value]
+        for (_, conn) in connections {
+            sendTo(conn, dictionary: payload)
+        }
+    }
+
     // MARK: - Connection Cleanup
     private var pendingFailedPayloads: [ObjectIdentifier: [Data]] = [:]
 

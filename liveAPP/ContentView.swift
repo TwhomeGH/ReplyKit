@@ -2769,15 +2769,13 @@ struct ContentView: View {
             if newValue == .audio {
                 pageState.onAudioPage = true
                 onAudioPage = true
-                userDefaults?.synchronize()
                 sendlog(message:"onAudioPage: \(onAudioPage)")
-                CFNotificationCenterPostNotification(cfCenter, CFNotificationName("onAudioPage" as CFString), nil, nil, true)
+                SocketServer.shared.broadcastPushState(key: "onAudioPage", value: true)
             } else {
                 pageState.onAudioPage = false
                 onAudioPage = false
-                userDefaults?.synchronize()
                 sendlog(message:"onAudioPage: \(onAudioPage)")
-                CFNotificationCenterPostNotification(cfCenter, CFNotificationName("onAudioPage" as CFString), nil, nil, true)
+                SocketServer.shared.broadcastPushState(key: "onAudioPage", value: false)
             }
         }
 
@@ -2806,11 +2804,8 @@ struct ContentView: View {
                 if pageState.onAudioPage {
                     if onAudioPage == false {
                         onAudioPage=true
-                        userDefaults?.synchronize()
 
-                        CFNotificationCenterPostNotification(cfCenter,
-                                                             CFNotificationName("onAudioPage" as CFString),
-                                                             nil, nil, true)
+                        SocketServer.shared.broadcastPushState(key: "onAudioPage", value: true)
 
                         sendlog(message: "正在App AudioPage")
                     }
@@ -2846,11 +2841,8 @@ struct ContentView: View {
 
                 if onAudioPage == true {
                     onAudioPage=false
-                    userDefaults?.synchronize()
 
-                    CFNotificationCenterPostNotification(cfCenter,
-                                                         CFNotificationName("onAudioPage" as CFString),
-                                                         nil, nil, true)
+                    SocketServer.shared.broadcastPushState(key: "onAudioPage", value: false)
 
                     sendlog(message: "應用已進入後台App 停止監聽AudioPage")
 
