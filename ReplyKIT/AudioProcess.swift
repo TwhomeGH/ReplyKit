@@ -50,23 +50,125 @@ func toPCMBuffer(_ sampleBuffer: CMSampleBuffer) -> AVAudioPCMBuffer? {
 // MARK: 音量統計
 
 private func rmsSIMD(from sampleBuffer: CMSampleBuffer) -> Float? {
-    guard let pcmBuffer = toPCMBuffer(sampleBuffer) else {
-        sendlog(message: "[RMS] toPCMBuffer failed")
+    guard let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer),
+          let asbdPointer = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc) else {
+        sendlog(message: "[RMS] missing format description")
         return nil
     }
-    guard let chData = pcmBuffer.floatChannelData else {
-        sendlog(message: "[RMS] no floatChannelData")
+
+    let asbd = asbdPointer.pointee
+    guard asbd.mFormatID == kAudioFormatLinearPCM else {
+        sendlog(message: "[RMS] unsupported formatID=\(asbd.mFormatID)")
         return nil
     }
-    let frameCount = Int(pcmBuffer.frameLength)
-    guard frameCount > 0 else {
-        sendlog(message: "[RMS] frameCount=0")
+
+    var bufferListSize = 0
+    var sizingBlockBuffer: CMBlockBuffer?
+    let sizingStatus = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
+        sampleBuffer,
+        bufferListSizeNeededOut: &bufferListSize,
+        bufferListOut: nil,
+        bufferListSize: 0,
+        blockBufferAllocator: kCFAllocatorDefault,
+        blockBufferMemoryAllocator: kCFAllocatorDefault,
+        flags: kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment,
+        blockBufferOut: &sizingBlockBuffer
+    )
+    guard sizingStatus == noErr, bufferListSize > 0 else {
+        sendlog(message: "[RMS] bufferList sizing failed status=\(sizingStatus)")
         return nil
     }
-    var meanSquare: Float = 0
-    vDSP_measqv(chData[0], 1, &meanSquare, vDSP_Length(frameCount))
-    let rms = sqrt(meanSquare)
-    return min(max(rms, 0.0), 1.0)
+
+    let rawBufferList = UnsafeMutableRawPointer.allocate(
+        byteCount: bufferListSize,
+        alignment: MemoryLayout<AudioBufferList>.alignment
+    )
+    defer { rawBufferList.deallocate() }
+
+    var retainedBlockBuffer: CMBlockBuffer?
+    let fillStatus = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
+        sampleBuffer,
+        bufferListSizeNeededOut: nil,
+        bufferListOut: rawBufferList.assumingMemoryBound(to: AudioBufferList.self),
+        bufferListSize: bufferListSize,
+        blockBufferAllocator: kCFAllocatorDefault,
+        blockBufferMemoryAllocator: kCFAllocatorDefault,
+        flags: kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment,
+        blockBufferOut: &retainedBlockBuffer
+    )
+    guard fillStatus == noErr else {
+        sendlog(message: "[RMS] bufferList fill failed status=\(fillStatus)")
+        return nil
+    }
+
+    let audioBuffers = UnsafeMutableAudioBufferListPointer(
+        rawBufferList.assumingMemoryBound(to: AudioBufferList.self)
+    )
+    let isFloat = (asbd.mFormatFlags & kAudioFormatFlagIsFloat) != 0
+    let isSignedInteger = (asbd.mFormatFlags & kAudioFormatFlagIsSignedInteger) != 0
+    let bytesPerSample = max(Int(asbd.mBitsPerChannel / 8), 1)
+    var weightedMeanSquare: Double = 0
+    var totalSamples = 0
+
+    for audioBuffer in audioBuffers {
+        guard let data = audioBuffer.mData, audioBuffer.mDataByteSize > 0 else { continue }
+        let sampleCount = Int(audioBuffer.mDataByteSize) / bytesPerSample
+        guard sampleCount > 0 else { continue }
+
+        switch (isFloat, isSignedInteger, asbd.mBitsPerChannel) {
+        case (true, _, 32):
+            let samples = data.bindMemory(to: Float.self, capacity: sampleCount)
+            var meanSquare: Float = 0
+            vDSP_measqv(samples, 1, &meanSquare, vDSP_Length(sampleCount))
+            weightedMeanSquare += Double(meanSquare) * Double(sampleCount)
+
+        case (true, _, 64):
+            let samples = data.bindMemory(to: Double.self, capacity: sampleCount)
+            var meanSquare: Double = 0
+            vDSP_measqvD(samples, 1, &meanSquare, vDSP_Length(sampleCount))
+            weightedMeanSquare += meanSquare * Double(sampleCount)
+
+        case (false, true, 16):
+            let samples = data.bindMemory(to: Int16.self, capacity: sampleCount)
+            var floatSamples = [Float](repeating: 0, count: sampleCount)
+            vDSP_vflt16(samples, 1, &floatSamples, 1, vDSP_Length(sampleCount))
+            var meanSquare: Float = 0
+            vDSP_measqv(floatSamples, 1, &meanSquare, vDSP_Length(sampleCount))
+            weightedMeanSquare += Double(meanSquare) * Double(sampleCount)
+
+        case (false, true, 32):
+            let samples = data.bindMemory(to: Int32.self, capacity: sampleCount)
+            var floatSamples = [Float](repeating: 0, count: sampleCount)
+            vDSP_vflt32(samples, 1, &floatSamples, 1, vDSP_Length(sampleCount))
+            var meanSquare: Float = 0
+            vDSP_measqv(floatSamples, 1, &meanSquare, vDSP_Length(sampleCount))
+            weightedMeanSquare += Double(meanSquare) * Double(sampleCount)
+
+        default:
+            sendlog(message: "[RMS] unsupported PCM bits=\(asbd.mBitsPerChannel) flags=\(asbd.mFormatFlags)")
+            return nil
+        }
+
+        totalSamples += sampleCount
+    }
+
+    guard totalSamples > 0 else {
+        sendlog(message: "[RMS] sampleCount=0")
+        return nil
+    }
+
+    var rms = sqrt(weightedMeanSquare / Double(totalSamples))
+    if !isFloat {
+        let peak = pow(2.0, Double(asbd.mBitsPerChannel - 1)) - 1.0
+        rms /= peak
+    }
+
+    guard rms.isFinite else {
+        sendlog(message: "[RMS] non-finite rms")
+        return nil
+    }
+
+    return Float(min(max(rms, 0.0), 1.0))
 }
 
 
