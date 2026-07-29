@@ -190,7 +190,7 @@ actor AudioProcessorActor {
     }
 
     // 將 CMSampleBuffer 轉換成 AVAudioPCMBuffer
-    private func toPCMBuffer(_ sampleBuffer: CMSampleBuffer) -> AVAudioPCMBuffer? {
+    func toPCMBuffer(_ sampleBuffer: CMSampleBuffer) -> AVAudioPCMBuffer? {
         guard let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer),
               let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc) else {
             return nil
