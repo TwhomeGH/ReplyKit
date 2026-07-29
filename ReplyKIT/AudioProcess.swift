@@ -23,93 +23,22 @@ enum AudioTrackType: UInt8 {
 // MARK: 音量統計
 
 private func rmsSIMD(from sampleBuffer: CMSampleBuffer) -> Float? {
-    guard let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer),
-          let asbdPointer = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc) else {
-        sendlog(message: "[RMS] no formatDesc or asbd")
+    guard let pcmBuffer = toPCMBuffer(sampleBuffer) else {
+        sendlog(message: "[RMS] toPCMBuffer failed")
         return nil
     }
-    let asbd = asbdPointer.pointee
-
-    let isFloat32 = (asbd.mFormatFlags & kAudioFormatFlagIsFloat) != 0 && asbd.mBitsPerChannel == 32
-    let isInt16   = asbd.mBitsPerChannel == 16
-    let isInt24   = asbd.mBitsPerChannel == 24
-
-    sendlog(message: "[RMS] fmt: flags=\(asbd.mFormatFlags) bits=\(asbd.mBitsPerChannel) ch=\(asbd.mChannelsPerFrame) sr=\(asbd.mSampleRate) float32=\(isFloat32) int16=\(isInt16) int24=\(isInt24)")
-
-    let audioBufferListPtr = AudioBufferList.allocate(maximumBuffers: 2)
-    defer { free(UnsafeMutableRawPointer(audioBufferListPtr.unsafeMutablePointer)) }
-    var blockBufferOut: CMBlockBuffer?
-
-    let bufferListSize = AudioBufferList.sizeInBytes(maximumBuffers: 2)
-    guard CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
-        sampleBuffer,
-        bufferListSizeNeededOut: nil,
-        bufferListOut: audioBufferListPtr.unsafeMutablePointer,
-        bufferListSize: bufferListSize,
-        blockBufferAllocator: kCFAllocatorDefault,
-        blockBufferMemoryAllocator: kCFAllocatorDefault,
-        flags: kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment,
-        blockBufferOut: &blockBufferOut
-    ) == noErr else {
-        sendlog(message: "[RMS] getAudioBufferList failed")
+    guard let chData = pcmBuffer.floatChannelData else {
+        sendlog(message: "[RMS] no floatChannelData")
         return nil
     }
-
-    let audioBuffers = audioBufferListPtr
-    var sum: Float = 0
-    var totalSamples: Int = 0
-
-    for buffer in audioBuffers {
-        guard let mData = buffer.mData else {
-            sendlog(message: "[RMS] nil mData")
-            continue
-        }
-        let sampleCount = Int(buffer.mDataByteSize) / Int(asbd.mBytesPerFrame)
-
-        if isFloat32 {
-            let ptr = mData.bindMemory(to: Float.self, capacity: sampleCount)
-            var meanSquare: Float = 0
-            vDSP_measqv(ptr, 1, &meanSquare, vDSP_Length(sampleCount))
-            sum += meanSquare * Float(sampleCount)
-
-        } else if isInt16 {
-            let ptr = mData.bindMemory(to: Int16.self, capacity: sampleCount)
-            var floatSamples = [Float](repeating: 0, count: sampleCount)
-            vDSP_vflt16(ptr, 1, &floatSamples, 1, vDSP_Length(sampleCount))
-            var meanSquare: Float = 0
-            vDSP_measqv(floatSamples, 1, &meanSquare, vDSP_Length(sampleCount))
-            sum += meanSquare * Float(sampleCount)
-
-        } else if isInt24 {
-            // 24-bit PCM: 每樣本 3 bytes，轉成 Int32
-            let bytePtr = UnsafeRawPointer(mData).bindMemory(to: UInt8.self, capacity: sampleCount * 3)
-            var floatSamples = [Float](repeating: 0, count: sampleCount)
-            for i in 0..<sampleCount {
-                let b0 = Int32(bytePtr[i*3])
-                let b1 = Int32(bytePtr[i*3+1])
-                let b2 = Int32(bytePtr[i*3+2])
-                // 小端序組合成 24-bit signed
-                var value = (b2 << 16) | (b1 << 8) | b0
-                if value & 0x800000 != 0 { value |= ~0xFFFFFF } // sign extend
-                floatSamples[i] = Float(value) / Float(1 << 23) // normalize to [-1,1]
-            }
-            var meanSquare: Float = 0
-            vDSP_measqv(floatSamples, 1, &meanSquare, vDSP_Length(sampleCount))
-            sum += meanSquare * Float(sampleCount)
-
-        } else {
-            sendlog(message: "[RMS] unsupported format: flags=\(asbd.mFormatFlags) bits=\(asbd.mBitsPerChannel)")
-            return nil
-        }
-
-        totalSamples += sampleCount
-    }
-
-    guard totalSamples > 0 else {
-        sendlog(message: "[RMS] totalSamples=0")
+    let frameCount = Int(pcmBuffer.frameLength)
+    guard frameCount > 0 else {
+        sendlog(message: "[RMS] frameCount=0")
         return nil
     }
-    let rms = sqrt(sum / Float(totalSamples))
+    var meanSquare: Float = 0
+    vDSP_measqv(chData[0], 1, &meanSquare, vDSP_Length(frameCount))
+    let rms = sqrt(meanSquare)
     return min(max(rms, 0.0), 1.0)
 }
 

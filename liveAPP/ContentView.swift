@@ -1638,11 +1638,7 @@ struct LogTextView: UIViewRepresentable {
 
         }
 
-        // 🔑 關鍵：只綁定一次 coordinator
-
-        if self.coordinatorHolder == nil {
-            self.coordinatorHolder = context.coordinator
-        }
+        self.coordinatorHolder = context.coordinator
 
 
 
