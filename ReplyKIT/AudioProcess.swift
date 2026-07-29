@@ -357,12 +357,15 @@ actor AudioProcessorActor {
         if let rms = rmsSIMD(from: buffer) {
             let userVolume = (trackType == .app) ? appVolume : micVolume
             let normalized = rms * userVolume
+            sendlog(message: "[RMS] \(trackType) raw=\(rms) vol=\(userVolume) norm=\(normalized)")
             if trackType == .app {
                 lastAppRMS = normalized
             } else {
                 lastMicRMS = normalized
             }
             volumeNotifier.updateVolume(app: lastAppRMS, mic: lastMicRMS)
+        } else {
+            sendlog(message: "[RMS] rmsSIMD returned nil for \(trackType)")
         }
     }
 
