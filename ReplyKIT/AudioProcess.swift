@@ -20,6 +20,33 @@ enum AudioTrackType: UInt8 {
     case mic = 1
 }
 
+
+// 將 CMSampleBuffer 轉換成 AVAudioPCMBuffer
+func toPCMBuffer(_ sampleBuffer: CMSampleBuffer) -> AVAudioPCMBuffer? {
+    guard let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer),
+            let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc) else {
+        return nil
+    }
+    guard let format = AVAudioFormat(streamDescription: asbd) else { return nil }
+    guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { return nil }
+    
+    var length = 0
+    var dataPointer: UnsafeMutablePointer<Int8>?
+    guard CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0, lengthAtOffsetOut: nil,
+                                        totalLengthOut: &length, dataPointerOut: &dataPointer) == noErr,
+            let ptr = dataPointer else { return nil }
+    
+    let frameCapacity = length / Int(asbd.pointee.mBytesPerFrame)
+    guard let pcmBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frameCapacity)) else {
+        return nil
+    }
+    pcmBuffer.frameLength = pcmBuffer.frameCapacity
+    
+    // copy raw data into pcmBuffer
+    memcpy(pcmBuffer.int16ChannelData![0], ptr, length)
+    return pcmBuffer
+}
+
 // MARK: 音量統計
 
 private func rmsSIMD(from sampleBuffer: CMSampleBuffer) -> Float? {
@@ -189,31 +216,7 @@ actor AudioProcessorActor {
         }
     }
 
-    // 將 CMSampleBuffer 轉換成 AVAudioPCMBuffer
-    func toPCMBuffer(_ sampleBuffer: CMSampleBuffer) -> AVAudioPCMBuffer? {
-        guard let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer),
-              let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc) else {
-            return nil
-        }
-        guard let format = AVAudioFormat(streamDescription: asbd) else { return nil }
-        guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { return nil }
-        
-        var length = 0
-        var dataPointer: UnsafeMutablePointer<Int8>?
-        guard CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0, lengthAtOffsetOut: nil,
-                                          totalLengthOut: &length, dataPointerOut: &dataPointer) == noErr,
-              let ptr = dataPointer else { return nil }
-        
-        let frameCapacity = length / Int(asbd.pointee.mBytesPerFrame)
-        guard let pcmBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frameCapacity)) else {
-            return nil
-        }
-        pcmBuffer.frameLength = pcmBuffer.frameCapacity
-        
-        // copy raw data into pcmBuffer
-        memcpy(pcmBuffer.int16ChannelData![0], ptr, length)
-        return pcmBuffer
-    }
+
 
     // 用 vDSP in-place 做增益
     private func applyGainPCM(_ buffer: AVAudioPCMBuffer, gain: Float) {
