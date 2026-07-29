@@ -2193,19 +2193,16 @@ struct homeView:View{
     @AppStorage("rtmpKey",store: userDefaults) var rtmpKey: String = "stream1?vhost=live2"
     @AppStorage("broadcastExtension",store: userDefaults) var broadcastExtension: String = (Bundle.main.bundleIdentifier ?? "nuclear.liveAPP") + ".ReplyKIT"
 
+    @State private var streamBtn: BroadcastButton = {
+        let ext = (Bundle.main.bundleIdentifier ?? "nuclear.liveAPP") + ".ReplyKIT"
+        sendlog(title: "BroadcastButton", message: "初始化 picker ext=\(ext)")
+        return BroadcastButton(preferredExtension: ext, rtmpURL: "rtmp://192.168.0.102/live", rtmpKey: "stream1?vhost=live2", width: 50, height: 50)
+    }()
+
     @StateObject var manager = BitrateManager()
 
-    // iOS BroadcastButton - 每次 body 重新計算時建立，確保 preferredExtension 即時更新
     private var StreamBtn: BroadcastButton {
-        let extID = broadcastExtension
-        sendlog(title: "BroadcastButton", message: "建立 picker ext=\(extID)")
-        return BroadcastButton(
-            preferredExtension: extID,
-            rtmpURL: rtmpURL,
-            rtmpKey: rtmpKey,
-            width: 50,
-            height: 50
-        )
+        streamBtn
     }
 
     // iOS BroadcastButton - 透過 computed property StreamBtn 在 body 中建立
@@ -2657,6 +2654,7 @@ struct homeView:View{
                 }
                 .onChange(of: broadcastExtension) { newValue in
                     sendlog(title: "BroadcastButton", message: "broadcastExtension changed to: \(newValue)")
+                    streamBtn = BroadcastButton(preferredExtension: newValue, rtmpURL: rtmpURL, rtmpKey: rtmpKey, width: 50, height: 50)
                 }
 
             }
