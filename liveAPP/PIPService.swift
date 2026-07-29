@@ -422,7 +422,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
         adOverlayEmojiURLs.removeAll()
         adOverlayEmojiPositions.removeAll()
-        adOverlayEmojiPositionsMap.removeAll()
+        adOverlayEmojiPositionMap.removeAll()
         adOverlayEmojiImages.removeAll()
 
 
