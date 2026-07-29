@@ -249,6 +249,7 @@ liveAPP SocketServer → LiveVolumeModel.updateVolumes(mic:micVol, app:appVol)
 - **無重複 throttle**：依賴 actor 的 `rmsInterval=1.0`，移除 VolumNotifier 自身的 `minInterval`
 - **Per-track 獨立計時器**：app/mic 各自有 `lastAppRMSUpdateTime` / `lastMicRMSUpdateTime`，避免單一計時器讓另一個音軌被餓死
 - **Per-channel 增量更新**：`updateVolume(app: Float? = nil, mic: Float? = nil)` 只更新有變化的 channel，不再用舊值覆蓋另一軌的 UserDefaults
+- **音量數據過期淘汰**：`SocketClient` 追蹤 `latestVolumeTimestamp`，`_sendBatch` 發現距上次更新 > 2.5s 時將 volume 送 0，避免 RMS 停止後（離開音頻頁、音源中斷）最後數值永久殘留在 logbatch 中
 - **單一傳輸路徑**：一律走 E-Socket `logbatch`，移除 `Darwin Notification`（易掉通知）和 `audioLive` 消息（永不發送）
 - **僅 `onAudioPage=true` 時作用**：`processRMS` 第一道 guard 檢查 `onAudioPage`
 
@@ -262,6 +263,7 @@ liveAPP SocketServer → LiveVolumeModel.updateVolumes(mic:micVol, app:appVol)
 | `rmsInterval=1.0` 與 `minInterval=0.1` 疊加 | 僅 `rmsInterval=1.0` | 簡化，消除重複節流 |
 | 單一 `lastRMSUpdateTime` | per-track `lastAppRMSUpdateTime` / `lastMicRMSUpdateTime` | 避免一個音軌長期佔用計時器，另一軌值永遠不更新 |
 | `updateVolume(app: Float, mic: Float)` 強制雙參數 | `updateVolume(app: Float?, mic: Float?)` 選擇性更新 | `processRMS` 只送有變化的 channel，不再用另一軌的舊值（含初始 0）覆蓋 UserDefaults |
+| volume 值無過期機制，RMS 停止後最後數值永久殘留 | `latestVolumeTimestamp` + 2.5s 過期淘汰 | 離開音頻頁或音源中斷後 volume 正確歸零，不卡在舊值 |
 
 ---
 

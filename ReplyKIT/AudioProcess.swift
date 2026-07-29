@@ -216,6 +216,7 @@ final class VolumeNotifier {
         var changed = false
         if let app = app {
             SocketClient.shared.latestAppVolume = app
+            SocketClient.shared.updateVolumeTimestamp()
             if !RPConfig.isSideload {
                 SharedDefaults.group?.set(app, forKey: "appVolumeLive")
             }
@@ -223,6 +224,7 @@ final class VolumeNotifier {
         }
         if let mic = mic {
             SocketClient.shared.latestMicVolume = mic
+            SocketClient.shared.updateVolumeTimestamp()
             if !RPConfig.isSideload {
                 SharedDefaults.group?.set(mic, forKey: "micVolumeLive")
             }

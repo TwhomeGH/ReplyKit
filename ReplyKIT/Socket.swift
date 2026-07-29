@@ -123,6 +123,11 @@ class SocketClient : @unchecked Sendable {
 
     var latestAppVolume: Float = 0
     var latestMicVolume: Float = 0
+    private var latestVolumeTimestamp: CFAbsoluteTime = 0
+
+    func updateVolumeTimestamp() {
+        latestVolumeTimestamp = CFAbsoluteTimeGetCurrent()
+    }
 
 
     private var isConnection: Bool = false
@@ -690,11 +695,13 @@ class SocketClient : @unchecked Sendable {
     private func _sendBatch(_ entries: [String]) {
         inFlightBatches += 1
         let safeEntries = entries.filter { (try? JSONSerialization.data(withJSONObject: $0, options: [.fragmentsAllowed])) != nil }
+        let volAge = CFAbsoluteTimeGetCurrent() - latestVolumeTimestamp
+        let alive = latestVolumeTimestamp > 0 && volAge < 2.5
         let payload: [String: Any] = [
             "type": "logbatch",
             "entries": safeEntries,
-            "appVol": latestAppVolume,
-            "micVol": latestMicVolume
+            "appVol": alive ? latestAppVolume : 0,
+            "micVol": alive ? latestMicVolume : 0
         ]
         sendPayload(payload) { [weak self] _ in
             guard let self = self else { return }
