@@ -1188,3 +1188,9 @@ liveAPP 頁面切換/背景/前景
 | AudioProcessor 同步 | 僅 CFNotification handler 會呼叫 `updatePage` | socket pushState handler + callback 確保同步 |
 | 頁面切離/背景 | CFNotification `onAudioPage=false` | 同上，透過 socket 推送 |
 | synchronize | 每次頁面切換強制寫入磁碟（4 處） | 全部移除，依賴 UserDefaults 自動管理 |
+
+### V1 修正：broadcastPushState 執行緒安全
+
+V1 的 `broadcastPushState` 在主線程直接迭代 `connections`，但 `connections` 由 server 的 serial queue 管理。`onAudioPage = true` 推送時若 server queue 正在處理連線，主線程看到空 dictionary → payload 丟棄 → extension 永遠停留在 `false` → 音量無資料。
+
+**修正：** 改以 `performOnQueue` dispatch 到 server queue 才存取 `connections`。`performOnQueue` 從 `private` 改為 `internal`。 |

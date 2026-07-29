@@ -64,7 +64,7 @@ class SocketServer:ObservableObject {
                           )
     private let queueKey = DispatchSpecificKey<Void>()
 
-    private func performOnQueue(_ block: @escaping () -> Void) {
+    func performOnQueue(_ block: @escaping () -> Void) {
         if DispatchQueue.getSpecific(key: queueKey) != nil {
             block()
         } else {
@@ -1240,8 +1240,11 @@ class SocketServer:ObservableObject {
 
     func broadcastPushState(key: String, value: Bool) {
         let payload: [String: Any] = ["type": "pushState", "key": key, "value": value]
-        for (_, conn) in connections {
-            sendTo(conn, dictionary: payload)
+        performOnQueue { [weak self] in
+            guard let self else { return }
+            for (_, conn) in self.connections {
+                self.sendTo(conn, dictionary: payload)
+            }
         }
     }
 
