@@ -1870,19 +1870,29 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             removeObservers()
 
-            await mediaMixer.removeOutput(rtmpStream)
-            await mediaMixer.stopRunning()
+
+            // 1. 關閉串流：停 codec + 送出 closeStream 指令
 
             _ = try? await rtmpStream.close()
+            
+            // 2. 從 mixer 移除輸出（避免 stopRunning 時還有 data flow）
+            await mediaMixer.removeOutput(rtmpStream)
+
+            await mediaMixer.stopRunning()
+
+            // 3. 最後關RTMP 連接
             _ = try? await rtmpConnection?.close()
+            
+            
+
+            videoProcessor?.cleanup()
+            audioProcessor?.cleanup()
+
+            videoProcessor = nil
+            audioProcessor = nil
 
             volumeNotifier = nil
 
-            videoProcessor?.cleanup()
-            videoProcessor = nil
-
-            audioProcessor?.cleanup()
-            audioProcessor = nil
         }
 
         LogManager.shared.forceFlush()
