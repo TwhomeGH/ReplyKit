@@ -1143,3 +1143,48 @@ if let original = originalQualityMode {
 | CTFrame 建立 | 減少 1 次重複建立（舊版 icon 區域與文字區域各自算一次） |
 | Emoji lookup (per char) | O(n) → O(1)，假設 10 emoji × 40 chars = 400 次比較/frame 省去 |
 | 日誌輸出 (粗估) | 60 fps × 4 行 = 240 行/s → 2 行/s（↓99%） |
+
+---
+
+## Section 37 — onAudioPage 改用 E-Socket 推送取代 CFNotification（2026-07）
+
+**目標：** 解決 `onAudioPage` 切換時音量指標無反應的問題，用可靠 TCP 推送取代不可靠的跨程序 Darwin 通知。
+
+### 問題
+
+用戶切到音量頁面時，兩個音量進度條（mic / app）完全沒有動靜。原因：
+1. `liveAPP` 透過 `CFNotificationCenterPostNotification` (Darwin) 通知 extension 頁面切換
+2. Darwin 通知可能延遲、合併或丟失，extension 收不到時永遠不會開始計算 RMS
+3. `logConfig` 路徑雖有更新 `RPConfig.shared.onAudioPage` 但未傳播到 `AudioProcessor`
+
+### 修改
+
+| 檔案 | 變更 |
+|------|------|
+| `liveAPP/Socket.swift` | 新增 `broadcastPushState(key:value:)` — 遍歷所有 socket 連線推送 `{"type":"pushState","key":"onAudioPage","value":true/false}` |
+| `liveAPP/ContentView.swift` | 4 處 `CFNotification` 全部改為 `SocketServer.shared.broadcastPushState`；移除 4 處 `userDefaults?.synchronize()` |
+| `ReplyKIT/Socket.swift` | 新增 `onPageStateChanged` closure 屬性 + `case "pushState"` handler |
+| `ReplyKIT/SampleHandler.swift` | `initProcessors()` 內註冊 callback 將狀態推播到 `audioProcessor.updatePage(status:)` |
+
+### 新資料流
+
+```
+liveAPP 頁面切換/背景/前景
+  → SocketServer.broadcastPushState("onAudioPage", true/false)
+    → [E-Socket TCP {"type":"pushState","key":"onAudioPage","value":true}]
+      → ReplyKIT SocketClient.pushState handler
+        → RPConfig.shared.onAudioPage = boolVal
+        → onPageStateChanged callback
+          → audioProcessor.updatePage(status: boolVal)
+            → processRMS guard 通過 → 開始計算 RMS
+              → sendAudioLive(appVol:, micVol:) → liveAPP LiveVolumeModel 更新
+```
+
+### 效果
+
+| 面向 | 改前 | 改後 |
+|------|------|------|
+| 通訊方式 | CFNotification Darwin（不可靠、可能合併） | E-Socket TCP localhost（可靠、有序送達） |
+| AudioProcessor 同步 | 僅 CFNotification handler 會呼叫 `updatePage` | socket pushState handler + callback 確保同步 |
+| 頁面切離/背景 | CFNotification `onAudioPage=false` | 同上，透過 socket 推送 |
+| synchronize | 每次頁面切換強制寫入磁碟（4 處） | 全部移除，依賴 UserDefaults 自動管理 |
