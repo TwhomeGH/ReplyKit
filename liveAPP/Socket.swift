@@ -1043,6 +1043,7 @@ class SocketServer:ObservableObject {
             case "logbatch":
                 let batch = try decoder.decode(LogBatchPayload.self, from: data)
                 if let appVol = batch.appVol, let micVol = batch.micVol {
+                    logTo("[Volume] recv app=\(appVol) mic=\(micVol)")
                     LiveVolumeModel.shared.updateVolumes(mic: micVol, app: appVol)
                 }
                 guard LPConfig.shared.enableLog || LPConfig.shared.SocketLog else { break }

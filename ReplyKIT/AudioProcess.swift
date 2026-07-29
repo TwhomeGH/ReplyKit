@@ -135,7 +135,11 @@ final class VolumeNotifier {
     }
 
     func updateVolume(app: Float, mic: Float) {
-        guard isActive else { return }
+        guard isActive else {
+            sendlog(message: "[Volume] updateVolume skipped: isActive=false")
+            return
+        }
+        sendlog(message: "[Volume] app=\(app) mic=\(mic)")
         SocketClient.shared.latestAppVolume = app
         SocketClient.shared.latestMicVolume = mic
         SocketClient.shared.flushVolumeBatch()

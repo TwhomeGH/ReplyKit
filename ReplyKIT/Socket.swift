@@ -640,6 +640,10 @@ class SocketClient : @unchecked Sendable {
         queue.async { [weak self] in
             guard let self = self else { return }
             guard self.inFlightBatches < self.maxInflightBatches else { return }
+            if self.connection?.state != .ready {
+                self._connect(host: "localhost", port: 9322)
+                return
+            }
             self._sendBatch([])
         }
     }
