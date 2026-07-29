@@ -2620,13 +2620,6 @@ struct homeView:View{
 #endif
 
                 }
-                .onChange(of: broadcastExtension) { newValue in
-                    sendlog(title: "BroadcastButton", message: "broadcastExtension changed to: \(newValue)")
-                    BroadcastButton.Coordinator.ensurePicker(preferredExtension: newValue)
-                }
-                .onAppear {
-                    BroadcastButton.Coordinator.ensurePicker(preferredExtension: broadcastExtension)
-                }
 
             }
         }
