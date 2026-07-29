@@ -872,8 +872,8 @@ struct liveAPPApp: App {
         // 預先初始化 BroadcastButton 的 RPSystemBroadcastPickerView，避免首次使用時指向錯誤
         let bundleID = (Bundle.main.bundleIdentifier ?? "nuclear.liveAPP") + ".ReplyKIT"
         let ext = userDefaults?.string(forKey: "broadcastExtension") ?? bundleID
-        BroadcastButton.Coordinator.ensurePicker(preferredExtension: ext)
 
+        
         // 將 App Group 既有的 log 複製到 Documents/ 供檔案 App 讀取
         AppLogPersister.shared.copyFromAppGroup()
 
