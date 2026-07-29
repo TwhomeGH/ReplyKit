@@ -1193,4 +1193,28 @@ liveAPP 頁面切換/背景/前景
 
 V1 的 `broadcastPushState` 在主線程直接迭代 `connections`，但 `connections` 由 server 的 serial queue 管理。`onAudioPage = true` 推送時若 server queue 正在處理連線，主線程看到空 dictionary → payload 丟棄 → extension 永遠停留在 `false` → 音量無資料。
 
-**修正：** 改以 `performOnQueue` dispatch 到 server queue 才存取 `connections`。`performOnQueue` 從 `private` 改為 `internal`。 |
+**修正：** 改以 `performOnQueue` dispatch 到 server queue 才存取 `connections`。`performOnQueue` 從 `private` 改為 `internal`。
+
+---
+
+## Section 38 — StreamBtn 零 frame 導致 UIButton 無法建立（2026-07）
+
+**目標：** 修復 `RPSystemBroadcastPickerView` 因 `frame: .zero` 導致內部 `UIButton` 不被建立，`trigger()` 無法觸發系統廣播選擇器。
+
+### 問題
+
+`BroadcastButton` 使用 `RPSystemBroadcastPickerView(frame: .zero)` 建立 picker，並在 SwiftUI body 中設 `StreamBtn.frame(width: 0, height: 0)`。當 picker frame 為零時：
+
+1. 系統可能不建立其內部的 `UIButton` subview
+2. `trigger()` 中的 `picker.subviews.first(where: { $0 is UIButton })` 永遠找不到 button
+3. 重試 3 次後放棄，廣播無法啟動
+
+### 修改
+
+| 位置 | 改前 | 改後 |
+|------|------|------|
+| `makeUIView` | `RPSystemBroadcastPickerView(frame: .zero)` | `RPSystemBroadcastPickerView(frame: CGRect(x:0, y:0, width:1, height:1))` |
+| `ensurePicker` | 同上 | 同上 |
+| SwiftUI body | `StreamBtn.frame(width:0, height:0)` | `StreamBtn.frame(width:1, height:1).opacity(0.001)` |
+
+1x1 是系統建立 button subview 所需的最小有效 frame，`opacity(0.001)` 保持視覺隱藏。 |

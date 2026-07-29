@@ -121,6 +121,9 @@ class SocketClient : @unchecked Sendable {
 
     var onPageStateChanged: ((String, Any?) -> Void)?
 
+    var latestAppVolume: Float = 0
+    var latestMicVolume: Float = 0
+
 
     private var isConnection: Bool = false
 
@@ -673,7 +676,9 @@ class SocketClient : @unchecked Sendable {
         }
         let payload: [String: Any] = [
             "type": "logbatch",
-            "entries": safeEntries
+            "entries": safeEntries,
+            "appVol": latestAppVolume,
+            "micVol": latestMicVolume
         ]
         sendPayload(payload) { [weak self] _ in
             guard let self = self else { return }

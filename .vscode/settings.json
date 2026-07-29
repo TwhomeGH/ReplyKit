@@ -2,7 +2,7 @@
     "swift.sourcekit-lsp.serverArguments": [
     ],
 
-    "swift.diagnosticsCollection": "keepSourceKit",
+    "swift.diagnosticsCollection": "onlySwiftc",
     "files.exclude": {
         "**/.build": true,
         "**/.swiftpm": true

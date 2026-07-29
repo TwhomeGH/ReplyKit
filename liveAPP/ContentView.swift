@@ -193,7 +193,7 @@ struct BroadcastButton: UIViewRepresentable {
             sendlog(title: "BroadcastButton", message: "重用 picker ext=\(ext ?? "nil")")
             return existing
         }
-        let picker = RPSystemBroadcastPickerView(frame: .zero)
+        let picker = RPSystemBroadcastPickerView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
         picker.preferredExtension = ext
         picker.showsMicrophoneButton = true
         context.coordinator.attach(picker)
@@ -231,7 +231,7 @@ struct BroadcastButton: UIViewRepresentable {
                 sendlog(title: "BroadcastButton", message: "更新 picker ext=\(ext ?? "nil")")
                 return
             }
-            let picker = RPSystemBroadcastPickerView(frame: .zero)
+            let picker = RPSystemBroadcastPickerView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
             picker.preferredExtension = ext
             picker.showsMicrophoneButton = true
             let coordinator = Coordinator()
@@ -2606,7 +2606,7 @@ struct homeView:View{
                 VStack {
 
 #if os(iOS)
-                    StreamBtn.frame(width: 0,height: 0)
+                    StreamBtn.frame(width: 1,height: 1).opacity(0.001)
                     Button(action: {
 
 

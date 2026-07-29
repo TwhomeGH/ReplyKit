@@ -508,6 +508,8 @@ class SocketServer:ObservableObject {
     }
     struct LogBatchPayload: Codable {
         let entries: [String]
+        let appVol: Float?
+        let micVol: Float?
     }
     struct UPSet:Codable {
         let key:String
@@ -1040,6 +1042,9 @@ class SocketServer:ObservableObject {
 
             case "logbatch":
                 let batch = try decoder.decode(LogBatchPayload.self, from: data)
+                if let appVol = batch.appVol, let micVol = batch.micVol {
+                    LiveVolumeModel.shared.updateVolumes(mic: micVol, app: appVol)
+                }
                 guard LPConfig.shared.enableLog || LPConfig.shared.SocketLog else { break }
                 let prefixed = batch.entries.map { "UseESocket:\($0)" }
                 LogBuffer.shared.push(prefixed)

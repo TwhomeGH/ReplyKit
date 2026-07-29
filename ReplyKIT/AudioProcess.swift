@@ -136,7 +136,8 @@ final class VolumeNotifier {
 
     func updateVolume(app: Float, mic: Float) {
         guard isActive else { return }
-        SocketClient.shared.sendAudioLive(appVol: app, micVol: mic)
+        SocketClient.shared.latestAppVolume = app
+        SocketClient.shared.latestMicVolume = mic
         if !RPConfig.isSideload {
             SharedDefaults.group?.set(app, forKey: "appVolumeLive")
             SharedDefaults.group?.set(mic, forKey: "micVolumeLive")
