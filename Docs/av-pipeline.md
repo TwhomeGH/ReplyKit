@@ -222,7 +222,7 @@ AudioProcessor 的 `isActive` 固定為 `true`（audio pipe 無永久失敗路�
 ### 資料流
 
 ```
-AudioProcessorActor.processRMS()  (1s 一次，actor executor)
+AudioProcessorActor.processRMS()  (1s 一次 per-track，actor executor)
     │
     │  rmsSIMD(from: buffer) → vDSP_measqv
     │  取樣 RMS (0~1)
@@ -232,21 +232,24 @@ AudioProcessorActor.processRMS()  (1s 一次，actor executor)
     │  else                 → lastMicRMS = normalized
     │
     ▼
-VolumeNotifier.updateVolume(app: lastAppRMS, mic: lastMicRMS)
+VolumeNotifier.updateVolume(app: appRMS?)    ← app 軌更新
+VolumeNotifier.updateVolume(mic: micRMS?)    ← mic 軌更新（獨立間隔）
     │
     ▼
-SocketClient.shared.sendAudioLive(appVol: app, micVol: mic)
-    │
+SocketClient.shared.flushVolumeBatch() → _sendBatch([])
+    │   payload: { type: "logbatch", entries: [], appVol, micVol }
     ▼
-liveAPP SocketServer → LiveVolumeModel → UI
+liveAPP SocketServer → LiveVolumeModel.updateVolumes(mic:micVol, app:appVol)
+    → @Published UI（不持久化，避免 socket 延遲覆蓋正確值）
 ```
 
 ### 設計要點
 
 - **無內部狀態**：actor 負責維護 `lastAppRMS`/`lastMicRMS`，`VolumeNotifier` 僅為 relay
 - **無重複 throttle**：依賴 actor 的 `rmsInterval=1.0`，移除 VolumNotifier 自身的 `minInterval`
-- **雙軌獨立更新**：app/mic 軌的 RMS 各自保存，每次發送兩軌最新值，避免交錯延遲
-- **單一傳輸路徑**：一律走 E-Socket，移除 `Darwin Notification`（易掉通知）
+- **Per-track 獨立計時器**：app/mic 各自有 `lastAppRMSUpdateTime` / `lastMicRMSUpdateTime`，避免單一計時器讓另一個音軌被餓死
+- **Per-channel 增量更新**：`updateVolume(app: Float? = nil, mic: Float? = nil)` 只更新有變化的 channel，不再用舊值覆蓋另一軌的 UserDefaults
+- **單一傳輸路徑**：一律走 E-Socket `logbatch`，移除 `Darwin Notification`（易掉通知）和 `audioLive` 消息（永不發送）
 - **僅 `onAudioPage=true` 時作用**：`processRMS` 第一道 guard 檢查 `onAudioPage`
 
 ### 修改歷程
@@ -254,9 +257,11 @@ liveAPP SocketServer → LiveVolumeModel → UI
 | 改前 | 改後 | 理由 |
 |------|------|------|
 | `pendingAppVolume`/`pendingMicVolume` + `lastSendTime` + `minInterval=0.1` | 無狀態 | actor 的 1s throttle 已足夠，雙軌共享 pending 值造成另一軌值最多舊 1s |
-| sideload→socket；其他→Darwin Notification | 一律 socket | Darwin Notification fire-and-forget，背景易掉 |
+| sideload→socket；其他→Darwin Notification | 一律 socket `logbatch` | Darwin Notification fire-and-forget，背景易掉；`audioLive` 從未使用 |
 | `updateVolume(volume:track:)` 帶 track | `updateVolume(app:mic:)` 帶兩軌值 | actor 保管 lastRMS，發送時兩軌最新值同步 |
 | `rmsInterval=1.0` 與 `minInterval=0.1` 疊加 | 僅 `rmsInterval=1.0` | 簡化，消除重複節流 |
+| 單一 `lastRMSUpdateTime` | per-track `lastAppRMSUpdateTime` / `lastMicRMSUpdateTime` | 避免一個音軌長期佔用計時器，另一軌值永遠不更新 |
+| `updateVolume(app: Float, mic: Float)` 強制雙參數 | `updateVolume(app: Float?, mic: Float?)` 選擇性更新 | `processRMS` 只送有變化的 channel，不再用另一軌的舊值（含初始 0）覆蓋 UserDefaults |
 
 ---
 

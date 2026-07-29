@@ -265,7 +265,7 @@ final class LiveVolumeModel: ObservableObject {
     private init() {
 #if os(iOS)
 
-        if !LPConfig.shared.SocketLog {
+        if !LPConfig.shared.SocketLog && !LPConfig.isSideload {
         CFNotificationCenterAddObserver(cfCenter,
                                         UnsafeRawPointer(Unmanaged.passUnretained(self).toOpaque()),
                                         { _, observer, name, _,_  in
@@ -283,7 +283,7 @@ final class LiveVolumeModel: ObservableObject {
 
 #else
 
-        if !LPConfig.shared.SocketLog {
+        if !LPConfig.shared.SocketLog && !LPConfig.isSideload {
             NotificationCenter.default.addObserver(
                 forName: Notification.Name("LiveVolumeUpdated"),
                 object: nil,

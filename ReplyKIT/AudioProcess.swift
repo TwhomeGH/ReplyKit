@@ -207,18 +207,31 @@ final class VolumeNotifier {
         sendlog(message: "Audio實時更新清理")
     }
 
-    func updateVolume(app: Float, mic: Float) {
+    func updateVolume(app: Float? = nil, mic: Float? = nil) {
         guard isActive else {
             sendlog(message: "[Volume] updateVolume skipped: isActive=false")
             return
         }
-        sendlog(message: "[Volume] app=\(app) mic=\(mic)")
-        SocketClient.shared.latestAppVolume = app
-        SocketClient.shared.latestMicVolume = mic
+        guard app != nil || mic != nil else { return }
+        var changed = false
+        if let app = app {
+            SocketClient.shared.latestAppVolume = app
+            if !RPConfig.isSideload {
+                SharedDefaults.group?.set(app, forKey: "appVolumeLive")
+            }
+            changed = true
+        }
+        if let mic = mic {
+            SocketClient.shared.latestMicVolume = mic
+            if !RPConfig.isSideload {
+                SharedDefaults.group?.set(mic, forKey: "micVolumeLive")
+            }
+            changed = true
+        }
+        guard changed else { return }
+        sendlog(message: "[Volume] app=\(SocketClient.shared.latestAppVolume) mic=\(SocketClient.shared.latestMicVolume)")
         SocketClient.shared.flushVolumeBatch()
         if !RPConfig.isSideload {
-            SharedDefaults.group?.set(app, forKey: "appVolumeLive")
-            SharedDefaults.group?.set(mic, forKey: "micVolumeLive")
             CFNotificationCenterPostNotification(
                 CFNotificationCenterGetDarwinNotifyCenter(),
                 CFNotificationName("LiveVolumeUpdated" as CFString),
@@ -259,11 +272,12 @@ actor AudioProcessorActor {
     private var appVolume: Float
     private var micVolume: Float
     private var onAudioPage: Bool
-    private var lastRMSUpdateTime: CFTimeInterval = 0
     var rmsInterval: CFTimeInterval = 1.0
     private var streamTask: Task<Void, Never>?
     private var lastAppRMS: Float = 0
     private var lastMicRMS: Float = 0
+    private var lastAppRMSUpdateTime: CFTimeInterval = 0
+    private var lastMicRMSUpdateTime: CFTimeInterval = 0
 
     init(mediaMixer: MediaMixer,
          volumeNotifier: VolumeNotifier,
@@ -401,18 +415,24 @@ actor AudioProcessorActor {
 
     private func processRMS(_ buffer: CMSampleBuffer, trackType: AudioTrackType, originalTime: CMSampleTimingInfo) {
         let now = CACurrentMediaTime()
-        guard onAudioPage || RPConfig.shared.onAudioPage, now - lastRMSUpdateTime > rmsInterval else { return }
-        lastRMSUpdateTime = now
+        let lastUpdate = (trackType == .app) ? lastAppRMSUpdateTime : lastMicRMSUpdateTime
+        guard onAudioPage || RPConfig.shared.onAudioPage, now - lastUpdate > rmsInterval else { return }
+        if trackType == .app {
+            lastAppRMSUpdateTime = now
+        } else {
+            lastMicRMSUpdateTime = now
+        }
         if let rms = rmsSIMD(from: buffer) {
             let userVolume = (trackType == .app) ? appVolume : micVolume
             let normalized = rms * userVolume
             sendlog(message: "[RMS] \(trackType) raw=\(rms) vol=\(userVolume) norm=\(normalized)")
             if trackType == .app {
                 lastAppRMS = normalized
+                volumeNotifier.updateVolume(app: normalized)
             } else {
                 lastMicRMS = normalized
+                volumeNotifier.updateVolume(mic: normalized)
             }
-            volumeNotifier.updateVolume(app: lastAppRMS, mic: lastMicRMS)
         } else {
             sendlog(message: "[RMS] rmsSIMD returned nil for \(trackType)")
         }
