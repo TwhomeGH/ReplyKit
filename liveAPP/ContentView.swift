@@ -140,72 +140,60 @@ class BitrateManager: ObservableObject {
 
 #if os(iOS)
 struct BroadcastButton: UIViewRepresentable {
-    var preferredExtension: String
     var rtmpURL: String
     var rtmpKey: String
-    var width: CGFloat
-    var height: CGFloat
-    var base: Int = 100_000
-    var multiplier: Int = 34
 
-    private func resolveExtension() -> String? {
-        Self.resolveCache
-    }
-
-    private static let resolveCache: String? = {
+    func resolveExtension() -> String? {
+        // 動態解析，不用 static cache
         if let plugInsURL = Bundle.main.builtInPlugInsURL,
            let entries = try? FileManager.default.contentsOfDirectory(at: plugInsURL, includingPropertiesForKeys: nil) {
             let appexEntries = entries.filter { $0.pathExtension == "appex" }
             sendlog(title: "BroadcastButton", message: "Found \(appexEntries.count) appex bundles in PlugIns")
             for entry in appexEntries {
-                if let bundle = Bundle(url: entry), let bundleID = bundle.bundleIdentifier {
-                    let isBroadcastUpload: Bool
-                    if let extDict = bundle.infoDictionary?["NSExtension"] as? [String: Any],
-                       let pointID = extDict["NSExtensionPointIdentifier"] as? String {
-                        isBroadcastUpload = (pointID == "com.apple.broadcast-services-upload")
-                    } else {
-                        isBroadcastUpload = false
-                    }
-                    sendlog(title: "BroadcastButton", message: "  \(entry.lastPathComponent): bundleID=\(bundleID) type=\(isBroadcastUpload ? "broadcast-upload" : "other")")
-                    if isBroadcastUpload {
-                        sendlog(title: "BroadcastButton", message: "Selected broadcast upload extension: \(bundleID)")
-                        return bundleID
-                    }
+                if let bundle = Bundle(url: entry),
+                   let bundleID = bundle.bundleIdentifier,
+                   let extDict = bundle.infoDictionary?["NSExtension"] as? [String: Any],
+                   let pointID = extDict["NSExtensionPointIdentifier"] as? String,
+                   pointID == "com.apple.broadcast-services-upload" {
+                    sendlog(title: "BroadcastButton", message: "Selected broadcast upload extension: \(bundleID)")
+                    return bundleID
                 }
             }
             sendlog(title: "BroadcastButton", message: "No broadcast upload extension found in PlugIns")
         } else {
             sendlog(title: "BroadcastButton", message: "No PlugIns directory or unable to read")
         }
+
+        // fallback
         if let bundleID = Bundle.main.bundleIdentifier {
             let candidate = bundleID + ".ReplyKIT"
             sendlog(title: "BroadcastButton", message: "Fallback to constructed: \(candidate)")
             return candidate
         }
+
         sendlog(title: "BroadcastButton", message: "Failed to resolve broadcast extension")
         return nil
-    }()
+    }
 
     func makeUIView(context: Context) -> RPSystemBroadcastPickerView {
-        let ext = resolveExtension()
-        if let existing = Coordinator.currentPicker {
-            context.coordinator.attach(existing)
-            sendlog(title: "BroadcastButton", message: "重用 picker ext=\(ext ?? "nil")")
-            return existing
-        }
         let picker = RPSystemBroadcastPickerView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
-        picker.preferredExtension = ext
+        if let ext = resolveExtension() {
+            picker.preferredExtension = ext
+        } else {
+            sendlog(title: "BroadcastButton", message: "preferredExtension is nil, picker may not work")
+        }
         picker.showsMicrophoneButton = true
         context.coordinator.attach(picker)
-        sendlog(title: "BroadcastButton", message: "建立 picker ext=\(ext ?? "nil")")
         return picker
     }
 
     func updateUIView(_ uiView: RPSystemBroadcastPickerView, context: Context) {
-        let ext = resolveExtension()
-        sendlog(title: "BroadcastButton", message: "updateUIView preferredExtension = \(ext ?? "nil")")
-        uiView.preferredExtension = ext
-        context.coordinator.attach(uiView)
+        if let ext = resolveExtension() {
+            uiView.preferredExtension = ext
+            sendlog(title: "BroadcastButton", message: "updateUIView preferredExtension = \(ext)")
+        } else {
+            sendlog(title: "BroadcastButton", message: "updateUIView preferredExtension is nil")
+        }
         context.coordinator.rtmpURL = rtmpURL
         context.coordinator.rtmpKey = rtmpKey
     }
@@ -223,27 +211,6 @@ struct BroadcastButton: UIViewRepresentable {
         static weak var currentCoordinator: Coordinator?
         var rtmpURL: String = ""
         var rtmpKey: String = ""
-        var UR: UIDeviceOrientation = .unknown
-
-        static func ensurePicker(preferredExtension ext: String?) {
-            if currentPicker != nil {
-                currentPicker?.preferredExtension = ext
-                sendlog(title: "BroadcastButton", message: "更新 picker ext=\(ext ?? "nil")")
-                return
-            }
-            let picker = RPSystemBroadcastPickerView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
-            picker.preferredExtension = ext
-            picker.showsMicrophoneButton = true
-            let coordinator = Coordinator()
-            coordinator.attach(picker)
-            currentCoordinator = coordinator
-            sendlog(title: "BroadcastButton", message: "建立 picker ext=\(ext ?? "nil")")
-        }
-
-        static func cleanup() {
-            currentPicker = nil
-            currentCoordinator = nil
-        }
 
         func attach(_ picker: RPSystemBroadcastPickerView) {
             Coordinator.currentPicker = picker
@@ -251,42 +218,28 @@ struct BroadcastButton: UIViewRepresentable {
             picker.layoutIfNeeded()
             for view in picker.subviews {
                 if let button = view as? UIButton {
-                    button.removeTarget(self, action: #selector(Coordinator.buttonTapped), for: .touchUpInside)
-                    button.addTarget(self, action: #selector(Coordinator.buttonTapped), for: .touchUpInside)
+                    button.removeTarget(self, action: #selector(buttonTapped), for: .touchUpInside)
+                    button.addTarget(self, action: #selector(buttonTapped), for: .touchUpInside)
                 }
             }
-            sendlog(title: "BroadcastButton", message: "picker attached subviews=\(picker.subviews.count)")
         }
 
         @objc func buttonTapped() {
-            self.UR = UIDevice.current.orientation
-            sendlog(title: "BroadcastButton", message: "buttonTapped orientation=\(self.UR.rawValue)")
-            logger.info("ROTATE:\(String(describing: self.UR))")
-            userDefaults?.set(self.UR.rawValue, forKey: "L3Rotate")
+            sendlog(title: "BroadcastButton", message: "buttonTapped 開始直播按鈕")
         }
 
         static func trigger(attempt: Int = 0) {
-            sendlog(title: "BroadcastButton", message: "trigger() called attempt=\(attempt)")
-
-            let payload = [
-                "type": "log",
-                "message": "Socket連線測試"
-            ]
-            SocketServer.shared.queueSend(payload: payload)
-
             guard let picker = currentPicker else {
                 sendlog(title: "BroadcastButton", message: "trigger() failed: currentPicker is nil")
                 return
             }
-            currentCoordinator?.attach(picker)
             guard let button = picker.subviews.first(where: { $0 is UIButton }) as? UIButton else {
-                picker.layoutIfNeeded()
-                guard attempt < 3 else {
+                if attempt < 3 {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        trigger(attempt: attempt + 1)
+                    }
+                } else {
                     sendlog(title: "BroadcastButton", message: "trigger() failed: no UIButton in picker subviews")
-                    return
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    trigger(attempt: attempt + 1)
                 }
                 return
             }
@@ -297,6 +250,7 @@ struct BroadcastButton: UIViewRepresentable {
         }
     }
 }
+
 #endif
 
 
