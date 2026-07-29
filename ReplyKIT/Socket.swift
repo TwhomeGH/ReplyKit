@@ -119,7 +119,7 @@ class SocketClient : @unchecked Sendable {
 
     private var logContinuation: CheckedContinuation<Bool, Error>?
 
-    var onPageStateChanged: ((String, Any) -> Void)?
+    var onPageStateChanged: ((String, Any?) -> Void)?
 
 
     private var isConnection: Bool = false
