@@ -138,6 +138,7 @@ final class VolumeNotifier {
         guard isActive else { return }
         SocketClient.shared.latestAppVolume = app
         SocketClient.shared.latestMicVolume = mic
+        SocketClient.shared.flushVolumeBatch()
         if !RPConfig.isSideload {
             SharedDefaults.group?.set(app, forKey: "appVolumeLive")
             SharedDefaults.group?.set(mic, forKey: "micVolumeLive")

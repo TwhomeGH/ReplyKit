@@ -636,6 +636,14 @@ class SocketClient : @unchecked Sendable {
         }
     }
 
+    func flushVolumeBatch() {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            guard self.inFlightBatches < self.maxInflightBatches else { return }
+            self._sendBatch([])
+        }
+    }
+
     private func checkBatch() {
         let totalBytes = pendingBatchEntries.reduce(0) { $0 + $1.utf8.count }
         if pendingBatchEntries.count >= maxBatchEntries || totalBytes >= maxBatchBytes {
@@ -670,10 +678,6 @@ class SocketClient : @unchecked Sendable {
     private func _sendBatch(_ entries: [String]) {
         inFlightBatches += 1
         let safeEntries = entries.filter { (try? JSONSerialization.data(withJSONObject: $0, options: [.fragmentsAllowed])) != nil }
-        guard !safeEntries.isEmpty else {
-            inFlightBatches -= 1
-            return
-        }
         let payload: [String: Any] = [
             "type": "logbatch",
             "entries": safeEntries,
