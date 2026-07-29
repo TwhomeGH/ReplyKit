@@ -583,10 +583,7 @@ class SocketClient : @unchecked Sendable {
             guard let self = self else { return }
             if self.connection?.state != .ready {
                 self._connect(host: "localhost", port: 9322)
-                for _ in 0..<10 {
-                    Thread.sleep(forTimeInterval: 0.05)
-                    if self.connection?.state == .ready { break }
-                }
+                // 每次呼叫時如果沒有連線時 自動嘗試1次連線
             }
             guard self.connection?.state == .ready else { return }
             let payload: [String: Any] = [
