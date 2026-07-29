@@ -426,6 +426,7 @@ struct LiveVolumeView: View {
 
 
     @StateObject var model = LiveVolumeModel.shared
+    @EnvironmentObject var pageState: PageState
 
     @AppStorage("appVolume",store: userDefaults)  var appVolume: Double = 1.0
     @AppStorage("micVolume",store: userDefaults)  var micVolume: Double = 1.0
@@ -443,6 +444,16 @@ struct LiveVolumeView: View {
 
 
         VStack {
+            HStack {
+                Circle()
+                    .fill(pageState.onAudioPage ? Color.green : Color.red)
+                    .frame(width: 10, height: 10)
+                Text("onAudioPage: \(pageState.onAudioPage ? "true" : "false")")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal)
             VStack {
                 Text("[棄用]App增益: \(String(format: "%.1f", appAddVolume)) 倍")
                     .font(.headline)
