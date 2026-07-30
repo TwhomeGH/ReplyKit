@@ -100,16 +100,30 @@ struct StreamActivityLiveView: View {
 
 // MARK: - ActivityManager
 @MainActor
-final class StreamActivityManager {
+final class StreamActivityManager: ObservableObject {
     static let shared = StreamActivityManager()
 
-    private var currentActivity: Activity<StreamActivityAttributes>?
+    @Published private(set) var isActivityActive = false
+    @Published var lastError: String? {
+        didSet {
+            if lastError != nil {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+                    self?.lastError = nil
+                }
+            }
+        }
+    }
+
+    private var currentActivity: Activity<StreamActivityAttributes>? {
+        didSet { isActivityActive = currentActivity != nil }
+    }
     private var updateTask: Task<Void, Never>?
 
     func startStreamActivity(streamTitle: String = "直播中") {
         let auth = ActivityAuthorizationInfo()
         sendlog(message: "Live Activity: areActivitiesEnabled=\(auth.areActivitiesEnabled)")
         guard auth.areActivitiesEnabled else {
+            lastError = "權限未開啟：請至 設定 → ReplyKit → 即時動態 開啟"
             sendlog(message: "Live Activity 權限未開啟，請至 設定 → ReplyKit → 即時動態 開啟")
             return
         }
@@ -130,6 +144,7 @@ final class StreamActivityManager {
                 startPeriodicUpdates()
                 sendlog(message: "Live Activity 已啟動")
             } catch {
+                lastError = "啟動失敗: \(error.localizedDescription)"
                 sendlog(message: "Live Activity 啟動失敗: \(error)")
             }
         }

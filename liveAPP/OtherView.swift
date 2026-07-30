@@ -278,6 +278,7 @@ struct DeviceView: View {
 
     let cpuInfo = SystemCPU()
     let diskIO = SystemDiskIO()
+    @ObservedObject private var laManager = StreamActivityManager.shared
 
     @State private var appMemoryMB: Double = 0
     @State private var cpuHistory: [DataPoint] = []
@@ -449,12 +450,27 @@ struct DeviceView: View {
                 header:
                     Label("即時動態 Live Activity", systemImage: "sparkles.tv")
             ) {
-                Button("啟動即時動態") {
-                    StreamActivityManager.shared.startStreamActivity()
+                HStack {
+                    Label("狀態", systemImage: "circle.fill")
+                        .foregroundColor(laManager.isActivityActive ? .green : .gray)
+                    Text(laManager.isActivityActive ? "執行中" : "未啟動")
+                        .foregroundColor(laManager.isActivityActive ? .green : .secondary)
                 }
 
-                Button("結束即時動態") {
-                    StreamActivityManager.shared.endStreamActivity()
+                if let err = laManager.lastError {
+                    Label(err, systemImage: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange)
+                        .font(.caption)
+                }
+
+                if laManager.isActivityActive {
+                    Button("結束即時動態", role: .destructive) {
+                        laManager.endStreamActivity()
+                    }
+                } else {
+                    Button("啟動即時動態") {
+                        laManager.startStreamActivity()
+                    }
                 }
             }
         }
