@@ -62,38 +62,4 @@ struct StreamActivityLiveView: View {
     }
 }
 
-// MARK: - Dynamic Island
-struct StreamActivityDynamicIsland: DynamicIsland {
-    var state: StreamActivityAttributes.ContentState
-    var streamTitle: String
 
-    var body: DynamicIsland {
-        DynamicIslandExpandedRegion(.leading) {
-            Label(state.elapsedTime, systemImage: "clock")
-                .font(.caption)
-        }
-        DynamicIslandExpandedRegion(.trailing) {
-            if !state.bitrate.isEmpty {
-                Text(state.bitrate)
-                    .font(.caption)
-                    .foregroundColor(.green)
-            }
-        }
-        DynamicIslandExpandedRegion(.bottom) {
-            HStack {
-                Text(streamTitle)
-                    .font(.caption)
-                Spacer()
-                if let viewers = state.viewerCount {
-                    Label("\(viewers)", systemImage: "person.2")
-                        .font(.caption)
-                }
-            }
-            .foregroundColor(.secondary)
-        }
-        DynamicIslandExpandedRegion(.center) {
-            Text(state.elapsedTime)
-                .font(.system(.title2, design: .monospaced))
-        }
-    }
-}
