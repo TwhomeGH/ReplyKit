@@ -23,7 +23,6 @@
 		CE281B0F2E5ACD670023BBC4 /* UserNotifications.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE281B102E5ACD670023BBC4 /* UserNotifications.framework */; };
 		CE281B312E5ACD670023BBC4 /* ActivityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE281B302E5ACD670023BBC4 /* ActivityKit.framework */; };
 		CE281B322E5ACD670023BBC4 /* LiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE281B382E5ACD670023BBC4 /* LiveActivityAttributes.swift */; };
-		CE281B332E5ACD670023BBC4 /* LiveActivityWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE281B372E5ACD670023BBC4 /* LiveActivityWidgetBundle.swift */; };
 		CE281B362E5ACD670023BBC4 /* liveAPPWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CE281B292E5ACD670023BBC4 /* liveAPPWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 
 /* End PBXBuildFile section */
@@ -105,7 +104,6 @@
 		CE281B382E5ACD670023BBC4 /* LiveActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityAttributes.swift; path = liveAPP/LiveActivityAttributes.swift; sourceTree = SOURCE_ROOT; };
 		CE281B302E5ACD670023BBC4 /* ActivityKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ActivityKit.framework; path = System/Library/Frameworks/ActivityKit.framework; sourceTree = SDKROOT; };
 		CE281B292E5ACD670023BBC4 /* liveAPPWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = liveAPPWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		CE281B372E5ACD670023BBC4 /* LiveActivityWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityWidgetBundle.swift; sourceTree = "<group>"; };
 
 /* End PBXFileReference section */
 
@@ -632,7 +630,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				CE281B332E5ACD670023BBC4 /* LiveActivityWidgetBundle.swift in Sources */,
 				CE281B322E5ACD670023BBC4 /* LiveActivityAttributes.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
