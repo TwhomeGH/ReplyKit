@@ -84,6 +84,7 @@
 				CE2819FF2E5ACD680023BBC4 /* ReplyKIT.appex in Embed Foundation Extensions */,
 				CE2819FC2E5ACD680023BBC4 /* ReplyKITSetupUI.appex in Embed Foundation Extensions */,
 				CE281B0A2E5ACD670023BBC4 /* ReplyKITNotification.appex in Embed Foundation Extensions */,
+				CE281B362E5ACD670023BBC4 /* liveAPPWidget.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -138,16 +139,12 @@
 			);
 			target = CE281B002E5ACD670023BBC4 /* ReplyKITNotification */;
 		};
-		CE281B3A2E5ACD670023BBC4 /* liveAPPWidget */ = {
+		CE281B3A2E5ACD670023BBC4 /* Exceptions for "liveAPPWidget" folder in "liveAPPWidget" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membership = {
-				CE281B282E5ACD670023BBC4; /* liveAPPWidget */
-			};
-			targetedMembership = {
-			};
-			globalExcptions = (
-				Info.plist
+			membershipExceptions = (
+				Info.plist,
 			);
+			target = CE281B282E5ACD670023BBC4 /* liveAPPWidget */;
 		};
 
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -325,6 +322,7 @@
 				CE2819FB2E5ACD680023BBC4 /* PBXTargetDependency */,
 				CE2819FE2E5ACD680023BBC4 /* PBXTargetDependency */,
 				CE281B0B2E5ACD670023BBC4 /* PBXTargetDependency */,
+				CE281B342E5ACD670023BBC4 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				CE2819A42E5AB3750023BBC4 /* liveAPP */,
@@ -465,6 +463,9 @@
 			buildRules = (
 			);
 			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				CE281B392E5ACD670023BBC4 /* liveAPPWidget */,
 			);
 			name = liveAPPWidget;
 			packageProductDependencies = (
