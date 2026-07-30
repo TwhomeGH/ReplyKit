@@ -21,6 +21,11 @@
 		CE281B0A2E5ACD670023BBC4 /* ReplyKITNotification.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CE281B012E5ACD670023BBC4 /* ReplyKITNotification.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		CE281B0D2E5ACD670023BBC4 /* UserNotificationsUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE281B0E2E5ACD670023BBC4 /* UserNotificationsUI.framework */; };
 		CE281B0F2E5ACD670023BBC4 /* UserNotifications.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE281B102E5ACD670023BBC4 /* UserNotifications.framework */; };
+		CE281B312E5ACD670023BBC4 /* ActivityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE281B302E5ACD670023BBC4 /* ActivityKit.framework */; };
+		CE281B322E5ACD670023BBC4 /* LiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE281B382E5ACD670023BBC4 /* LiveActivityAttributes.swift */; };
+		CE281B332E5ACD670023BBC4 /* LiveActivityWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE281B372E5ACD670023BBC4 /* LiveActivityWidgetBundle.swift */; };
+		CE281B362E5ACD670023BBC4 /* liveAPPWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CE281B292E5ACD670023BBC4 /* liveAPPWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -59,6 +64,14 @@
 			remoteGlobalIDString = CE281B002E5ACD670023BBC4;
 			remoteInfo = ReplyKITNotification;
 		};
+		CE281B352E5ACD670023BBC4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CE28199A2E5AB3750023BBC4 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CE281B282E5ACD670023BBC4;
+			remoteInfo = liveAPPWidget;
+		};
+
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -88,6 +101,11 @@
 		CE281B012E5ACD670023BBC4 /* ReplyKITNotification.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ReplyKITNotification.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		CE281B0E2E5ACD670023BBC4 /* UserNotificationsUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotificationsUI.framework; path = System/Library/Frameworks/UserNotificationsUI.framework; sourceTree = SDKROOT; };
 		CE281B102E5ACD670023BBC4 /* UserNotifications.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotifications.framework; path = System/Library/Frameworks/UserNotifications.framework; sourceTree = SDKROOT; };
+		CE281B382E5ACD670023BBC4 /* LiveActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityAttributes.swift; path = liveAPP/LiveActivityAttributes.swift; sourceTree = SOURCE_ROOT; };
+		CE281B302E5ACD670023BBC4 /* ActivityKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ActivityKit.framework; path = System/Library/Frameworks/ActivityKit.framework; sourceTree = SDKROOT; };
+		CE281B292E5ACD670023BBC4 /* liveAPPWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = liveAPPWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		CE281B372E5ACD670023BBC4 /* LiveActivityWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityWidgetBundle.swift; sourceTree = "<group>"; };
+
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -120,6 +138,18 @@
 			);
 			target = CE281B002E5ACD670023BBC4 /* ReplyKITNotification */;
 		};
+		CE281B3A2E5ACD670023BBC4 /* liveAPPWidget */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membership = {
+				CE281B282E5ACD670023BBC4; /* liveAPPWidget */
+			};
+			targetedMembership = {
+			};
+			globalExcptions = (
+				Info.plist
+			);
+		};
+
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -165,6 +195,12 @@
 			path = ReplyKITNotification;
 			sourceTree = "<group>";
 		};
+		CE281B392E5ACD670023BBC4 /* liveAPPWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = liveAPPWidget;
+			sourceTree = "<group>";
+		};
+
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -221,6 +257,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CE281B2B2E5ACD670023BBC4 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CE281B312E5ACD670023BBC4 /* ActivityKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -409,6 +454,26 @@
 			productReference = CE281B012E5ACD670023BBC4 /* ReplyKITNotification.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		CE281B282E5ACD670023BBC4 /* liveAPPWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CE281B2F2E5ACD670023BBC4 /* Build configuration list for PBXNativeTarget \"liveAPPWidget\" */;
+			buildPhases = (
+				CE281B2A2E5ACD670023BBC4 /* Sources */,
+				CE281B2B2E5ACD670023BBC4 /* Frameworks */,
+				CE281B2C2E5ACD670023BBC4 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = liveAPPWidget;
+			packageProductDependencies = (
+			);
+			productName = liveAPPWidget;
+			productReference = CE281B292E5ACD670023BBC4;
+			productType = "com.apple.product-type.app-extension";
+		};
+
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -419,9 +484,12 @@
 				LastSwiftUpdateCheck = 1630;
 				LastUpgradeCheck = 2610;
 				TargetAttributes = {
-					CE2819A12E5AB3750023BBC4 = {
+				CE281B282E5ACD670023BBC4 = {
+					CreatedOnToolsVersion = 16.3;
+				};
+				CE2819A12E5AB3750023BBC4 = {
 						CreatedOnToolsVersion = 16.3;
-					};
+			};
 					CE2819AE2E5AB3790023BBC4 = {
 						CreatedOnToolsVersion = 16.3;
 						TestTargetID = CE2819A12E5AB3750023BBC4;
@@ -465,6 +533,7 @@
 				CE2819E62E5ACD670023BBC4 /* ReplyKIT */,
 				CE2819F12E5ACD670023BBC4 /* ReplyKITSetupUI */,
 				CE281B002E5ACD670023BBC4 /* ReplyKITNotification */,
+				CE281B282E5ACD670023BBC4 /* liveAPPWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -512,6 +581,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CE281B2C2E5ACD670023BBC4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -557,6 +634,16 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CE281B2A2E5ACD670023BBC4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CE281B332E5ACD670023BBC4 /* LiveActivityWidgetBundle.swift in Sources */,
+				CE281B322E5ACD670023BBC4 /* LiveActivityAttributes.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -585,6 +672,12 @@
 			target = CE281B002E5ACD670023BBC4 /* ReplyKITNotification */;
 			targetProxy = CE281B0C2E5ACD670023BBC4 /* PBXContainerItemProxy */;
 		};
+		CE281B342E5ACD670023BBC4 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = liveAPPWidget;
+			targetProxy = CE281B352E5ACD670023BBC4;
+		};
+
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -1113,6 +1206,47 @@
 			};
 			name = Release;
 		};
+		CE281B2D2E5ACD670023BBC4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2026071505;
+				DEVELOPMENT_TEAM = DD4ZZ69XV7;
+				INFOPLIST_FILE = liveAPPWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "ReplyKit 即時動態";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				MARKETING_VERSION = 13.2.9;
+				PRODUCT_BUNDLE_IDENTIFIER = nuclear.liveAPP.liveAPPWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		CE281B2E2E5ACD670023BBC4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2026071505;
+				DEVELOPMENT_TEAM = DD4ZZ69XV7;
+				INFOPLIST_FILE = liveAPPWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "ReplyKit 即時動態";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				MARKETING_VERSION = 13.2.9;
+				PRODUCT_BUNDLE_IDENTIFIER = nuclear.liveAPP.liveAPPWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -1179,6 +1313,16 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		CE281B2F2E5ACD670023BBC4 /* Build configuration list for PBXNativeTarget \"liveAPPWidget\" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CE281B2D2E5ACD670023BBC4 /* Debug */,
+				CE281B2E2E5ACD670023BBC4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */

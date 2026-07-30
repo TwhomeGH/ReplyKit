@@ -472,6 +472,10 @@ struct DeviceView: View {
                         laManager.startStreamActivity()
                     }
                 }
+
+                Text("Widget Extension 檔案已建立 (liveAPPWidget/)，需在 Xcode 新增 Widget Extension target 後編譯才能在鎖定畫面顯示")
+                    .font(.caption)
+                    .foregroundColor(.orange)
             }
         }
         .onAppear {
