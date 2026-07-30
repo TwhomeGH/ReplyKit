@@ -444,6 +444,19 @@ struct DeviceView: View {
             ) {
                 Text("GPU: \(DeviceInfo.cpuName)")
             }
+
+            Section(
+                header:
+                    Label("即時動態 Live Activity", systemImage: "sparkles.tv")
+            ) {
+                Button("啟動即時動態") {
+                    StreamActivityManager.shared.startStreamActivity()
+                }
+
+                Button("結束即時動態") {
+                    StreamActivityManager.shared.endStreamActivity()
+                }
+            }
         }
         .onAppear {
             sample()
