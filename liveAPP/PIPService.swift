@@ -42,12 +42,6 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         pixelBufferPool = nil
         cachedFormatDescription = nil
         cachedFormatSize = .zero
-        messagesLayer?.clearAllMessages()
-        clearAdOverlay()
-
-        Task {
-            await PiPImageCache.shared.clear()
-        }
 
         setNeedsRedraw()
     }

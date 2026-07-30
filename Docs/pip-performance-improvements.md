@@ -1218,3 +1218,43 @@ V1 的 `broadcastPushState` 在主線程直接迭代 `connections`，但 `connec
 | SwiftUI body | `StreamBtn.frame(width:0, height:0)` | `StreamBtn.frame(width:1, height:1).opacity(0.001)` |
 
 1x1 是系統建立 button subview 所需的最小有效 frame，`opacity(0.001)` 保持視覺隱藏。 |
+
+---
+
+## Section 39 — Memory Warning 只釋放 kernel 無法壓縮的資源（2026-07）
+
+**目標：** iOS 記憶體壓縮機制已在不活躍頁面觸發時自動 in-place 壓縮，handleMemoryWarning 只需釋放 kernel 無法壓缩的 GPU/CoreVideo 資源，避免多餘清理造成後續 CPU/IO spike。
+
+### `liveAPP/PIPService.swift`
+
+| 移除項目 | 原因 |
+|----------|------|
+| ~~`messagesLayer?.clearAllMessages()`~~ | 純資料壓縮後可被 kernel 回收，清除後需重新 fetch/render，造成 memory pressure 下的 CPU/IO spike |
+| ~~`clearAdOverlay()`~~ | 同上，ad overlay 文字/URL 均為可壓缩資料 |
+| ~~`Task { await PiPImageCache.shared.clear() }`~~ | NSCache 在 memory pressure 下已 auto-evict，手動清空 + cancel in-flight 下載導致恢復時全部重載 |
+
+```swift
+// before: 全量釋放
+func handleMemoryWarning() {
+    pixelBufferPool = nil
+    cachedFormatDescription = nil
+    cachedFormatSize = .zero
+    messagesLayer?.clearAllMessages()
+    clearAdOverlay()
+    Task { await PiPImageCache.shared.clear() }
+    setNeedsRedraw()
+}
+
+// after: 只釋放 GPU/CoreVideo 資源
+func handleMemoryWarning() {
+    pixelBufferPool = nil
+    cachedFormatDescription = nil
+    cachedFormatSize = .zero
+    setNeedsRedraw()
+}
+```
+
+### 參考
+
+- Apple 文件《Memory Usage Performance Guidelines》：memory warning 應釋放 large, easily re-creatable objects — **但** `NSCache` 設計上已自動處理 eviction，手動清空二者對立
+- Kernel Memory Compressor（iOS 7+）：不活躍頁面自動 in-place 壓縮，純資料（String/Array/Dictionary）無需在 warning handler 中手動清除

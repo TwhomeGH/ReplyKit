@@ -888,7 +888,7 @@ struct liveAPPApp: App {
 
             sendlog(message: "⚠️ 收到 Memory Warning")
 
-            // PiP 分級釋放（內部依 warning 次數遞增釋放力度）
+            // 只釋放 GPU/CoreVideo 資源（kernel 無法壓縮的記憶體）
             PIPService.shared.handleMemoryWarning()
 
             // 只釋放 Socket 閒置 buffer（輕量）
