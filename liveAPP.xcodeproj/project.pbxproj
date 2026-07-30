@@ -139,13 +139,6 @@
 			);
 			target = CE281B002E5ACD670023BBC4 /* ReplyKITNotification */;
 		};
-		CE281B3A2E5ACD670023BBC4 /* Exceptions for "liveAPPWidget" folder in "liveAPPWidget" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = CE281B282E5ACD670023BBC4 /* liveAPPWidget */;
-		};
 
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -1213,7 +1206,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2026071505;
 				DEVELOPMENT_TEAM = DD4ZZ69XV7;
-				INFOPLIST_FILE = liveAPPWidget/Info.plist;
+				INFOPLIST_FILE = liveAPPWidget-Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "ReplyKit 即時動態";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
@@ -1233,7 +1226,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2026071505;
 				DEVELOPMENT_TEAM = DD4ZZ69XV7;
-				INFOPLIST_FILE = liveAPPWidget/Info.plist;
+				INFOPLIST_FILE = liveAPPWidget-Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "ReplyKit 即時動態";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
