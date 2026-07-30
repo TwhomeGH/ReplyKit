@@ -6,5 +6,7 @@
 	<array>
 		<string>group.nuclear.liveAPP</string>
 	</array>
+	<key>com.apple.developer.activitykit-live-activity</key>
+	<true/>
 </dict>
 </plist>
