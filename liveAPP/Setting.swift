@@ -744,6 +744,10 @@ struct LogSettingView:View {
                     Text("使用輕負載編碼器 CAVLC！ 可用於降低編碼壓力")
             }
 
+            Text("開啟後用CAVLC & 實驗性軟體節流 改善VT過載問題 & 啟用VT編碼速度優先策略")                                                                                                     
+            .font(.footnote)
+            .foregroundColor(.secondary)
+            .padding(.bottom, 5)
 
             Toggle(isOn:$allowFrameReordering){
                     Text("啟用允許B-Frame 此功能存在不穩定性可能破壞穩定性！")

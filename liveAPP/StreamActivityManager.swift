@@ -38,12 +38,18 @@ final class StreamActivityManager: ObservableObject {
         let content = ActivityContent(state: state, staleDate: nil)
 
         Task {
+            await cleanupStaleActivities()
+
             do {
                 let activity = try Activity.request(
                     attributes: attributes,
                     content: content,
                     pushType: nil
                 )
+                guard activity.activityState != .dismissed else {
+                    sendlog(message: "Live Activity 請求回傳已清除的 Activity，略過")
+                    return
+                }
                 currentActivity = activity
                 startPeriodicUpdates()
                 observeDismiss(for: activity)
@@ -74,6 +80,22 @@ final class StreamActivityManager: ObservableObject {
         Task {
             let state = activity.content.state
             await activity.end(ActivityContent(state: state, staleDate: nil), dismissalPolicy: .after(Date().addingTimeInterval(5)))
+        }
+    }
+
+    /// ActivityKit 的 Activity.request() 可能回傳已存在的舊 Activity（deduplication）。
+    /// 若該 Activity 已被系統清除，其 activityStateUpdates 第一個事件就是 .dismissed，
+    /// 造成「一啟動就被偵測為清除」。因此請求前先把系統中所有過期/殘留的 Activity 清掉。
+    private func cleanupStaleActivities() async {
+        let current = currentActivity
+        for activity in Activity<StreamActivityAttributes>.activities {
+            if activity == current { continue }
+            let state = activity.activityState
+            if state == .ended || state == .dismissed {
+                sendlog(message: "清理過期 Live Activity: \(state)")
+                continue
+            }
+            await activity.end(nil, dismissalPolicy: .immediate)
         }
     }
 
@@ -116,8 +138,11 @@ final class StreamActivityManager: ObservableObject {
         dismissTask = Task { [weak self] in
             for await state in activity.activityStateUpdates {
                 if state == .dismissed {
-                    self?.lastError = "即時動態已被手動清除"
-                    self?.endStreamActivity()
+                    guard let self, self.currentActivity === activity else { break }
+                    self.updateTask?.cancel()
+                    self.updateTask = nil
+                    self.currentActivity = nil
+                    sendlog(message: "Live Activity 已被系統或用戶清除")
                     break
                 }
             }

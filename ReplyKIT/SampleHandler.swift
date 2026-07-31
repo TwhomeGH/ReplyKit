@@ -1338,13 +1338,14 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         videoSettings.allowFrameReordering = RPConfig.shared.state.allowFrameReordering
 
         videoSettings.maxFrameDelayCount = RPConfig.shared.state.BufferCount  // 限制 VT 內部最多疊幾幀 -1會使用自動計算
-        videoSettings.adaptiveFrameThrottle = true // 實驗性軟體節流 改善VT過載問題
-
-        videoSettings.prioritizeEncodingSpeedOverQuality = true // VT編碼速度優先策略
+        
 
         if RPConfig.shared.state.h264useCAVLC {
-            sendlog(message: "使用輕量編碼 CAVLC")
+            sendlog(message: "使用輕量編碼 CAVLC 軟體節流 VT編碼速度優先策略")
             videoSettings.h264EntropyMode = "cavlc" // 輕量化編碼器避免過載
+
+            videoSettings.adaptiveFrameThrottle = true // 實驗性軟體節流 改善VT過載問題
+            videoSettings.prioritizeEncodingSpeedOverQuality = true // VT編碼速度優先策略
         }
 
 
@@ -1375,7 +1376,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         await mediaMixer.setVideoMixerSettings(videoMixerSettings)
 
         // 初始 buffer count（auto mode 下 videoSize 變更時會自動重算）
-        await rtmpStream.setVideoInputBufferCounts(RPConfig.shared.state.BufferCount == -1 ? -1 : max(RPConfig.shared.state.BufferCount, 3))
+        await rtmpStream.setVideoInputBufferCounts(RPConfig.shared.state.BufferCount)
 
         // 在 frame 到來前先用 socket 配置設定 video size
         var dstW: Int

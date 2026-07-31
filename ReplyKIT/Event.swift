@@ -610,12 +610,12 @@ final class RPConfig {
         var RTMPURL : String?
         var RTMPKey : String?
 
-        var h264level : String = "AutoHight"
+        var h264level : String = "AutoMain"
         var videoCodec : String = "H264"
         var hevcLevel : String = "Main"
         var BitRateMode: Int = 0
-        var BufferCount : Int = 3
-        var BitRate : Int = 6_000_000
+        var BufferCount : Int = -1
+        var BitRate : Int = 5_000_000
         var ChangeBit : Bool = false
 
         var isLowLatencyRateControlEnabled : Bool = false
@@ -654,7 +654,7 @@ final class RPConfig {
         var enableMetalAudio : Bool = false
 
         // 關鍵幀間隔（秒），0=編碼器自動，>0=固定
-        var KeyFrameInterval : Int = 0
+        var KeyFrameInterval : Int = 2
 
         // RTMP 內部日誌
         var enableRTMPLog : Bool = true
