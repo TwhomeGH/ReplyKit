@@ -163,7 +163,7 @@ final class VideoFrameProcessor {
 
     func process(_ sampleBuffer: CMSampleBuffer, originalTime: CMSampleTimingInfo) {
         guard let imageBuffer = sampleBuffer.imageBuffer else { return }
-        if processedCount % 60 == 0 {
+        if processedCount % 1500 == 0 || processedCount == 60 {
             let fmt = CVPixelBufferGetPixelFormatType(imageBuffer)
             let fmtStr: String
             switch fmt {
