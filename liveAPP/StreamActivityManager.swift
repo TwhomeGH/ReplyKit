@@ -89,7 +89,7 @@ final class StreamActivityManager: ObservableObject {
     private func cleanupStaleActivities() async {
         let current = currentActivity
         for activity in Activity<StreamActivityAttributes>.activities {
-            if activity == current { continue }
+            if activity === current { continue }
             let state = activity.activityState
             if state == .ended || state == .dismissed {
                 sendlog(message: "清理過期 Live Activity: \(state)")

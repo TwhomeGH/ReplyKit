@@ -827,7 +827,7 @@
 					"@executable_path/Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.6;
-				MARKETING_VERSION = 13.2.9;
+				MARKETING_VERSION = 14.5.7;
 				PRODUCT_BUNDLE_IDENTIFIER = nuclear.liveAPP;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -873,7 +873,7 @@
 					"@executable_path/Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.6;
-				MARKETING_VERSION = 13.2.9;
+				MARKETING_VERSION = 14.5.7;
 				PRODUCT_BUNDLE_IDENTIFIER = nuclear.liveAPP;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -1013,7 +1013,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 13.2.9;
+				MARKETING_VERSION = 14.5.7;
 				PRODUCT_BUNDLE_IDENTIFIER = nuclear.liveAPP.ReplyKIT;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -1047,7 +1047,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 13.2.9;
+				MARKETING_VERSION = 14.5.7;
 				PRODUCT_BUNDLE_IDENTIFIER = nuclear.liveAPP.ReplyKIT;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -1081,7 +1081,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 13.2.9;
+				MARKETING_VERSION = 14.5.7;
 				PRODUCT_BUNDLE_IDENTIFIER = nuclear.liveAPP.ReplyKITSetupUI;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -1115,7 +1115,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 13.2.9;
+				MARKETING_VERSION = 14.5.7;
 				PRODUCT_BUNDLE_IDENTIFIER = nuclear.liveAPP.ReplyKITSetupUI;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -1148,7 +1148,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 13.2.9;
+				MARKETING_VERSION = 14.5.7;
 				PRODUCT_BUNDLE_IDENTIFIER = nuclear.liveAPP.ReplyKITNotification;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -1181,7 +1181,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 13.2.9;
+				MARKETING_VERSION = 14.5.7;
 				PRODUCT_BUNDLE_IDENTIFIER = nuclear.liveAPP.ReplyKITNotification;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -1207,7 +1207,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "ReplyKit 即時動態";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
-				MARKETING_VERSION = 13.2.9;
+				MARKETING_VERSION = 14.5.7;
 				PRODUCT_BUNDLE_IDENTIFIER = nuclear.liveAPP.liveAPPWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1227,7 +1227,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "ReplyKit 即時動態";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
-				MARKETING_VERSION = 13.2.9;
+				MARKETING_VERSION = 14.5.7;
 				PRODUCT_BUNDLE_IDENTIFIER = nuclear.liveAPP.liveAPPWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
