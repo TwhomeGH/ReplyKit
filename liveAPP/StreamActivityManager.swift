@@ -1,6 +1,6 @@
 import ActivityKit
 import SwiftUI
-import Security
+import LiveActivityKit
 
 // MARK: - ActivityManager
 @MainActor
@@ -120,14 +120,26 @@ final class StreamActivityManager: ObservableObject {
     }
 
     private func checkActivityKitEntitlement() {
-        let task = SecTaskCreateFromSelf(nil)
-        guard let task else {
-            logLifecycle("Entitlement 檢查失敗: SecTaskCreateFromSelf 回傳 nil")
+        guard let profilePath = Bundle.main.path(forResource: "embedded", ofType: "mobileprovision"),
+              let data = FileManager.default.contents(atPath: profilePath) else {
+            logLifecycle("找不到 embedded.mobileprovision（側載可能未嵌入描述檔），改用 codesign 於本機驗證")
             return
         }
-        let value = SecTaskCopyValueForEntitlement(task, "com.apple.developer.activitykit-live-activity" as CFString, nil)
-        if let value {
-            logLifecycle("ActivityKit entitlement=\(value)")
+        let str = String(data: data, encoding: .ascii) ?? ""
+        guard let start = str.range(of: "<?xml"),
+              let end = str.range(of: "</plist>", options: .backwards) else {
+            logLifecycle("mobileprovision 無法解析")
+            return
+        }
+        let plistData = Data(str[start.lowerBound...end.upperBound].utf8)
+        guard let plist = try? PropertyListSerialization.propertyList(from: plistData, options: [], format: nil) as? [String: Any],
+              let entitlements = plist["Entitlements"] as? [String: Any] else {
+            logLifecycle("mobileprovision 缺少 Entitlements")
+            return
+        }
+        let value = entitlements["com.apple.developer.activitykit-live-activity"]
+        if value != nil {
+            logLifecycle("✅ ActivityKit entitlement=\(String(describing: value))")
         } else {
             logLifecycle("❌ ActivityKit entitlement 不存在！系統會立即清除 Live Activity")
         }

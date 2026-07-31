@@ -1,5 +1,6 @@
 import WidgetKit
 import SwiftUI
+import LiveActivityKit
 
 @main
 struct LiveActivityWidgetBundle: WidgetBundle {
@@ -13,54 +14,16 @@ struct StreamActivityWidget: Widget {
         ActivityConfiguration(for: StreamActivityAttributes.self) { context in
             StreamActivityLiveView(state: context.state, streamTitle: context.attributes.streamTitle)
         } dynamicIsland: { context in
-            let s = context.state
-            let title = context.attributes.streamTitle
-            return DynamicIsland {
+            DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    Label(s.elapsedTime, systemImage: "clock")
-                        .font(.caption)
-                }
-                DynamicIslandExpandedRegion(.trailing) {
-                    Group {
-                        if s.bitrate.isEmpty {
-                            EmptyView()
-                        } else {
-                            Text(s.bitrate)
-                                .font(.caption)
-                                .foregroundColor(.green)
-                        }
-                    }
-                }
-                DynamicIslandExpandedRegion(.bottom) {
-                    HStack {
-                        Text(title)
-                            .font(.caption)
-                        Spacer()
-                        if let viewers = s.viewerCount {
-                            Label("\(viewers)", systemImage: "person.2")
-                                .font(.caption)
-                        }
-                    }
-                    .foregroundColor(.secondary)
-                }
-                DynamicIslandExpandedRegion(.center) {
-                    Text(s.elapsedTime)
-                        .font(.system(.title2, design: .monospaced))
+                    Text(context.state.elapsedTime)
                 }
             } compactLeading: {
-                Label(s.elapsedTime, systemImage: "clock")
+                Text(context.state.elapsedTime)
             } compactTrailing: {
-                Group {
-                    if s.bitrate.isEmpty {
-                        EmptyView()
-                    } else {
-                        Text(s.bitrate)
-                            .font(.caption2)
-                            .foregroundColor(.green)
-                    }
-                }
+                Text("")
             } minimal: {
-                Label(s.elapsedTime, systemImage: "clock")
+                Text(context.state.elapsedTime)
             }
         }
     }

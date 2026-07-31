@@ -22,7 +22,6 @@
 		CE281B0D2E5ACD670023BBC4 /* UserNotificationsUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE281B0E2E5ACD670023BBC4 /* UserNotificationsUI.framework */; };
 		CE281B0F2E5ACD670023BBC4 /* UserNotifications.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE281B102E5ACD670023BBC4 /* UserNotifications.framework */; };
 		CE281B312E5ACD670023BBC4 /* ActivityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE281B302E5ACD670023BBC4 /* ActivityKit.framework */; };
-		CE281B322E5ACD670023BBC4 /* LiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE281B382E5ACD670023BBC4 /* LiveActivityAttributes.swift */; };
 		CE281B362E5ACD670023BBC4 /* liveAPPWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CE281B292E5ACD670023BBC4 /* liveAPPWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 
 /* End PBXBuildFile section */
@@ -101,7 +100,6 @@
 		CE281B012E5ACD670023BBC4 /* ReplyKITNotification.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ReplyKITNotification.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		CE281B0E2E5ACD670023BBC4 /* UserNotificationsUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotificationsUI.framework; path = System/Library/Frameworks/UserNotificationsUI.framework; sourceTree = SDKROOT; };
 		CE281B102E5ACD670023BBC4 /* UserNotifications.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotifications.framework; path = System/Library/Frameworks/UserNotifications.framework; sourceTree = SDKROOT; };
-		CE281B382E5ACD670023BBC4 /* LiveActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityAttributes.swift; path = liveAPP/LiveActivityAttributes.swift; sourceTree = SOURCE_ROOT; };
 		CE281B302E5ACD670023BBC4 /* ActivityKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ActivityKit.framework; path = System/Library/Frameworks/ActivityKit.framework; sourceTree = SDKROOT; };
 		CE281B292E5ACD670023BBC4 /* liveAPPWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = liveAPPWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 
@@ -322,6 +320,7 @@
 			packageProductDependencies = (
 				CE2819D32E5AB5750023BBC4 /* HaishinKit */,
 				CE2819DE2E5ABD940023BBC4 /* RTMPHaishinKit */,
+				CE281C112E5ACD670023BBC4 /* LiveActivityKit */,
 			);
 			productName = liveAPP;
 			productReference = CE2819A22E5AB3750023BBC4 /* liveAPP.app */;
@@ -460,6 +459,7 @@
 			);
 			name = liveAPPWidget;
 			packageProductDependencies = (
+				CE281C112E5ACD670023BBC4 /* LiveActivityKit */,
 			);
 			productName = liveAPPWidget;
 			productReference = CE281B292E5ACD670023BBC4;
@@ -467,6 +467,13 @@
 		};
 
 /* End PBXNativeTarget section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		CE281C102E5ACD670023BBC4 /* XCLocalSwiftPackageReference "LiveActivityKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = LiveActivityKit;
+		};
+/* End XCLocalSwiftPackageReference section */
 
 /* Begin PBXProject section */
 		CE28199A2E5AB3750023BBC4 /* Project object */ = {
@@ -513,6 +520,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				CE2819D22E5AB5750023BBC4 /* XCRemoteSwiftPackageReference "HaishinKit.swift" */,
+				CE281C102E5ACD670023BBC4 /* XCLocalSwiftPackageReference "LiveActivityKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = CE2819A32E5AB3750023BBC4 /* Products */;
@@ -630,7 +638,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				CE281B322E5ACD670023BBC4 /* LiveActivityAttributes.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1357,6 +1364,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = CE2819D22E5AB5750023BBC4 /* XCRemoteSwiftPackageReference "HaishinKit.swift" */;
 			productName = RTMPHaishinKit;
+		};
+		CE281C112E5ACD670023BBC4 /* LiveActivityKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CE281C102E5ACD670023BBC4 /* XCLocalSwiftPackageReference "LiveActivityKit" */;
+			productName = LiveActivityKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

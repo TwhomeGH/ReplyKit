@@ -1,40 +1,16 @@
-import ActivityKit
 import SwiftUI
 
-struct StreamActivityAttributes: ActivityAttributes {
-
-    public struct ContentState: Codable, Hashable {
-        var streamStatus: StreamStatus = .live
-        var bitrate: String = ""
-        var elapsedTime: String = "00:00:00"
-        var viewerCount: Int?
-        var cpuUsage: Double?
-        var memoryUsage: Double?
-    }
-
-    var streamTitle: String = "直播中"
-}
-
-enum StreamStatus: Codable, Hashable {
-    case live
-    case ended
-    case reconnecting(String)
-
-    var label: String {
-        switch self {
-        case .live: return "Live"
-        case .ended: return "已結束"
-        case .reconnecting: return "重新連線中"
-        }
-    }
-}
-
 // MARK: - Lock Screen
-struct StreamActivityLiveView: View {
+public struct StreamActivityLiveView: View {
     let state: StreamActivityAttributes.ContentState
     let streamTitle: String
 
-    var body: some View {
+    public init(state: StreamActivityAttributes.ContentState, streamTitle: String) {
+        self.state = state
+        self.streamTitle = streamTitle
+    }
+
+    public var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(streamTitle)
@@ -61,5 +37,3 @@ struct StreamActivityLiveView: View {
         .padding(.horizontal)
     }
 }
-
-
