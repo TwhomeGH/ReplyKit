@@ -1208,6 +1208,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CURRENT_PROJECT_VERSION = 2026071505;
 				DEVELOPMENT_TEAM = DD4ZZ69XV7;
 				CODE_SIGN_ENTITLEMENTS = liveAPPWidget/liveAPPWidget.entitlements;
@@ -1229,6 +1230,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CURRENT_PROJECT_VERSION = 2026071505;
 				DEVELOPMENT_TEAM = DD4ZZ69XV7;
 				CODE_SIGN_ENTITLEMENTS = liveAPPWidget/liveAPPWidget.entitlements;
