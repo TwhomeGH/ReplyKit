@@ -39,11 +39,7 @@ constexpr sampler nearestClampSampler(
     filter::nearest
 );
 
-constexpr sampler pixelNearest(
-    coord::pixel,
-    address::clamp_to_edge,
-    filter::nearest
-);
+
 
 // --- 4-tap texture bicubic for Y plane (uses bilinear hardware) ---
 float bicubicSampleY_4tap(texture2d<half, access::sample> tex, float2 uv, float2 texSize) {
