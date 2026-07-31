@@ -38,14 +38,6 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         super.init()
     }
 
-    @objc func handleMemoryWarning() {
-        pixelBufferPool = nil
-        cachedFormatDescription = nil
-        cachedFormatSize = .zero
-
-        setNeedsRedraw()
-    }
-
     var lastFPS = 1.0
 
     var isAnimatingMessages = false

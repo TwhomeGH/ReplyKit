@@ -1419,21 +1419,6 @@ class SocketServer:ObservableObject {
         }
     }
 
-    /// 收到 Memory Warning 時釋放 buffer
-    func releaseMemory() {
-        logTo("SocketServer 釋放 buffer")
-        queue.async { [weak self] in
-            guard let self = self else { return }
-            self.receiveBuffers.removeAll()
-            self.receiveOffsets.removeAll()
-            self.lastReceiveTimes.removeAll()
-            self.sendQueues.removeAll()
-            self.sendingFlags.removeAll()
-            self.pendingFailedPayloads.removeAll()
-        }
-    }
-
-
     func stopInternal() {
         for (_, conn) in connections {
             conn.stateUpdateHandler = nil

@@ -17,6 +17,15 @@
 > 
 > 文檔可能沒有更新 所以實際包含功能會有所區別
 
+## 2026.07.31 移除 MemoryWarning 監聽設計
+
+移除記憶體壓力警告處理：[Docs/memory-warning-removal.md](Docs/memory-warning-removal.md)
+
+- 不再於收到 memory warning 時清空 PiP buffer pool / Socket buffers
+- 避免推流中管線重建與 log 遺失，防止推流中斷
+
+---
+
 ## 2026.07.30 Metal Shader 性能優化
 
 三項改進：[Docs/metal-shader-optimizations.md](Docs/metal-shader-optimizations.md)

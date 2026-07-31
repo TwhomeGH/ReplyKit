@@ -878,24 +878,6 @@ struct liveAPPApp: App {
         // 將 App Group 既有的 log 複製到 Documents/ 供檔案 App 讀取
         AppLogPersister.shared.copyFromAppGroup()
 
-        // MARK: - 記憶體壓力監聽
-        #if os(iOS)
-        NotificationCenter.default.addObserver(
-            forName: UIApplication.didReceiveMemoryWarningNotification,
-            object: nil,
-            queue: .main
-        ) { _ in
-
-            sendlog(message: "⚠️ 收到 Memory Warning")
-
-            // 只釋放 GPU/CoreVideo 資源（kernel 無法壓縮的記憶體）
-            PIPService.shared.handleMemoryWarning()
-
-            // 只釋放 Socket 閒置 buffer（輕量）
-            SocketServer.shared.releaseMemory()
-        }
-        #endif
-
 
 
 #if os(iOS)
