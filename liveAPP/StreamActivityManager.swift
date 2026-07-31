@@ -31,9 +31,6 @@ final class StreamActivityManager: ObservableObject {
 
         let auth = ActivityAuthorizationInfo()
         logLifecycle("授權: areActivitiesEnabled=\(auth.areActivitiesEnabled)")
-        if #available(iOS 17.2, *) {
-            logLifecycle("授權: isSupportedOnDevice=\(auth.isSupportedOnDevice)")
-        }
 
         guard auth.areActivitiesEnabled else {
             lastError = "權限未開啟：請至 設定 → ReplyKit → 即時動態 開啟"
