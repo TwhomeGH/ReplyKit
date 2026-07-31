@@ -881,8 +881,8 @@ private func fallbackSampleBuffer(
         encoder.setTexture(dstY, index: 2)
         encoder.setTexture(dstUV, index: 3)
 
-        let tgWidth = min(compute.threadExecutionWidth, 32)
-        let tgHeight = max(1, compute.maxTotalThreadsPerThreadgroup / tgWidth)
+        let tgWidth = compute.threadExecutionWidth
+        let tgHeight = compute.maxTotalThreadsPerThreadgroup / tgWidth
 
 
         let srcW = UInt32(srcY.width)

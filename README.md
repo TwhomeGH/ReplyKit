@@ -17,6 +17,14 @@
 > 
 > 文檔可能沒有更新 所以實際包含功能會有所區別
 
+## 2026.07.30 Metal Shader 性能優化
+
+三項改進：[Docs/metal-shader-optimizations.md](Docs/metal-shader-optimizations.md)
+
+1. 移除 `unsharpY` 死碼
+2. Threadgroup 大小不再硬 cap 32（M 系列 GPU 使用 64-wide）
+3. UV 16-tap bicubic → 4-tap bilinear 近似（texture sample 從 16 次降至 4 次）
+
 ---
 
 ## 2026.06.19 重大修復：PTS 時間軸不一致導致部分平台無法推流
