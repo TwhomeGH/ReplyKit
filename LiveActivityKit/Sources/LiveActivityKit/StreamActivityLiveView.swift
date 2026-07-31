@@ -13,9 +13,9 @@ public struct StreamActivityLiveView: View {
     public var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(streamTitle)
+                Text(streamTitle.isEmpty ? "直播中" : streamTitle)
                     .font(.headline)
-                Text(state.elapsedTime)
+                Text(state.elapsedTime.isEmpty ? "00:00:00" : state.elapsedTime)
                     .font(.system(.body, design: .monospaced))
                     .foregroundColor(.secondary)
             }
