@@ -21,6 +21,7 @@ final class StreamActivityManager: ObservableObject {
         didSet { isActivityActive = currentActivity != nil }
     }
     private var updateTask: Task<Void, Never>?
+    private var dismissTask: Task<Void, Never>?
 
     func startStreamActivity(streamTitle: String = "直播中") {
         let auth = ActivityAuthorizationInfo()
@@ -45,6 +46,7 @@ final class StreamActivityManager: ObservableObject {
                 )
                 currentActivity = activity
                 startPeriodicUpdates()
+                observeDismiss(for: activity)
                 sendlog(message: "Live Activity 已啟動")
             } catch {
                 lastError = "啟動失敗: \(error.localizedDescription)"
@@ -64,13 +66,15 @@ final class StreamActivityManager: ObservableObject {
     func endStreamActivity() {
         updateTask?.cancel()
         updateTask = nil
+        dismissTask?.cancel()
+        dismissTask = nil
 
         guard let activity = currentActivity else { return }
-        let state = activity.content.state
+        currentActivity = nil
         Task {
+            let state = activity.content.state
             await activity.end(ActivityContent(state: state, staleDate: nil), dismissalPolicy: .after(Date().addingTimeInterval(5)))
         }
-        currentActivity = nil
     }
 
     private func startPeriodicUpdates() {
@@ -103,6 +107,19 @@ final class StreamActivityManager: ObservableObject {
                 )
                 let content = ActivityContent(state: updated, staleDate: Date().addingTimeInterval(30))
                 await activity.update(content)
+            }
+        }
+    }
+
+    private func observeDismiss(for activity: Activity<StreamActivityAttributes>) {
+        dismissTask?.cancel()
+        dismissTask = Task { [weak self] in
+            for await state in activity.activityStateUpdates {
+                if state == .dismissed {
+                    self?.lastError = "即時動態已被手動清除"
+                    self?.endStreamActivity()
+                    break
+                }
             }
         }
     }
