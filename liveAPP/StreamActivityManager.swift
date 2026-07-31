@@ -1,5 +1,6 @@
 import ActivityKit
 import SwiftUI
+import UIKit
 
 // MARK: - ActivityManager
 @MainActor
@@ -24,21 +25,32 @@ final class StreamActivityManager: ObservableObject {
     private var dismissTask: Task<Void, Never>?
 
     func startStreamActivity(streamTitle: String = "直播中") {
+        logLifecycle("== startStreamActivity 開始 ==")
+        let env = ProcessInfo.processInfo.operatingSystemVersionString
+        logLifecycle("環境: iOS \(env), 裝置: \(DeviceInfo.deviceCode)")
+
         let auth = ActivityAuthorizationInfo()
-        sendlog(message: "Live Activity: areActivitiesEnabled=\(auth.areActivitiesEnabled)")
+        logLifecycle("授權: areActivitiesEnabled=\(auth.areActivitiesEnabled)")
+        if #available(iOS 17.2, *) {
+            logLifecycle("授權: isSupportedOnDevice=\(auth.isSupportedOnDevice)")
+        }
+
         guard auth.areActivitiesEnabled else {
             lastError = "權限未開啟：請至 設定 → ReplyKit → 即時動態 開啟"
-            sendlog(message: "Live Activity 權限未開啟，請至 設定 → ReplyKit → 即時動態 開啟")
+            logLifecycle("權限未開啟，中止啟動")
             return
         }
-        endStreamActivity()
+
+        endStreamActivity(reason: "重新啟動前清理")
 
         let attributes = StreamActivityAttributes(streamTitle: streamTitle)
-        let state = StreamActivityAttributes.ContentState()
-        let content = ActivityContent(state: state, staleDate: nil)
+        let initialState = StreamActivityAttributes.ContentState()
+        let content = ActivityContent(state: initialState, staleDate: nil)
+        logLifecycle("準備建立 Activity: title=\(streamTitle), initial=\(describeContent(initialState))")
 
         Task {
             await cleanupStaleActivities()
+            logWidgetDiagnostics()
 
             do {
                 let activity = try Activity.request(
@@ -46,17 +58,20 @@ final class StreamActivityManager: ObservableObject {
                     content: content,
                     pushType: nil
                 )
+                let count = Activity<StreamActivityAttributes>.activities.count
+                logLifecycle("Activity.request 成功: id=\(activity.id), state=\(activity.activityState), 現存數=\(count)")
+
                 guard activity.activityState != .dismissed else {
-                    sendlog(message: "Live Activity 請求回傳已清除的 Activity，略過")
+                    logLifecycle("請求回傳已清除的實例，略過")
                     return
                 }
                 currentActivity = activity
                 startPeriodicUpdates()
                 observeDismiss(for: activity)
-                sendlog(message: "Live Activity 已啟動")
+                logLifecycle("Live Activity 已啟動")
             } catch {
                 lastError = "啟動失敗: \(error.localizedDescription)"
-                sendlog(message: "Live Activity 啟動失敗: \(error)")
+                logLifecycle("啟動失敗: \(error)")
             }
         }
     }
@@ -64,48 +79,83 @@ final class StreamActivityManager: ObservableObject {
     func updateStreamActivity(_ state: StreamActivityAttributes.ContentState) {
         guard let activity = currentActivity else { return }
         let content = ActivityContent(state: state, staleDate: Date().addingTimeInterval(30))
+        logLifecycle("手動 update: \(describeContent(state))")
         Task {
             await activity.update(content)
         }
     }
 
-    func endStreamActivity() {
+    func endStreamActivity(reason: String = "用戶手動結束") {
         updateTask?.cancel()
         updateTask = nil
         dismissTask?.cancel()
         dismissTask = nil
 
-        guard let activity = currentActivity else { return }
+        guard let activity = currentActivity else {
+            logLifecycle("endStreamActivity: currentActivity 為 nil (\(reason))")
+            return
+        }
+        logLifecycle("endStreamActivity (\(reason)): id=\(activity.id), state=\(activity.activityState)")
         currentActivity = nil
         Task {
             let state = activity.content.state
             await activity.end(ActivityContent(state: state, staleDate: nil), dismissalPolicy: .after(Date().addingTimeInterval(5)))
+            logLifecycle("Activity.end 已呼叫，5 秒後移除 id=\(activity.id)")
         }
     }
 
-    /// ActivityKit 的 Activity.request() 可能回傳已存在的舊 Activity（deduplication）。
-    /// 若該 Activity 已被系統清除，其 activityStateUpdates 第一個事件就是 .dismissed，
-    /// 造成「一啟動就被偵測為清除」。因此請求前先把系統中所有過期/殘留的 Activity 清掉。
     private func cleanupStaleActivities() async {
+        let all = Activity<StreamActivityAttributes>.activities
+        logLifecycle("cleanupStaleActivities: 系統現存 \(all.count) 個同型別 Activity")
         let current = currentActivity
-        for activity in Activity<StreamActivityAttributes>.activities {
+        for activity in all {
             if activity === current { continue }
             let state = activity.activityState
+            logLifecycle("  id=\(activity.id) state=\(state)")
             if state == .ended || state == .dismissed {
-                sendlog(message: "清理過期 Live Activity: \(state)")
+                logLifecycle("  過期，跳過")
                 continue
             }
             await activity.end(nil, dismissalPolicy: .immediate)
+            logLifecycle("  已立即結束 id=\(activity.id)")
+        }
+    }
+
+    private func logWidgetDiagnostics() {
+        let plugInsURL = Bundle.main.bundleURL.appendingPathComponent("PlugIns")
+        let contents = (try? FileManager.default.contentsOfDirectory(atPath: plugInsURL.path)) ?? []
+        logLifecycle("PlugIns 內容: \(contents)")
+
+        let widgetPath = plugInsURL.appendingPathComponent("liveAPPWidget.appex").path
+        guard FileManager.default.fileExists(atPath: widgetPath),
+              let widgetBundle = Bundle(path: widgetPath) else {
+            logLifecycle("❌ liveAPPWidget.appex 不存在於 PlugIns")
+            return
+        }
+        logLifecycle("✅ liveAPPWidget.appex 存在")
+        if let info = widgetBundle.infoDictionary {
+            let extPoint = (info["NSExtension"] as? [String: Any])?["NSExtensionPointIdentifier"] ?? "???"
+            let supportsLA = info["NSSupportsLiveActivities"] ?? "???"
+            logLifecycle("  NSExtensionPointIdentifier=\(extPoint)")
+            logLifecycle("  NSSupportsLiveActivities=\(supportsLA)")
+        }
+        if let bundleID = widgetBundle.bundleIdentifier {
+            logLifecycle("  BundleIdentifier=\(bundleID)")
         }
     }
 
     private func startPeriodicUpdates() {
         updateTask?.cancel()
         updateTask = Task { [weak self] in
+            var cycle = 0
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
+                cycle += 1
 
-                guard let activity = self?.currentActivity else { break }
+                guard let activity = self?.currentActivity else {
+                    self?.logLifecycle("週期更新中斷: currentActivity 已為 nil (cycle=\(cycle))")
+                    break
+                }
                 let totalSeconds = Int(LPConfig.shared.lastStreamTime)
                 let hours = totalSeconds / 3600
                 let minutes = (totalSeconds % 3600) / 60
@@ -127,6 +177,12 @@ final class StreamActivityManager: ObservableObject {
                     cpuUsage: DeviceInfo.cpuUsagePercent,
                     memoryUsage: DeviceInfo.appMemoryMB
                 )
+                if cycle == 1 || cycle % 6 == 0 {
+                    let cpu = String(format: "%.1f", DeviceInfo.cpuUsagePercent)
+                    let mem = String(format: "%.1f", DeviceInfo.appMemoryMB)
+                    let viewers = LPConfig.shared.streamViewerCount.map { String($0) } ?? "nil"
+                    self?.logLifecycle("週期更新 #\(cycle): status=\(status) elapsed=\(elapsed) bitrate=\(LPConfig.shared.streamBitrate) viewers=\(viewers) cpu=\(cpu)% mem=\(mem)MB")
+                }
                 let content = ActivityContent(state: updated, staleDate: Date().addingTimeInterval(30))
                 await activity.update(content)
             }
@@ -136,16 +192,26 @@ final class StreamActivityManager: ObservableObject {
     private func observeDismiss(for activity: Activity<StreamActivityAttributes>) {
         dismissTask?.cancel()
         dismissTask = Task { [weak self] in
+            self?.logLifecycle("開始監聽狀態 (id=\(activity.id))")
             for await state in activity.activityStateUpdates {
+                self?.logLifecycle("狀態變更 → \(state)")
                 if state == .dismissed {
                     guard let self, self.currentActivity === activity else { break }
                     self.updateTask?.cancel()
                     self.updateTask = nil
                     self.currentActivity = nil
-                    sendlog(message: "Live Activity 已被系統或用戶清除")
+                    self.logLifecycle("已清空引用 (被清除)")
                     break
                 }
             }
         }
+    }
+
+    private func logLifecycle(_ message: String) {
+        sendlog(message: "[LiveActivity] \(message)")
+    }
+
+    private func describeContent(_ c: StreamActivityAttributes.ContentState) -> String {
+        return "status=\(c.streamStatus) bitrate='\(c.bitrate)' elapsed=\(c.elapsedTime) viewers=\(String(describing: c.viewerCount))"
     }
 }
