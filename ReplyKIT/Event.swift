@@ -200,20 +200,22 @@ final class LogManager {
 
     // 高頻 frame log 累計器：合併多筆 dispatch 為一筆 summary
     final class LogBatcher {
-        private let queue = DispatchQueue(label: "com.liveapp.logBatcher", attributes: .concurrent)
+        private let queue = DispatchQueue(label: "com.liveapp.logBatcher")
         private var counters: [String: Int] = [:]
         private var lastMessages: [String: String] = [:]
 
         func add(title: String, message: String) {
-            queue.async(flags: .barrier) { [weak self] in
+            queue.async { [weak self] in
                 guard let self = self else { return }
                 self.counters[title, default: 0] += 1
                 self.lastMessages[title] = message
             }
         }
 
+        // ⚠️ 注意：sync 會阻塞呼叫者直到 pending add 全部處理完。
+        // 只能從背景線程（flush timer / termination）呼叫，切勿在媒體處理線程直接呼叫。
         func flush() -> [String] {
-            queue.sync(flags: .barrier) { [weak self] in
+            queue.sync { [weak self] in
                 guard let self = self else { return [] }
                 let result = self.counters.map { title, count in
                     let last = self.lastMessages[title] ?? ""
