@@ -1,6 +1,6 @@
 import ActivityKit
 import SwiftUI
-import UIKit
+import Security
 
 // MARK: - ActivityManager
 @MainActor
@@ -31,6 +31,7 @@ final class StreamActivityManager: ObservableObject {
 
         let auth = ActivityAuthorizationInfo()
         logLifecycle("授權: areActivitiesEnabled=\(auth.areActivitiesEnabled)")
+        checkActivityKitEntitlement()
 
         guard auth.areActivitiesEnabled else {
             lastError = "權限未開啟：請至 設定 → ReplyKit → 即時動態 開啟"
@@ -115,6 +116,20 @@ final class StreamActivityManager: ObservableObject {
             }
             await activity.end(nil, dismissalPolicy: .immediate)
             logLifecycle("  已立即結束 id=\(activity.id)")
+        }
+    }
+
+    private func checkActivityKitEntitlement() {
+        let task = SecTaskCreateFromSelf(nil)
+        guard let task else {
+            logLifecycle("Entitlement 檢查失敗: SecTaskCreateFromSelf 回傳 nil")
+            return
+        }
+        let value = SecTaskCopyValueForEntitlement(task, "com.apple.developer.activitykit-live-activity" as CFString, nil)
+        if let value {
+            logLifecycle("ActivityKit entitlement=\(value)")
+        } else {
+            logLifecycle("❌ ActivityKit entitlement 不存在！系統會立即清除 Live Activity")
         }
     }
 
