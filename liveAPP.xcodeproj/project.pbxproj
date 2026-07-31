@@ -1210,6 +1210,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2026071505;
 				DEVELOPMENT_TEAM = DD4ZZ69XV7;
+				CODE_SIGN_ENTITLEMENTS = liveAPPWidget/liveAPPWidget.entitlements;
 				INFOPLIST_FILE = liveAPPWidget-Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "ReplyKit 即時動態";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
@@ -1230,6 +1231,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2026071505;
 				DEVELOPMENT_TEAM = DD4ZZ69XV7;
+				CODE_SIGN_ENTITLEMENTS = liveAPPWidget/liveAPPWidget.entitlements;
 				INFOPLIST_FILE = liveAPPWidget-Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "ReplyKit 即時動態";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
