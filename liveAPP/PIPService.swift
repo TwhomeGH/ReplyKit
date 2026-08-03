@@ -1131,6 +1131,15 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         if !(userDefaults?.bool(forKey: "TTSEnabled") ?? false) {
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         }
+
+        // PiP 停止後若 App 仍在背景，排程下一次 BGTask（PiP 活躍期間不排程以節省預算）
+        #if os(iOS)
+        DispatchQueue.main.async {
+            if UIApplication.shared.applicationState == .background {
+                BackgroundTaskManager.shared.scheduleSocketRefresh()
+            }
+        }
+        #endif
     }
 
     // MARK: - Incremental Render

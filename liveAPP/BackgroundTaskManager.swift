@@ -7,6 +7,8 @@ import UIKit
 final class BackgroundTaskManager {
     static let shared = BackgroundTaskManager()
 
+    private static let refreshQueue = DispatchQueue(label: "com.nuclear.liveAPP.bgtask.refresh", qos: .utility)
+
     private let socketKeepAliveTaskID = "com.nuclear.liveAPP.socket.keepalive"
     #if os(iOS)
     private var socketBackgroundTaskID: UIBackgroundTaskIdentifier = .invalid
@@ -29,7 +31,7 @@ final class BackgroundTaskManager {
 
     func registerTasks() {
         #if os(iOS)
-        BGTaskScheduler.shared.register(forTaskWithIdentifier: socketKeepAliveTaskID, using: nil) { task in
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: socketKeepAliveTaskID, using: Self.refreshQueue) { task in
             guard let refreshTask = task as? BGAppRefreshTask else { return }
             self.handleSocketRefreshTask(refreshTask)
         }
@@ -38,7 +40,10 @@ final class BackgroundTaskManager {
 
     func scheduleSocketRefresh() {
         #if os(iOS)
-        BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: socketKeepAliveTaskID)
+        guard !PIPService.shared.isPiPActive else {
+            sendlog(message: "PiP 活躍中，跳過 BGTask 排程（PiP 已保活）")
+            return
+        }
         let request = BGAppRefreshTaskRequest(identifier: socketKeepAliveTaskID)
         request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
         do {

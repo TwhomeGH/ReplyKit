@@ -1294,3 +1294,67 @@ func handleMemoryWarning() {
 | 每幀像素工作量 | 2.16 MB buffer | 0.24 MB buffer（/9） |
 | 重繪觸發 | 每 tick 必重繪 | 秒數改變才重繪 |
 | 首幀延遲 | 2 秒 | 立即（attach 後 `forceRender()`） |
+
+---
+
+## Section 41 — BGTask 設計審查與修正（2026-08）
+
+**目標：** 依 Apple 官方文件審查 BGTaskScheduler 用法，修正配置與接線錯誤。官方關鍵依據（`Using background tasks to update your app`）：BGAppRefreshTask 需在 `UIBackgroundModes` 勾選 "Background fetch"（`fetch`）；BGProcessingTask 需 "Background processing"；`register` 必須在 app 啟動完成前；**resubmit 會取代前次 submission**（不需先 cancel）；BGTaskScheduler 是機會型喚醒、只能跑短期工作，**無法保活 socket**。
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| `UIBackgroundModes` 沒有 `fetch`、只有 `processing` | Section 25 改 BGAppRefreshTask 時未同步更新 Info.plist（`processing` 是舊 BGProcessingTask 殘留） | `processing` → `fetch`，BGAppRefreshTask 才會被系統排程執行 |
+| `beginSocketBackgroundWindow()` 是死碼、從未被呼叫 | design-issues §7 明訂進背景要先取得短窗口，但 `.background` 只排程 BGTask | `.background` 補上 `beginSocketBackgroundWindow()`，socket 未送出的 log 有收尾窗口 |
+| PiP 活躍時仍每 15 分鐘空跑消耗每日背景任務預算 | Section 19 移除 PiP guard 的後遺症 | `scheduleSocketRefresh()` 重新加入 PiP 活躍 guard（PiP 已保活不需 BGTask）；PiP 停止且 App 在背景時由 `stopPiP()` 補排程 |
+| handler 跑在主佇列 | `register(using: nil)` → main queue | 新增 `refreshQueue`（qos .utility），handler 改在背景佇列執行 |
+| 先 `cancel()` 再 `submit()` | 多餘路徑 | 移除 `cancel()`，resubmit 自然取代前次 |
+
+### `liveAPP/Info.plist`
+
+```xml
+<key>UIBackgroundModes</key>
+<array>
+	<string>fetch</string>
+	<string>remote-notification</string>
+	<string>audio</string>
+</array>
+```
+
+### `liveAPP/BackgroundTaskManager.swift`
+
+```swift
+private static let refreshQueue = DispatchQueue(label: "com.nuclear.liveAPP.bgtask.refresh", qos: .utility)
+
+// register 改用背景佇列
+BGTaskScheduler.shared.register(forTaskWithIdentifier: socketKeepAliveTaskID, using: Self.refreshQueue) { ... }
+
+func scheduleSocketRefresh() {
+    guard !PIPService.shared.isPiPActive else { return }   // PiP 活躍中不排程
+    let request = BGAppRefreshTaskRequest(identifier: socketKeepAliveTaskID)
+    request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
+    try BGTaskScheduler.shared.submit(request)              // resubmit 取代前次，不需 cancel
+}
+```
+
+### `liveAPP/liveAPPApp.swift` — `.background`
+
+```swift
+// 先取得短背景窗口收尾 socket 未送出的 log，再排程機會型 refresh。
+BackgroundTaskManager.shared.beginSocketBackgroundWindow()
+BackgroundTaskManager.shared.scheduleSocketRefresh()
+```
+
+### `liveAPP/PIPService.swift` — `stopPiP()`
+
+PiP 停止後若 `applicationState == .background` 則 `scheduleSocketRefresh()`——補回 Section 19 移除 guard 後「PiP 長時間運作停止時無 pending task」的缺口，但只在真正需要時排程。
+
+### 官方用法對照（全項符合）
+
+| 官方要求 | 專案狀態 |
+|----------|----------|
+| register 在 app 啟動完成前 | ✓（liveAPPApp.init） |
+| `BGTaskSchedulerPermittedIdentifiers` | ✓ |
+| `UIBackgroundModes`：BGAppRefreshTask → `fetch` | ✓（本次修正） |
+| 進背景 submit、`earliestBeginDate` | ✓ |
+| handler：先排下次 → 做事 → `expirationHandler` → `setTaskCompleted` | ✓ |
+| resubmit 取代前次（不需 cancel） | ✓（本次修正） |

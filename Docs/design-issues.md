@@ -102,17 +102,20 @@
 
 **修復**:
 1. **保留短 background window**：進背景時呼叫 `beginSocketBackgroundWindow()`，只期待系統允許的短時間收尾窗口，不做 chain。
-2. **BGTaskScheduler 改為 refresh**：以 `BGProcessingTask`（identifier: `com.nuclear.liveAPP.socket.keepalive`）排程下一次機會型喚醒；handler 只 `SocketServer.shared.start()`，2 秒後完成。
+2. **BGTaskScheduler 改為 refresh**：以 `BGAppRefreshTask`（identifier: `com.nuclear.liveAPP.socket.keepalive`）排程下一次機會型喚醒；handler 執行 `SocketServer.shared.start()` + `sendKeepalive()`，10 秒後完成。
 3. **新增 `BackgroundTaskManager` 單例**：統一管理註冊、排程、短背景窗口、取消與 handler 完成。
 4. **`AppDelegate` 不存在問題**：因為專案使用 SwiftUI `@main` App 結構，沒有 `AppDelegate`；所有初始化在 `liveAPPApp.init()` 中完成。
 
 **運作流程**:
 ```
 App 進背景 → beginSocketBackgroundWindow() 取得短背景窗口
-  → scheduleSocketRefresh() 排程 BGProcessingTask（最早約 15 分鐘，實際由系統決定）
+  → scheduleSocketRefresh() 排程 BGAppRefreshTask（最早約 15 分鐘，實際由系統決定）
   → 若系統執行 handler
     → 再排下一次 refresh
     → SocketServer.shared.start()
-    → 2 秒後 setTaskCompleted
+    → sendKeepalive() 確認通道
+    → 10 秒後 setTaskCompleted
 App 回前景 → cancelAll() + endSocketBackgroundWindow()
 ```
+
+**2026-08 補充**：正式接上 `beginSocketBackgroundWindow()`（此前 `.background` 只排程、未啟動短窗口）；Info.plist 補上 `fetch` background mode（BGAppRefreshTask 所需，`processing` 為舊型別殘留）；`scheduleSocketRefresh()` 於 PiP 活躍時跳過排程、`stopPiP()` 在背景狀態下補排程；handler 改在背景佇列執行。詳見 pip-performance-improvements.md Section 41。
