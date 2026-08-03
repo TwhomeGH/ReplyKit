@@ -200,9 +200,10 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     private let animationFPS: Double = 16
     private let activeFPS: Double = 6
     private let idleFPS: Double = 2
-    private let keepaliveFPS: Double = 0.5
+    private let keepaliveFPS: Double = 0.2
 
     private var currentFPS: Double = 2
+    private var lastDrawnKeepaliveTime: String?
     private var lastRenderTime = CACurrentMediaTime()
     private var lastActiveRenderTime = CACurrentMediaTime()
     private let decayCooldown: CFTimeInterval = 2.0
@@ -893,13 +894,15 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         }
         context.restoreGState()
 
+        let overlayScale = isKeepaliveMode ? 1.0 : scale
+
         context.saveGState()
-        context.scaleBy(x: scale, y: scale)
+        context.scaleBy(x: overlayScale, y: overlayScale)
         drawTimeOverlay(in: context, size: frameSize)
         context.restoreGState()
 
         context.saveGState()
-        context.scaleBy(x: scale, y: scale)
+        context.scaleBy(x: overlayScale, y: overlayScale)
         drawAdOverlay(in: context, size: frameSize)
         context.restoreGState()
 
@@ -964,15 +967,13 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
         self.frameSize = size
 
-        let pixelSize = CGSize(
-            width: size.width * UIScreen.main.scale,
-            height: size.height * UIScreen.main.scale
-        )
-        self.OframeSize = pixelSize
+        self.OframeSize = size
 
-        setupPixelBufferPool(size: pixelSize)
+        setupPixelBufferPool(size: size)
 
         self.frameCount = 0
+        needsRedraw = true
+        lastDrawnKeepaliveTime = nil
         currentFPS = keepaliveFPS
 
         let layer = AVSampleBufferDisplayLayer()
@@ -991,6 +992,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             PIPLogTo("Keepalive PiP started")
             Task { @MainActor in
                 self.startRenderTimer()
+                self.forceRender()
             }
         }
     }
@@ -1151,8 +1153,15 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         }
 
         let now = CACurrentMediaTime()
-        let periodicRedraw = !needsRedraw && !wasAnimating && (now - lastPeriodicRedraw) >= periodicRedrawInterval
-        if periodicRedraw { needsRedraw = true }
+        var periodicRedraw = false
+        if isKeepaliveMode {
+            if !needsRedraw && currentTimeString() != lastDrawnKeepaliveTime {
+                needsRedraw = true
+            }
+        } else {
+            periodicRedraw = !needsRedraw && !wasAnimating && (now - lastPeriodicRedraw) >= periodicRedrawInterval
+            if periodicRedraw { needsRedraw = true }
+        }
 
         guard needsRedraw || wasAnimating else {
             if let cached = cachedPixelBuffer, let sb = createSampleBuffer(from: cached) {
@@ -1191,6 +1200,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         }
 
         lastRenderTime = CACurrentMediaTime()
+        if isKeepaliveMode { lastDrawnKeepaliveTime = currentTimeString() }
 
         decayFPSIfNeeded()
 

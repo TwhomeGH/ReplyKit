@@ -1258,3 +1258,39 @@ func handleMemoryWarning() {
 
 - Apple 文件《Memory Usage Performance Guidelines》：memory warning 應釋放 large, easily re-creatable objects — **但** `NSCache` 設計上已自動處理 eviction，手動清空二者對立
 - Kernel Memory Compressor（iOS 7+）：不活躍頁面自動 in-place 壓縮，純資料（String/Array/Dictionary）無需在 warning handler 中手動清除
+
+---
+
+## Section 40 — PiP 保活模式渲染優化（2026-08）
+
+**目標：** 保活 PiP 長時間背景運行，進一步降低渲染資源消耗。原設計每 2 秒整張 900×600（3x scale）重繪，只為更新一秒鐘的時鐘文字；本次將幀率降到 0.2 fps、解析度降到 1x，並加入「秒變門檻」只在顯示秒數改變時重繪。
+
+### `liveAPP/PIPService.swift`
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| 保活模式仍每 2 秒整張重繪 900×600 | `periodicRedrawInterval`(1s) < 渲染間隔(2s)，每次 tick 都判定需重繪，`cachedPixelBuffer` 免重繪路徑永不命中 | 秒變門檻：`renderIncremental()` 在保活模式只當 `currentTimeString() != lastDrawnKeepaliveTime` 才 `needsRedraw`，重繪後記錄已繪時間 |
+| 保活僅靜態文字卻用 3x scale（900×600） | `startKeepalivePiP()` 沿用 `startPiP()` 的 `× UIScreen.main.scale` | 保活模式 `OframeSize` 直接用 `size`（300×200），像素工作量減少 9 倍 |
+| 1x buffer 下 overlay 文字被放大裁切 | `renderUIViewToPixelBuffer()` 固定以 `scale`(3) 縮放 overlay | 新增 `overlayScale = isKeepaliveMode ? 1.0 : scale`，保活模式以 1:1 繪製時間/狀態 |
+| 幀率降到 0.2 fps 後 PiP 首幀延遲 | 首幀需等第一個 render tick（5 秒） | attach 完成後立即 `forceRender()`，首幀即時渲染，PiP 視窗立刻出現 |
+
+**效果：** 每小時 render 喚醒次數 1800 → 720，每幀像素工作量 /9，整體渲染成本約降 **20–25 倍**；時鐘改為每 5 秒跳動一次（保活監控場景可接受）。非保活 PiP 聊天路徑維持 3x scale 不變。
+
+### 快取設計（既有，本輪啟用）
+
+| 快取 | 說明 |
+|------|------|
+| `CVPixelBufferPool`（3 張） | buffer 重用，不重複分配 |
+| `cachedFormatDescription` | CMVideoFormatDescription 重用 |
+| `cachedPixelBuffer` | 無重繪時直接重 enqueue 免重新渲染 |
+| `lastDrawnKeepaliveTime` | 秒變門檻，避免同秒重複重繪 |
+
+### 行為對照
+
+| 面向 | 改進前（0.5 fps） | 改進後（0.2 fps） |
+|------|-------------------|-------------------|
+| 渲染間隔 | 2 秒 | 5 秒 |
+| 解析度 | 900×600（3x） | 300×200（1x） |
+| 每幀像素工作量 | 2.16 MB buffer | 0.24 MB buffer（/9） |
+| 重繪觸發 | 每 tick 必重繪 | 秒數改變才重繪 |
+| 首幀延遲 | 2 秒 | 立即（attach 後 `forceRender()`） |

@@ -497,7 +497,8 @@ PiP（子母畫面）能讓 iOS 在背景保持 app 存活，但標準 PiP 以 4
 
 ```swift
 private(set) var isKeepaliveMode = false
-private let keepaliveFPS: Double = 0.1    // 每 10 秒 1 幀
+private let keepaliveFPS: Double = 0.2    // 每 5 秒 1 幀
+private var lastDrawnKeepaliveTime: String?   // 已繪製時間，秒變門檻比對用
 ```
 
 **`startKeepalivePiP()`** —— 類似 `startPiP()` 但不建立 `messagesLayer`，`currentFPS` 直接鎖 `keepaliveFPS`。
@@ -536,11 +537,31 @@ if !isKeepaliveMode {
 [聊天組]啟動 PiP    [保活組]啟動 PiP 保活    [聊天室]停止 PiP
 ```
 
+### 效能優化（2026-08）
+
+`startKeepalivePiP()` 的資源消耗進一步降低：
+
+| 項目 | 改進前 | 改進後 |
+|------|--------|--------|
+| 幀率 | 0.5 fps（每 2 秒 1 幀） | 0.2 fps（每 5 秒 1 幀） |
+| 像素解析度 | 300×200 × 3x scale（900×600） | 300×200（1x，保活不需高解析） |
+| 每幀像素工作量 | 900×600 | 300×200（減少 9 倍） |
+| 重繪觸發 | `periodicRedraw` 每 1 秒強制 | 秒變門檻：僅當顯示秒數改變才重繪 |
+
+實作：
+
+- `startKeepalivePiP()`：`OframeSize` 直接用 `size`（不再 × `UIScreen.main.scale`），並重置 `needsRedraw` / `lastDrawnKeepaliveTime`。
+- `renderUIViewToPixelBuffer()`：保活模式以 `overlayScale = 1.0` 繪製 overlay（配合 1x buffer，文字不會被放大裁切）。
+- `renderIncremental()`：保活模式改以「顯示時間字串是否改變」決定重繪，相同秒數直接走 `cachedPixelBuffer` 免重繪路徑；重繪後記錄 `lastDrawnKeepaliveTime`。
+- attach 完成後立即 `forceRender()`，確保首幀即時渲染，PiP 視窗不會因 0.2 fps 延遲 5 秒才出現。
+
+整體渲染成本約降 **20–25 倍**（像素 /9 × 喚醒 /2.5）。時鐘改為每 5 秒跳動一次，長時間純監控場景可接受。
+
 ### 行為對照
 
 | 面向 | 標準 PiP | 保活 PiP |
 |------|----------|----------|
-| 幀率 | 4-24 fps（動態調整） | 0.1 fps（固定） |
+| 幀率 | 4-24 fps（動態調整） | 0.2 fps（固定，每 5 秒 1 幀） |
 | 聊天訊息 | 渲染 + 動畫 | 不渲染 |
 | 畫面內容 | 時間 + 狀態 + 聊天訊息 | 時間 + 「保活用子母工作中」 |
 | 耗電 | 高（持續 CPU/GPU） | 極低 |
