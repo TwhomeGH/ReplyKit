@@ -944,7 +944,7 @@ struct LogSettingView:View {
 
 
             Toggle(isOn: $ChangeBit){
-                Text("停用自動碼率調整策略 ！")
+                Text("[棄用]停用自動碼率調整策略 ！")
             }
             .onChange(of:ChangeBit) { newValue in
                 CFNotificationCenterPostNotification(cfCenter, CFNotificationName("ChangeBit" as CFString), nil, nil, true)

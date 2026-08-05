@@ -31,19 +31,19 @@ let package = Package(
                 .product(name: "RTMPHaishinKit", package: "HaishinKitFixSwfit")
             ],
             path: "ReplyKIT",
-            exclude: ["Info.plist"]
+            exclude: ["Info.plist","*.swift"]
         ),
         .target(
             name: "ReplyKITSetupUI",
             dependencies: [],
             path: "ReplyKITSetupUI",
-            exclude: ["Info.plist"]
+            exclude: ["Info.plist","*.swift"]
         ),
         .target(
             name: "ReplyKITNotification",
             dependencies: [],
             path: "ReplyKITNotification",
-            exclude: ["Info.plist"]
+            exclude: ["Info.plist","*.swift"]
         )
     ]
 )

@@ -645,9 +645,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     }
                 }
 
-                await streamStataus?.isChangBit(Rlog)
                 sendlog(message:"[網路]碼率控制: \(Rlog)")
-
 
 
             }
@@ -679,7 +677,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 var settings = await rtmpStream.videoSettings
                 settings.bitRate = newBitRate
                 try? await rtmpStream.setVideoSettings(settings)
-                await streamStataus?.updateVideoBitRate(to: newBitRate)
 
                 sendlog(message: "bitRateChange: 更新 bitrate=\(newBitRate/1000)kbps")
             }
@@ -1148,19 +1145,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
 
-    private var disconnectMonitorTask: Task<Void, Never>?
-
-    // MARK: 斷線檢測
-    func startDisconnectMonitor() {
-        disconnectMonitorTask = Task { [weak self, weak streamStataus] in
-            while !(self?.isStopping ?? true) {
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
-                await streamStataus?.checkDisconnect(timeout: 5)
-            }
-        }
-    }
-
-
     func prepareCompressionSession(){
         var compressionSession: VTCompressionSession?
 
@@ -1351,7 +1335,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         }
 
         try? await target.setVideoSettings(videoSettings)
-        await streamStataus?.updateVideoBitRate(to: RPConfig.shared.state.BitRate)
         sendlog(message: "套用完整 video settings: \(width)x\(height) codec=\(codec) profile=\(profilelvl) keyframe=\(kv)s bitrate=\(RPConfig.shared.state.BitRate/1000)kbps")
     }
 
@@ -1433,21 +1416,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             videoBitRate: RPConfig.shared.state.BitRate
         )
 
-        await streamStataus?.refreshStatusTimestamp()
-        await streamStataus?.resetDisconnectCheck()
-
-        await streamStataus?.setOnDisconnect { 
-            Task { 
-                sendlog(message: "斷線監控觸發，由 RTMPConnection 處理重連")
-            }
-        }
-
-
-        let Rlog=RPConfig.shared.state.ChangeBit
-        
-        await streamStataus?.isChangBit(Rlog)
-
-
         await rtmpStream.setBitRateStrategy(streamStataus)
 
         await mediaMixer.addOutput(rtmpStream)
@@ -1460,10 +1428,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
    // MARK: Process
 
     func initProcessors() {
-
-        Task { [weak self] in
-            await self?.streamStataus?.updateVideoBitRate(to: RPConfig.shared.state.BitRate)
-        }
 
         volumeNotifier = VolumeNotifier()
         sendlog(message: "[Init] volumeNotifier created")
@@ -1543,17 +1507,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 sendlog(message: "🔄 RTMP 正在重連 (第 \(attempt)/\(maxAttempts) 次)...")
                 self.notifyReconnectStatus(.attempting, attempt: attempt)
                 self.isReconnecting = true
-                // 重連期間保持 MediaMixer 運行，讓音視頻管線持續處理數據
-                self.disconnectMonitorTask?.cancel()
-                self.disconnectMonitorTask = nil
             case .succeeded:
                 sendlog(message: "🎉 RTMP 重連成功")
                 self.isReconnecting = false
                 self.isSessionReady = true
                 self.notifyReconnectStatus(.success)
-                await streamStataus?.resetDisconnectCheck()
                 await self.mediaMixer.startRunning()
-                self.startDisconnectMonitor()
             case .failed(let error):
                 sendlog(message: "RTMP 重連失敗 \(error)")
                 self.notifyReconnectStatus(.failed)
@@ -1601,9 +1560,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 sendlog(message:"🎉 RTMP 推流成功",flush: true)
                 logger.info("🎉 RTMP 推流成功")
-
-                // 恢復斷線監控
-                self.startDisconnectMonitor()
 
                 self.notifyReconnectStatus(.success)
 
@@ -1788,8 +1744,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     override func broadcastPaused() {
         isBroadcastPaused = true
         sendlog(message: "⏸️ 廣播暫停（進入背景）")
-        disconnectMonitorTask?.cancel()
-        disconnectMonitorTask = nil
     }
 
     // MARK: 直播恢復
@@ -1826,9 +1780,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 // 重建 video processor 確保 ProcessorActor 狀態乾淨
                 rebuildVideo()
             }
-
-            // 重啟斷線監控
-            startDisconnectMonitor()
         }
     }
 
@@ -1849,9 +1800,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             isInitialSyncDone = false
 
             SocketClient.shared.sendStreamEnd()
-
-            disconnectMonitorTask?.cancel()
-            disconnectMonitorTask = nil
 
             isSessionReady = false
 

@@ -56,30 +56,29 @@ let BitRateOptions = [
 
 - VBR / Quality 在 fork 版本中已移除 iOS 26 限制，iOS 13+ 均可使用
 
-## MyStreamBitRateStrategy 性能優化（2026-07）
+## MyStreamBitRateStrategy（2026-08 精簡為純統計）
 
-### 背景
+### 設計
 
-`MyStreamBitRateStrategy` 是動態碼率調整策略，預設 `ChangeBit = false` 僅做統計、不做調整。原本每次 `NetworkMonitorEvent.status` 事件（頻率極高）都會執行完整調整邏輯，造成不必要的效能開銷。
+`MyStreamBitRateStrategy` 現在**僅做統計，不做碼率調整**。壅塞處理由 HaishinKit fork 內部的 `SocketBackpressure`（三級丟幀：512KB 節流 / 1MB 停 video / 1.28MB 停 audio）負責，此策略只收集 `NetworkMonitor` 的統計數據並節流輸出日誌。
 
-### 改進項目
+### 移除內容（2026-08）
 
-| 問題 | 原本做法 | 改進後 | 效益 |
-|------|---------|--------|------|
-| 歷史陣列 O(n) 位移 | `[Double]` + `append` + `removeFirst()` | `RingBuffer<Double>` ring buffer，固定容量 10 | 每次 status 事件從 O(n) 降為 O(1) |
-| 跨 actor 讀取 bitrate | `await stream.videoSettings` 每次事件都呼叫 | `currentVideoBitRate` 屬性緩存，僅 `applyVideoBitrate` 時更新 | 減少不必要的 async 調用 |
-| 統計模式仍跑完整邏輯 | 無 `ChangeBit` guard，每次事件照跑判斷、歷史維護、log | `guard ChangeBit else { ... return }` 提早跳出 | 統計模式下跳過 80%+ 無關計算 |
-| log 頻率過高 | 每筆 status 事件都 `sendlog` | 統計模式每 10 次事件才寫一次（`statsLogInterval = 10`） | 減少 log pipeline IO 壓力 |
-| bug：`.status` 忽略 `ChangeBit` flag | `.publishInsufficientBWOccured` 有檢查，`.status` 卻沒有 | 統一在 `.status` 也加上 `guard ChangeBit` | 修正停用調整時仍可能升降碼率的問題 |
+| 項目 | 理由 |
+|------|------|
+| 動態升降碼率邏輯（`stepUp` / `minBitrate` / ring buffer / warmup / `minBitrateHoldDuration`） | 調整由 fork 內建策略或 SocketBackpressure 取代 |
+| `.publishInsufficientBWOccured` 降速 | 原實作的 `smoothBps` 平滑計算是空操作（`measuredBps == avgOutBps`），且無冷卻會連續降速 |
+| 斷線監控（`checkDisconnect` / `setOnDisconnect` / `disconnectMonitorTask` / `startDisconnectMonitor`） | callback 只 log、無實質動作，RTMPConnection 已有完整重連狀態機 |
+| `isChangBit` / `updateVideoBitRate` / `updateAudioBitRate` | 無調整功能後失去意義 |
+
+### 保留功能
+
+- 指數移動平均 `avgOutBps`（tau=3s）— 平滑統計值
+- 統計日誌節流：每 10 次 `status` 事件才寫一次 log（`statsLogInterval = 10`）
 
 ### 程式碼位置
 
-`ReplyKIT/BitRateStrategy.swift`
-
-- `historyBuffer` — `RingBuffer<Double>`，`capacity: 10`，`push()` O(1)
-- `currentVideoBitRate` — 緩存值，`applyVideoBitrate` 寫入時同步更新
-- `guard ChangeBit` — `.status` 入口處提早返回，僅更新 timestamp + avg + 節流 log
-- `statsLogCounter / statsLogInterval` — 統計模式下控制 log 寫入頻率
+`ReplyKIT/BitRateStrategy.swift` — `adjustBitrate` 僅處理 `.status`，其他事件直接忽略。
 
 
 # 建議位元率設定（VBR 模式）
