@@ -4,5 +4,6 @@
     "privacyLevel": "public"
   },
   "backgroundIndexing": true,
+  "backgroundPreparationMode": "noLazy",
   "buildSettingsTimeout": 30000
 }
