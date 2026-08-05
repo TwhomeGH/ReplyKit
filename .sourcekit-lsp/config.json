@@ -3,6 +3,6 @@
     "level": "fault",
     "privacyLevel": "public"
   },
-  "backgroundIndexing": false,
+  "backgroundIndexing": true,
   "buildSettingsTimeout": 30000
 }
