@@ -941,7 +941,7 @@ struct LogSettingView:View {
             Button("Socket服務器停止"){
                 socket.stop()
             }
-
+            
 
             Toggle(isOn: $ChangeBit){
                 Text("[棄用]停用自動碼率調整策略 ！")

@@ -1,0 +1,8 @@
+{
+  "logging": {
+    "level": "fault",
+    "privacyLevel": "public"
+  },
+  "backgroundIndexing": false,
+  "buildSettingsTimeout": 30000
+}

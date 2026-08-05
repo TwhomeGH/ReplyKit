@@ -1,29 +1,42 @@
 // Stub declarations for HaishinKit — SourceKit-LSP indexing only
+// Windows SDK 沒有 CoreMedia/CoreVideo/CoreGraphics，自行定義所需的最小型別。
 
 import Foundation
-import CoreMedia
-import CoreVideo
-import CoreGraphics
+
+// MARK: - 自定義 CGSize（取代 CoreGraphics，僅供 LSP 索引）
+
+public struct CGSize: Equatable, Sendable {
+    public var width: Double
+    public var height: Double
+    public init() {
+        self.width = 0
+        self.height = 0
+    }
+    public init(width: Double, height: Double) {
+        self.width = width
+        self.height = height
+    }
+}
 
 // MARK: - Core types
 
-public enum CaptureSessionMode {
+public enum CaptureSessionMode: Sendable {
     case manual
     case automatic
 }
 
-public enum ScalingMode {
+public enum ScalingMode: Sendable {
     case letterbox
 }
 
-public enum BitRateMode {
+public enum BitRateMode: Sendable {
     case average
     case constant
     case variable
     case quality
 }
 
-public enum AudioMixerTrackMode {
+public enum AudioMixerTrackMode: Sendable {
     case `default`
 }
 
