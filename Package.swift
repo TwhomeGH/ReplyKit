@@ -20,14 +20,19 @@ let package = Package(
         .macOS(.v14)
     ],
     dependencies: [
-        .package(path: "Packages/HaishinKit")
+        // 遠端 Git 連接 用於版本更新用
+        .package(
+            url: "https://github.com/TwhomeGH/HaishinKitFixSwfit.git",
+            branch: "main" // 或指定 branch: "develop"
+        )
+        
     ],
     targets: [
         .target(
             name: "ReplyKIT",
             dependencies: [
-                .product(name: "HaishinKit", package: "HaishinKit"),
-                .product(name: "RTMPHaishinKit", package: "HaishinKit")
+                .product(name: "HaishinKit", package: "HaishinKitFixSwfit"),
+                .product(name: "RTMPHaishinKit", package: "HaishinKitFixSwfit")
             ],
             path: "ReplyKIT",
             exclude: ["Info.plist"]
