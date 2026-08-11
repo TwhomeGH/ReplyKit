@@ -50,7 +50,11 @@ VideoFrameProcessor.process(_:originalTime:)
     │  │                │     └── watchdog 1.0s → resume(nil)
     │  │                └── → CMSampleBuffer?
     │  │
-    │  └── return CMSampleBuffer?
+    │  └── settle(result:)  ← 凍結幀 fallback 判定
+    │        ├── 成功 → consecutiveDropCount = 0 + storeLastGoodSnapshot() (deep copy)
+    │        ├── 失敗且 < 3 幀 → return nil (丟棄)
+    │        ├── 失敗且 3..<60 幀 → makeFallbackSampleBuffer() 重打目前 PTS 送凍結幀
+    │        └── 失敗且 ≥ 60 幀 → onPermanentFailure?() → return nil (標記重建)
     │
     │  guard await mediaMixer.isRunning
     ▼
@@ -64,12 +68,25 @@ GPU rotator 正常 ────────────────────�
     │
     ├── 首次失敗 → 自動降品質 bicubic → bilinear
     │
-    ├── 5 次連續失敗 → cleanupResources() + metalPermanentFailure = true
+    ├── 連續 3 幀失敗 (≤60) → 最後好幀 freeze fallback
+    │     └── 重打「目前幀 PTS」+ decodeTimeStamp invalid → 時間軸連續
+    │         → 避免 RTMPStream stall 偵測 (videoInputFrames==0) 誤觸發 restartVideoPipeline
+    │
+    ├── 5 次連續 Metal 失敗 → cleanupResources() + metalPermanentFailure = true
     │                  → isPermanentlyDead → onPermanentFailure?()
     │                                     → CPU fallback (vImage)
     │
+    ├── 連續 60 幀 freeze 仍失敗 → onPermanentFailure?() → 標記重建
+    │
     └── config 變更 (解析度/旋轉/品質) → cleanup 舊 rotator → 建新 rotator
 ```
+
+#### 最後好幀 freeze fallback
+
+- **觸發**：`processFrame` 回傳 nil（GPU 逾時 / Metal 失敗 / CPU fallback 也失敗），`consecutiveDropCount` 在 3..<60 之間。
+- **內容**：`lastGoodSnapshot` 是上次成功旋轉幀的 **deep copy**（`copyPixelBuffer` 逐 plane memcpy），不能用 sample buffer 參照 — GPU output pool 會重用 CVPixelBuffer，直接留參照會被下一幀覆寫。
+- **時間戳**：`makeFallbackSampleBuffer` 用 `CMSampleBufferCreateReadyWithImageBuffer` 重打**目前幀的 PTS**（`presentationTimeStamp: pts`、`decodeTimeStamp: .invalid`、duration 沿用目前幀）。絕不能用舊幀 PTS，否則 `RTMPTimestamp.update` 偵測 `value <= updatedAt` 走 invalid sequence 重置 → Non-monotonous DTS → 碼率爆衝假象。
+- **效果**：GPU 真卡住時下游仍持續收到幀 → `RTMPStream.videoInputFrames > 0`，不會觸發 `interval > 3s && videoInputFrames==0` 的 encoder restart；GPU 恢復後 PTS 平滑銜接無跳動。缺點是畫面停在最後好幀（凍結），這是「凍結但連續」對「無聲停滯」的取捨。
 
 ### 背壓
 
@@ -198,7 +215,11 @@ rotator.isPermanentlyDead → FrameProcessorActor.processFrame() 偵測到
     ├── onPermanentFailure?() ──► VideoFrameProcessor.isActive = false
     │                               (private(set)，sync readable)
     └── tryCpuFallback() (該幀走 vImage)
+```
 
+另一條失效鏈：`settle()` 中 `consecutiveDropCount >= 60`（GPU 與 CPU fallback 皆連續失敗）→ 同樣呼叫 `onPermanentFailure?()` 標記重建。
+
+```
 SampleHandler 診斷日誌: "[VFrame] ... vp:INACTIVE ..."
     │
     │  if vp.isActive == false && !isStopping

@@ -14,6 +14,12 @@ actor FrameProcessorActor {
     private var debug: Bool
     private var onPermanentFailure: (@Sendable () -> Void)?
 
+    private var consecutiveDropCount = 0
+    private let fallbackFreezeThreshold = 3
+    private let maxConsecutiveDrops = 60
+    private var lastGoodSnapshot: CVPixelBuffer?
+    private var lastGoodFormatDescription: CMVideoFormatDescription?
+
     init(debug: Bool, sendlog: @escaping (String) -> Void) {
         self.debug = debug
         self.sendlog = sendlog
@@ -32,14 +38,175 @@ actor FrameProcessorActor {
         originalTime: CMSampleTimingInfo,
         angle: RotationAngle
     ) async -> CMSampleBuffer? {
-        guard let rotator = await getOrCreateGpuRotator() else {
-            return await tryCpuFallback(imageBuffer: imageBuffer, originalTime: originalTime, angle: angle)
+        let result: CMSampleBuffer?
+        if let rotator = await getOrCreateGpuRotator() {
+            if rotator.isPermanentlyDead {
+                onPermanentFailure?()
+                result = await tryCpuFallback(imageBuffer: imageBuffer, originalTime: originalTime, angle: angle)
+            } else {
+                result = await rotator.rotateAsync(pixelBuffer: imageBuffer, originalTime: originalTime, angle: angle)
+            }
+        } else {
+            result = await tryCpuFallback(imageBuffer: imageBuffer, originalTime: originalTime, angle: angle)
         }
-        if rotator.isPermanentlyDead {
-            onPermanentFailure?()
-            return await tryCpuFallback(imageBuffer: imageBuffer, originalTime: originalTime, angle: angle)
+        return settle(result, originalTime: originalTime)
+    }
+
+    private func settle(_ result: CMSampleBuffer?, originalTime: CMSampleTimingInfo) -> CMSampleBuffer? {
+        guard let result else {
+            consecutiveDropCount += 1
+            if consecutiveDropCount == fallbackFreezeThreshold {
+                sendlog("[VProc] ⚠️ 旋轉連續失敗 \(consecutiveDropCount) 幀，啟用最後好幀 freeze 保持下游 video")
+            } else if consecutiveDropCount > fallbackFreezeThreshold, consecutiveDropCount % 60 == 0 {
+                sendlog("[VProc] ⚠️ 旋轉仍失敗 \(consecutiveDropCount) 幀，持續 freeze fallback")
+            }
+            if consecutiveDropCount >= maxConsecutiveDrops {
+                sendlog("[VProc] ❌ 連續 \(consecutiveDropCount) 幀旋轉失敗，標記重建")
+                lastGoodSnapshot = nil
+                lastGoodFormatDescription = nil
+                onPermanentFailure?()
+                return nil
+            }
+            guard consecutiveDropCount >= fallbackFreezeThreshold else { return nil }
+            return makeFallbackSampleBuffer(pts: originalTime.presentationTimeStamp, originalTime: originalTime)
         }
-        return await rotator.rotateAsync(pixelBuffer: imageBuffer, originalTime: originalTime, angle: angle)
+
+        consecutiveDropCount = 0
+        storeLastGoodSnapshot(from: result)
+        return result
+    }
+
+    private func storeLastGoodSnapshot(from sampleBuffer: CMSampleBuffer) {
+        guard let imageBuffer = sampleBuffer.imageBuffer,
+              let copied = copyPixelBuffer(imageBuffer) else {
+            return
+        }
+        lastGoodSnapshot = copied
+        lastGoodFormatDescription = sampleBuffer.formatDescription
+    }
+
+    private func makeFallbackSampleBuffer(
+        pts: CMTime,
+        originalTime: CMSampleTimingInfo
+    ) -> CMSampleBuffer? {
+        guard let snapshot = lastGoodSnapshot else { return nil }
+
+        let duration: CMTime
+        if originalTime.duration.isValid, originalTime.duration.seconds > 0 {
+            duration = originalTime.duration
+        } else {
+            duration = CMTime(seconds: 1.0 / 60.0, preferredTimescale: 600)
+        }
+
+        var timing = CMSampleTimingInfo(
+            duration: duration,
+            presentationTimeStamp: pts,
+            decodeTimeStamp: .invalid
+        )
+
+        let formatDescription: CMVideoFormatDescription
+        if let lastGoodFormatDescription {
+            formatDescription = lastGoodFormatDescription
+        } else {
+            var createdFormat: CMVideoFormatDescription?
+            let status = CMVideoFormatDescriptionCreateForImageBuffer(
+                allocator: kCFAllocatorDefault,
+                imageBuffer: snapshot,
+                formatDescriptionOut: &createdFormat
+            )
+            guard status == noErr, let createdFormat else {
+                sendlog("[VProc] ⚠️ fallback format 建立失敗 status:\(status)")
+                return nil
+            }
+            formatDescription = createdFormat
+            lastGoodFormatDescription = createdFormat
+        }
+
+        var sampleBuffer: CMSampleBuffer?
+        let status = CMSampleBufferCreateReadyWithImageBuffer(
+            allocator: kCFAllocatorDefault,
+            imageBuffer: snapshot,
+            formatDescription: formatDescription,
+            sampleTiming: &timing,
+            sampleBufferOut: &sampleBuffer
+        )
+        guard status == noErr else {
+            sendlog("[VProc] ⚠️ fallback sample 建立失敗 status:\(status)")
+            return nil
+        }
+        return sampleBuffer
+    }
+
+    private func copyPixelBuffer(_ source: CVPixelBuffer) -> CVPixelBuffer? {
+        let width = CVPixelBufferGetWidth(source)
+        let height = CVPixelBufferGetHeight(source)
+        let pixelFormat = CVPixelBufferGetPixelFormatType(source)
+        let attrs: [String: Any] = [
+            kCVPixelBufferPixelFormatTypeKey as String: pixelFormat,
+            kCVPixelBufferWidthKey as String: width,
+            kCVPixelBufferHeightKey as String: height,
+            kCVPixelBufferIOSurfacePropertiesKey as String: [:]
+        ]
+
+        var copied: CVPixelBuffer?
+        let createStatus = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            width,
+            height,
+            pixelFormat,
+            attrs as CFDictionary,
+            &copied
+        )
+        guard createStatus == kCVReturnSuccess, let copied else {
+            sendlog("[VProc] ⚠️ fallback snapshot 建立失敗 status:\(createStatus)")
+            return nil
+        }
+
+        CVPixelBufferLockBaseAddress(source, .readOnly)
+        CVPixelBufferLockBaseAddress(copied, [])
+        defer {
+            CVPixelBufferUnlockBaseAddress(copied, [])
+            CVPixelBufferUnlockBaseAddress(source, .readOnly)
+        }
+
+        if CVPixelBufferGetPlaneCount(source) > 0 {
+            for plane in 0..<CVPixelBufferGetPlaneCount(source) {
+                guard let srcBase = CVPixelBufferGetBaseAddressOfPlane(source, plane),
+                      let dstBase = CVPixelBufferGetBaseAddressOfPlane(copied, plane) else {
+                    return nil
+                }
+                let srcStride = CVPixelBufferGetBytesPerRowOfPlane(source, plane)
+                let dstStride = CVPixelBufferGetBytesPerRowOfPlane(copied, plane)
+                let planeHeight = CVPixelBufferGetHeightOfPlane(source, plane)
+                let bytesPerRow = min(srcStride, dstStride)
+
+                for row in 0..<planeHeight {
+                    memcpy(
+                        dstBase.advanced(by: row * dstStride),
+                        srcBase.advanced(by: row * srcStride),
+                        bytesPerRow
+                    )
+                }
+            }
+        } else {
+            guard let srcBase = CVPixelBufferGetBaseAddress(source),
+                  let dstBase = CVPixelBufferGetBaseAddress(copied) else {
+                return nil
+            }
+            let srcStride = CVPixelBufferGetBytesPerRow(source)
+            let dstStride = CVPixelBufferGetBytesPerRow(copied)
+            let bytesPerRow = min(srcStride, dstStride)
+
+            for row in 0..<height {
+                memcpy(
+                    dstBase.advanced(by: row * dstStride),
+                    srcBase.advanced(by: row * srcStride),
+                    bytesPerRow
+                )
+            }
+        }
+
+        return copied
     }
 
     private func getOrCreateGpuRotator() async -> RPVideoRotatorNV12BatchQueueOptimized? {
@@ -109,6 +276,9 @@ actor FrameProcessorActor {
         cpuRotator?.cleanup()
         gpuRotator = nil
         cpuRotator = nil
+        consecutiveDropCount = 0
+        lastGoodSnapshot = nil
+        lastGoodFormatDescription = nil
     }
 
     nonisolated func setRotatorDebug(_ on: Bool) {

@@ -932,10 +932,10 @@ sideload 時不再 dispatch 到 `logQueue` 後才檢查。
 
 ```
 GPU rotate → nil → tryCPUFallback() → CPU rotate → success → MediaMixer
-                                                → nil → lastGoodFrame fallback (原路徑)
+                                                → nil → lastGoodFrame freeze (重打目前 PTS)
 ```
 
-`tryCPUFallback()` 在 GPU 失敗的同一幀立即嘗試 CPU 旋轉。CPU 成功時 reset `consecutiveDropCount = 0`（GPU 下次可正常使用），失敗時沿用原有的「最後好幀 freeze」邏輯。
+`tryCPUFallback()` 在 GPU 失敗的同一幀立即嘗試 CPU 旋轉。CPU 成功時 reset `consecutiveDropCount = 0`（GPU 下次可正常使用），失敗時由 `FrameProcessorActor.settle()` 進入「最後好幀 freeze」邏輯：連續 3~59 幀失敗時用 `lastGoodSnapshot`（上次成功幀的 deep copy）重打**目前幀 PTS** 送出，維持下游 `videoInputFrames > 0`；連續 60 幀仍失敗才標記重建。
 
 ### CPU 旋轉器介面
 
