@@ -226,6 +226,19 @@ streamTask = Task.detached { [weak self] in        ← detached，脫離 actor e
 
 - `resample()` 限制每次 append 最多轉換 **4 幀**輸出（`maxRendersPerAppend`）。原 `repeat { convert } while .haveData` 會在積壓時一次轉完所有幀、同步霸佔 MediaMixer actor。積壓資料留在 ring buffer，由後續 append 逐幀消化，時間戳照樣推進 — 把「一次暴衝」攤平成多次小步，不改變音訊內容。
 
+#### 效能參數調整（2026-08）
+
+| 檔案 | 常數 | 原值 | 新值 | 理由 |
+|------|------|------|------|------|
+| `AudioMixerTrack.swift` | `kAudioMixerTrack_frameCapacity` | 1024 | **4096** | 每次 convert/AudioUnitRender 幀數 4 倍（23ms→93ms），減少 MediaMixer actor 同步處理次數。改為 internal 常數，`AudioNode` 同步引用 |
+| `AudioNode.swift` | `OutputNode.buffer` frameCapacity | 1024 | **4096** | **必須同步**：`mix()` 以 mixer outputBuffer 的 frameLength 呼叫 AudioUnitRender，若 buffer 較小會寫入 overflow |
+| `AudioCodecSettings.swift` | AAC `inputBufferCounts` | 6 | **12** | 6×1024≈139ms 偏小，抖動大時 converter 來不及消化而丟幀；12≈278ms 給 encoder 呼吸空間 |
+| `AudioCodecSettings.swift` | AAC `outputBufferCounts` | 1 | **2** | 避免 convert 迴圈 removeFirst/release 頻繁重分配 |
+| `AudioRingBuffer.swift` | `bufferCounts` | 16 | **24** | 371ms→557ms 緩衝，吸收 producer 節奏抖動，減少 skip 補 silence |
+| `AudioCodec.swift` | `maxConvertsPerAppend` | 無界 | **8** | 與 resample 同型：ring buffer 積壓時限制一次 append 的 convert 次數，不霸佔執行緒 |
+
+**注意**：`audioTime.advanced(1024)` 是 AVAudioConverter 的 framesPerPacket（AAC=1024），非 frameCapacity，不需跟改。
+
 #### 修正後行為
 
 | 情境 | 修正前 | 修正後 |
