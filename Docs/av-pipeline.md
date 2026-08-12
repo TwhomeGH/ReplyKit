@@ -285,6 +285,30 @@ streamTask = Task.detached { [weak self] in        ← detached，脫離 actor e
 - **方案 C 後**：resample 在專用 queue 執行，無界迴圈只霸佔自己的 queue，不影響 video/actor。積壓時一次消化全部才能追上延遲、避免 ring buffer 滿掉幀。
 - 若上游真的極端暴衝，無界迴圈在 queue 上執行有自然背壓，不會阻塞 MediaMixer actor。
 
+#### ⚠️ 電磁音事故 — inputBlock 不可餵部分幀（2026-08-13 五次修復）
+
+**問題**：曾把 inputBlock 改為動態提供 `min(inNumberFrames, ringBuffer.counts)`（部分幀餵入），聲稱「任何輸入幀數都能自動消化」。**結果出現電磁音/爆音（壞塊）**。
+
+**機制**：`AVAudioConverterInputBlock` 雖允許回傳少於請求的幀數，但**下游 AudioUnit render 與 AAC 編碼都要求固定 1024 對齊**：
+
+```
+AudioMixerTrack 產出 frameLength=512（非對齊，因部分幀餵入）
+  → AudioMixerByMultiTrack.track(didOutput:) → mix(numberOfFrames: 512)
+    → AudioUnitRender(512) → inputRenderCallback → AudioRingBuffer.render
+      → 剩餘 512 vs 請求 1024 → 樣本錯位 → 電磁音/爆音
+```
+
+AAC 端同理：AAC 需要固定 1024 幀 PCM 才產出一個 packet，部分幀餵入讓 converter 輸出錯位。
+
+**修正**：恢復「只餵完整幀」邏輯 — `inNumberFrames <= ringBuffer.counts` 才 render 完整幀，不足回 `.noDataNow`（資料留在 ring buffer，累積到 1024 後下次 append 消化）。維持 1024 對齊。
+
+- `AudioMixerTrack.resample()` → `inNumberFrames <= ringBuffer.counts` 檢查
+- `AudioCodec.append()` → `isDataAvailable(inNumberFrames)` 檢查
+
+**與 frameCapacity 事故的區別**：frameCapacity=4096 事故是「converter 請求 4096 > ring buffer 1024 → 永遠 .noDataNow → 0 輸出」；現在 frameCapacity=1024，converter 請求 1024，累積夠了就給完整 1024 — 不會停擺也不會錯位。
+
+**結論**：inputBlock 必須餵完整幀維持 1024 對齊。「自動消化任何幀數」的目標已由「frameCapacity=1024 + ring buffer 累積 + 無界迴圈」達成，不需動態部分幀。
+
 #### 修正後行為
 
 | 情境 | 修正前 | 修正後 |
@@ -292,7 +316,7 @@ streamTask = Task.detached { [weak self] in        ← detached，脫離 actor e
 | DSP 慢（producer 卡） | consumer 被凍結，buffer 無限堆積 | consumer 獨立 executor（`Task.detached`），持續消化；積壓時 `.bufferingNewest(8)` 丟最舊 |
 | MediaMixer 被 video 佔用 | audio append 排隊 → PTS gap → silence | audio 處理在專用 queue，MediaMixer actor 只排隊立即返回，video/audio 互不阻塞 |
 | ring buffer 積壓 | resample 霸佔 MediaMixer actor，一次轉完所有幀 | 專用 queue 上無界消化，一次追上積壓，不影響 actor |
-| 幀大小變化 | frameCapacity 固定 1024，輸入不同則停擺 | 動態 inputBlock（`min(請求, 可用)`）自動消化任何幀數 |
+| 幀大小變化 | frameCapacity 固定 1024，輸入不同則停擺 | inputBlock 只餵完整幀（不足 `.noDataNow` 累積），維持 1024 對齊 |
 | 時間戳 | 硬編碼 1024 推進 | `audioTime.advanced(outputBuffer.frameLength)` 依實際輸出幀數 |
 
 ---
