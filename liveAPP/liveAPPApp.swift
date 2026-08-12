@@ -127,9 +127,19 @@ final class AppLogPersister {
     private let maxLogFileLines = 5000
     private let trimMargin = 2000
 
+    // 記憶體累積 + 批次 flush：不再「每筆 log 開檔寫入」。
+    // 累積滿 batchThreshold 筆或超過 flushDelay 秒（先到先 flush），
+    // 一次 FileHandle.write 寫入整批，避免高頻單筆 open/seek/write/close。
+    private var pendingLines: [String] = []
+    private let batchThreshold = 50
+    private let flushDelay: TimeInterval = 0.5
+    private var flushWorkItem: DispatchWorkItem?
+
+    // 持久化寫入 handle：啟動/首次寫入時 open 一次，重複使用，
+    // clear/trim 需要重設 offset 時以 seekToEndOfFile 對齊。
+    private var writeHandle: FileHandle?
+
     private var estimatedLineCount = 0
-    private var trimScheduled = false
-    private let trimInterval: TimeInterval = 0.3
 
     private var logURL: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
@@ -152,66 +162,118 @@ final class AppLogPersister {
     }
 
     func append(line: String) {
-        queue.async {
-            guard let data = (line + "\n").data(using: .utf8) else { return }
-            self.write(data)
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.pendingLines.append(line)
+            self.scheduleFlushIfNeeded()
         }
     }
 
     func append(lines: [String]) {
         guard !lines.isEmpty else { return }
-        queue.async {
-            let text = lines.joined(separator: "\n") + "\n"
-            guard let data = text.data(using: .utf8) else { return }
-            self.write(data)
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.pendingLines.append(contentsOf: lines)
+            self.scheduleFlushIfNeeded()
         }
     }
 
+    /// 立即把 pending buffer 寫入檔案（背景/切離場景時確保不遺失最後一筆）。
+    func flushNow() {
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.flushWorkItem?.cancel()
+            self.flushWorkItem = nil
+            self.flushPending()
+        }
+    }
+
+    private func scheduleFlushIfNeeded() {
+        if pendingLines.count >= batchThreshold {
+            flushWorkItem?.cancel()
+            flushWorkItem = nil
+            flushPending()
+            return
+        }
+        guard flushWorkItem == nil else { return }
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.flushPending()
+        }
+        flushWorkItem = workItem
+        queue.asyncAfter(deadline: .now() + flushDelay, execute: workItem)
+    }
+
+    private func flushPending() {
+        flushWorkItem = nil
+        guard !pendingLines.isEmpty else { return }
+        let lines = pendingLines
+        pendingLines = []
+        let text = lines.joined(separator: "\n") + "\n"
+        guard let data = text.data(using: .utf8) else { return }
+        write(data)
+    }
+
     func copyFromAppGroup() {
-        queue.async {
+        queue.async { [weak self] in
+            guard let self else { return }
             guard let groupURL = FileManager.default.containerURL(
                 forSecurityApplicationGroupIdentifier: "group.nuclear.liveAPP"
             ) else { return }
             let source = groupURL.appendingPathComponent(self.logFileName)
             guard FileManager.default.fileExists(atPath: source.path),
                   let data = try? Data(contentsOf: source) else { return }
-            if FileManager.default.fileExists(atPath: self.logURL.path),
-               let handle = try? FileHandle(forWritingTo: self.logURL) {
-                defer { handle.closeFile() }
-                handle.seekToEndOfFile()
-                handle.write(data)
-            } else {
-                try? data.write(to: self.logURL, options: .atomic)
-            }
+            self.appendRaw(data)
             self.trimNow()
         }
     }
 
     func clear() {
-        queue.async {
-            try? "".write(to: self.logURL, atomically: true, encoding: .utf8)
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.flushWorkItem?.cancel()
+            self.flushWorkItem = nil
+            self.pendingLines.removeAll()
+            self.truncateFile()
             self.estimatedLineCount = 0
         }
     }
 
     private(set) var totalWrittenBytes: UInt64 = 0
 
-    private func write(_ data: Data) {
+    private func appendRaw(_ data: Data) {
+        totalWrittenBytes += UInt64(data.count)
         let newLines = data.reduce(0) { $0 + ($1 == 0x0A ? 1 : 0) }
         estimatedLineCount += newLines
-        totalWrittenBytes += UInt64(data.count)
-
-        if FileManager.default.fileExists(atPath: logURL.path),
-           let handle = try? FileHandle(forWritingTo: logURL) {
-            defer { handle.closeFile() }
+        if let handle = writeHandle ?? openWriteHandle() {
             handle.seekToEndOfFile()
             handle.write(data)
         } else {
             try? data.write(to: logURL, options: .atomic)
         }
+    }
 
+    private func write(_ data: Data) {
+        appendRaw(data)
         if estimatedLineCount > maxLogFileLines + trimMargin {
             trimNow()
+        }
+    }
+
+    private func openWriteHandle() -> FileHandle? {
+        guard FileManager.default.fileExists(atPath: logURL.path),
+              let handle = try? FileHandle(forWritingTo: logURL) else {
+            return nil
+        }
+        writeHandle = handle
+        return handle
+    }
+
+    private func truncateFile() {
+        if let handle = writeHandle {
+            handle.truncate(atOffset: 0)
+            handle.seek(toOffset: 0)
+        } else {
+            try? "".write(to: logURL, atomically: true, encoding: .utf8)
         }
     }
 
@@ -227,9 +289,18 @@ final class AppLogPersister {
 
         guard lines.count > maxLogFileLines else { return }
 
+        // 就地截斷取代整檔原子重寫：seek 回開頭覆寫後 truncate，
+        // 避免 trim 時讀取 + 寫入整個 5000+ 行檔案兩次。
         let trimmedLines = lines.suffix(maxLogFileLines)
         let trimmedText = trimmedLines.joined(separator: "\n") + "\n"
-        try? trimmedText.write(to: logURL, atomically: true, encoding: .utf8)
+        if let handle = writeHandle ?? openWriteHandle(),
+           let trimmedData = trimmedText.data(using: .utf8) {
+            handle.truncate(atOffset: 0)
+            handle.seek(toOffset: 0)
+            handle.write(trimmedData)
+        } else {
+            try? trimmedText.write(to: logURL, atomically: true, encoding: .utf8)
+        }
         estimatedLineCount = maxLogFileLines
     }
 }
@@ -959,6 +1030,8 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
                         // 釋放非關鍵記憶體，降低被 kill 風險
                         PIPService.shared.releaseNonCriticalMemory()
                         logModel.clearLogs()
+                        // 進入背景前把 pending log 批次落盤，避免被系統暫停/終止時遺失最後一筆
+                        AppLogPersister.shared.flushNow()
 
                         // 先取得短背景窗口收尾 socket 未送出的 log，再排程機會型 refresh。
                         #if os(iOS)
