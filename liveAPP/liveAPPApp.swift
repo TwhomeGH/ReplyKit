@@ -270,8 +270,8 @@ final class AppLogPersister {
 
     private func truncateFile() {
         if let handle = writeHandle {
-            handle.truncate(atOffset: 0)
-            handle.seek(toOffset: 0)
+            try? handle.truncate(atOffset: 0)
+            try? handle.seek(toOffset: 0)
         } else {
             try? "".write(to: logURL, atomically: true, encoding: .utf8)
         }
@@ -295,8 +295,8 @@ final class AppLogPersister {
         let trimmedText = trimmedLines.joined(separator: "\n") + "\n"
         if let handle = writeHandle ?? openWriteHandle(),
            let trimmedData = trimmedText.data(using: .utf8) {
-            handle.truncate(atOffset: 0)
-            handle.seek(toOffset: 0)
+            try? handle.truncate(atOffset: 0)
+            try? handle.seek(toOffset: 0)
             handle.write(trimmedData)
         } else {
             try? trimmedText.write(to: logURL, atomically: true, encoding: .utf8)
