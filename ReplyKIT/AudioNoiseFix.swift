@@ -327,7 +327,9 @@ final class AudioEngine {
     }
 
     func startStream() -> AsyncStream<ProcessedAudio> {
-        AsyncStream { [weak self] continuation in
+        // 有界背壓：consumer 落後時丟棄最舊，不讓 unbounded buffer 無限堆積
+        // 造成延遲暴衝。容量 8（~184ms @44.1k）足以吸收節奏抖動，又不致累積。
+        AsyncStream(bufferingPolicy: .bufferingNewest(8)) { [weak self] continuation in
             self?.streamContinuation = continuation
         }
     }

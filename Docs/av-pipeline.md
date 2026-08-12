@@ -189,16 +189,50 @@ yield to AsyncStream<ProcessedAudio>
 AudioProcessorActor.init()
     │
     └── AudioEngine.startStream() → AsyncStream<ProcessedAudio>
+         （bufferingPolicy: .bufferingNewest(8)，有界背壓）
     │
     ▼
-streamTask = Task { [weak self] in
+streamTask = Task.detached { [weak self] in        ← detached，脫離 actor executor
     for await item in stream {
-        guard mediaMixer.isRunning else { continue }
+        guard await mediaMixer.isRunning else { continue }
         await processRMS(item.buffer, trackType:, originalTime:)
         await mediaMixer.append(item.buffer, track:)
     }
 }
 ```
+
+### 音訊斷續根因與修正（2026-08）
+
+#### 根因（五層疊加）
+
+| # | 問題 | 位置 |
+|---|------|------|
+| ① | **producer 與 consumer 共用同一 actor executor**：`enqueue`（含同步 DSP）與 `streamTask` 同在 `AudioProcessorActor` 上，DSP 慢時 consumer 被凍結、反之亦然 → 節奏耦合 | `AudioProcess.swift` |
+| ② | **AsyncStream unbounded**：consumer 落後時 producer 無限 yield → 延遲無限堆積，MediaMixer 一空就一次消化大量 → 節奏暴衝 | `AudioNoiseFix.swift` |
+| ③ | **MediaMixer 是共用 actor**：video/audio append 全串列排隊，video 慢時 audio 被卡 | `MediaMixer.swift` |
+| ④ | **`AudioMixerTrack.resample()` 同步 convert 迴圈**：`repeat { convert } while .haveData` 在 ring buffer 積壓時一次轉完所有幀，同步霸佔 MediaMixer actor → 阻塞所有 append | `AudioMixerTrack.swift` |
+| ⑤ | **`AudioRingBuffer` 的 `skip` 補 silence**：producer 節奏亂 → PTS 缺口 → 插 silence → 聽覺斷續 | `AudioRingBuffer.swift` |
+
+聽覺斷續來自 ⑤，但觸發源是 ①②③④。**使用者也確認：`useOriginal`（不經 DSP/Metal）也斷續 → 底層 ③④⑤ 是共用瓶頸**，兩條路徑最終都進 `mediaMixer.append` → `AudioMixerByMultiTrack` → `AudioMixerTrack.resample()`。
+
+#### 修正
+
+**Extension 端（`AudioProcess.swift`、`AudioNoiseFix.swift`）**：
+
+- `streamTask` 改 `Task.detached`：consumer 脫離 `AudioProcessorActor` executor，producer 的同步 DSP 與 consumer 的 `mediaMixer.append` 真正並行。
+- `AudioEngine.startStream()` 改用 `.bufferingNewest(8)`：有界背壓（~184ms @44.1k），consumer 落後時丟最舊而非無限堆積。
+
+**底層（`AudioMixerTrack.swift`）**：
+
+- `resample()` 限制每次 append 最多轉換 **4 幀**輸出（`maxRendersPerAppend`）。原 `repeat { convert } while .haveData` 會在積壓時一次轉完所有幀、同步霸佔 MediaMixer actor。積壓資料留在 ring buffer，由後續 append 逐幀消化，時間戳照樣推進 — 把「一次暴衝」攤平成多次小步，不改變音訊內容。
+
+#### 修正後行為
+
+| 情境 | 修正前 | 修正後 |
+|------|--------|--------|
+| DSP 慢（producer 卡） | consumer 被凍結，buffer 無限堆積 | consumer 獨立 executor，持續消化；積壓時丟最舊 |
+| MediaMixer 被 video 佔用 | audio append 排隊 → PTS gap → silence | resample 每 append 有界，MediaMixer 佔用時間大幅縮短 |
+| ring buffer 積壓 | 一次 resample 轉完所有幀（暴衝） | 每 append 最多 4 幀，攤平消化 |
 
 ---
 

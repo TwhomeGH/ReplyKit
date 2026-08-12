@@ -312,12 +312,16 @@ actor AudioProcessorActor {
 
     private func setupAudioStream(_ engine: AudioEngine) {
         let stream = engine.startStream()
-        streamTask = Task { [weak self] in
+        // Consumer 用 Task.detached 脫離 AudioProcessorActor executor，
+        // 避免與 producer（enqueue → 同步 DSP）共用同一 executor 互相阻塞。
+        // producer 的 yield 與 consumer 的 mediaMixer.append 因此真正並行，
+        // 不再「DSP 慢 → consumer 卡 → 節奏斷裂」。
+        streamTask = Task.detached { [weak self] in
             for await item in stream {
-                guard let self = self else { break }
-                guard await mediaMixer.isRunning else { continue }
-                await processRMS(item.buffer, trackType: item.trackType, originalTime: item.originalTime)
-                await mediaMixer.append(item.buffer, track: item.trackType.rawValue)
+                guard let self else { break }
+                guard await self.mediaMixer.isRunning else { continue }
+                await self.processRMS(item.buffer, trackType: item.trackType, originalTime: item.originalTime)
+                await self.mediaMixer.append(item.buffer, track: item.trackType.rawValue)
             }
         }
     }
