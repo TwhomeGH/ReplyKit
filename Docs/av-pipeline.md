@@ -224,7 +224,7 @@ streamTask = Task.detached { [weak self] in        ← detached，脫離 actor e
 
 **底層（`AudioMixerTrack.swift`）**：
 
-- `resample()` 限制每次 append 最多轉換 **4 幀**輸出（`maxRendersPerAppend`）。原 `repeat { convert } while .haveData` 會在積壓時一次轉完所有幀、同步霸佔 MediaMixer actor。積壓資料留在 ring buffer，由後續 append 逐幀消化，時間戳照樣推進 — 把「一次暴衝」攤平成多次小步，不改變音訊內容。
+- `resample()` 改為動態 inputBlock（`min(inNumberFrames, ringBuffer.counts)`）+ **無界 `while .haveData` 迴圈**。原 `repeat { convert } while .haveData` 在 actor 上執行會霸佔 MediaMixer；方案 C 將 resample 移到專用 queue 後，無界迴圈只佔自己的 queue，積壓時一次消化全部才能追上延遲。
 
 #### 效能參數調整（2026-08）
 
@@ -235,9 +235,10 @@ streamTask = Task.detached { [weak self] in        ← detached，脫離 actor e
 | `AudioCodecSettings.swift` | AAC `inputBufferCounts` | 6 | **12** | 6×1024≈139ms 偏小，抖動大時 converter 來不及消化而丟幀；12≈278ms 給 encoder 呼吸空間 |
 | `AudioCodecSettings.swift` | AAC `outputBufferCounts` | 1 | **2** | 避免 convert 迴圈 removeFirst/release 頻繁重分配 |
 | `AudioRingBuffer.swift` | `bufferCounts` | 16 | **24** | 371ms→557ms 緩衝，吸收 producer 節奏抖動，減少 skip 補 silence |
-| `AudioCodec.swift` | `maxConvertsPerAppend` | 無界 | **8** | 與 resample 同型：ring buffer 積壓時限制一次 append 的 convert 次數，不霸佔執行緒 |
+| `AudioMixerTrack.swift` | resample 渲染上限 | 無界 →（曾加 4/16）→ **無界** | 實測 audioInputFrames=audioFrames=43-45/s 完全吃得動，上限是不必要限制 |
+| `AudioCodec.swift` | convert 上限 | 無界 →（曾加 8）→ **無界** | 同上，encoder 端也跟得上 |
 
-**注意**：`audioTime.advanced(1024)` 是 AVAudioConverter 的 framesPerPacket（AAC=1024），非 frameCapacity，不需跟改。
+**注意**：`audioTime.advanced(outputBuffer.frameLength)` 依實際輸出幀數推進（原硬編碼 1024），`AudioCodec` 端維持 `mFramesPerPacket`（AAC=1024）推進 — 兩者各自對應正確。`frameCapacity` 是 AVAudioConverter 的 framesPerPacket，非固定常數。
 
 #### ⚠️ `kAudioMixerTrack_frameCapacity` 不可調大（2026-08-13 事故）
 
@@ -288,9 +289,11 @@ streamTask = Task.detached { [weak self] in        ← detached，脫離 actor e
 
 | 情境 | 修正前 | 修正後 |
 |------|--------|--------|
-| DSP 慢（producer 卡） | consumer 被凍結，buffer 無限堆積 | consumer 獨立 executor，持續消化；積壓時丟最舊 |
-| MediaMixer 被 video 佔用 | audio append 排隊 → PTS gap → silence | resample 每 append 有界，MediaMixer 佔用時間大幅縮短 |
-| ring buffer 積壓 | 一次 resample 轉完所有幀（暴衝） | 每 append 最多 4 幀，攤平消化 |
+| DSP 慢（producer 卡） | consumer 被凍結，buffer 無限堆積 | consumer 獨立 executor（`Task.detached`），持續消化；積壓時 `.bufferingNewest(8)` 丟最舊 |
+| MediaMixer 被 video 佔用 | audio append 排隊 → PTS gap → silence | audio 處理在專用 queue，MediaMixer actor 只排隊立即返回，video/audio 互不阻塞 |
+| ring buffer 積壓 | resample 霸佔 MediaMixer actor，一次轉完所有幀 | 專用 queue 上無界消化，一次追上積壓，不影響 actor |
+| 幀大小變化 | frameCapacity 固定 1024，輸入不同則停擺 | 動態 inputBlock（`min(請求, 可用)`）自動消化任何幀數 |
+| 時間戳 | 硬編碼 1024 推進 | `audioTime.advanced(outputBuffer.frameLength)` 依實際輸出幀數 |
 
 ---
 
