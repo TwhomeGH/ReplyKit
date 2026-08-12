@@ -260,6 +260,30 @@ streamTask = Task.detached { [weak self] in        ← detached，脫離 actor e
 
 套用檔案：`AudioMixerTrack.resample()`、`AudioCodec.append()`（相同模式）。
 
+#### ✅ 方案 C：音訊處理移到專用 queue（治本，2026-08-13 三次修復）
+
+**問題**：即便修正 frameCapacity 與 inputBlock，`AudioMixerByMultiTrack` 的整條音訊處理鏈（append→convert→mix→AudioUnitRender）仍在 **MediaMixer actor** 上執行。convert 迴圈與 AudioUnitRender 同步霸佔 actor，video/audio append 互搶，audio 積壓 → 斷續。
+
+**修正**（`AudioMixerByMultiTrack.swift`）：
+- 新增專用 serial queue（`com.haishinkit.HaishinKit.AudioMixerByMultiTrack`）
+- 兩個 `append` 改 `queue.async`：MediaMixer actor 的 append **立即返回**，convert/AudioUnitRender 在專用 queue 執行，不再佔用 actor
+- `settings` 改 `NSLock` 保護：getter/setter 用 lock，setter 排 `queue.async` 執行 `applySettings`（重建 outputFormat）；內部統一走 `_settings`（queue 上無鎖）
+- `inputFormats` getter 用 lock 保護
+- `track(for:)`/delegate 用 `_settings`，queue 內一致存取
+
+**thread-safety**：
+- `inputRenderCallback`（AudioUnit 實時執行緒）讀 `buffers` 字典 — 既有並行行為，方案 C 不新增
+- `delegate` 的 `continutation?.yield` 從 queue 呼叫 — AsyncStream yield thread-safe
+- `mix()` 的 `settings.isMuted` 走 lock getter — setter 的 lock 不等待 queue，無死鎖
+
+#### ✅ 移除渲染上限（2026-08-13 四次修復）
+
+`AudioMixerTrack.resample()` 與 `AudioCodec.append()` 原加的 `maxRendersPerAppend` / `maxConvertsPerAppend` 上限**完全移除**，恢復 `while .haveData` 無界迴圈。
+
+- **理由**：實測 `audioInputFrames=audioFrames=43-45/s`（44.1kHz/1024 ≈ 43.07 幀/秒）— 完美即時節奏，input/encoder 產出完全一致，**完全吃得動**，上限是不必要的限制。
+- **方案 C 後**：resample 在專用 queue 執行，無界迴圈只霸佔自己的 queue，不影響 video/actor。積壓時一次消化全部才能追上延遲、避免 ring buffer 滿掉幀。
+- 若上游真的極端暴衝，無界迴圈在 queue 上執行有自然背壓，不會阻塞 MediaMixer actor。
+
 #### 修正後行為
 
 | 情境 | 修正前 | 修正後 |
