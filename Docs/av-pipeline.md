@@ -230,14 +230,35 @@ streamTask = Task.detached { [weak self] in        ← detached，脫離 actor e
 
 | 檔案 | 常數 | 原值 | 新值 | 理由 |
 |------|------|------|------|------|
-| `AudioMixerTrack.swift` | `kAudioMixerTrack_frameCapacity` | 1024 | **4096** | 每次 convert/AudioUnitRender 幀數 4 倍（23ms→93ms），減少 MediaMixer actor 同步處理次數。改為 internal 常數，`AudioNode` 同步引用 |
-| `AudioNode.swift` | `OutputNode.buffer` frameCapacity | 1024 | **4096** | **必須同步**：`mix()` 以 mixer outputBuffer 的 frameLength 呼叫 AudioUnitRender，若 buffer 較小會寫入 overflow |
+| `AudioMixerTrack.swift` | `kAudioMixerTrack_frameCapacity` | 1024 | **1024（維持）** | ⚠️ **不可調大**（見下） |
+| `AudioNode.swift` | `OutputNode.buffer` frameCapacity | 1024 | 1024 | 與 mixer frameCapacity 同步引用（internal 常數） |
 | `AudioCodecSettings.swift` | AAC `inputBufferCounts` | 6 | **12** | 6×1024≈139ms 偏小，抖動大時 converter 來不及消化而丟幀；12≈278ms 給 encoder 呼吸空間 |
 | `AudioCodecSettings.swift` | AAC `outputBufferCounts` | 1 | **2** | 避免 convert 迴圈 removeFirst/release 頻繁重分配 |
 | `AudioRingBuffer.swift` | `bufferCounts` | 16 | **24** | 371ms→557ms 緩衝，吸收 producer 節奏抖動，減少 skip 補 silence |
 | `AudioCodec.swift` | `maxConvertsPerAppend` | 無界 | **8** | 與 resample 同型：ring buffer 積壓時限制一次 append 的 convert 次數，不霸佔執行緒 |
 
 **注意**：`audioTime.advanced(1024)` 是 AVAudioConverter 的 framesPerPacket（AAC=1024），非 frameCapacity，不需跟改。
+
+#### ⚠️ `kAudioMixerTrack_frameCapacity` 不可調大（2026-08-13 事故）
+
+曾嘗試調大到 4096（減少 convert/AudioUnitRender 呼叫次數），**導致整條音訊管線停擺**：
+
+- **機制**：`AudioMixerTrack.resample()` 的 `AVAudioConverter.convert(to: error:withInputFrom:)` 輸入 callback 請求的 `inNumberFrames` **等於 outputBuffer.frameCapacity**。ReplayKit 每幀輸入 1024 samples，ring buffer 每次只有一幀。frameCapacity=4096 時 converter 請求 4096 > ringBuffer.counts → 回 `.noDataNow`（AudioMixerTrack.swift:103）→ **不產出任何輸出**。
+- **症狀**：`publish throughput audioInputFrames=0 audioFrames=0 audioBytes=0`，但 extension 端 `[Audio流水]` 正常計數、影片 36fps 正常。斷點精準落在 `AudioMixerByMultiTrack` 產出前。
+- **結論**：frameCapacity 必須等於上游單幀輸入數（1024），它同時決定 `OutputNode.render` 的 AudioUnitRender 幀數，改動需同步 AudioNode。此參數是「對齊約束」而非「效能旋鈕」。
+
+#### ✅ 自動配置修正（2026-08-13 二次修復）
+
+官方文檔兩處關鍵約束：
+- `convert(to:from:)`（一次性）：output.frameCapacity ≥ input.frameLength
+- `convert(to:error:withInputFrom:)`（block 驅動）：converter "attempts to fill the buffer to its capacity"，但 **AVAudioConverterInputBlock 允許回傳少於請求的幀數**（設定 frameLength = 實際幀數），converter 消費後視需要再請求。
+
+**修正**：inputBlock 改為動態提供 ring buffer 現有全部幀數（`min(inNumberFrames, ringBuffer.counts)`），不再「不足請求量就 `.noDataNow` 停擺」。這樣：
+- `outputBuffer.frameCapacity` 不需對齊上游單幀大小 — 任何輸入幀數都能自動消化
+- `audioTime` 依實際輸出幀數（`outputBuffer.frameLength`）推進，而非硬編碼 1024
+- `AudioMixerByMultiTrack.mix()` 與 `OutputNode.render` 都用 `frameLength` 自動適應
+
+套用檔案：`AudioMixerTrack.resample()`、`AudioCodec.append()`（相同模式）。
 
 #### 修正後行為
 
