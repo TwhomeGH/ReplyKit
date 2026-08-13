@@ -321,6 +321,41 @@ AAC 端同理：AAC 需要固定 1024 幀 PCM 才產出一個 packet，部分幀
 
 ---
 
+## RTMP 時間戳基準跳變修正（2026-08-13）
+
+### 問題
+
+`RTMPTimestamp.update`（RTMPHaishinKit）只處理「倒退」（`value.seconds <= updatedAt`），**不處理向前大跳**。基準跳變時：
+
+| 情境 | 改前行為 | 後果 |
+|------|----------|------|
+| 倒退（15000→13000） | 回傳 0 + **重置基準** | wire timestamp 跳回 0，後續從新基準累積 → Non-monotonous DTS |
+| 向前大跳（13000→15000） | **2,000,000ms 巨大 delta 上 wire** | 下游 ffmpeg 誤判 gap/seek → 畫面凍結、音訊中斷、AV 自動修正 → **突然斷流** |
+
+RTMP type-1/type-2 的 timestamp 是**相對 delta 累積**，下游絕對時間 = delta 累積和。基準跳變（AudioMixerTrack 重建、ReplayKit PTS 切換）時送巨大 delta 或重置基準，都讓下游時間軸錯亂。
+
+### 修正（`RTMPTimestamp.swift`）
+
+統一 clamp：`delta < 0 || delta > maxDelta(2000ms)` 時，用上一次正常 delta（`lastNormalDelta`）取代：
+
+```swift
+if timedelta < 0 || timedelta > Self.maxDelta {
+    logger.warn("RTMPTimestamp jump: \(source) ...")
+    timedelta = lastNormalDelta   // 維持平滑，不重置基準
+}
+```
+
+- `maxDelta = 2000ms`：單一 delta 上限，涵蓋最低幀率（0.5fps idle），正常直播幀間距 < 100ms
+- `lastNormalDelta`：上一次正常 delta，基準跳變時維持 wire 平滑
+- **不重置基準**：`updatedAt` 仍更新為新值，跳變後第一個 clamp delta 是「假的」，之後恢復正常 — 只在跳變當下平滑
+
+### 設計要點
+
+- **雙保險不需要**：`AudioMixerByMultiTrack` 已有自動重新對齊機制 — `setupAudioNodes` 重置 `sampleTime = 0`，下次 mainTrack `track(didOutput:)` 因 `sampleTime == 0` 重新設 `sampleTime`/`anchor`，`mix()` 用新基準。anchor 不需手動重置。
+- **clamp 而非回傳 0**：回傳 0 會讓 wire 時間戳停滯一幀；clamp 到 `lastNormalDelta` 讓時間戳平滑前進，下游完全察覺不到跳變。
+
+---
+
 ## `isActive` 失效鏈
 
 ```
