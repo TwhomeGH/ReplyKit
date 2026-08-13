@@ -231,7 +231,7 @@ final class AppLogPersister {
                 // removeItem 會失敗；FileHandle 截斷到 0 與 extension 的
                 // seekToEndOfFile 並存，下次寫入從 0 開始。
                 if let handle = try? FileHandle(forWritingTo: earlySource) {
-                    handle.truncate(atOffset: 0)
+                    try? handle.truncate(atOffset: 0)
                     handle.closeFile()
                 }
             }
