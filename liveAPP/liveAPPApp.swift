@@ -219,9 +219,28 @@ final class AppLogPersister {
             guard let groupURL = FileManager.default.containerURL(
                 forSecurityApplicationGroupIdentifier: "group.nuclear.liveAPP"
             ) else { return }
+            // early-log.txt：extension 每筆 log 即時寫入（force-quit 兜底），
+            // 時間上先於 log.txt（flush timer 批量寫）。啟動時先合併它，再
+            // 合併 log.txt，讓分析者看到完整、按時間排序的 log。
+            let earlySource = groupURL.appendingPathComponent("early-log.txt")
+            if FileManager.default.fileExists(atPath: earlySource.path),
+               let earlyData = try? Data(contentsOf: earlySource),
+               !earlyData.isEmpty {
+                self.appendRaw(earlyData)
+                // 合併後清空（截斷而非刪除）：extension 可能正在寫入該檔，
+                // removeItem 會失敗；FileHandle 截斷到 0 與 extension 的
+                // seekToEndOfFile 並存，下次寫入從 0 開始。
+                if let handle = try? FileHandle(forWritingTo: earlySource) {
+                    handle.truncate(atOffset: 0)
+                    handle.closeFile()
+                }
+            }
             let source = groupURL.appendingPathComponent(self.logFileName)
             guard FileManager.default.fileExists(atPath: source.path),
-                  let data = try? Data(contentsOf: source) else { return }
+                  let data = try? Data(contentsOf: source) else {
+                self.trimNow()
+                return
+            }
             self.appendRaw(data)
             self.trimNow()
         }

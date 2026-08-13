@@ -112,6 +112,45 @@ sendlog() / receiveSocketLog() / Socket logbatch / [PIP_Chat] 每一條
 
 ---
 
+## 3.2 early-log.txt 接線 + 消除每筆 open/close (2026-08)
+
+### 背景問題
+
+`early-log.txt` 是 extension 側的「force-quit 兜底」日誌：`writeEarlyLogToFile()` 對**每一筆 log 即時寫入**（不經 flush timer 批次），確保主 App 被強制關閉/殺掉時最後一批 log 已落盤。但原先存在兩個缺陷：
+
+1. **主 App 從未讀取它** — 整個 repo 只有 extension 寫、零處讀，寫了也無人分析（死設計）
+2. **每筆 open/close 的檔案 I/O** — `logQueue` 是 concurrent，`[Video流水]`(60/s) + `[Audio流水]`(43/s) 等高頻 log 每筆都做完整 syscall 序列
+
+### 修正 1：主 App 啟動合併（`liveAPP/liveAPPApp.swift` `copyFromAppGroup()`）
+
+啟動時先合併 **early-log.txt**（extension 每筆即時寫入，時間上先於 log.txt），再合併 **log.txt**，讓分析者看到完整、按時間排序的日誌。合併後**截斷而非刪除**（`truncate(atOffset:0)`）——extension 可能正在寫入該檔，`removeItem` 會失敗，截斷與 extension 的 `seekToEndOfFile` 並存，下次寫入從 0 開始。
+
+### 修正 2：extension 持久寫入 handle（`ReplyKIT/Event.swift`）
+
+| 層面 | 改前 | 改後 |
+|------|------|------|
+| **handle 生命週期** | 每筆 log：`fileExists` 檢查 → `FileHandle(forWritingTo:)` 開啟 → `seekToEndOfFile` → `write` → `closeFile`（5 syscall） | 首次寫入時開啟並保存 `earlyLogHandle`，後續重用，只做 `seekToEndOfFile + write`（2 syscall） |
+| **並發安全** | 無保護（concurrent queue 下可能並發寫同一檔） | `earlyLogLock`（NSLock）保護單一 handle |
+| **trim** | 原子重寫讓持久 handle 指向舊 inode/offset | trim 前先關閉 handle，trim 後下次寫入重新開啟 |
+
+### 行為差異
+
+| 情境 | 改前 | 改後 |
+|------|------|------|
+| 高頻管道 log（~103 筆/s） | 每筆 open/close（~515 syscall/s） | 每筆 seek+write（~206 syscall/s），省 60% syscall |
+| force-quit 兜底 | write 即時落盤 | **不變**——仍即時寫入，最後資料不丟 |
+| 側載（無 App Group） | early-log 不寫（`guard !isSideload`） | **不變**——側載只走 socket + 主 App Documents/log.txt |
+| 正式版主 App 啟動 | early-log 無人讀取（死檔） | 合併進 Documents/log.txt 開頭，按時間排序完整呈現 |
+| 主 App 合併時 extension 併發寫 | — | 截斷而非刪除，兩者並存不衝突 |
+
+### 保留設計
+
+- `writeEarlyLogToFile()` 的 `guard !isSideload`：側載無 App Group、無可存取目錄，保持跳過
+- 主 App 運行期間不重複合併：early-log 是「啟動時一次性兜底」，運行中 log 走 socket/文件監聽即時進來
+- `log.txt` 的 `writeLogToFile()`（每 1s 批次寫）維持原狀，低頻不需持久 handle
+
+---
+
 ## 4. 側載自動偵測
 
 無 App Group 環境下（sideload），日誌系統自動切換為全 Socket 模式。

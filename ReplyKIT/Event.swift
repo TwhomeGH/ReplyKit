@@ -501,17 +501,37 @@ final class LogManager {
         try? trimmedText.write(to: fileURL, atomically: true, encoding: .utf8)
     }
 
+    // MARK: early-log 持久寫入 handle（消除每筆 open/close）
+    // logQueue 是 concurrent，early-log 寫入可能並發（log() 的 .async 與
+    // addDebugLog 的 .barrier），故用 lock 保護單一 handle。
+    private var earlyLogHandle: FileHandle?
+    private let earlyLogLock = NSLock()
+
     private func writeEarlyLogToFile(_ text: String) {
         guard !RPConfig.isSideload else { return }
-        let fileURL = earlyLogFileURL()
         guard let data = text.data(using: .utf8) else { return }
-        if FileManager.default.fileExists(atPath: fileURL.path),
-           let fileHandle = try? FileHandle(forWritingTo: fileURL) {
-            defer { fileHandle.closeFile() }
-            fileHandle.seekToEndOfFile()
-            fileHandle.write(data)
+        earlyLogLock.lock()
+        defer { earlyLogLock.unlock() }
+
+        let fileURL = earlyLogFileURL()
+        if let handle = earlyLogHandle {
+            // 重用已開啟的 handle：只做 seek+write，省掉 open/close syscall。
+            // seekToEndOfFile 同時涵蓋主 app 啟動時截斷後的位置重建。
+            handle.seekToEndOfFile()
+            handle.write(data)
+        } else if FileManager.default.fileExists(atPath: fileURL.path),
+                  let handle = try? FileHandle(forWritingTo: fileURL) {
+            earlyLogHandle = handle
+            handle.seekToEndOfFile()
+            handle.write(data)
         } else {
+            // 檔案不存在：先建立，再開啟並保持
             try? data.write(to: fileURL, options: .atomic)
+            if let handle = try? FileHandle(forWritingTo: fileURL) {
+                earlyLogHandle = handle
+                handle.seekToEndOfFile()
+                handle.write(data)
+            }
         }
         earlyLogWriteCount += 1
         if earlyLogWriteCount % trimCheckInterval == 0 {
@@ -527,6 +547,10 @@ final class LogManager {
     }
 
     private func trimEarlyLogFileIfNeeded(fileURL: URL) {
+        // 原子重寫整個檔案會讓持久的 write handle 指向舊 inode/offset，
+        // 故 trim 前先關閉，trim 後由下一次寫入重新開啟。
+        earlyLogHandle?.closeFile()
+        earlyLogHandle = nil
         guard let fileHandle = try? FileHandle(forReadingFrom: fileURL),
               let currentData = try? fileHandle.readToEnd()
         else { return }
