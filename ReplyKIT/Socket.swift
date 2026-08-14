@@ -254,7 +254,6 @@ class SocketClient : @unchecked Sendable {
         rtmpBatchContinuation = nil
         Task { await continuationStore.cancelAll() }
 
-        stopReceiveLoop()
         stopBatchTimer()
 
         receiveBuffer.removeAll()
@@ -303,7 +302,6 @@ class SocketClient : @unchecked Sendable {
         connectionCreationTime = nil
         receiveBuffer.removeAll()
         receiveOffset = 0
-        stopReceiveLoop()
     }
 
 
@@ -1325,47 +1323,22 @@ class SocketClient : @unchecked Sendable {
     }
 
     // MARK: - 接收資料
-    private var receiveTask: Task<Void, Never>?
-
+    // 以遞迴 callback 取代 Task + withCheckedThrowingContinuation。
+    // connection 以 start(queue:) 起動，receive callback 保證在 queue 上觸發，
+    // 所有狀態存取因此被同一條序列 queue 序列化，無跨執行緒 race。
+    // 連線被 _closeConnection/cleanupConnection 置空或取消時，
+    // callback 的 `connection === currentConnection` 檢查即失效，不會再 re-arm。
+    // 注意：re-arm 必須經由 queue.async，避免 NWConnection 在資料已緩衝時
+    // 同步觸發 completion handler 造成 unbounded recursion（見 Docs/nw-recursion.md）。
     private func startReceiveLoop() {
-        receiveTask?.cancel()
-        receiveTask = Task { [weak self] in
-            await self?.runReceiveLoop()
-        }
-    }
-
-    private func stopReceiveLoop() {
-        receiveTask?.cancel()
-        receiveTask = nil
-    }
-
-    private func runReceiveLoop() async {
         guard let con = self.connection else { return }
         let currentConnection = con
 
-        while !Task.isCancelled {
-            guard self.connection === currentConnection else { break }
+        con.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
+            guard let self else { return }
+            guard self.connection === currentConnection else { return }
 
-            let result: (data: Data?, isComplete: Bool, error: NWError?)
-            do {
-                result = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(Data?, Bool, NWError?), Error>) in
-                    guard self.connection === currentConnection else {
-                        continuation.resume(throwing: CancellationError())
-                        return
-                    }
-                    con.receive(minimumIncompleteLength: 1, maximumLength: 65536) { data, _, isComplete, error in
-                        if let error = error {
-                            continuation.resume(returning: (data, isComplete, error))
-                        } else {
-                            continuation.resume(returning: (data, isComplete, nil))
-                        }
-                    }
-                }
-            } catch {
-                break
-            }
-
-            if let data = result.data {
+            if let data = data {
                 if RPConfig.shared.enableSocketLog {
                     logger.debug("Socket received \(data.count, privacy: .public) bytes")
                 }
@@ -1381,7 +1354,9 @@ class SocketClient : @unchecked Sendable {
                 self.processReceiveBuffer()
             }
 
-            if result.isComplete {
+            guard self.connection === currentConnection else { return }
+
+            if isComplete {
                 if self.receiveOffset < self.receiveBuffer.count {
                     self.processReceiveBuffer()
                 }
@@ -1389,7 +1364,7 @@ class SocketClient : @unchecked Sendable {
                 return
             }
 
-            if let error = result.error {
+            if let error = error {
                 self.logTo("Socket receive error: \(error), closing connection")
 
                 CFNotificationCenterPostNotification(
@@ -1402,6 +1377,10 @@ class SocketClient : @unchecked Sendable {
 
                 self.cleanupConnection()
                 return
+            }
+
+            self.queue.async { [weak self] in
+                self?.startReceiveLoop()
             }
         }
     }

@@ -1031,7 +1031,7 @@ private func processReceiveBuffer() {
 | 檔案 | 新增 | 變更 |
 |------|------|------|
 | `ReplyKIT/Socket.swift` | `receiveOffset` 屬性 | `processReceiveBuffer()` 改用 `buffer[offset...]` 搜尋 + 游標前進；compact 邏輯；`cleanupConnection()` / `_closeConnection()` 重置 offset |
-| `liveAPP/Socket.swift` | `receiveOffsets: [ObjectIdentifier: Int]` 字典 | `runReceiveLoop()` 改用游標；compact 邏輯；`result.isComplete` 改用 `offset < buffer.count`；所有 cleanup 路徑（`removeConnection`、`suspend`、`releaseMemory`、`stopInternal`、`clearBroadcastConnections`）重置 offset |
+| `liveAPP/Socket.swift` | `receiveOffsets: [ObjectIdentifier: Int]` 字典 | `runReceiveLoop()` 改用游標；compact 邏輯；`result.isComplete` 改用 `offset < buffer.count`；所有 cleanup 路徑（`removeConnection`、`suspend`、`releaseMemory`、`stopInternal`、`clearStaleBroadcastConnections`）重置 offset |
 
 ### 預期改善
 

@@ -47,22 +47,25 @@ readUInt32()
 
 ## 修復方式
 
-### 1. receive loop → async/await
+### 1. receive loop → 序列 queue 上的遞迴 callback（現行設計）
 
 ```swift
-// ✅ 安全：每次 iteration 經過 suspension point
-private func runReceiveLoop() async {
-    while !Task.isCancelled {
-        let data = await withCheckedContinuation { continuation in
-            connection.receive(...) { content, _, _, _ in
-                continuation.resume(returning: content)
-            }
+// ✅ 安全：re-arm 經由 queue.async，每次 iteration 都經過 queue hop，
+// 即使 NWConnection 同步觸發 completion handler，stack depth 仍維持常數。
+private func startReceiveLoop() {
+    guard let con = self.connection else { return }
+    con.receive(...) { [weak self] data, _, isComplete, error in
+        guard let self else { return }
+        // 處理 data / isComplete / error（callback 保證在 start(queue:) 的 queue 上）
+        ...
+        self.queue.async { [weak self] in
+            self?.startReceiveLoop()   // re-arm，不走同步遞迴
         }
-        guard let data else { break }
-        process(data)
     }
 }
 ```
+
+**為什麼不用 Task + withCheckedThrowingContinuation：** 舊版 async/await loop 的 Task 跑在 concurrent executor 上，不在序列 `queue` 上，導致 `receiveBuffers`/`receiveOffsets`/`connections` 等字典與 `removeConnection`/`handleNewConnection`/`suspend` 產生跨執行緒 data race（Swift 6 會直接報錯）。改成 callback 後，因為 connection 是以 `start(queue:)` 起動，completion handler 保證在 `queue` 上觸發，所有狀態存取被同一條序列 queue 序列化。連線關閉時（`connection.cancel()` / 置 nil），callback 的 `connections[id] != nil` 或 `connection === currentConnection` 檢查即失效，不會再 re-arm，不需要任何 Task 取消機制。
 
 ### 2. `withUnsafeBytes<UInt32>` 遞迴 → 直接 byte shift
 
@@ -81,8 +84,8 @@ let result = UInt32(data[pos]) << 24
 
 | 檔案 | 修改內容 |
 |------|----------|
-| `ReplyKIT/Socket.swift` | `receive()` → `runReceiveLoop()` async loop |
-| `liveAPP/Socket.swift` | `receive(from:)` → `runReceiveLoop()` async loop |
+| `ReplyKIT/Socket.swift` | `runReceiveLoop()` async loop → `startReceiveLoop()` 遞迴 callback（`queue.async` re-arm） |
+| `liveAPP/Socket.swift` | `runReceiveLoop()` async loop → `startReceiveLoop(for:)` 遞迴 callback（`queue.async` re-arm） |
 | `F:/HaishinKit.swift/MoQTHaishinKit/Sources/MoQTSocket.swift` | `receive(on:continuation:)` → `startReceiveLoop()` async loop |
 | `F:/HaishinKit.swift/RTMPHaishinKit/Sources/Util/ByteArray.swift` | `UIntX(data:)` → direct byte arithmetic |
 | `F:/HaishinKit.swift/HaishinKit/Sources/Util/ByteArray.swift` | `UIntX(data:)` → direct byte arithmetic |

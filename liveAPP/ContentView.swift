@@ -230,16 +230,23 @@ struct BroadcastButton: UIViewRepresentable {
 
         static func trigger(attempt: Int = 0) {
             guard let picker = currentPicker else {
-                sendlog(title: "BroadcastButton", message: "trigger() failed: currentPicker is nil")
-                return
-            }
-            guard let button = picker.subviews.first(where: { $0 is UIButton }) as? UIButton else {
-                if attempt < 3 {
+                if attempt < 5 {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                         trigger(attempt: attempt + 1)
                     }
                 } else {
-                    sendlog(title: "BroadcastButton", message: "trigger() failed: no UIButton in picker subviews")
+                    sendlog(title: "BroadcastButton", message: "trigger() failed: currentPicker is nil after \(attempt) retries")
+                }
+                return
+            }
+            picker.layoutIfNeeded()
+            guard let button = picker.subviews.first(where: { $0 is UIButton }) as? UIButton else {
+                if attempt < 5 {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        trigger(attempt: attempt + 1)
+                    }
+                } else {
+                    sendlog(title: "BroadcastButton", message: "trigger() failed: no UIButton in picker subviews after \(attempt) retries")
                 }
                 return
             }

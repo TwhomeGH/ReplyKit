@@ -346,46 +346,20 @@ class SocketServer:ObservableObject {
 
 
     // MARK: - Receive Data
-    private var receiveTasks: [ObjectIdentifier: Task<Void, Never>] = [:]
-
+    // 以遞迴 callback 取代 Task + withCheckedThrowingContinuation。
+    // connection 以 start(queue:) 起動，receive callback 保證在 queue 上觸發，
+    // 所有狀態存取因此被同一條序列 queue 序列化，無跨執行緒 race。
+    // 注意：re-arm 必須經由 queue.async，避免 NWConnection 在資料已緩衝時
+    // 同步觸發 completion handler 造成 unbounded recursion（見 Docs/nw-recursion.md）。
     private func startReceiveLoop(for connection: NWConnection) {
         let id = ObjectIdentifier(connection)
-        receiveTasks[id]?.cancel()
-        receiveTasks[id] = Task { [weak self] in
-            await self?.runReceiveLoop(connection: connection, id: id)
-        }
-    }
-
-    private func stopReceiveLoop(for connection: NWConnection) {
-        let id = ObjectIdentifier(connection)
-        receiveTasks[id]?.cancel()
-        receiveTasks[id] = nil
-    }
-
-    private func runReceiveLoop(connection: NWConnection, id: ObjectIdentifier) async {
         guard connections[id] != nil else { return }
 
-        while !Task.isCancelled {
-            guard connections[id] != nil else { break }
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
+            guard let self else { return }
+            guard self.connections[id] != nil else { return }
 
-            let result: (data: Data?, isComplete: Bool, error: NWError?)
-            do {
-                result = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(Data?, Bool, NWError?), Error>) in
-                    guard connections[id] != nil else {
-                        continuation.resume(throwing: CancellationError())
-                        return
-                    }
-                    connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { data, _, isComplete, error in
-                        continuation.resume(returning: (data, isComplete, error))
-                    }
-                }
-            } catch {
-                break
-            }
-
-            guard connections[id] != nil else { break }
-
-            if let data = result.data, !data.isEmpty {
+            if let data = data, !data.isEmpty {
                 self.lastReceiveTimes[id] = Date()
                 var buffer = self.receiveBuffers[id] ?? Data()
                 var offset = self.receiveOffsets[id] ?? 0
@@ -397,8 +371,8 @@ class SocketServer:ObservableObject {
                 buffer.append(data)
 
                 if buffer.count > SocketServer.maxBufferSize {
-                    logTo("[\(id)] Buffer exceeded \(SocketServer.maxBufferSize) bytes, closing connection")
-                    removeConnection(connection)
+                    self.logTo("[\(id)] Buffer exceeded \(SocketServer.maxBufferSize) bytes, closing connection")
+                    self.removeConnection(connection)
                     return
                 }
 
@@ -406,8 +380,8 @@ class SocketServer:ObservableObject {
                     let lineData = buffer[offset..<newlineIndex]
                     offset = newlineIndex + 1
                     guard !lineData.isEmpty else { continue }
-                    handleReceivedData(Data(lineData), from: connection)
-                    guard connections[id] != nil else { return }
+                    self.handleReceivedData(Data(lineData), from: connection)
+                    guard self.connections[id] != nil else { return }
                 }
 
                 if offset > buffer.count / 2 {
@@ -415,28 +389,32 @@ class SocketServer:ObservableObject {
                     offset = 0
                 }
 
-                if connections[id] != nil {
-                    receiveBuffers[id] = buffer
-                    receiveOffsets[id] = offset
+                if self.connections[id] != nil {
+                    self.receiveBuffers[id] = buffer
+                    self.receiveOffsets[id] = offset
                 }
             }
 
-            guard connections[id] != nil else { break }
+            guard self.connections[id] != nil else { return }
 
-            if let error = result.error {
-                logTo("Receive error: \(error)")
-                removeConnection(connection)
+            if let error = error {
+                self.logTo("Receive error: \(error)")
+                self.removeConnection(connection)
                 return
             }
 
-            if result.isComplete {
-                if connections[id] != nil, let buffer = receiveBuffers[id], let offset = receiveOffsets[id], offset < buffer.count {
-                    handleReceivedData(Data(buffer[offset...]), from: connection)
+            if isComplete {
+                if self.connections[id] != nil, let buffer = self.receiveBuffers[id], let offset = self.receiveOffsets[id], offset < buffer.count {
+                    self.handleReceivedData(Data(buffer[offset...]), from: connection)
                 }
-                receiveBuffers[id] = nil
-                receiveOffsets[id] = nil
-                removeConnection(connection)
+                self.receiveBuffers[id] = nil
+                self.receiveOffsets[id] = nil
+                self.removeConnection(connection)
                 return
+            }
+
+            self.queue.async { [weak self] in
+                self?.startReceiveLoop(for: connection)
             }
         }
     }
@@ -1277,14 +1255,12 @@ class SocketServer:ObservableObject {
             self.logTo("Saved \(pendingQueue.count) pending payloads for re-queue")
         }
 
-        stopReceiveLoop(for: connection)
         connections[id] = nil
         receiveBuffers[id] = nil
         receiveOffsets[id] = nil
         lastReceiveTimes[id] = nil
         sendQueues[id] = nil
         sendingFlags[id] = nil
-
         if connections.isEmpty {
             stopKeepaliveTimer()
         }
@@ -1347,7 +1323,7 @@ class SocketServer:ObservableObject {
         logTo("SocketServer 準備直播：清理舊連線與緩衝")
         performOnQueue { [weak self] in
             guard let self else { return }
-            self.clearBroadcastConnections()
+            self.clearStaleBroadcastConnections()
         }
     }
 
@@ -1361,7 +1337,9 @@ class SocketServer:ObservableObject {
                     return
                 }
 
-                self.clearBroadcastConnections()
+                // 只清理非 ready 的殘留連線，保留仍健康的連線，
+                // 避免取消 extension 正在使用的連線導致連不上擴展。
+                self.clearStaleBroadcastConnections()
                 if self.listener?.state != .ready {
                     self.logTo("Listener not ready before broadcast (state: \(self.listener?.state.stateString ?? "nil")), restarting")
                     self.stopInternal()
@@ -1374,22 +1352,41 @@ class SocketServer:ObservableObject {
         }
     }
 
-    private func clearBroadcastConnections() {
+    /// 開始直播前清理殘留/失效的連線；保留健康連線（ready 已就緒、preparing 握手進行中）。
+    /// 連線會因 extension 進程終止而 RST，或由 keepalive（60s 無資料）清理，
+    /// 這裡只需清除尚未被 stateUpdateHandler 移除的殘留連線。
+    private func clearStaleBroadcastConnections() {
         dispatchPrecondition(condition: .onQueue(queue))
 
-        // 取消所有現有連線（extension 重新啟動後會建立新連線）
-        for (_, conn) in connections {
+        let staleIDs = connections.compactMap { id, conn -> ObjectIdentifier? in
+            switch conn.state {
+            case .ready, .preparing:
+                return nil
+            default:
+                return id
+            }
+        }
+
+        guard !staleIDs.isEmpty else { return }
+
+        for id in staleIDs {
+            guard let conn = connections[id] else { continue }
             conn.stateUpdateHandler = nil
             conn.cancel()
+            connections[id] = nil
+            receiveBuffers[id] = nil
+            receiveOffsets[id] = nil
+            lastReceiveTimes[id] = nil
+            sendQueues[id] = nil
+            sendingFlags[id] = nil
+            pendingFailedPayloads[id] = nil
         }
-        connections.removeAll()
-        receiveBuffers.removeAll()
-        receiveOffsets.removeAll()
-        lastReceiveTimes.removeAll()
-        sendQueues.removeAll()
-        sendingFlags.removeAll()
-        pendingFailedPayloads.removeAll()
-        stopKeepaliveTimer()
+
+        if connections.isEmpty {
+            stopKeepaliveTimer()
+        }
+
+        logTo("Cleared \(staleIDs.count) stale broadcast connections")
     }
 
     private func waitForReady(
