@@ -20,7 +20,7 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
 
     init(videoBitRate: Int = 6_000_000,
          audioBitRate: Int = 128_000) {
-        self.inner = StreamVideoAdaptiveBitRateStrategy(mamimumVideoBitrate: videoBitRate,mamimumAudioBitRate: audioBitRate)
+        self.inner = StreamVideoAdaptiveBitRateStrategy(mamimumVideoBitrate: videoBitRate)
     }
 
     func adjustBitrate(_ event: HaishinKit.NetworkMonitorEvent, stream: some HaishinKit.StreamConvertible) async {
