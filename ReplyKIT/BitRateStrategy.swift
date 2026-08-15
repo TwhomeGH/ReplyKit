@@ -31,7 +31,7 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
         self.cachedAudioBitRate = audioBitRate
     }
     
-    func updateVideoBitrate(BitRate: Int = 6_000_000) async -> {
+    func updateVideoBitrate(BitRate: Int = 6_000_000) async {
         self.cachedVideoBitRate = BitRate
 
         await self.inner.mamimumVideoBitRate = BitRate
