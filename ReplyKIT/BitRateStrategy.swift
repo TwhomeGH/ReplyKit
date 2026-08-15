@@ -30,7 +30,12 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
         self.cachedVideoBitRate = videoBitRate
         self.cachedAudioBitRate = audioBitRate
     }
+    
+    func updateVideoBitrate(BitRate: Int = 6_000_000) {
+        self.cachedVideoBitRate = BitRate
 
+        await.inner.mamimumVideoBitRate = BitRate
+    }
     func adjustBitrate(_ event: HaishinKit.NetworkMonitorEvent, stream: some HaishinKit.StreamConvertible) async {
         // 內建壅塞適應：壅塞時降 bitrate，健康時回復爬升，reset 復原
         await inner.adjustBitrate(event, stream: stream)

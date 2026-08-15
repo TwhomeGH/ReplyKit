@@ -676,6 +676,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 var settings = await rtmpStream.videoSettings
                 settings.bitRate = newBitRate
+
+                await streamStataus?.updateVideoBitrate(BitRate: newBitRate)
+
                 try? await rtmpStream.setVideoSettings(settings)
 
                 sendlog(message: "bitRateChange: 更新 bitrate=\(newBitRate/1000)kbps")
