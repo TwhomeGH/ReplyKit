@@ -8,8 +8,11 @@ import Foundation
 final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
     private let inner: StreamVideoAdaptiveBitRateStrategy
 
-    var mamimumVideoBitRate: Int { Task { await inner.mamimumVideoBitRate }.value }
-    var mamimumAudioBitRate: Int { Task { await inner.mamimumAudioBitRate }.value }
+    private var cachedVideoBitRate: Int
+    private var cachedAudioBitRate: Int
+
+    var mamimumVideoBitRate: Int { cachedVideoBitRate }
+    var mamimumAudioBitRate: Int { cachedAudioBitRate }
 
     // 指數移動平均（bit/s），tau 控制平滑時間常數
     private var avgOutBps: Double?
@@ -21,8 +24,11 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
     private let statsLogInterval: Int = 10
 
     init(videoBitRate: Int = 6_000_000,
-         audioBitRate: Int = 128_000) {
+        audioBitRate: Int = 128_000) {
         self.inner = StreamVideoAdaptiveBitRateStrategy(mamimumVideoBitrate: videoBitRate)
+
+        self.cachedVideoBitRate = videoBitRate
+        self.cachedAudioBitRate = audioBitRate
     }
 
     func adjustBitrate(_ event: HaishinKit.NetworkMonitorEvent, stream: some HaishinKit.StreamConvertible) async {
