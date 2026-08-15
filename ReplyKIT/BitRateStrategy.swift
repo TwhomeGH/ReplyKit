@@ -1,12 +1,19 @@
 import HaishinKit
 import Foundation
 
-// MARK: 碼率統計策略（僅統計，不做動態調整）
-// 壅塞處理由 HaishinKit fork 內部的 SocketBackpressure（三級丟幀）負責，
-// 此策略只負責收集 NetworkMonitor 統計並輸出節流日誌。
+// MARK: 碼率統計策略（組合：內建適應 + 統計，不取代）
+// 保留 StreamVideoAdaptiveBitRateStrategy 的壅塞適應
+// （publishInsufficientBWOccured 降速 / status 回復爬升 / reset 復原），
+// 此策略只額外收集 NetworkMonitor 統計並輸出節流日誌，不直接碰 bitrate。
 final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
-    var mamimumVideoBitRate: Int
-    var mamimumAudioBitRate: Int
+    private let inner: StreamVideoAdaptiveBitRateStrategy
+
+    var mamimumVideoBitRate: Int {
+        inner.mamimumVideoBitRate
+    }
+    var mamimumAudioBitRate: Int {
+        inner.mamimumAudioBitRate
+    }
 
     // 指數移動平均（bit/s），tau 控制平滑時間常數
     private var avgOutBps: Double?
@@ -19,11 +26,14 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
 
     init(videoBitRate: Int = 6_000_000,
          audioBitRate: Int = 128_000) {
-        self.mamimumVideoBitRate = videoBitRate
-        self.mamimumAudioBitRate = audioBitRate
+        self.inner = StreamVideoAdaptiveBitRateStrategy(mamimumVideobitrate: videoBitRate)
     }
 
     func adjustBitrate(_ event: HaishinKit.NetworkMonitorEvent, stream: some HaishinKit.StreamConvertible) async {
+        // 內建壅塞適應：壅塞時降 bitrate，健康時回復爬升，reset 復原
+        await inner.adjustBitrate(event, stream: stream)
+
+        // 以下只讀統計，不動 bitrate
         guard case .status(let report) = event else { return }
         let currentOut = report.currentBytesOutPerSecond
         updateAvgOutBps(latest: Double(currentOut * 8))
