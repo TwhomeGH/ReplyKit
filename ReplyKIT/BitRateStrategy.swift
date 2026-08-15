@@ -9,10 +9,10 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
     private let inner: StreamVideoAdaptiveBitRateStrategy
 
     var mamimumVideoBitRate: Int {
-        inner.mamimumVideoBitRate
+        Task { await inner.mamimumVideoBitRate }.value
     }
     var mamimumAudioBitRate: Int {
-        inner.mamimumAudioBitRate
+        Task { await inner.mamimumAudioBitRate }.value
     }
 
     // 指數移動平均（bit/s），tau 控制平滑時間常數
