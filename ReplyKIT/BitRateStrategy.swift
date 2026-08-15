@@ -8,6 +8,8 @@ import Foundation
 final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
     private let inner: StreamVideoAdaptiveBitRateStrategy
 
+    var mamimumVideoBitRate: Int { Task { await inner.mamimumVideoBitRate }.value }
+    var mamimumAudioBitRate: Int { Task { await inner.mamimumAudioBitRate }.value }
 
     // 指數移動平均（bit/s），tau 控制平滑時間常數
     private var avgOutBps: Double?
