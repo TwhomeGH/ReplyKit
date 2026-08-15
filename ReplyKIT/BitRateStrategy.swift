@@ -11,8 +11,8 @@ final actor MyStreamBitRateStrategy: @preconcurrency StreamBitRateStrategy {
     private var cachedVideoBitRate: Int
     private var cachedAudioBitRate: Int
 
-    var mamimumVideoBitRate: Int { cachedVideoBitRate }
-    var mamimumAudioBitRate: Int { cachedAudioBitRate }
+    let mamimumVideoBitRate: Int { cachedVideoBitRate }
+    let mamimumAudioBitRate: Int { cachedAudioBitRate }
 
     // 指數移動平均（bit/s），tau 控制平滑時間常數
     private var avgOutBps: Double?
