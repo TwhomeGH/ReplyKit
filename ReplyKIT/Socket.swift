@@ -694,12 +694,16 @@ class SocketClient : @unchecked Sendable {
         inFlightBatches += 1
         let safeEntries = entries.filter { (try? JSONSerialization.data(withJSONObject: $0, options: [.fragmentsAllowed])) != nil }
         let volAge = CFAbsoluteTimeGetCurrent() - latestVolumeTimestamp
-        let alive = latestVolumeTimestamp > 0 && volAge < 2.5
+        let alive = volAge < 2.5
+
+        
+        // 持續送最後音量值
+        
         let payload: [String: Any] = [
             "type": "logbatch",
             "entries": safeEntries,
-            "appVol": alive ? latestAppVolume : 0,
-            "micVol": alive ? latestMicVolume : 0
+            "appVol": latestAppVolume,
+            "micVol": latestMicVolume
         ]
         sendPayload(payload) { [weak self] _ in
             guard let self = self else { return }
@@ -1135,13 +1139,15 @@ class SocketClient : @unchecked Sendable {
         attributes: .concurrent
     )
 
+    let decoder = JSONDecoder()
+
     private func handleSingleJSON(_ data: Data) {
         SocketClient.parsingQueue.async { [weak self] in
             guard let self = self else { return }
 
             let base: TypePayload
             do {
-                base = try JSONDecoder().decode(TypePayload.self, from: data)
+                base = try decoder.decode(TypePayload.self, from: data)
             } catch {
                 self.logTo("[Socket]Decode failed ❌ \(error)")
                 return
@@ -1153,7 +1159,6 @@ class SocketClient : @unchecked Sendable {
         }
     }
 
-    let decoder = JSONDecoder()
 
     private func handleSingleJSONOnQueue(data: Data, type: String) {
         self.isProcessingRemoteUpdate = true

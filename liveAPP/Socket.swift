@@ -808,6 +808,8 @@ class SocketServer:ObservableObject {
 
     }
 
+    // MARK:JSON 處理
+    let encoder = JSONEncoder()
     let decoder = JSONDecoder()
 
     private func handleReceivedData(_ data: Data, from connection: NWConnection) {
@@ -1073,7 +1075,7 @@ class SocketServer:ObservableObject {
 
 
     private func encodedData<T: Encodable>(_ payload: T) -> Data? {
-        try? JSONEncoder().encode(payload)
+        try? encoder.encode(payload)
     }
 
 
