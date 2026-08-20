@@ -2,6 +2,7 @@ import Foundation
 import Accelerate
 import AVFoundation
 import Metal
+import QuartzCore
 
 // MARK: - Metal shader params (mirror of Metal struct)
 struct NoiseSuppressParams {
@@ -103,6 +104,11 @@ final class MetalRealTimeNoiseSuppressor {
     private let paramsBuffer: MTLBuffer
 
     private let gpuTimeoutMs: Double = 8.0
+    private let metalLogLock = NSLock()
+    private var lastMetalIssueLogAt = Date.distantPast
+    private var metalKernelSubmitCount: UInt64 = 0
+    private var metalKernelTimeoutCount: UInt64 = 0
+    private var metalKernelErrorCount: UInt64 = 0
 
     init?() {
         fftSetup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2))!
@@ -148,22 +154,34 @@ final class MetalRealTimeNoiseSuppressor {
         let binCount = fftSize / 2
         let binBytes = binCount * MemoryLayout<Float>.size
 
-        magBuffer = metalDevice.makeBuffer(length: binBytes, options: .storageModeShared)!
-        noiseBuffer = metalDevice.makeBuffer(length: binBytes, options: .storageModeShared)!
-        gainBuffer = metalDevice.makeBuffer(length: binBytes, options: .storageModeShared)!
-        realBuffer = metalDevice.makeBuffer(length: binBytes, options: .storageModeShared)!
-        imagBuffer = metalDevice.makeBuffer(length: binBytes, options: .storageModeShared)!
+        guard let mag = metalDevice.makeBuffer(length: binBytes, options: .storageModeShared),
+              let noise = metalDevice.makeBuffer(length: binBytes, options: .storageModeShared),
+              let gain = metalDevice.makeBuffer(length: binBytes, options: .storageModeShared),
+              let real = metalDevice.makeBuffer(length: binBytes, options: .storageModeShared),
+              let imag = metalDevice.makeBuffer(length: binBytes, options: .storageModeShared) else {
+            sendlog(message: "MetalNoiseSuppressor: 建立 buffer 失敗 bins:\(binCount) bytes:\(binBytes) device:\(metalDevice.name)")
+            return nil
+        }
+        magBuffer = mag
+        noiseBuffer = noise
+        gainBuffer = gain
+        realBuffer = real
+        imagBuffer = imag
 
         var params = NoiseSuppressParams(
             noiseAlpha: 0.98, noiseBeta: 0.02,
             vadThreshold: 0.0001, minGain: 0.01,
             frameSize: UInt32(binCount)
         )
-        paramsBuffer = metalDevice.makeBuffer(bytes: &params,
-                                              length: MemoryLayout<NoiseSuppressParams>.stride,
-                                              options: .storageModeShared)!
+        guard let paramsBuf = metalDevice.makeBuffer(bytes: &params,
+                                                     length: MemoryLayout<NoiseSuppressParams>.stride,
+                                                     options: .storageModeShared) else {
+            sendlog(message: "MetalNoiseSuppressor: 建立 params buffer 失敗 bytes:\(MemoryLayout<NoiseSuppressParams>.stride)")
+            return nil
+        }
+        paramsBuffer = paramsBuf
 
-        sendlog(message: "MetalNoiseSuppressor: 初始化完成 bins=\(binCount)")
+        sendlog(message: "MetalNoiseSuppressor: 初始化完成 bins=\(binCount) bytesPerBuffer=\(binBytes) queue=audio device=\(metalDevice.name)")
     }
 
     deinit {
@@ -320,8 +338,20 @@ final class MetalRealTimeNoiseSuppressor {
         memcpy(realBuffer.contents(), split.realp, binCount * MemoryLayout<Float>.size)
         memcpy(imagBuffer.contents(), split.imagp, binCount * MemoryLayout<Float>.size)
 
-        guard let cmd = metalQueue.makeCommandBuffer(),
-              let enc = cmd.makeComputeCommandEncoder() else { return false }
+        guard let cmd = metalQueue.makeCommandBuffer() else {
+            recordMetalIssue("makeCommandBuffer nil bins:\(binCount)")
+            return false
+        }
+        metalKernelSubmitCount &+= 1
+        let commandID = metalKernelSubmitCount
+        cmd.label = "ReplyKit.audio.noise#\(commandID)"
+
+        guard let enc = cmd.makeComputeCommandEncoder() else {
+            metalKernelErrorCount &+= 1
+            recordMetalIssue("makeComputeCommandEncoder nil cmd:#\(commandID) status:\(cmd.status.rawValue) error:\(describeCommandBufferError(cmd.error))")
+            return false
+        }
+        enc.label = "ReplyKit.audio.noise.encoder"
 
         enc.setComputePipelineState(metalPipeline)
         enc.setBuffer(magBuffer, offset: 0, index: 0)
@@ -341,6 +371,7 @@ final class MetalRealTimeNoiseSuppressor {
         cmd.addCompletedHandler { _ in
             sema.signal()
         }
+        let submittedAt = CACurrentMediaTime()
         cmd.commit()
 
         // 在專用序列上等待 GPU 完成，避免阻塞 Swift Concurrency 協同執行緒
@@ -348,7 +379,19 @@ final class MetalRealTimeNoiseSuppressor {
         let waitResult = sema.wait(timeout: timeout)
 
         guard waitResult == .success else {
+            metalKernelTimeoutCount &+= 1
+            recordMetalIssue("timeout cmd:#\(commandID) limit:\(gpuTimeoutMs)ms status:\(cmd.status.rawValue) error:\(describeCommandBufferError(cmd.error))")
             return false
+        }
+
+        let elapsedMs = (CACurrentMediaTime() - submittedAt) * 1000
+        guard cmd.status == .completed && cmd.error == nil else {
+            metalKernelErrorCount &+= 1
+            recordMetalIssue("completedWithError cmd:#\(commandID) status:\(cmd.status.rawValue) elapsed:\(String(format: "%.2f", elapsedMs))ms error:\(describeCommandBufferError(cmd.error))")
+            return false
+        }
+        if elapsedMs > gpuTimeoutMs * 0.75 {
+            recordMetalIssue("slow cmd:#\(commandID) elapsed:\(String(format: "%.2f", elapsedMs))ms limit:\(gpuTimeoutMs)ms")
         }
 
         memcpy(&noiseEstimate, noiseBuffer.contents(), binCount * MemoryLayout<Float>.size)
@@ -356,5 +399,46 @@ final class MetalRealTimeNoiseSuppressor {
         memcpy(split.realp, realBuffer.contents(), binCount * MemoryLayout<Float>.size)
         memcpy(split.imagp, imagBuffer.contents(), binCount * MemoryLayout<Float>.size)
         return true
+    }
+
+    private func recordMetalIssue(_ message: String) {
+        let now = Date()
+        metalLogLock.lock()
+        let shouldLog = now.timeIntervalSince(lastMetalIssueLogAt) >= 1.0
+        if shouldLog {
+            lastMetalIssueLogAt = now
+        }
+        let stats = "submitted:\(metalKernelSubmitCount) timeout:\(metalKernelTimeoutCount) error:\(metalKernelErrorCount)"
+        metalLogLock.unlock()
+        guard shouldLog else { return }
+        sendlog(message: "MetalNoiseSuppressor: \(message) stats:\(stats)")
+    }
+
+    private func describeCommandBufferError(_ error: Error?) -> String {
+        guard let error else { return "nil" }
+        let ns = error as NSError
+        let name: String
+        switch ns.code {
+        case 0: name = "none"
+        case 1: name = "internal"
+        case 2: name = "timeout"
+        case 3: name = "pageFault"
+        case 4: name = "blacklisted"
+        case 7: name = "notPermitted"
+        case 8: name = "outOfMemory"
+        case 9: name = "invalidResource"
+        case 10: name = "memoryless"
+        case 11: name = "deviceRemoved"
+        case 12: name = "stackOverflow"
+        default: name = "unknown(\(ns.code))"
+        }
+        var parts = ["domain:\(ns.domain)", "code:\(ns.code)", "mtl:\(name)", "desc:\(ns.localizedDescription)"]
+        if let encoderInfos = ns.userInfo[MTLCommandBufferEncoderInfoErrorKey] as? [MTLCommandBufferEncoderInfo], !encoderInfos.isEmpty {
+            let encoderText = encoderInfos.enumerated().map { index, info in
+                "#\(index) label:\(info.label ?? "nil") status:\(info.errorState.rawValue)"
+            }.joined(separator: ";")
+            parts.append("encoders:\(encoderText)")
+        }
+        return parts.joined(separator: " ")
     }
 }

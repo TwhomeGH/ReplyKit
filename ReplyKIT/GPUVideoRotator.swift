@@ -7,6 +7,7 @@ import simd
 import Foundation
 import AVFoundation
 import Accelerate
+import QuartzCore
 
 import HaishinKit
 
@@ -379,6 +380,13 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     private let commandBufferTimeout: TimeInterval = 1.0
     private let metalFailureLogLock = NSLock()
     private var lastMetalFailureLogAt = Date.distantPast
+    private var lastPoolPressureLogAt = Date.distantPast
+    private let commandStatsLock = NSLock()
+    private var nextCommandID: UInt64 = 0
+    private var submittedCommandCount: UInt64 = 0
+    private var completedCommandCount: UInt64 = 0
+    private var timedOutCommandCount: UInt64 = 0
+    private var commandBufferInFlight = 0
     /// 限制 in-flight command buffer 數量，防止 GPU 被淹沒
     private var originalQualityMode: QualityMode?
     private var effectiveQualityMode: QualityMode {
@@ -427,7 +435,88 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         metalFailureLogLock.unlock()
 
         guard shouldLog else { return }
-        sendlog(message: "[GPU Rotator] Metal 失敗[\(count)/\(maxConsecutiveMetalFailures)]: \(reason)")
+        sendlog(message: "[GPU Rotator] Metal 失敗[\(count)/\(maxConsecutiveMetalFailures)]: \(reason) stats:\(commandStatsSnapshot()) pools:\(poolSnapshot()) mem:\(memorySnapshot())")
+    }
+
+    private func nextCommandSnapshot() -> (id: UInt64, inFlight: Int, submitted: UInt64) {
+        commandStatsLock.lock()
+        nextCommandID &+= 1
+        submittedCommandCount &+= 1
+        commandBufferInFlight += 1
+        let snapshot = (nextCommandID, commandBufferInFlight, submittedCommandCount)
+        commandStatsLock.unlock()
+        return snapshot
+    }
+
+    private func markCommandCompleted() -> (inFlight: Int, completed: UInt64) {
+        commandStatsLock.lock()
+        completedCommandCount &+= 1
+        commandBufferInFlight = max(0, commandBufferInFlight - 1)
+        let snapshot = (commandBufferInFlight, completedCommandCount)
+        commandStatsLock.unlock()
+        return snapshot
+    }
+
+    private func markCommandTimedOut() -> UInt64 {
+        commandStatsLock.lock()
+        timedOutCommandCount &+= 1
+        let count = timedOutCommandCount
+        commandStatsLock.unlock()
+        return count
+    }
+
+    private func commandStatsSnapshot() -> String {
+        commandStatsLock.lock()
+        let text = "submitted:\(submittedCommandCount) completed:\(completedCommandCount) timeout:\(timedOutCommandCount) inflight:\(commandBufferInFlight)"
+        commandStatsLock.unlock()
+        return text
+    }
+
+    private func poolSnapshot() -> String {
+        outputPoolLock.lock()
+        let text = outputPool
+            .map { "\($0.key.width)x\($0.key.height):\($0.value.count)" }
+            .sorted()
+            .joined(separator: ",")
+        outputPoolLock.unlock()
+        return text.isEmpty ? "empty" : text
+    }
+
+    private func memorySnapshot() -> String {
+        let used = ProcessInfo.processInfo.physicalMemory
+        return "physical:\(used / 1024 / 1024)MB"
+    }
+
+    private func describeCommandBufferError(_ error: Error?) -> String {
+        guard let error else { return "nil" }
+        let ns = error as NSError
+        var parts = ["domain:\(ns.domain)", "code:\(ns.code)", "desc:\(ns.localizedDescription)"]
+        let mtlName: String
+        switch ns.code {
+        case 0: mtlName = "none"
+        case 1: mtlName = "internal"
+        case 2: mtlName = "timeout"
+        case 3: mtlName = "pageFault"
+        case 4: mtlName = "blacklisted"
+        case 7: mtlName = "notPermitted"
+        case 8: mtlName = "outOfMemory"
+        case 9: mtlName = "invalidResource"
+        case 10: mtlName = "memoryless"
+        case 11: mtlName = "deviceRemoved"
+        case 12: mtlName = "stackOverflow"
+        default: mtlName = "unknown(\(ns.code))"
+        }
+        parts.append("mtl:\(mtlName)")
+        if let encoderInfos = ns.userInfo[MTLCommandBufferEncoderInfoErrorKey] as? [MTLCommandBufferEncoderInfo], !encoderInfos.isEmpty {
+            let encoderText = encoderInfos.enumerated().map { index, info in
+                "#\(index) label:\(info.label ?? "nil") status:\(info.errorState.rawValue)"
+            }.joined(separator: ";")
+            parts.append("encoders:\(encoderText)")
+        }
+        if !ns.userInfo.isEmpty {
+            parts.append("userInfo:\(ns.userInfo.keys.map { "\($0)" }.sorted().joined(separator: ","))")
+        }
+        return parts.joined(separator: " ")
     }
 
     private func ensureMetalResources() -> Bool {
@@ -592,22 +681,30 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             return nil
         }
 
-        guard let ycvTexIn = makeTexture(from: inBuffer, planeIndex: 0),
-            let uvcvTexIn = makeTexture(from: inBuffer, planeIndex: 1),
-            let cmd = MetalContext.shared.queue.makeCommandBuffer() else {
+        let yTexture = makeTexture(from: inBuffer, planeIndex: 0)
+        let uvTexture = makeTexture(from: inBuffer, planeIndex: 1)
+        let commandBuffer = MetalContext.shared.queue.makeCommandBuffer()
+
+        guard let ycvTexIn = yTexture,
+            let uvcvTexIn = uvTexture,
+            let cmd = commandBuffer else {
 
             recycleOutput(outSet)
 
-            handleMetalFailure("makeTexture 或 makeCommandBuffer 失敗")
+            handleMetalFailure("makeTexture 或 makeCommandBuffer 失敗 src:\(srcW)x\(srcH) dst:\(dstW)x\(dstH) y:\(yTexture != nil) uv:\(uvTexture != nil) cmd:\(commandBuffer != nil) fmt:\(pixelFormatDescription(inBuffer)) planes:\(CVPixelBufferGetPlaneCount(inBuffer))")
             
 
             return nil
         }
 
+        let commandSnapshot = nextCommandSnapshot()
+        cmd.label = "ReplyKit.video.rotate#\(commandSnapshot.id) \(srcW)x\(srcH)->\(dstW)x\(dstH)"
+
         guard renderPlaneYUV(cmd: cmd, srcY: ycvTexIn.tex, srcUV: uvcvTexIn.tex,
                         dstY: outSet.yTex, dstUV: outSet.uvTex, angle: angle) else {
             recycleOutput(outSet)
-            handleMetalFailure("renderPlaneYUV 建立 encoder 失敗")
+            _ = markCommandCompleted()
+            handleMetalFailure("renderPlaneYUV 建立 encoder 失敗 cmd:#\(commandSnapshot.id) srcY:\(textureDescription(ycvTexIn.tex)) srcUV:\(textureDescription(uvcvTexIn.tex)) dstY:\(textureDescription(outSet.yTex)) dstUV:\(textureDescription(outSet.uvTex))")
             return nil
         }
 
@@ -622,8 +719,12 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                                         inY: ycvTexIn.cv, inUV: uvcvTexIn.cv
             )
 
+            let submittedAt = CACurrentMediaTime()
+
             cmd.addCompletedHandler { [self] _ in
                 let completion = completionState.markCompletion()
+                let elapsedMs = (CACurrentMediaTime() - submittedAt) * 1000
+                let completedStats = self.markCommandCompleted()
 
 
                 frameC.inY = nil
@@ -642,23 +743,26 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                         wrapped: wrapped
                     )
                 } else if !completion.completedAfterTimeout {
-                    let errorText = cmd.error?.localizedDescription ?? "\(cmd.status.rawValue)"
-                    self.handleMetalFailure("commandBuffer 完成失敗 status:\(errorText)")
+                    self.handleMetalFailure("commandBuffer 完成失敗 cmd:#\(commandSnapshot.id) status:\(cmd.status.rawValue) elapsed:\(String(format: "%.2f", elapsedMs))ms error:\(self.describeCommandBufferError(cmd.error))")
+                } else {
+                    self.logTo("commandBuffer 延遲完成 cmd:#\(commandSnapshot.id) status:\(cmd.status.rawValue) elapsed:\(String(format: "%.2f", elapsedMs))ms inflight:\(completedStats.inFlight)")
                 }
 
                 self.recycleOutput(frameC.outSet)
                 if completion.shouldResume {
                     cont.resume(returning: wrapped)
                 }
-                self.logTo("GPU Frame down :\(frameC.timing.presentationTimeStamp)s")
+                self.logTo("GPU Frame down cmd:#\(commandSnapshot.id) pts:\(frameC.timing.presentationTimeStamp)s elapsed:\(String(format: "%.2f", elapsedMs))ms inflight:\(completedStats.inFlight)")
             }
 
             cmd.commit()
+            self.logTo("GPU command submit cmd:#\(commandSnapshot.id) inflight:\(commandSnapshot.inFlight) submitted:\(commandSnapshot.submitted)")
 
             DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + commandBufferTimeout) { [self] in
                 guard completionState.markTimeout() else { return }
 
-                self.handleMetalFailure("commandBuffer 逾時 \(String(format: "%.1f", commandBufferTimeout))s")
+                let timeoutCount = self.markCommandTimedOut()
+                self.handleMetalFailure("commandBuffer 逾時 cmd:#\(commandSnapshot.id) timeout:\(String(format: "%.1f", commandBufferTimeout))s totalTimeout:\(timeoutCount) status:\(cmd.status.rawValue) error:\(self.describeCommandBufferError(cmd.error)) src:\(srcW)x\(srcH) dst:\(dstW)x\(dstH)")
                 cont.resume(returning: nil)
             }
         }
@@ -671,13 +775,24 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
     guard isActive else { return nil }
     outputPoolLock.lock()
-    defer { outputPoolLock.unlock() }
 
     let key = OutputKey(width: width, height: height)
     if var pool = outputPool[key], !pool.isEmpty {
         let set = pool.removeFirst()
         outputPool[key] = pool
+        outputPoolLock.unlock()
         return set
+    }
+    let currentPools = outputPool
+        .map { "\($0.key.width)x\($0.key.height):\($0.value.count)" }
+        .sorted()
+        .joined(separator: ",")
+    outputPoolLock.unlock()
+
+    let now = Date()
+    if now.timeIntervalSince(lastPoolPressureLogAt) >= 5.0 {
+        lastPoolPressureLogAt = now
+        logTo("output pool miss \(width)x\(height)，runtime 建立新 buffer，目前 pools:\(currentPools.isEmpty ? "empty" : currentPools)")
     }
 
     var pb: CVPixelBuffer?
@@ -691,13 +806,15 @@ private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
                                      kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
                                      attrs as CFDictionary, &pb)
     guard status == kCVReturnSuccess, let pixelBuffer = pb else {
-        logTo("CVPixelBufferCreate failed with status: \(status)")
+        sendlog(message: "[GPU Rotator] CVPixelBufferCreate 失敗 status:\(status) size:\(width)x\(height) stats:\(commandStatsSnapshot()) pools:\(poolSnapshot()) mem:\(memorySnapshot())")
         return nil
     }
 
-    guard let yTex = makeTexture(from: pixelBuffer, planeIndex: 0),
-          let uvTex = makeTexture(from: pixelBuffer, planeIndex: 1) else {
-        
+    let yTex = makeTexture(from: pixelBuffer, planeIndex: 0)
+    let uvTex = makeTexture(from: pixelBuffer, planeIndex: 1)
+    guard let yTex,
+          let uvTex else {
+        sendlog(message: "[GPU Rotator] output texture 建立失敗 size:\(width)x\(height) y:\(yTex != nil) uv:\(uvTex != nil) fmt:\(pixelFormatDescription(pixelBuffer))")
         return nil
     }
 
@@ -762,7 +879,14 @@ private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
     }
 
     func makeTexture(from pixelBuffer: CVPixelBuffer, planeIndex: Int) -> (cv: CVMetalTexture, tex: MTLTexture)? {
-        guard let cache = MetalContext.shared.ensureTextureCache() else { return nil }
+        guard let cache = MetalContext.shared.ensureTextureCache() else {
+            sendlog(message: "[GPU Rotator] makeTexture 失敗: textureCache nil plane:\(planeIndex) fmt:\(pixelFormatDescription(pixelBuffer))")
+            return nil
+        }
+        guard planeIndex < CVPixelBufferGetPlaneCount(pixelBuffer) else {
+            sendlog(message: "[GPU Rotator] makeTexture 失敗: plane 越界 plane:\(planeIndex) planes:\(CVPixelBufferGetPlaneCount(pixelBuffer)) fmt:\(pixelFormatDescription(pixelBuffer))")
+            return nil
+        }
         let width = CVPixelBufferGetWidthOfPlane(pixelBuffer, planeIndex)
         let height = CVPixelBufferGetHeightOfPlane(pixelBuffer, planeIndex)
         let pixelFormat: MTLPixelFormat = (planeIndex == 0) ? .r8Unorm : .rg8Unorm
@@ -770,9 +894,27 @@ private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
         var cvTex: CVMetalTexture?
         let status = CVMetalTextureCacheCreateTextureFromImage(nil, cache, pixelBuffer, nil,
                                                                 pixelFormat, width, height, planeIndex, &cvTex)
-        guard status == kCVReturnSuccess, let cv = cvTex, let tex = CVMetalTextureGetTexture(cv) else { return nil }
+        guard status == kCVReturnSuccess, let cv = cvTex, let tex = CVMetalTextureGetTexture(cv) else {
+            sendlog(message: "[GPU Rotator] makeTexture 失敗 status:\(status) plane:\(planeIndex) planeSize:\(width)x\(height) mtlFmt:\(pixelFormat.rawValue) pbFmt:\(pixelFormatDescription(pixelBuffer))")
+            return nil
+        }
 
         return (cv: cv, tex: tex)
+    }
+
+    private func pixelFormatDescription(_ pixelBuffer: CVPixelBuffer) -> String {
+        let fmt = CVPixelBufferGetPixelFormatType(pixelBuffer)
+        switch fmt {
+        case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange: return "NV12_full"
+        case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange: return "NV12_video"
+        case kCVPixelFormatType_32BGRA: return "BGRA"
+        case kCVPixelFormatType_32ARGB: return "ARGB"
+        default: return String(format: "0x%08x", fmt)
+        }
+    }
+
+    private func textureDescription(_ texture: MTLTexture) -> String {
+        "\(texture.width)x\(texture.height) fmt:\(texture.pixelFormat.rawValue) usage:\(texture.usage.rawValue) storage:\(texture.storageMode.rawValue)"
     }
 
 
@@ -872,8 +1014,15 @@ private func fallbackSampleBuffer(
                         dstY: MTLTexture, dstUV: MTLTexture,
                         angle: RotationAngle) -> Bool {
 
-        guard let compute = (effectiveQualityMode == .live ? pipelineBilinear : pipelineBicubic),
-            let encoder = cmd.makeComputeCommandEncoder() else { return false }
+        guard let compute = (effectiveQualityMode == .live ? pipelineBilinear : pipelineBicubic) else {
+            sendlog(message: "[GPU Rotator] renderPlaneYUV 無 compute pipeline mode:\(effectiveQualityMode)")
+            return false
+        }
+        guard let encoder = cmd.makeComputeCommandEncoder() else {
+            sendlog(message: "[GPU Rotator] renderPlaneYUV makeComputeCommandEncoder nil cmdStatus:\(cmd.status.rawValue) error:\(describeCommandBufferError(cmd.error))")
+            return false
+        }
+        encoder.label = "ReplyKit.video.rotate.encoder"
 
         encoder.setComputePipelineState(compute)
         encoder.setTexture(srcY, index: 0)
