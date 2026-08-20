@@ -371,9 +371,15 @@ class SocketServer:ObservableObject {
                 buffer.append(data)
 
                 if buffer.count > SocketServer.maxBufferSize {
-                    self.logTo("[\(id)] Buffer exceeded \(SocketServer.maxBufferSize) bytes, closing connection")
-                    self.removeConnection(connection)
-                    return
+                    if let newlineIndex = buffer[offset...].firstIndex(of: 0x0A) {
+                        buffer.removeSubrange(0..<(newlineIndex + 1))
+                        offset = 0
+                        self.logTo("[\(id)] Buffer exceeded \(SocketServer.maxBufferSize) bytes, dropped oversized line and resynced")
+                    } else {
+                        self.logTo("[\(id)] Buffer exceeded \(SocketServer.maxBufferSize) bytes with no newline, closing connection")
+                        self.removeConnection(connection)
+                        return
+                    }
                 }
 
                 while let newlineIndex = buffer[offset...].firstIndex(of: 0x0A) {
@@ -782,11 +788,15 @@ class SocketServer:ObservableObject {
         let enableTimeDebug = userDefaults?.object(forKey: "EnableTimeDebug") as? Bool ?? false
         let enablePipelineLog = userDefaults?.object(forKey: "EnablePipelineLog") as? Bool ?? false
 
+        let enableRotatelog = UserDefaults?.object(forKey: "EnableRotatelog") as? Bool ?? false
+
+
         LPConfig.shared.logMode = logMode
         LPConfig.shared.logURL = logURL
         LPConfig.shared.onLogPage = onlogPage
         LPConfig.shared.enableLog = enableLog
         LPConfig.shared.SocketLog = enableSocketLog
+        
 
         let payload: [String: Any] = [
             "type": "logConfig",
@@ -798,10 +808,9 @@ class SocketServer:ObservableObject {
             "enableSocketLog": enableSocketLog,
             "enableTimeDebug": enableTimeDebug,
             "enablePipelineLog": enablePipelineLog,
-
-
-
+            "enableRotatelog":enableRotatelog
         ]
+
         logTo("RTMP DebugLogConfig[Socket]\(payload)")
 
         return payload

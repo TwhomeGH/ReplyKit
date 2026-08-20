@@ -989,6 +989,7 @@ class SocketClient : @unchecked Sendable {
         let enableSocketLog:Bool
         let enableTimeDebug:Bool
         let enablePipelineLog:Bool
+        let enableRotatelog:Bool
     }
 
     struct LogMessage: Codable {
@@ -1227,31 +1228,35 @@ class SocketClient : @unchecked Sendable {
                     }
                     RPConfig.shared.enableTimeDebug = env.enableTimeDebug
                     RPConfig.shared.enablePipelineLog = env.enablePipelineLog
+                    
+                    RPConfig.shared.enableRotateLog = env.enableRotatelog
+
                     RPConfig.shared.applyLogMode()
                     self.didReceiveLogConfigInBatch = true
-                    self.logTo("[Get]logMode:\(env.logMode) logURL:\(env.logURL) SocketLog:\(RPConfig.shared.enableSocketLog) TimeDebug:\(env.enableTimeDebug)")
-                    self.logTo("[Get]onLog:\(env.onlogPage) onAudio:\(env.onAudioPage) EnableLog:\(env.enableLog)")
+
+                    SocketClient.shared.sendLogBatch(entries: [
+                        "[Get]logMode:\(env.logMode) logURL:\(env.logURL) SocketLog:\(RPConfig.shared.enableSocketLog) TimeDebug:\(env.enableTimeDebug)",
+                        "[Get]onLog:\(env.onlogPage) onAudio:\(env.onAudioPage) EnableLog:\(env.enableLog) RotateDebug:\(env.enableRotatelog)"
+
+                    ])
+
                     if !self.isProcessingBatch {
                         guard let cont = self.logContinuation else {
-                            self.logTo("[LogConfig] no pending continuation, ignore")
-                            self._closeConnection()
+                            SocketClient.shared.sendLog(message: "[LogConfig] no pending continuation, ignore")
                             return
                         }
                         self.logContinuation = nil
                         cont.resume(returning: true)
-                        self._closeConnection()
                     }
                 } else {
-                    self.logTo("[Socket] logConfig decode failed")
+                    SocketClient.shared.sendLog(message:"[Socket] logConfig decode failed")
                     if !self.isProcessingBatch {
                         guard let cont = self.logContinuation else {
-                            self.logTo("[LogConfig] no pending continuation, ignore")
-                            self._closeConnection()
+                            SocketClient.shared.sendLog(message:"[LogConfig] no pending continuation, ignore")
                             return
                         }
                         self.logContinuation = nil
                         cont.resume(returning: false)
-                        self._closeConnection()
                     }
                 }
 
@@ -1267,12 +1272,10 @@ class SocketClient : @unchecked Sendable {
                     if !self.isProcessingBatch {
                         guard let cont = self.rtmpContinuation else {
                             self.logTo("[RTMP] no pending continuation, ignore")
-                            self._closeConnection()
                             return
                         }
                         self.rtmpContinuation = nil
                         cont.resume(returning: true)
-                        self._closeConnection()
                     }
                 }
 
@@ -1351,9 +1354,15 @@ class SocketClient : @unchecked Sendable {
                 self.receiveBuffer.append(data)
 
                 if self.receiveBuffer.count > SocketClient.maxBufferSize {
-                    self.logTo("Buffer exceeded \(SocketClient.maxBufferSize) bytes, closing connection")
-                    self.cleanupConnection()
-                    return
+                    if let newlineIndex = self.receiveBuffer[receiveOffset...].firstIndex(of: 0x0A) {
+                        self.receiveBuffer.removeSubrange(0..<(newlineIndex + 1))
+                        self.receiveOffset = 0
+                        self.logTo("Buffer exceeded \(SocketClient.maxBufferSize) bytes, dropped oversized line and resynced")
+                    } else {
+                        self.logTo("Buffer exceeded \(SocketClient.maxBufferSize) bytes with no newline, closing connection")
+                        self.cleanupConnection()
+                        return
+                    }
                 }
 
                 self.processReceiveBuffer()

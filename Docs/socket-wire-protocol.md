@@ -281,3 +281,50 @@ ReplyKIT (Extension)                          liveAPP (Main App)
   - 按需連線（on-demand），每次操作（requestRTMP、logConfig、UPSet、sendStreamEnd、flushBatch）獨立建立 TCP 連線，收到回應後關閉
   - **不主動發送 heartbeat**，僅被動回應 server 的 `keepalive` 時回送 `{"type":"heartbeat"}`
 - logbatch 在 `onLogPage=true` 時保持長連線，false 時關閉
+
+---
+
+## 接收緩衝與 Framing Resync
+
+兩端接收路徑共用相同的緩衝策略，用於在 `0x0A` framing 失步時復原連線。
+
+### 緩衝行為
+
+- 每個連線各自維護一個 receive buffer（`SocketClient.receiveBuffer` / `SocketServer.receiveBuffers[id]`）
+- 每次 receive callback 收到資料後，立即同步**抽乾所有完整行**（以 `0x0A` 分隔）逐一解析
+- 因此 buffer 在一般情況下只會剩下「尚未 trim 的已消費前綴」與「最後一個還沒等到換行的殘行」
+- 殘行 trim 條件：`receiveOffset > buffer.count / 2` 時移除已消費前綴（amortized O(1)）
+
+### 上限與觸發條件
+
+| 常量 | 值 | 位置 |
+|------|-----|------|
+| `SocketClient.maxBufferSize` | 1,048,576 (1MB) | `ReplyKIT/Socket.swift` |
+| `SocketServer.maxBufferSize` | 1,048,576 (1MB) | `liveAPP/Socket.swift` |
+
+因為完整行每次 receive 都會被抽乾，`buffer.count > 1MB` 只在一種情況成立：**累積 1MB 資料內都未出現換行**——即單筆訊息超過 1MB，或對方 framing 失步／灌入無換行垃圾。
+
+> 常規訊息（logConfig、RTMP、keepalive、pushState、UPSet、log batch）皆遠小於 1MB（log batch 另有 4KB 上限），故此上限是**異常 framing 的安全網，而非吞吐限制**，不建議調高——調高只會讓失步時的垃圾多累積數 MB 才觸發 resync。
+
+### 超限處置：Resync 優先，斷線為最後手段
+
+```swift
+if buffer.count > maxBufferSize {
+    if let newlineIndex = buffer[offset...].firstIndex(of: 0x0A) {
+        // 丟棄「過大的那一行」+ 已消費前綴，從換行後繼續 → framing 復原，保持連線
+        buffer.removeSubrange(0..<(newlineIndex + 1))
+        offset = 0
+        log("Buffer exceeded, dropped oversized line and resynced")
+    } else {
+        // 連換行都找不到 = 協議徹底失步 → 關閉連線
+        closeConnection()
+    }
+}
+```
+
+- **找得到換行** → 丟棄那條過大的訊息與已消費前綴，重設 offset，**保持連線**並繼續解析後續正常訊息（resync）
+- **找不到換行** → 對方在灌無換行垃圾或 framing 永久損壞，此時才關閉連線
+
+### 改進動機
+
+先前行為是 buffer 超限即關閉連線。這把「單一異常／過大的訊息」放大成「整個 log pipeline 中斷 + 重連」（sideload 下還需靠 `liveAPP.SocketRestart` Darwin notification 重建）。現行 resync 讓大部分失步案例只丟棄一筆異常資料即可復原，斷線僅保留給 framing 無法復原的最壞情況。
