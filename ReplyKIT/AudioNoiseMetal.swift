@@ -435,7 +435,7 @@ final class MetalRealTimeNoiseSuppressor {
         var parts = ["domain:\(ns.domain)", "code:\(ns.code)", "mtl:\(name)", "desc:\(ns.localizedDescription)"]
         if let encoderInfos = ns.userInfo[MTLCommandBufferEncoderInfoErrorKey] as? [MTLCommandBufferEncoderInfo], !encoderInfos.isEmpty {
             let encoderText = encoderInfos.enumerated().map { index, info in
-                "#\(index) label:\(info.label ?? "nil") status:\(info.errorState.rawValue)"
+                "#\(index) label:\(info.label) status:\(info.errorState.rawValue)"
             }.joined(separator: ";")
             parts.append("encoders:\(encoderText)")
         }

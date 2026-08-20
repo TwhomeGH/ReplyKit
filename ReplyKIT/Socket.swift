@@ -693,8 +693,8 @@ class SocketClient : @unchecked Sendable {
     private func _sendBatch(_ entries: [String]) {
         inFlightBatches += 1
         let safeEntries = entries.filter { (try? JSONSerialization.data(withJSONObject: $0, options: [.fragmentsAllowed])) != nil }
-        let volAge = CFAbsoluteTimeGetCurrent() - latestVolumeTimestamp
-        let alive = volAge < 2.5
+        // let volAge = CFAbsoluteTimeGetCurrent() - latestVolumeTimestamp
+        // let alive = volAge < 2.5
 
         
         // 持續送最後音量值
