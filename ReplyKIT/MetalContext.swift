@@ -19,7 +19,19 @@ final class MetalContext: @unchecked Sendable {
         CVMetalTextureCacheCreate(nil, nil, dev, nil, &cache)
         textureCache = cache
 
-        sendlog(message: "MetalContext: 初始化完成 \(device.name) unifiedMemory:\(device.hasUnifiedMemory) lowPower:\(device.isLowPower) headless:\(device.isHeadless) maxThreads:\(device.maxThreadsPerThreadgroup.width)x\(device.maxThreadsPerThreadgroup.height)x\(device.maxThreadsPerThreadgroup.depth)")
+        sendlog(message: "MetalContext: 初始化完成 \(device.name) \(deviceDebugDescription(device))")
+    }
+
+    private func deviceDebugDescription(_ device: MTLDevice) -> String {
+        var parts = [
+            "unifiedMemory:\(device.hasUnifiedMemory)",
+            "maxThreads:\(device.maxThreadsPerThreadgroup.width)x\(device.maxThreadsPerThreadgroup.height)x\(device.maxThreadsPerThreadgroup.depth)"
+        ]
+        #if os(macOS) || targetEnvironment(macCatalyst)
+        parts.append("lowPower:\(device.isLowPower)")
+        parts.append("headless:\(device.isHeadless)")
+        #endif
+        return parts.joined(separator: " ")
     }
 
     func ensureTextureCache() -> CVMetalTextureCache? {
