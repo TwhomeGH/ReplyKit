@@ -788,7 +788,7 @@ class SocketServer:ObservableObject {
         let enableTimeDebug = userDefaults?.object(forKey: "EnableTimeDebug") as? Bool ?? false
         let enablePipelineLog = userDefaults?.object(forKey: "EnablePipelineLog") as? Bool ?? false
 
-        let enableRotatelog = UserDefaults?.object(forKey: "EnableRotatelog") as? Bool ?? false
+        let enableRotatelog = userDefaults?.object(forKey: "EnableRotatelog") as? Bool ?? false
 
 
         LPConfig.shared.logMode = logMode
