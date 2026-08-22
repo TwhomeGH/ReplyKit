@@ -1508,6 +1508,43 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     }
 
+    // 統一「確保處理器存在且可用」的檢查與重建。
+    // happy path：存在且 active → 直接處理。
+    // recovery path：不存在（已 init）或非 active → rate-limit 重建（每秒至多一次），
+    // 避免 GPU 持續逾時期間每幀都 new + cleanup 的 rebuild 風暴。
+    private func ensureVideoProcessor(_ buffer: CMSampleBuffer, timing: CMSampleTimingInfo) {
+        if let vp = videoProcessor, vp.isActive {
+            vp.process(buffer, originalTime: timing)
+            return
+        }
+
+        guard processorsInitialized, !isStopping else { return }
+        guard lastTimestamp.seconds > lastlogTime + logInterval else { return }
+        lastlogTime = lastTimestamp.seconds
+
+        if videoProcessor == nil {
+            sendlog(message: "[Video] ⚠️ 進程不存在！ count:\(videoFrameCount)")
+        } else {
+            sendlog(message: "[Video] ⚠️ videoProcessor 非 active (GPU 連續逾時)，觸發 rebuild")
+        }
+        rebuildVideo()
+    }
+
+    // AudioProcessor.isActive 恆為 true（無 GPU 逾時機制），故不存在「存在但 inactive」分支。
+    private func ensureAudioProcessor(_ buffer: CMSampleBuffer, trackType: AudioTrackType, timing: CMSampleTimingInfo) {
+        if let ap = audioProcessor {
+            ap.enqueue(buffer, trackType: trackType, originalTime: timing)
+            return
+        }
+
+        guard processorsInitialized, !isStopping else { return }
+        guard lastTimestamp.seconds > lastlogTimeAudio + logInterval else { return }
+        lastlogTimeAudio = lastTimestamp.seconds
+
+        sendlog(message: "[Audio] ⚠️ 進程不存在！ count:\(audioFrameCount)")
+        rebuildAudio()
+    }
+
     func startRTMP(url:String?,key:String?) async {
 
         // 設定重連回呼（取代 attemptReconnect）
@@ -2142,22 +2179,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             }
 
             
-            if let vp = videoProcessor {
-                if vp.isActive {
-                    vp.process(sampleBuffer, originalTime: timing)
-                } else if !isStopping {
-                    sendlog(message: "[Video] ⚠️ videoProcessor 已標記重建 (GPU 連續逾時)，觸發 rebuild")
-                    rebuildVideo()
-                }
-            } else if processorsInitialized {
-                if lastTimestamp.seconds > lastlogTime + logInterval  {
-                    sendlog(message: "[Video] ⚠️ 進程不存在！ count:\(videoFrameCount)")
-                    lastlogTime = lastTimestamp.seconds
-                    if !isStopping {
-                        rebuildVideo()
-                    }
-                }
-            }
+            ensureVideoProcessor(sampleBuffer, timing: timing)
 
 
             
@@ -2194,29 +2216,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 }
 
 
-                if let ap = audioProcessor {
-                    
-                    
-                    if ap.isActive {
-                        ap.enqueue(sampleBuffer, trackType: trackType, originalTime: timing)
-                    } else if !isStopping {
-                        
-                        sendlog(message: "[Audio] ⚠️ audioProcessor 已嘗試重建，觸發 rebuild")
-                        rebuildAudio()
-
-                    }
-
-                } else if processorsInitialized {
-                    if lastTimestamp.seconds > lastlogTimeAudio + logInterval  {
-                        sendlog(message: "[Audio] ⚠️ 進程不存在！ count:\(audioFrameCount)")
-                        lastlogTimeAudio = lastTimestamp.seconds
-
-                        if !isStopping {
-                            rebuildAudio()
-                        }
-
-                    }
-                }
+                ensureAudioProcessor(sampleBuffer, trackType: trackType, timing: timing)
 
 
             

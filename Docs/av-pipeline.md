@@ -110,17 +110,36 @@ GPU rotator 正常 ────────────────────�
 
 ### 重建路徑
 
+統一由 `ensureVideoProcessor(_:timing:)` / `ensureAudioProcessor(_:trackType:timing:)` 負責「確保處理器存在且可用」：
+
 ```
 SampleHandler 診斷 (每 1500 幀)
-    │  vp:Y / vp:INACTIVE
+    │  vp:Y / vp:INACTIVE / vp:N
     ▼
-vp.isActive == false ──► rebuildVideo()
-    │
-    ├── videoProcessor = nil
-    ├── VideoFrameProcessor(mediaMixer, sendlog)  ← 全新 FrameProcessorActor
-    │     └── GPU rotator 全新初始化 → pipeline 重新編譯
-    └── 下一幀開始走新管線
+ensureVideoProcessor()
+    ├── vp 存在且 isActive → vp.process(frame)          ← happy path，直接處理
+    └── 否則（nil 或 INACTIVE）：
+          ├── guard processorsInitialized && !isStopping
+          ├── guard lastTimestamp > lastlogTime + 1s   ← rate-limit 每秒至多一次
+          ├── log 原因（進程不存在 / GPU 連續逾時）
+          └── rebuildVideo()
+                ├── videoProcessor = nil
+                ├── VideoFrameProcessor(mediaMixer, sendlog)  ← 全新 FrameProcessorActor
+                │     └── GPU rotator 全新初始化 → pipeline 重新編譯
+                └── 下一幀開始走新管線
 ```
+
+audio 端 `ensureAudioProcessor` 邏輯相同，但**沒有 inactive 分支** — `AudioProcessor.isActive` 是 `let isActive = true` 恆真（audio pipe 無 GPU 逾時機制），「存在但 inactive」在 audio 是死碼，已移除。
+
+#### 改進（2026-08-21）：收斂重建路徑 + 移除 rebuild 風暴
+
+先前的兩段 if/else（video 與 audio 各一份）有三個問題，本次一併修正：
+
+| 問題 | 舊行為 | 新行為 |
+|------|--------|--------|
+| rebuild 風暴 | video 的「存在但 inactive」分支**每幀**呼叫 `rebuildVideo()`（GPU 持續逾時時 60fps → 每秒 60 次 new + cleanup） | 所有 recovery 路徑統一 rate-limit **每秒至多一次**，首次偵測仍立即重建 |
+| 行為不一致 | video：inactive 無 rate-limit；nil 有 1s rate-limit，兩條路徑不對稱 | 兩條路徑共用同一 rate-limit |
+| audio 死碼 | `AudioProcessor.isActive` 恆 `true`，`else if !isStopping` 分支永遠不可達 | 移除死碼分支，audio 只剩「nil → rate-limited rebuild」一條 recovery 路徑 |
 
 ---
 
@@ -376,7 +395,8 @@ rotator.isPermanentlyDead → FrameProcessorActor.processFrame() 偵測到
 ```
 SampleHandler 診斷日誌: "[VFrame] ... vp:INACTIVE ..."
     │
-    │  if vp.isActive == false && !isStopping
+    │  ensureVideoProcessor() 偵測到 vp 非 active
+    │  (rate-limit: 每秒至多一次 rebuild，避免每幀重建風暴)
     ▼
 rebuildVideo()
     │
@@ -386,7 +406,7 @@ rebuildVideo()
 
 `onPermanentFailure` 是 `FrameProcessorActor` 的 `let onPermanentFailure: (@Sendable () -> Void)?`，在建構時透過 `nonisolated func setPermanentFailureHandler()` 設定。
 
-AudioProcessor 的 `isActive` 固定為 `true`（audio pipe 無永久失敗路徑，純供 diagnostics 顯示 "Y"）。
+AudioProcessor 的 `isActive` 固定為 `true`（audio pipe 無永久失敗路徑，純供 diagnostics 顯示 "Y"），因此 audio 端不存在「存在但 inactive」分支（原為死碼，2026-08-21 移除），只有「nil → rate-limited rebuild」。
 
 ---
 
