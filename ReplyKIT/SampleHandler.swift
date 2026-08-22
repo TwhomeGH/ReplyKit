@@ -1394,7 +1394,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             audioSettings.isEchoCancellationEnabled = true // 使用原始啟用預設回音消除
             audioSettings.echoCancellationReferenceTrack = 0   // app（track 0）
 
-            sendlog(message: "使用原始音訊時自動啟用內建Echo",RPConfig.shared.state.isOringinAudio)
+            sendlog(message: "使用原始音訊時自動啟用內建Echo")
 
         }
 
