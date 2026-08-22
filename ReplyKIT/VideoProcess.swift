@@ -19,6 +19,8 @@ actor FrameProcessorActor {
     private let maxConsecutiveDrops = 60
     private var lastGoodSnapshot: CVPixelBuffer?
     private var lastGoodFormatDescription: CMVideoFormatDescription?
+    private var lastInputPTS: CMTime?
+    private var measuredInterval: CMTime?
 
     init(debug: Bool, sendlog: @escaping (String) -> Void) {
         self.debug = debug
@@ -49,7 +51,29 @@ actor FrameProcessorActor {
         } else {
             result = await tryCpuFallback(imageBuffer: imageBuffer, originalTime: originalTime, angle: angle)
         }
+        trackFrameInterval(pts: originalTime.presentationTimeStamp)
         return settle(result, originalTime: originalTime)
+    }
+
+    // 量測輸入幀的實際 PTS 間隔（EMA），供 freeze fallback 在 duration 無效時使用，
+    // 取代硬編碼的 1/60（60fps 假設）。freeze 期間 ReplayKit 幀仍以真實幀率送達，
+    // 因此量測值能自動適應 30/60fps。
+    private func trackFrameInterval(pts: CMTime) {
+        if let last = lastInputPTS {
+            let delta = pts - last
+            if delta.isValid, delta.seconds > 0 {
+                let alpha = 0.2
+                if let m = measuredInterval {
+                    measuredInterval = CMTime(
+                        seconds: m.seconds * (1 - alpha) + delta.seconds * alpha,
+                        preferredTimescale: 600
+                    )
+                } else {
+                    measuredInterval = delta
+                }
+            }
+        }
+        lastInputPTS = pts
     }
 
     private func settle(_ result: CMSampleBuffer?, originalTime: CMSampleTimingInfo) -> CMSampleBuffer? {
@@ -94,6 +118,8 @@ actor FrameProcessorActor {
         let duration: CMTime
         if originalTime.duration.isValid, originalTime.duration.seconds > 0 {
             duration = originalTime.duration
+        } else if let measuredInterval {
+            duration = measuredInterval
         } else {
             duration = CMTime(seconds: 1.0 / 60.0, preferredTimescale: 600)
         }
@@ -279,6 +305,8 @@ actor FrameProcessorActor {
         consecutiveDropCount = 0
         lastGoodSnapshot = nil
         lastGoodFormatDescription = nil
+        lastInputPTS = nil
+        measuredInterval = nil
     }
 
     nonisolated func setRotatorDebug(_ on: Bool) {

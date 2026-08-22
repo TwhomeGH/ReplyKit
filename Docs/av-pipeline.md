@@ -85,7 +85,8 @@ GPU rotator 正常 ────────────────────�
 
 - **觸發**：`processFrame` 回傳 nil（GPU 逾時 / Metal 失敗 / CPU fallback 也失敗），`consecutiveDropCount` 在 3..<60 之間。
 - **內容**：`lastGoodSnapshot` 是上次成功旋轉幀的 **deep copy**（`copyPixelBuffer` 逐 plane memcpy），不能用 sample buffer 參照 — GPU output pool 會重用 CVPixelBuffer，直接留參照會被下一幀覆寫。
-- **時間戳**：`makeFallbackSampleBuffer` 用 `CMSampleBufferCreateReadyWithImageBuffer` 重打**目前幀的 PTS**（`presentationTimeStamp: pts`、`decodeTimeStamp: .invalid`、duration 沿用目前幀）。絕不能用舊幀 PTS，否則 `RTMPTimestamp.update` 偵測 `value <= updatedAt` 走 invalid sequence 重置 → Non-monotonous DTS → 碼率爆衝假象。
+- **時間戳**：`makeFallbackSampleBuffer` 用 `CMSampleBufferCreateReadyWithImageBuffer` 重打**目前幀的 PTS**（`presentationTimeStamp: pts`、`decodeTimeStamp: .invalid`）。絕不能用舊幀 PTS，否則 `RTMPTimestamp.update` 偵測 `value <= updatedAt` 走 invalid sequence 重置 → Non-monotonous DTS → 碼率爆衝假象。
+- **duration 優先序**（2026-08-21）：`originalTime.duration`（sample buffer 自己的值）→ `measuredInterval`（EMA 量測）→ 1/60（最後極端退路）。`FrameProcessorActor.trackFrameInterval` 用 EMA（alpha 0.2）追蹤輸入幀的 PTS delta；freeze 期間 ReplayKit 幀仍以真實幀率送達，量測值自動適應 30/60fps，避免 freeze 期間每幀少報 16.67ms（60fps 假設）造成 timeline 漂移。`cleanup()` 時重置量測狀態，避免跨 rebuild 沿用舊間隔。
 - **效果**：GPU 真卡住時下游仍持續收到幀 → `RTMPStream.videoInputFrames > 0`，不會觸發 `interval > 3s && videoInputFrames==0` 的 encoder restart；GPU 恢復後 PTS 平滑銜接無跳動。缺點是畫面停在最後好幀（凍結），這是「凍結但連續」對「無聲停滯」的取捨。
 
 ### 背壓
