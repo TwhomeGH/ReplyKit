@@ -1390,13 +1390,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         audioSettings.mainTrack = 1            // mic（你 app 的 track 1，會持續輸出）
 
-        // if RPConfig.shared.state.isOringinAudio {
-        //     audioSettings.isEchoCancellationEnabled = true // 使用原始啟用預設回音消除
-        //     audioSettings.echoCancellationReferenceTrack = 0   // app（track 0）
+        if RPConfig.shared.state.enableEchoFix {
+            audioSettings.isEchoCancellationEnabled = true // 使用原始啟用預設回音消除
+            audioSettings.echoCancellationReferenceTrack = 0   // app（track 0）
 
-        //     sendlog(message: "使用原始音訊時自動啟用內建Echo")
+            sendlog(message: "使用原始音訊 內建回音消除 Echo啟用")
 
-        // }
+        }
 
         
 

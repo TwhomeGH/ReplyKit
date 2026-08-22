@@ -548,7 +548,7 @@ struct AudioSettingsView:View {
                     Text("啟用回音消除功能！")
                 }
 
-                Text("啟用後會對音訊進行回音處理，減少應用音量重疊")                                                                                                     
+                Text("啟用後會對音訊進行回音處理，減少應用音量重疊 [此功能如果使用原始音訊可控制內置回音消除功能]")                                                                                                     
                 .font(.footnote)
                 .foregroundColor(.secondary)
                 .padding(.bottom, 5)
