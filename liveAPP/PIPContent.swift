@@ -8,6 +8,7 @@
 import SwiftUI
 import UIKit
 import AVFoundation
+import Foundation
 
 
 
@@ -41,11 +42,47 @@ actor PiPImageCache {
 
     static let shared = PiPImageCache()
 
+    private static let maxConcurrentDownloads = 5
+
+    // 共用 session：真實 UA + Accept、明確 timeout、HTTP cache、waitsForConnectivity。
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.httpAdditionalHeaders = [
+            "User-Agent": PiPImageCache.makeUserAgent(),
+            "Accept": "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8"
+        ]
+        config.timeoutIntervalForRequest = 10
+        config.timeoutIntervalForResource = 30
+        config.waitsForConnectivity = true
+        config.httpMaximumConnectionsPerHost = 4
+        config.requestCachePolicy = .useProtocolCachePolicy
+        config.urlCache = URLCache(
+            memoryCapacity: 20 * 1024 * 1024,
+            diskCapacity: 100 * 1024 * 1024,
+            diskPath: "PIPImageCache"
+        )
+        return URLSession(configuration: config)
+    }()
+
+    // 真實 Safari UA 樣板：只替換會變動的部分（裝置型號 + OS 版本 + Safari version），
+    // 固定段（AppleWebKit / Mobile / Safari build）來自實際抓取的 Safari UA：
+    //   Mozilla/5.0 (iPad; CPU OS 18_7 like Mac OS X) AppleWebKit/605.1.15
+    //   (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1
+    // 注意：Version token 目前跟隨 OS 版本（ProcessInfo），
+    // 但真實 Safari 的 Version（如 27.0）從 iOS 18 起與 OS 脫鉤，ProcessInfo 給不出。
+    private static func makeUserAgent() -> String {
+        let isIPad = UIDevice.current.userInterfaceIdiom == .pad
+        let device = isIPad ? "iPad" : "iPhone"
+        let cpuToken = isIPad ? "CPU OS" : "CPU iPhone OS"
+        let os = ProcessInfo.processInfo.operatingSystemVersion
+        let osVersion = "\(os.majorVersion)_\(os.minorVersion)"
+        let safariVersion = "\(os.majorVersion).\(os.minorVersion)"
+        return "Mozilla/5.0 (\(device); \(cpuToken) \(osVersion) like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/\(safariVersion) Mobile/15E148 Safari/604.1"
+    }
 
     private var inFlightTasks: [String: Task<UIImage?, Never>] = [:]
     private var pendingCallbacks: [String: [(UIImage?) -> Void]] = [:]
 
-    private let maxConcurrentDownloads = 5
     private var currentDownloads = 0
     private var waitingQueue: [String] = []
 
@@ -53,7 +90,6 @@ actor PiPImageCache {
     }
 
     func loadImage(urlString: String, completion: @escaping (UIImage?) -> Void) async {
-
         if let img = cache.object(forKey: urlString as NSString) {
             await MainActor.run {
                 completion(img)
@@ -66,66 +102,94 @@ actor PiPImageCache {
             return
         }
 
-        let task = Task<UIImage?, Never> {
-            await self.waitForSlot()
-
-            guard let url = URL(string: urlString) else {
-                let callbacks = pendingCallbacks.removeValue(forKey: urlString) ?? []
-                await MainActor.run {
-                    completion(nil)
-                    for cb in callbacks {
-                        cb(nil)
-                    }
-                }
-                self.finishDownload(urlString: urlString)
-                return nil
-            }
-
-            do {
-                let (data, _) = try await URLSession.shared.data(from: url)
-
-                let callbacks = pendingCallbacks.removeValue(forKey: urlString) ?? []
-
-                if let img = UIImage(data: data) {
-                    cache.setObject(img, forKey: urlString as NSString)
-                    await MainActor.run {
-                        completion(img)
-                        for cb in callbacks {
-                            cb(img)
-                        }
-                    }
-                } else {
-                    await MainActor.run {
-                        completion(nil)
-                        for cb in callbacks {
-                            cb(nil)
-                        }
-                    }
-                }
-                self.finishDownload(urlString: urlString)
-                return nil
-
-            } catch {
-                let callbacks = pendingCallbacks.removeValue(forKey: urlString) ?? []
-                await MainActor.run {
-                    completion(nil)
-                    for cb in callbacks {
-                        cb(nil)
-                    }
-                }
-                self.finishDownload(urlString: urlString)
-                return nil
-            }
+        // 已在 waiting queue（尚未開始下載）→ 只附加 callback，避免重複入隊
+        if pendingCallbacks[urlString] != nil {
+            pendingCallbacks[urlString]?.append(completion)
+            return
         }
 
+        if currentDownloads >= Self.maxConcurrentDownloads {
+            waitingQueue.append(urlString)
+            pendingCallbacks[urlString] = [completion]
+            return
+        }
+
+        startDownload(urlString: urlString, completions: [completion])
+    }
+
+    private func startDownload(urlString: String, completions: [(UIImage?) -> Void]) {
+        currentDownloads += 1
+        let task = Task<UIImage?, Never> {
+            await self.performDownload(urlString: urlString, completions: completions)
+            return nil
+        }
         inFlightTasks[urlString] = task
     }
 
-    private func waitForSlot() async {
-        while currentDownloads >= maxConcurrentDownloads {
-            await Task.yield()
+    private func performDownload(
+        urlString: String,
+        completions: [(UIImage?) -> Void]
+    ) async {
+        guard let url = URL(string: urlString) else {
+            await complete(urlString: urlString, completions: completions, image: nil)
+            return
         }
-        currentDownloads += 1
+
+        do {
+            let (data, response) = try await Self.session.data(for: URLRequest(url: url))
+
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode) else {
+                let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+                PIPLogTo("[PIPImageCache] HTTP \(status) 拒絕 \(urlString)")
+                await complete(urlString: urlString, completions: completions, image: nil)
+                return
+            }
+
+            let image = UIImage(data: data)
+            if let image {
+                cache.setObject(image, forKey: urlString as NSString)
+            } else {
+                PIPLogTo("[PIPImageCache] decode 失敗 (HTTP 200) \(urlString)")
+            }
+            await complete(urlString: urlString, completions: completions, image: image)
+        } catch {
+            PIPLogTo("[PIPImageCache] 下載失敗: \(error.localizedDescription) \(urlString)")
+            await complete(urlString: urlString, completions: completions, image: nil)
+        }
+    }
+
+    private func complete(
+        urlString: String,
+        completions: [(UIImage?) -> Void],
+        image: UIImage?
+    ) async {
+        let callbacks = pendingCallbacks.removeValue(forKey: urlString) ?? []
+        await MainActor.run {
+            for cb in completions {
+                cb(image)
+            }
+            for cb in callbacks {
+                cb(image)
+            }
+        }
+        finishDownload(urlString: urlString)
+    }
+
+    private func finishDownload(urlString: String) {
+        inFlightTasks[urlString] = nil
+        currentDownloads = max(0, currentDownloads - 1)
+        startNextIfPossible()
+    }
+
+    // 真正的 FIFO：slot 空出時從 waitingQueue pop 下一個，取代原本的 busy-wait
+    private func startNextIfPossible() {
+        while currentDownloads < Self.maxConcurrentDownloads, !waitingQueue.isEmpty {
+            let nextURL = waitingQueue.removeFirst()
+            let callbacks = pendingCallbacks.removeValue(forKey: nextURL) ?? []
+            guard !callbacks.isEmpty else { continue }
+            startDownload(urlString: nextURL, completions: callbacks)
+        }
     }
 
     func clear() {
@@ -135,11 +199,6 @@ actor PiPImageCache {
         pendingCallbacks.removeAll()
         waitingQueue.removeAll()
         currentDownloads = 0
-    }
-
-    private func finishDownload(urlString: String) {
-        currentDownloads = max(0, currentDownloads - 1)
-        inFlightTasks[urlString] = nil
     }
 }
 

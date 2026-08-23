@@ -422,7 +422,7 @@ actor AudioProcessorActor {
     private func processRMS(_ buffer: CMSampleBuffer, trackType: AudioTrackType, originalTime: CMSampleTimingInfo) {
         let now = CACurrentMediaTime()
         let lastUpdate = (trackType == .app) ? lastAppRMSUpdateTime : lastMicRMSUpdateTime
-        guard onAudioPage && now - lastUpdate > rmsInterval else { return }
+        guard onAudioPage && now - lastUpdate > rmsInterval || now - lastUpdate > 60.0  else { return }
         if trackType == .app {
             lastAppRMSUpdateTime = now
         } else {

@@ -1358,3 +1358,51 @@ PiP 停止後若 `applicationState == .background` 則 `scheduleSocketRefresh()`
 | 進背景 submit、`earliestBeginDate` | ✓ |
 | handler：先排下次 → 做事 → `expirationHandler` → `setTaskCompleted` | ✓ |
 | resubmit 取代前次（不需 cancel） | ✓（本次修正） |
+
+---
+
+## Section 42 — PiPImageCache 網路與效能改進（2026-08）
+
+**目標：** 修正頭像／禮物／行內 emoji 圖片下載失敗無法診斷、以及下載佇列 busy-wait 與缺 timeout 造成的「網路塞住」。
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| 下載失敗看不出原因 | `URLSession.shared.data(from:)` 對非 2xx **不 throw**，把 error body 當 data 回傳，`UIImage(data:)` decode 失敗回傳 nil——403 被拒看起來像 decode 失敗 | 改用 `URLSession.data(for:)` + **檢查 `HTTPURLResponse.statusCode`**，非 2xx 以 `PIPLogTo` 記錄 status（403/404/decode 失敗可區分） |
+| 卡住的 URL 佔住 slot 60 秒 | `URLSession.shared` 預設 `timeoutIntervalForRequest = 60`；5 個 slot 全被卡住 → 後續圖片全部排隊等一分鐘 | 自訂 session：`timeoutIntervalForRequest: 10`、`timeoutIntervalForResource: 30`、`waitsForConnectivity: true` |
+| 請求只有預設 headers | `URLSession.shared` 不帶自訂 UA/Accept | `httpAdditionalHeaders`：真實 Safari UA + `Accept: image/*` |
+| 每次 app 重開都重下 | 無 HTTP 快取 | `URLCache`（20MB 記憶體 / 100MB 磁碟）+ `useProtocolCachePolicy`（支援 conditional GET） |
+| concurrency 限制是 busy-wait | `waitForSlot()` 用 `while currentDownloads >= 5 { await Task.yield() }` 空轉；`waitingQueue` 宣告但從未使用（死碼） | 真正啟用 `waitingQueue` FIFO：slot 空出時 `startNextIfPossible()` pop 下一個；同 URL 已在隊列時只附加 callback 不重複入隊 |
+
+### `liveAPP/PIPContent.swift` — 自訂 session
+
+```swift
+private static let session: URLSession = {
+    let config = URLSessionConfiguration.default
+    config.httpAdditionalHeaders = [
+        "User-Agent": PiPImageCache.makeUserAgent(),
+        "Accept": "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8"
+    ]
+    config.timeoutIntervalForRequest = 10
+    config.timeoutIntervalForResource = 30
+    config.waitsForConnectivity = true
+    config.httpMaximumConnectionsPerHost = 4
+    config.requestCachePolicy = .useProtocolCachePolicy
+    config.urlCache = URLCache(memoryCapacity: 20 * 1024 * 1024,
+                               diskCapacity: 100 * 1024 * 1024,
+                               diskPath: "PIPImageCache")
+    return URLSession(configuration: config)
+}()
+```
+
+### 真實 Safari UA（樣板替換法）
+
+不整串自創，取真實 Safari UA 當樣板、只替換會變動的段：
+
+```
+Mozilla/5.0 (iPad; CPU OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.7 Mobile/15E148 Safari/604.1
+        └──────── 替換：裝置 + CPU token + OS 版本 ────────┘   └─ 跟隨 OS ─┘  └ 凍結不動 ┘
+```
+
+- **替換段**：`iPad`/`iPhone`（`UIDevice.current.userInterfaceIdiom`）、`CPU OS`/`CPU iPhone OS`、`18_7`（`ProcessInfo.operatingSystemVersion`）。
+- **`Version/` 跟隨 OS 版本**：真實 Safari 的 Version（如 `27.0`）從 iOS 18 起與 OS 脫鉤，`ProcessInfo` 給不出，故用 OS `major.minor` 保證系統一致（CDN 只檢查 `Mozilla` + `Safari` token，Version 精確值不影響）。
+- **`Mobile/15E148` 凍結不動**：這是 Safari 固定送的舊 token（iOS 9 時代 WebKit 殘留，非真實 build——iOS 18 build 是 `22A` 開頭）。真實 Safari 就是送這個值，換成 `kern.osversion` 反而偏離真實 Safari。
