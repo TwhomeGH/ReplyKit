@@ -1792,6 +1792,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     // MARK: 直播暫停
     override func broadcastPaused() {
         isBroadcastPaused = true
+        pausedAt = Date()
         sendlog(message: "⏸️ 廣播暫停（進入背景）")
     }
 
@@ -1800,7 +1801,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         isBroadcastPaused = false
         sendlog(message: "📹 廣播恢復（前景）")
 
-        guard isSessionReady, !isStopping, !isReconnecting else { return }
+        guard isSessionReady, !isStopping else { return }
+
+        // 暫停 <3s 視為正常快速切換，不做重建避免每次 resume 都造成推流 reconfig 閃斷；
+        // 暫停 ≥3s 才可能被系統 suspend 造成 encoder stall，保留重建保險。
+        let pauseDuration = pausedAt.map { Date().timeIntervalSince($0) } ?? 0
+        let needsRecovery = pauseDuration >= broadcastPauseRecoveryThreshold
+        pausedAt = nil
 
         Task(priority: .medium) { [weak self] in
             guard let self else { return }
@@ -1814,19 +1821,20 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 sendlog(message: "📹 MediaMixer 已重新啟動")
             }
 
-            if !isReconnecting {
-                // 重新套用 video settings，强迫 VideoToolbox 重建 encoder session
-                if let stream = rtmpStream {
-                    do {
-                        let settings = await stream.videoSettings
-                        try await stream.setVideoSettings(settings)
-                        sendlog(message: "📹 Video encoder 已重建")
-                    } catch {
-                        sendlog(message: "⚠️ Video encoder 重建失敗: \(error)")
-                    }
+            // 只有「暫停夠久、很可能真的 stall」才強制重建 encoder session；
+            // 短暫切換不做，交由 HaishinKit 的 gap>3s 偵測與 ensureVideoProcessor 自動補救
+            if needsRecovery, let stream = rtmpStream {
+                do {
+                    let settings = await stream.videoSettings
+                    try await stream.setVideoSettings(settings)
+                    sendlog(message: "📹 Video encoder 已重建（暫停 \(Int(pauseDuration))s）")
+                } catch {
+                    sendlog(message: "⚠️ Video encoder 重建失敗: \(error)")
                 }
+            }
 
-                // 重建 video processor 確保 ProcessorActor 狀態乾淨
+            // video processor 只在真的失效時重建
+            if videoProcessor == nil || videoProcessor?.isActive != true {
                 rebuildVideo()
             }
         }
@@ -1834,7 +1842,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     private var isBroadcasting = false
     private var isBroadcastPaused = false
+    private var pausedAt: Date?
     private var isReconnecting = false
+    private let broadcastPauseRecoveryThreshold: TimeInterval = 3
 
     // MARK: 直播結束處理
     private var broadcastEndTask: Task<Void, Never>?

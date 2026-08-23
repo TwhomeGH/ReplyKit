@@ -531,3 +531,21 @@ if interval > 3.0, readyState == .publishing, videoInputFrames == 0 || frameCoun
 | 玩遊戲時 extension 被暫停 → 恢復 | encoder session 失效，需等 3 次 monitor 觸發（永遠等不到） | gap > 3s 立即重建 encoder |
 | 短暫卡頓 (< 3s) | 正常 stall 累積 3 次後重啟 | 不影響（3s 閾值不觸發） |
 | 前景暫停後恢復 | 等待累積，約 3s | gap 偵測到 >3s 立即跳過累積流程 |
+
+### SampleHandler resume 重建改為有條件（2026-08-21）
+
+**問題：** `broadcastResumed()` 原本每次 resume 都無條件執行整套重建——`setVideoSettings(同樣的 settings)` 強迫 VideoToolbox 重建 encoder session + `rebuildVideo()` 拆掉整個 video processor（新 FrameProcessorActor + GPU rotator + Metal pipeline 重編譯）。健康情況（encoder 沒壞）下這是白做工，每次前景切回都造成一次推流 reconfig 閃斷。
+
+**修正（`ReplyKIT/SampleHandler.swift`）：**
+
+- `broadcastPaused()` 記錄 `pausedAt`；resume 計算暫停時長。
+- **Encoder 重建**只在暫停 ≥3s（`broadcastPauseRecoveryThreshold`）時才強制執行——長暫停才可能被系統 suspend 造成 encoder stall；短暫切換完全不打斷推流。
+- **`rebuildVideo()`** 只在 `videoProcessor == nil || !isActive` 時執行；失效情況另有 `ensureVideoProcessor` 每秒自動補救。
+- 移除頂部 guard 與內層重複的 `!isReconnecting`（重連中由 reconnect 成功 handler 負責 restart mixer）。
+
+**行為對照：**
+
+| 場景 | 改前 | 改後 |
+|------|------|------|
+| 快速前景/背景切換（<3s） | 每次重建 encoder + video processor → 推流閃斷 | 不重建，推流完全不中斷 |
+| 長時間暫停（≥3s，可能被 suspend） | 重建（正常） | 保留 encoder 重建保險 + processor 失效才重建 |
