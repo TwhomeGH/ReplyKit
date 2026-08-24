@@ -275,7 +275,7 @@ actor AudioProcessorActor {
         self.useOriginal = RPConfig.shared.state.isOringinAudio
 
         if useOriginal {
-            setupOriginalStream()
+            Task { await setupOriginalStream() }
         } else {
             let engine = AudioEngine(
                 micGain: micAddVolume,
@@ -310,7 +310,10 @@ actor AudioProcessorActor {
     // 避免 append 慢時在 actor 上積壓造成音訊斷序。
     private func setupOriginalStream() {
         let stream = AsyncStream<ProcessedAudio>(bufferingPolicy: .bufferingNewest(8)) { [weak self] continuation in
-            self?.originalContinuation = continuation
+            // AsyncStream build closure 是 nonisolated，經由 Task 跳回 actor 儲存 continuation
+            Task { [weak self] in
+                await self?.storeOriginalContinuation(continuation)
+            }
         }
         originalStreamTask = Task.detached { [weak self] in
             for await item in stream {
@@ -320,6 +323,10 @@ actor AudioProcessorActor {
                 await self.mediaMixer.append(item.buffer, track: item.trackType.rawValue)
             }
         }
+    }
+
+    private func storeOriginalContinuation(_ continuation: AsyncStream<ProcessedAudio>.Continuation) {
+        originalContinuation = continuation
     }
 
     func enqueue(_ sampleBuffer: CMSampleBuffer, trackType: AudioTrackType, originalTime: CMSampleTimingInfo) async {
