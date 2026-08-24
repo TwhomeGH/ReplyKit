@@ -341,23 +341,59 @@ AAC 端同理：AAC 需要固定 1024 幀 PCM 才產出一個 packet，部分幀
 
 #### originAudio（useOriginal）路徑修正（2026-08-21）
 
-**目標：** useOriginal 模式（`isOringinAudio`）原本與 DSP 路徑不同步——gain 用危險的 CMSampleBuffer 重建往返、append 在 actor 上 inline，且音量讀取有 0.0 死碼預設。修正三件套：
+**目標：** useOriginal 模式（`isOringinAudio`）原本與 DSP 路徑不同步——gain 用危險的 CMSampleBuffer 重建往返、音量讀取有 0.0 死碼預設。修正三件套：
 
 | 問題 | 原因 | 修正 |
 |------|------|------|
 | **use-after-free（斷序主因，增益 >1.0 時）** | `applyGain` → `pcmBufferToCMSampleBuffer` 用 `kCFAllocatorNull` 包住區域變數 `AVAudioPCMBuffer` 的記憶體建 CMBlockBuffer；函式返回後記憶體釋放，append 非同步讀到已釋放資料 | `applyGain` 改**原地增益**：直接對原始 block buffer 做 int16→float→增益→寫回，不重建 CMSampleBuffer（AudioProcess.swift:346-369） |
 | 增益形同虛設 / Float32 閃退 | `toPCMBuffer` 強制 `int16ChannelData!`（Float32 會 crash）；`applyGainPCM` 用 `floatChannelData`（Int16 buffer 為 nil → gain 永遠 no-op） | 移除 `toPCMBuffer`/`applyGainPCM`/`pcmBufferToCMSampleBuffer` 死碼，原地增益保證真正生效 |
-| 預設配置斷序 | useOriginal 路徑 producer（enqueue）與 consumer（`mediaMixer.append`）**未解耦**——append 慢時阻塞 actor 音訊節奏；DSP 路徑已有 AsyncStream + `Task.detached` | useOriginal 比照 DSP 路徑：enqueue 只做原地增益 + `yield`，consumer 用 `Task.detached` 做 `processRMS` + `mediaMixer.append`（AudioProcess.swift:311-323） |
+| 預設配置斷序 | useOriginal 路徑 producer（enqueue）與 consumer（`mediaMixer.append`）未解耦 | 初期嘗試 AsyncStream + detached consumer 解耦，後續判定為**過度設計而移除**——見下方「上層 AsyncStream 移除」 |
 | 0.0 死碼預設（誤判） | `SharedDefaults.group?.double(forKey:) ?? 1.0` 未設定時回傳 0.0（`?? 1.0` 死碼，memory 261）；0.0 被當 `micGain` → 麥克風靜音 | 改用 `(object(forKey:) as? Double) ?? 1.0`（SampleHandler.swift 4 處 event handler + Event.swift 4 處 config 載入） |
 
 **關鍵決策 — 維持 boost-only 語意**：`applyGain` 的 guard 是 `gain > 1.0`，不能用 `abs(gain-1.0) > 0.001`——否則 0.0（死碼預設）會被當成合法衰減 → 音訊消音。`addVolume` 是放大倍率，只有 >1.0 才需要處理。
+
+#### 上層 AsyncStream 移除（過度設計修正，2026-08-21）
+
+**問題：** AudioEngine（DSP 路徑）與 useOriginal 各自包了一層 AsyncStream + `Task.detached` consumer，疊在 HaishinKit 已有的非同步機制之上：
+
+```
+我們的 AsyncStream ─→ MediaMixer actor ─→ AudioMixerByMultiTrack queue ─→ resample
+    ─→ HaishinKit 自己的 audioIO.output AsyncStream ─→ encoder
+```
+
+**底層調查（F:\HaishinKit.swift）：** HaishinKit 已完整處理非同步——`mediaMixer.append` 只是 `AudioMixerByMultiTrack.append` 的 `queue.async`（非阻塞，AudioMixerByMultiTrack.swift:138-146）；resample 在該 queue 上輸出乾淨的 1024-sample 塊、時間戳正確推進；輸出走自己的 `audioIO.output` AsyncStream。**我們上層那層 AsyncStream 是冗餘的第三層。**
+
+**修正：** 全部移除，`AudioProcessorActor.enqueue` 直接 `await mediaMixer.append`：
+
+```swift
+func enqueue(_ sampleBuffer: CMSampleBuffer, trackType: AudioTrackType, originalTime: CMSampleTimingInfo) async {
+    guard await mediaMixer.isRunning else { return }
+    if useOriginal {
+        let processed = applyGain(sampleBuffer, trackType: trackType)
+        processRMS(processed, trackType: trackType, originalTime: originalTime)
+        await mediaMixer.append(processed, track: trackType.rawValue)
+    } else {
+        audioEngine?.process(sampleBuffer, track: trackType)   // 原地 DSP
+        processRMS(sampleBuffer, trackType: trackType, originalTime: originalTime)
+        await mediaMixer.append(sampleBuffer, track: trackType.rawValue)
+    }
+}
+```
+
+- `AudioEngine` 簡化成**純 DSP wrapper**：移除 `startStream`/`streamContinuation`/`finish`/`ProcessedAudio`，`process()` 只剩原地 DSP（降噪/回音/AGC/增益）。
+- `AudioProcessorActor` 移除 `streamTask`/`originalStreamTask`/`originalContinuation`/`setupAudioStream`/`setupOriginalStream`。
+- 背壓由 HaishinKit 的 AudioRingBuffer 處理；wire 實測 76s 零掉幀，無退化。
+- **video 管線無此問題**：video 只有「每幀 `Task {}` 橋接 + FrameProcessorActor + 直接 append」，無 AsyncStream（`processSampleBuffer` 是 sync，Task 橋接為必要）。
+
+**`updateAudioState` 接線（原死碼啟用）：** DSP 設定（enableNoiseFix/enableEchoFix/...）原本只在 AudioEngine init 套用一次。新增 `SocketClient.onAudioConfigChanged` callback，`applyRTMP` 的 `updateAudio` 後觸發 → SampleHandler → `audioProcessor.updateAudioState(...)`，直播中改設定即時生效。
 
 **行為對照：**
 
 | 情境 | 改前 | 改後 |
 |------|------|------|
 | useOriginal + 增益 >1.0 | 每幀 CMSampleBuffer 重建 + use-after-free → 音訊毀損 | 原地 vDSP（µs 級），無分配無釋放問題 |
-| useOriginal 預設 1.0 | append 在 actor 上 inline，慢時斷序 | producer/consumer 解耦，與 DSP 路徑一致 |
+| 音訊上層 | 2 個 AsyncStream（AudioEngine + useOriginal）+ HaishinKit 的 1 個 | 移除我們兩個，只剩 HaishinKit 原生那層 |
+| DSP 設定直播中變更 | 死碼，不生效 | `onAudioConfigChanged` 接線，即時生效 |
 | 音量 key 未設定 | 0.0 誤判 → micGain=0 靜音 | `?? 1.0` 真正生效 |
 
 ---
