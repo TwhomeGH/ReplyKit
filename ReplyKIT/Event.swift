@@ -950,11 +950,11 @@ final class RPConfig {
             ODHeight:SharedDefaults.group?.integer(forKey: "odstH") ?? 0,
             
             // 音訊音量
-            AppVolume:SharedDefaults.group?.double(forKey: "appVolume") ?? 1.0,
-            MicVolume:SharedDefaults.group?.double(forKey: "micVolume") ?? 1.0,
+            AppVolume:(SharedDefaults.group?.object(forKey: "appVolume") as? Double) ?? 1.0,
+            MicVolume:(SharedDefaults.group?.object(forKey: "micVolume") as? Double) ?? 1.0,
 
-            AppVolumeAdd:SharedDefaults.group?.double(forKey: "appAddVolume") ?? 1.0,
-            MicVolumeAdd:SharedDefaults.group?.double(forKey: "micAddVolume") ?? 1.0,
+            AppVolumeAdd:(SharedDefaults.group?.object(forKey: "appAddVolume") as? Double) ?? 1.0,
+            MicVolumeAdd:(SharedDefaults.group?.object(forKey: "micAddVolume") as? Double) ?? 1.0,
             // 音訊降噪 頻譜處理
             enableNoiseFix:SharedDefaults.group?.bool(forKey: "enableNoiseFix") ?? false,
 

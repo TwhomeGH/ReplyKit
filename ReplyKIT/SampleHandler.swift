@@ -214,7 +214,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             Task {
 
-                var newVolume = SharedDefaults.group?.double(forKey: "micAddVolume") ?? 1.0
+                var newVolume = (SharedDefaults.group?.object(forKey: "micAddVolume") as? Double) ?? 1.0
 
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "micAddVolume", type: "Double") {
@@ -255,7 +255,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             Task {
 
-                var newVolume = SharedDefaults.group?.double(forKey: "appAddVolume") ?? 1.0
+                var newVolume = (SharedDefaults.group?.object(forKey: "appAddVolume") as? Double) ?? 1.0
 
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "appAddVolume", type: "Double") {
@@ -296,7 +296,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             
 
             Task {
-                var newVolume = SharedDefaults.group?.double(forKey: "micVolume") ?? 1.0
+                var newVolume = (SharedDefaults.group?.object(forKey: "micVolume") as? Double) ?? 1.0
 
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "micVolume", type: "Double") {
@@ -339,7 +339,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             Task {
 
-                var newVolume = SharedDefaults.group?.double(forKey: "appVolume") ?? 1.0
+                var newVolume = (SharedDefaults.group?.object(forKey: "appVolume") as? Double) ?? 1.0
 
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "appVolume", type: "Double") {

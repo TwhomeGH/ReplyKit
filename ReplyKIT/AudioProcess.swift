@@ -21,32 +21,6 @@ enum AudioTrackType: UInt8 {
 }
 
 
-// 將 CMSampleBuffer 轉換成 AVAudioPCMBuffer
-func toPCMBuffer(_ sampleBuffer: CMSampleBuffer) -> AVAudioPCMBuffer? {
-    guard let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer),
-            let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc) else {
-        return nil
-    }
-    guard let format = AVAudioFormat(streamDescription: asbd) else { return nil }
-    guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { return nil }
-    
-    var length = 0
-    var dataPointer: UnsafeMutablePointer<Int8>?
-    guard CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0, lengthAtOffsetOut: nil,
-                                        totalLengthOut: &length, dataPointerOut: &dataPointer) == noErr,
-            let ptr = dataPointer else { return nil }
-    
-    let frameCapacity = length / Int(asbd.pointee.mBytesPerFrame)
-    guard let pcmBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frameCapacity)) else {
-        return nil
-    }
-    pcmBuffer.frameLength = pcmBuffer.frameCapacity
-    
-    // copy raw data into pcmBuffer
-    memcpy(pcmBuffer.int16ChannelData![0], ptr, length)
-    return pcmBuffer
-}
-
 // MARK: 音量統計
 
 private func rmsSIMD(from sampleBuffer: CMSampleBuffer) -> Float? {
@@ -276,6 +250,9 @@ actor AudioProcessorActor {
     private var onAudioPage: Bool
     var rmsInterval: CFTimeInterval = 1.0
     private var streamTask: Task<Void, Never>?
+    private var originalStreamTask: Task<Void, Never>?
+    private var originalContinuation: AsyncStream<ProcessedAudio>.Continuation?
+    private var gainFloatBuffer: [Float] = []
     private var lastAppRMS: Float = 0
     private var lastMicRMS: Float = 0
     private var lastAppRMSUpdateTime: CFTimeInterval = 0
@@ -297,7 +274,9 @@ actor AudioProcessorActor {
         self.onAudioPage = onAudioPage
         self.useOriginal = RPConfig.shared.state.isOringinAudio
 
-        if !useOriginal {
+        if useOriginal {
+            setupOriginalStream()
+        } else {
             let engine = AudioEngine(
                 micGain: micAddVolume,
                 echoFix: RPConfig.shared.state.enableEchoFix,
@@ -326,13 +305,33 @@ actor AudioProcessorActor {
         }
     }
 
+    // useOriginal 也走 AsyncStream + detached consumer，與 DSP 路徑對齊：
+    // producer（enqueue → 原地增益 → yield）與 consumer（mediaMixer.append）解耦，
+    // 避免 append 慢時在 actor 上積壓造成音訊斷序。
+    private func setupOriginalStream() {
+        let stream = AsyncStream<ProcessedAudio>(bufferingPolicy: .bufferingNewest(8)) { [weak self] continuation in
+            self?.originalContinuation = continuation
+        }
+        originalStreamTask = Task.detached { [weak self] in
+            for await item in stream {
+                guard let self else { break }
+                guard await self.mediaMixer.isRunning else { continue }
+                await self.processRMS(item.buffer, trackType: item.trackType, originalTime: item.originalTime)
+                await self.mediaMixer.append(item.buffer, track: item.trackType.rawValue)
+            }
+        }
+    }
+
     func enqueue(_ sampleBuffer: CMSampleBuffer, trackType: AudioTrackType, originalTime: CMSampleTimingInfo) async {
         guard await mediaMixer.isRunning else { return }
 
         if useOriginal {
-            let processed = applyGain(sampleBuffer, trackType: trackType, originalTime: originalTime)
-            processRMS(processed, trackType: trackType, originalTime: originalTime)
-            await mediaMixer.append(processed, track: trackType.rawValue)
+            let processed = applyGain(sampleBuffer, trackType: trackType)
+            originalContinuation?.yield(ProcessedAudio(
+                buffer: processed,
+                trackType: trackType,
+                originalTime: originalTime
+            ))
         } else {
             audioEngine?.process(sampleBuffer, track: trackType, originalTime: originalTime)
         }
@@ -340,83 +339,39 @@ actor AudioProcessorActor {
 
 
 
-    // 用 vDSP in-place 做增益
-    private func applyGainPCM(_ buffer: AVAudioPCMBuffer, gain: Float) {
-        guard let channelData = buffer.floatChannelData else { return }
-        let frameCount = Int(buffer.frameLength)
+    // 原地增益：直接對原始 block buffer 做 int16 → float → 增益 → 寫回，
+    // 不重建 CMSampleBuffer（避免 use-after-free 與每幀分配）。
+    // 維持 boost-only 語意（gain > 1.0）：addVolume 是放大倍率，
+    // 0.0（UserDefaults 死碼預設）不能被當成合法衰減值而消音。
+    func applyGain(_ sampleBuffer: CMSampleBuffer, trackType: AudioTrackType) -> CMSampleBuffer {
+        let gain = (trackType == .app) ? appAddVolume : micAddVolume
+        guard gain > 1.0 else { return sampleBuffer }
+        guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { return sampleBuffer }
+        var ptr: UnsafeMutablePointer<Int8>?
+        CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0, lengthAtOffsetOut: nil,
+                                    totalLengthOut: nil, dataPointerOut: &ptr)
+        guard let rawPtr = ptr else { return sampleBuffer }
+        let byteCount = CMBlockBufferGetDataLength(blockBuffer)
+        let sampleCount = byteCount / MemoryLayout<Int16>.size
+        guard sampleCount > 0 else { return sampleBuffer }
+        ensureGainBufferCapacity(sampleCount)
+
+        let int16Ptr = UnsafeMutableRawPointer(rawPtr).bindMemory(to: Int16.self, capacity: sampleCount)
+        var scale: Float = 1.0 / 32768.0
         var g = gain
-        vDSP_vsmul(channelData[0], 1, &g, channelData[0], 1, vDSP_Length(frameCount))
-        if buffer.format.channelCount > 1 {
-            vDSP_vsmul(channelData[1], 1, &g, channelData[1], 1, vDSP_Length(frameCount))
-        }
-    }
-
-    // 將 AVAudioPCMBuffer 轉回 CMSampleBuffer
-    private func pcmBufferToCMSampleBuffer(_ pcmBuffer: AVAudioPCMBuffer,
-                                           originalTime: CMSampleTimingInfo) -> CMSampleBuffer? {
-        let format = pcmBuffer.format.streamDescription
-
-        var formatDesc: CMAudioFormatDescription?
-        let statusFmt = CMAudioFormatDescriptionCreate(
-            allocator: kCFAllocatorDefault,
-            asbd: format,
-            layoutSize: 0,
-            layout: nil,
-            magicCookieSize: 0,
-            magicCookie: nil,
-            extensions: nil,
-            formatDescriptionOut: &formatDesc
-        )
-        guard statusFmt == noErr, let fmtDesc = formatDesc else { return nil }
-
-        // 建立 BlockBuffer
-        let frameCount = Int(pcmBuffer.frameLength)
-        let byteCount = frameCount * Int(format.pointee.mBytesPerFrame)
-        var blockBuffer: CMBlockBuffer?
-        let statusBB = CMBlockBufferCreateWithMemoryBlock(
-            allocator: kCFAllocatorDefault,
-            memoryBlock: pcmBuffer.int16ChannelData?[0], // 假設 Int16 格式
-            blockLength: byteCount,
-            blockAllocator: kCFAllocatorNull,
-            customBlockSource: nil,
-            offsetToData: 0,
-            dataLength: byteCount,
-            flags: 0,
-            blockBufferOut: &blockBuffer
-        )
-        guard statusBB == noErr, let bb = blockBuffer else { return nil }
-
-        // Timing info
-        var timing = originalTime
-        var sampleBuffer: CMSampleBuffer?
-        let statusSB = CMSampleBufferCreate(
-            allocator: kCFAllocatorDefault,
-            dataBuffer: bb,
-            dataReady: true,
-            makeDataReadyCallback: nil,
-            refcon: nil,
-            formatDescription: fmtDesc,
-            sampleCount: frameCount,
-            sampleTimingEntryCount: 1,
-            sampleTimingArray: &timing,
-            sampleSizeEntryCount: 0,
-            sampleSizeArray: nil,
-            sampleBufferOut: &sampleBuffer
-        )
-        guard statusSB == noErr else { return nil }
+        var invScale: Float = 32768.0
+        vDSP_vflt16(int16Ptr, 1, &gainFloatBuffer, 1, vDSP_Length(sampleCount))
+        vDSP_vsmul(gainFloatBuffer, 1, &scale, &gainFloatBuffer, 1, vDSP_Length(sampleCount))
+        vDSP_vsmul(gainFloatBuffer, 1, &g, &gainFloatBuffer, 1, vDSP_Length(sampleCount))
+        vDSP_vsmul(gainFloatBuffer, 1, &invScale, &gainFloatBuffer, 1, vDSP_Length(sampleCount))
+        vDSP_vfix16(gainFloatBuffer, 1, int16Ptr, 1, vDSP_Length(sampleCount))
         return sampleBuffer
     }
 
-    // 完整流程：CMSampleBuffer → PCM → 增益 → CMSampleBuffer
-    func applyGain(_ sampleBuffer: CMSampleBuffer,
-                   trackType: AudioTrackType,
-                   originalTime: CMSampleTimingInfo) -> CMSampleBuffer {
-        let gain = (trackType == .app) ? appAddVolume : micAddVolume
-        guard gain > 1.0, let pcmBuffer = toPCMBuffer(sampleBuffer) else {
-            return sampleBuffer
+    private func ensureGainBufferCapacity(_ count: Int) {
+        if gainFloatBuffer.count < count {
+            gainFloatBuffer = [Float](repeating: 0, count: count)
         }
-        applyGainPCM(pcmBuffer, gain: gain)
-        return pcmBufferToCMSampleBuffer(pcmBuffer, originalTime: originalTime) ?? sampleBuffer
     }
 
     private func processRMS(_ buffer: CMSampleBuffer, trackType: AudioTrackType, originalTime: CMSampleTimingInfo) {
@@ -447,6 +402,9 @@ actor AudioProcessorActor {
     func cleanup() {
         streamTask?.cancel()
         streamTask = nil
+        originalStreamTask?.cancel()
+        originalStreamTask = nil
+        originalContinuation = nil
         audioEngine?.cleanup()
         audioEngine = nil
     }

@@ -339,6 +339,27 @@ AAC 端同理：AAC 需要固定 1024 幀 PCM 才產出一個 packet，部分幀
 | 幀大小變化 | frameCapacity 固定 1024，輸入不同則停擺 | inputBlock 只餵完整幀（不足 `.noDataNow` 累積），維持 1024 對齊 |
 | 時間戳 | 硬編碼 1024 推進 | `audioTime.advanced(outputBuffer.frameLength)` 依實際輸出幀數 |
 
+#### originAudio（useOriginal）路徑修正（2026-08-21）
+
+**目標：** useOriginal 模式（`isOringinAudio`）原本與 DSP 路徑不同步——gain 用危險的 CMSampleBuffer 重建往返、append 在 actor 上 inline，且音量讀取有 0.0 死碼預設。修正三件套：
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| **use-after-free（斷序主因，增益 >1.0 時）** | `applyGain` → `pcmBufferToCMSampleBuffer` 用 `kCFAllocatorNull` 包住區域變數 `AVAudioPCMBuffer` 的記憶體建 CMBlockBuffer；函式返回後記憶體釋放，append 非同步讀到已釋放資料 | `applyGain` 改**原地增益**：直接對原始 block buffer 做 int16→float→增益→寫回，不重建 CMSampleBuffer（AudioProcess.swift:346-369） |
+| 增益形同虛設 / Float32 閃退 | `toPCMBuffer` 強制 `int16ChannelData!`（Float32 會 crash）；`applyGainPCM` 用 `floatChannelData`（Int16 buffer 為 nil → gain 永遠 no-op） | 移除 `toPCMBuffer`/`applyGainPCM`/`pcmBufferToCMSampleBuffer` 死碼，原地增益保證真正生效 |
+| 預設配置斷序 | useOriginal 路徑 producer（enqueue）與 consumer（`mediaMixer.append`）**未解耦**——append 慢時阻塞 actor 音訊節奏；DSP 路徑已有 AsyncStream + `Task.detached` | useOriginal 比照 DSP 路徑：enqueue 只做原地增益 + `yield`，consumer 用 `Task.detached` 做 `processRMS` + `mediaMixer.append`（AudioProcess.swift:311-323） |
+| 0.0 死碼預設（誤判） | `SharedDefaults.group?.double(forKey:) ?? 1.0` 未設定時回傳 0.0（`?? 1.0` 死碼，memory 261）；0.0 被當 `micGain` → 麥克風靜音 | 改用 `(object(forKey:) as? Double) ?? 1.0`（SampleHandler.swift 4 處 event handler + Event.swift 4 處 config 載入） |
+
+**關鍵決策 — 維持 boost-only 語意**：`applyGain` 的 guard 是 `gain > 1.0`，不能用 `abs(gain-1.0) > 0.001`——否則 0.0（死碼預設）會被當成合法衰減 → 音訊消音。`addVolume` 是放大倍率，只有 >1.0 才需要處理。
+
+**行為對照：**
+
+| 情境 | 改前 | 改後 |
+|------|------|------|
+| useOriginal + 增益 >1.0 | 每幀 CMSampleBuffer 重建 + use-after-free → 音訊毀損 | 原地 vDSP（µs 級），無分配無釋放問題 |
+| useOriginal 預設 1.0 | append 在 actor 上 inline，慢時斷序 | producer/consumer 解耦，與 DSP 路徑一致 |
+| 音量 key 未設定 | 0.0 誤判 → micGain=0 靜音 | `?? 1.0` 真正生效 |
+
 ---
 
 ## RTMP 時間戳基準跳變修正（2026-08-13）
