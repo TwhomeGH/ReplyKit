@@ -249,9 +249,6 @@ actor AudioProcessorActor {
     private var micVolume: Float
     private var onAudioPage: Bool
     var rmsInterval: CFTimeInterval = 1.0
-    private var streamTask: Task<Void, Never>?
-    private var originalStreamTask: Task<Void, Never>?
-    private var originalContinuation: AsyncStream<ProcessedAudio>.Continuation?
     private var gainFloatBuffer: [Float] = []
     private var lastAppRMS: Float = 0
     private var lastMicRMS: Float = 0
@@ -274,59 +271,15 @@ actor AudioProcessorActor {
         self.onAudioPage = onAudioPage
         self.useOriginal = RPConfig.shared.state.isOringinAudio
 
-        if useOriginal {
-            Task { await setupOriginalStream() }
-        } else {
-            let engine = AudioEngine(
+        if !useOriginal {
+            audioEngine = AudioEngine(
                 micGain: micAddVolume,
                 echoFix: RPConfig.shared.state.enableEchoFix,
                 noiseFix: RPConfig.shared.state.enableNoiseFix,
                 agcFix: RPConfig.shared.state.enableAGCFix,
                 metalAudio: RPConfig.shared.state.enableMetalAudio
             )
-            audioEngine = engine
-            Task { await setupAudioStream(engine) }
         }
-    }
-
-    private func setupAudioStream(_ engine: AudioEngine) {
-        let stream = engine.startStream()
-        // Consumer 用 Task.detached 脫離 AudioProcessorActor executor，
-        // 避免與 producer（enqueue → 同步 DSP）共用同一 executor 互相阻塞。
-        // producer 的 yield 與 consumer 的 mediaMixer.append 因此真正並行，
-        // 不再「DSP 慢 → consumer 卡 → 節奏斷裂」。
-        streamTask = Task.detached { [weak self] in
-            for await item in stream {
-                guard let self else { break }
-                guard await self.mediaMixer.isRunning else { continue }
-                await self.processRMS(item.buffer, trackType: item.trackType, originalTime: item.originalTime)
-                await self.mediaMixer.append(item.buffer, track: item.trackType.rawValue)
-            }
-        }
-    }
-
-    // useOriginal 也走 AsyncStream + detached consumer，與 DSP 路徑對齊：
-    // producer（enqueue → 原地增益 → yield）與 consumer（mediaMixer.append）解耦，
-    // 避免 append 慢時在 actor 上積壓造成音訊斷序。
-    private func setupOriginalStream() {
-        let stream = AsyncStream<ProcessedAudio>(bufferingPolicy: .bufferingNewest(8)) { [weak self] continuation in
-            // AsyncStream build closure 是 nonisolated，經由 Task 跳回 actor 儲存 continuation
-            Task { [weak self] in
-                await self?.storeOriginalContinuation(continuation)
-            }
-        }
-        originalStreamTask = Task.detached { [weak self] in
-            for await item in stream {
-                guard let self else { break }
-                guard await self.mediaMixer.isRunning else { continue }
-                await self.processRMS(item.buffer, trackType: item.trackType, originalTime: item.originalTime)
-                await self.mediaMixer.append(item.buffer, track: item.trackType.rawValue)
-            }
-        }
-    }
-
-    private func storeOriginalContinuation(_ continuation: AsyncStream<ProcessedAudio>.Continuation) {
-        originalContinuation = continuation
     }
 
     func enqueue(_ sampleBuffer: CMSampleBuffer, trackType: AudioTrackType, originalTime: CMSampleTimingInfo) async {
@@ -334,13 +287,12 @@ actor AudioProcessorActor {
 
         if useOriginal {
             let processed = applyGain(sampleBuffer, trackType: trackType)
-            originalContinuation?.yield(ProcessedAudio(
-                buffer: processed,
-                trackType: trackType,
-                originalTime: originalTime
-            ))
+            processRMS(processed, trackType: trackType, originalTime: originalTime)
+            await mediaMixer.append(processed, track: trackType.rawValue)
         } else {
-            audioEngine?.process(sampleBuffer, track: trackType, originalTime: originalTime)
+            audioEngine?.process(sampleBuffer, track: trackType)
+            processRMS(sampleBuffer, trackType: trackType, originalTime: originalTime)
+            await mediaMixer.append(sampleBuffer, track: trackType.rawValue)
         }
     }
 
@@ -407,13 +359,22 @@ actor AudioProcessorActor {
     }
 
     func cleanup() {
-        streamTask?.cancel()
-        streamTask = nil
-        originalStreamTask?.cancel()
-        originalStreamTask = nil
-        originalContinuation = nil
         audioEngine?.cleanup()
         audioEngine = nil
+    }
+
+    func updateAudioState(micGain: Float? = nil,
+                          echoFix: Bool? = nil,
+                          noiseFix: Bool? = nil,
+                          agcFix: Bool? = nil,
+                          metalAudio: Bool? = nil) {
+        audioEngine?.updateAudioState(
+            micGain: micGain,
+            echoFix: echoFix,
+            noiseFix: noiseFix,
+            agcFix: agcFix,
+            metalAudio: metalAudio
+        )
     }
 
     func updateVolumes(micAdd value: Float) {
@@ -485,6 +446,22 @@ final class AudioProcessor {
 
     func updatePage(status: Bool) {
         Task { await actor.updatePage(status: status) }
+    }
+
+    func updateAudioState(micGain: Float? = nil,
+                          echoFix: Bool? = nil,
+                          noiseFix: Bool? = nil,
+                          agcFix: Bool? = nil,
+                          metalAudio: Bool? = nil) {
+        Task {
+            await actor.updateAudioState(
+                micGain: micGain,
+                echoFix: echoFix,
+                noiseFix: noiseFix,
+                agcFix: agcFix,
+                metalAudio: metalAudio
+            )
+        }
     }
 
     func cleanup() {

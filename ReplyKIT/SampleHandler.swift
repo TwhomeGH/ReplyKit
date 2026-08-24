@@ -1758,6 +1758,15 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                         self?.audioProcessor?.updatePage(status: boolVal)
                     }
                 }
+                SocketClient.shared.onAudioConfigChanged = { [weak self] micGain, echoFix, noiseFix, agcFix, metalAudio in
+                    self?.audioProcessor?.updateAudioState(
+                        micGain: micGain,
+                        echoFix: echoFix,
+                        noiseFix: noiseFix,
+                        agcFix: agcFix,
+                        metalAudio: metalAudio
+                    )
+                }
                 sendlog(message:"✅ Processor 初始化完成 audio:\(self.audioProcessor != nil) video:\(self.videoProcessor != nil)")
                 logger.info("✅ Processor 初始化完成")
 

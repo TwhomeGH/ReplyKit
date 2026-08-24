@@ -311,27 +311,12 @@ final class RealTimeNoiseSuppressor {
 }
 
 
-struct ProcessedAudio {
-    let buffer: CMSampleBuffer
-    let trackType: AudioTrackType
-    let originalTime: CMSampleTimingInfo
-}
-
 final class AudioEngine {
 
     private let preProcessor: AudioPreProcessor
-    private var streamContinuation: AsyncStream<ProcessedAudio>.Continuation?
 
     init(micGain: Float? = nil, echoFix: Bool? = nil, noiseFix: Bool? = nil, agcFix: Bool? = nil, metalAudio: Bool? = nil) {
         self.preProcessor = AudioPreProcessor(micGain: micGain, echoFix: echoFix, noiseFix: noiseFix, agcFix: agcFix, metalAudio: metalAudio)
-    }
-
-    func startStream() -> AsyncStream<ProcessedAudio> {
-        // 有界背壓：consumer 落後時丟棄最舊，不讓 unbounded buffer 無限堆積
-        // 造成延遲暴衝。容量 8（~184ms @44.1k）足以吸收節奏抖動，又不致累積。
-        AsyncStream(bufferingPolicy: .bufferingNewest(8)) { [weak self] continuation in
-            self?.streamContinuation = continuation
-        }
     }
 
     // ======================================================
@@ -352,26 +337,14 @@ final class AudioEngine {
     }
 
     // ======================================================
-    // 🎧 process + yield to AsyncStream
+    // 🎧 核心用途：對 sample buffer 原地做 DSP（降噪/回音/AGC/增益）
     // ======================================================
     func process(_ sampleBuffer: CMSampleBuffer,
-                 track: AudioTrackType,
-                 originalTime: CMSampleTimingInfo) {
+                 track: AudioTrackType) {
         preProcessor.process(sampleBuffer, track: track)
-        streamContinuation?.yield(ProcessedAudio(
-            buffer: sampleBuffer,
-            trackType: track,
-            originalTime: originalTime
-        ))
-    }
-
-    func finish() {
-        streamContinuation?.finish()
-        streamContinuation = nil
     }
 
     func cleanup() {
-        finish()
         preProcessor.cleanup()
     }
 }

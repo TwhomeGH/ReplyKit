@@ -121,6 +121,9 @@ class SocketClient : @unchecked Sendable {
 
     var onPageStateChanged: ((String, Any?) -> Void)?
 
+    // 廣播 RTMP 配置套用後的音訊 DSP 設定（micGain, echoFix, noiseFix, agcFix, metalAudio）
+    var onAudioConfigChanged: ((Float, Bool, Bool, Bool, Bool) -> Void)?
+
     var latestAppVolume: Float = 0
     var latestMicVolume: Float = 0
     private var latestVolumeTimestamp: CFAbsoluteTime = 0
@@ -1044,6 +1047,14 @@ class SocketClient : @unchecked Sendable {
             enableEchoFix: c.enableEchoFix,
             enableAGCFix: c.enableAGCFix,
             enableMetalAudio: c.enableMetalAudio
+        )
+
+        onAudioConfigChanged?(
+            Float(c.micVolumeAdd),
+            c.enableEchoFix,
+            c.enableNoiseFix,
+            c.enableAGCFix,
+            c.enableMetalAudio
         )
 
         sendlog(message:"[Get]RTMPLog:\(c.enableRTMPLog ?? false)")
