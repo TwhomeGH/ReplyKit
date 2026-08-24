@@ -840,30 +840,23 @@ func postSystemNotification(title: String, body: String, imageURL: String? = nil
         return
     }
 
-    URLSession.shared.dataTask(with: bestURL) { data, response, error in
-        guard let data = data, error == nil else {
-            DispatchQueue.main.async { deliverNotification(content: content) }
-            return
-        }
-        let ext: String
-        if let mimeType = response?.mimeType {
-            switch mimeType.lowercased() {
-            case "image/jpeg", "image/jpg": ext = "jpg"
-            case "image/gif": ext = "gif"
-            case "image/webp": ext = "webp"
-            default: ext = "png"
+    // 走 PiPImageCache：與 PiP 疊層共用快取 + FIFO 下載佇列，
+    // 避免同一張圖重複下載、以及通知路徑無限並行 dataTask 與 PiP 搶網路。
+    Task {
+        await PiPImageCache.shared.loadImage(urlString: bestURL.absoluteString) { image in
+            guard let data = image?.pngData() else {
+                deliverNotification(content: content)
+                return
             }
-        } else {
-            ext = bestURL.pathExtension.isEmpty ? "png" : bestURL.pathExtension
+            let tempFile = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString + ".png")
+            try? data.write(to: tempFile)
+            if let attachment = try? UNNotificationAttachment(identifier: UUID().uuidString, url: tempFile) {
+                content.attachments = [attachment]
+            }
+            deliverNotification(content: content)
         }
-        let tempFile = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString + "." + ext)
-        try? data.write(to: tempFile)
-        if let attachment = try? UNNotificationAttachment(identifier: UUID().uuidString, url: tempFile) {
-            content.attachments = [attachment]
-        }
-        DispatchQueue.main.async { deliverNotification(content: content) }
-    }.resume()
+    }
 }
 
 private func deliverNotification(content: UNMutableNotificationContent) {

@@ -1406,3 +1406,34 @@ Mozilla/5.0 (iPad; CPU OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like 
 - **替換段**：`iPad`/`iPhone`（`UIDevice.current.userInterfaceIdiom`）、`CPU OS`/`CPU iPhone OS`、`18_7`（`ProcessInfo.operatingSystemVersion`）。
 - **`Version/` 跟隨 OS 版本**：真實 Safari 的 Version（如 `27.0`）從 iOS 18 起與 OS 脫鉤，`ProcessInfo` 給不出，故用 OS `major.minor` 保證系統一致（CDN 只檢查 `Mozilla` + `Safari` token，Version 精確值不影響）。
 - **`Mobile/15E148` 凍結不動**：這是 Safari 固定送的舊 token（iOS 9 時代 WebKit 殘留，非真實 build——iOS 18 build 是 `22A` 開頭）。真實 Safari 就是送這個值，換成 `kern.osversion` 反而偏離真實 Safari。
+
+---
+
+## Section 43 — postSystemNotification 圖片改走 PiPImageCache（2026-08）
+
+**目標：** 通知附件圖片原本每次用 `URLSession.shared.dataTask` 重新下載，與 PiP 疊層完全脫鉤——同一張頭像/emoji 被重複下載，且通知路徑無限並行 `dataTask` 跟 PiP 下載搶網路。
+
+| 問題 | 原因 | 修正 |
+|------|------|------|
+| 同一張圖重複下載 | `postSystemNotification` 直接 `URLSession.shared.dataTask`，不經 PiPImageCache | 改走 `PiPImageCache.shared.loadImage`，與 PiP 疊層共用 NSCache + FIFO 下載佇列 |
+| 通知路徑無限並行 dataTask | 聊天訊息爆量時每則通知各自下載，繞過 5 連線並行上限 | 透過 PiPImageCache 的 `waitingQueue` FIFO（Section 42），統一收斂並行量 |
+| 附件格式依 MIME 判斷（jpg/gif/webp/png） | 舊 `dataTask` 依 `response.mimeType` 決定副檔名 | 統一轉 PNG（`image?.pngData()`），程式碼簡化；GIF 動畫通知附件少見，PiP 疊層本就顯示靜態 |
+
+```swift
+// liveAPP/liveAPPApp.swift — postSystemNotification
+Task {
+    await PiPImageCache.shared.loadImage(urlString: bestURL.absoluteString) { image in
+        guard let data = image?.pngData() else {
+            deliverNotification(content: content)
+            return
+        }
+        let tempFile = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".png")
+        try? data.write(to: tempFile)
+        if let attachment = try? UNNotificationAttachment(identifier: UUID().uuidString, url: tempFile) {
+            content.attachments = [attachment]
+        }
+        deliverNotification(content: content)   // completion 已在 MainActor
+    }
+}
+```
