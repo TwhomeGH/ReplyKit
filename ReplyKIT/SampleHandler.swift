@@ -1595,23 +1595,21 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 }
             }
 
-            // step 4: 標記 session ready
-            await MainActor.run {
-                // Add output
-                self.isSessionReady = true
+            // step 4: 推流並標記 session ready（await publish，不吞錯誤、不佔用 MainActor）
+            sendlog(message: "🔄 RTMP publish \(fixlogSafeKey(key))")
 
-                sendlog(message: "🔄 RTMP publish \(fixlogSafeKey(key))")
+            do {
+                try await rtmpStream.publish(key)
 
-                Task {
-                _ = try? await rtmpStream.publish(key)
+                await MainActor.run { self.isSessionReady = true }
 
-                }
-
-                sendlog(message:"🎉 RTMP 推流成功",flush: true)
+                sendlog(message: "🎉 RTMP 推流成功", flush: true)
                 logger.info("🎉 RTMP 推流成功")
 
                 self.notifyReconnectStatus(.success)
-
+            } catch {
+                sendlog(message: "❌ RTMP publish 失敗 \(error)，由 RTMPConnection 自動重連")
+                self.notifyReconnectStatus(.failed)
             }
 
         }  catch RTMPConnection.Error.requestFailed(let response) {
