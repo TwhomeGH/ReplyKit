@@ -1266,11 +1266,6 @@ CPU / RAM / Disk I/O 三個即時圖表在長時間開啟或反覆切頁後會�
   | Message | String | 顯示在子母用的結束訊息 使用預設填 StreamEnded |
 
 
-
-
-
-
-
 3. 發送方式（Python 範例）
 
     ```python
