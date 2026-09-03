@@ -41,7 +41,7 @@ class SharedDefaults {
 @available(iOS 10.0, *)
 class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
-   
+
     var DWidth = 0
     var DHeight = 0
 
@@ -62,7 +62,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
 
-    
+
 
 #if os(iOS)
     private var currentOrientation: UIDeviceOrientation = .portrait
@@ -141,7 +141,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         default:
 
-           
+
 
             Task {
                 appVolume = Float(RPConfig.shared.state.AppVolume)
@@ -158,8 +158,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     //
 
-    
-    
+
+
 
     // MARK: 註冊所有事件
     func registerObservers() {
@@ -251,7 +251,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         case "appAdd":
 
-            
+
 
             Task {
 
@@ -289,11 +289,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             }
 
-            break 
+            break
 
 
         case "micVolumeChanged":
-            
+
 
             Task {
                 var newVolume = (SharedDefaults.group?.object(forKey: "micVolume") as? Double) ?? 1.0
@@ -384,7 +384,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             print("棄用組件方法")
 
             break
-            
+
 
         case "SocketRetry":
             sendlog(message: "收到 SocketRetry，觸發連線")
@@ -414,7 +414,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                     }
                 }
-                
+
                 videoProcessor?.setRotatorDebug(Rlog)
                 sendlog(message:"[旋轉日誌變化] VideoRotate \(Rlog)")
 
@@ -425,7 +425,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "DebugTime":
-            
+
 
             Task {
 
@@ -483,11 +483,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "RotateOriginal":
-            
-            
+
+
 
             Task {
-                
+
                 var Rlog=SharedDefaults.group?.bool(
                 forKey: "RotateOriginal"
             ) ?? false
@@ -583,7 +583,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 sendlog(message: "RVideoSET:\(vset)")
                 sendlog(message:"[Rotate變換]  \(Rlog)")
 
-                try await rtmpStream.setVideoSettings(vset)
+                try? await rtmpStream.setVideoSettings(vset)
+
+                await rtmpStream.restartVideoEncoding(reason: "video Rotate settings updated")
 
 
                 RPConfig.shared.updateState(Rotate:Rlog)
@@ -595,12 +597,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "SocketLog":
-            
+
 
             Task {
                 var Rlog=SharedDefaults.group?.bool(forKey: "EnableSocketlog") ?? false
 
-                
+
                     if let raw = try await SocketClient.shared.requestSet(for: "EnableSocketlog", type: "Bool") {
 
                         if let av = raw as? Bool {
@@ -624,7 +626,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "ChangeBit":
-            
+
             Task {
 
                 var Rlog=SharedDefaults.group?.bool(forKey: "ChangeBit") ?? false
@@ -722,7 +724,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "logMode":
-            
+
             Task {
 
                 var logM=SharedDefaults.group?.integer(forKey: "logMode") ?? 0
@@ -818,7 +820,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 var VSET = await rtmpStream.videoSettings
                 VSET.videoSize = CGSize(width: CGFloat(dstRW), height: CGFloat(dstRH))
 
-                try await rtmpStream.setVideoSettings(VSET)
+                try? await rtmpStream.setVideoSettings(VSET)
+
+                await rtmpStream.restartVideoEncoding(reason: "video settings updated")
 
                 ADWidth = dstRW
                 ADHeight = dstRH
@@ -826,13 +830,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 sendlog(message: "OutW:\(dstRW)x\(dstRH)")
 
             }
-            
+
             break
 
 
 
         case "OutH":
-            
+
 
             Task {
                 var dstRH=SharedDefaults.group?.integer(forKey: "dstH") ?? 0
@@ -866,7 +870,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 var VSET = await rtmpStream.videoSettings
                 VSET.videoSize = CGSize(width: CGFloat(dstRW), height: CGFloat(dstRH))
 
-                try await rtmpStream.setVideoSettings(VSET)
+                try? await rtmpStream.setVideoSettings(VSET)
+
+                await rtmpStream.restartVideoEncoding(reason: "video settings updated")
 
                 ADWidth = dstRW
                 ADHeight = dstRH
@@ -884,7 +890,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "Enablelog":
-            
+
             Task {
                 var Enablelog=SharedDefaults.group?.bool(forKey: "Enablelog") ?? false
 
@@ -913,7 +919,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             break
 
-            
+
 
 
         case "onAudioPage":
@@ -950,7 +956,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             break
 
 
-            
+
         default:
             break
         }
@@ -991,20 +997,20 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             if var track = settings.tracks[0] {
                 // 0 是 app 音頻 track
                 if volume >= 1.0 {
-                    
+
                     track = .default
 
                 } else {
-                    
-                
-                    track.volume = volume  
-                
+
+
+                    track.volume = volume
+
                 }   // volume 值 0.0 ~ 1.0
 
                 settings.tracks[0] = track
-                
+
             }
-        
+
         await mediaMixer.setAudioMixerSettings(settings)
     }
 
@@ -1015,18 +1021,18 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             if var track = settings.tracks[1] {
                 // 1 是 麥克風 track
                 if volume >= 1.0 {
-                    
+
                     track = .default
 
                 } else {
-                    
-                
-                    track.volume = volume  
-                
+
+
+                    track.volume = volume
+
                 }   // volume 值 0.0 ~ 1.0
-                
+
                 settings.tracks[1] = track
-        
+
             }
 
         await mediaMixer.setAudioMixerSettings(settings)
@@ -1060,6 +1066,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         }
     }
 
+
+    // MARK: 更新視訊方向 可能已棄用未使用
     func updateVideoOrientation(from orientation: UIDeviceOrientation) async {
         // 轉成 AVFoundation 的方向
 
@@ -1111,6 +1119,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             videoSettings.videoSize = newSize
             try? await rtmpStream.setVideoSettings(videoSettings)
+
+            await rtmpStream.restartVideoEncoding(reason: "video settings updated")
 
         }
 
@@ -1188,7 +1198,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     }
 
-    
+
     func setUserDefalutConfig(urlString:String = "rtmp://192.168.0.106/live" ,streamKey:String = "test")  {
 
 
@@ -1278,6 +1288,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         }
     }
 
+    // MARK: 套用所有視訊設定 主要用於初始化或重新配置視訊流
     func applyAllVideoSettings(width: Int, height: Int, stream: RTMPStream? = nil, setSize: Bool = true) async {
         guard let target = stream ?? rtmpStream else { return }
         var videoSettings = await target.videoSettings
@@ -1289,8 +1300,16 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         if setSize {
             let rotate = RPConfig.shared.state.Rotate
             if rotate == 0 || rotate == 180 {
+
+                await mediaMixer.setVideoOrientation(.portrait)
+
                 videoSettings.videoSize = CGSize(width: CGFloat(height), height: CGFloat(width))
+
+
             } else {
+
+                await mediaMixer.setVideoOrientation(.landscapeRight)
+
                 videoSettings.videoSize = CGSize(width: CGFloat(width), height: CGFloat(height))
             }
         }
@@ -1317,7 +1336,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         videoSettings.allowFrameReordering = RPConfig.shared.state.allowFrameReordering
 
         videoSettings.maxFrameDelayCount = RPConfig.shared.state.BufferCount  // 限制 VT 內部最多疊幾幀 -1會使用自動計算
-        
+
 
         if RPConfig.shared.state.h264useCAVLC {
             sendlog(message: "使用輕量編碼 CAVLC 軟體節流 VT編碼速度優先策略")
@@ -1336,20 +1355,23 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         }
 
         try? await target.setVideoSettings(videoSettings)
+
+        await target.restartVideoEncoding(reason: "video settings updated")
+
         sendlog(message: "套用完整 video settings: \(width)x\(height) codec=\(codec) profile=\(profilelvl) keyframe=\(kv)s bitrate=\(RPConfig.shared.state.BitRate/1000)kbps")
     }
 
     func configureVideo_init() async {
         // Video settings
 
-        
+
 
         await mediaMixer.setSessionPreset(.inputPriority)
 
         // Video mixer passthrough
         var videoMixerSettings = await mediaMixer.videoMixerSettings
         videoMixerSettings.mode = .passthrough
-        
+
 
         await mediaMixer.setVideoMixerSettings(videoMixerSettings)
 
@@ -1389,7 +1411,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         audioSettings.tracks[1] = .default
 
         if RPConfig.shared.state.enableEchoFix {
-            
+
             audioSettings.mainTrack = 1            // mic（你 app 的 track 1，會持續輸出）
             audioSettings.isEchoCancellationEnabled = true // 使用原始啟用預設回音消除
             audioSettings.echoCancellationReferenceTrack = 0   // app（track 0）
@@ -1398,18 +1420,18 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         }
 
-        
+
 
         var audioSet = await rtmpStream.audioSettings
 
-        // 設定音訊編碼格式為 AAC 128kbps 自動選擇合適的格式
-        audioSet.bitRate = AudioCodecSettings.bestAacBitrate
-        audioSet.format = AudioCodecSettings.bestAacFormat
-        
+        // RTMP/FLV 推流預設使用相容性優先的 AAC LC 128kbps。
+        audioSet.bitRate = AudioCodecSettings.recommendedRtmpBitrate
+        audioSet.format = AudioCodecSettings.recommendedRtmpFormat
+
         try? await rtmpStream.setAudioSettings(audioSet)
 
         // Log 會顯示選擇結果
-        sendlog(message: "Audio格式自動使用: format=\(AudioCodecSettings.bestAacFormat.audioDescription)")
+        sendlog(message: "Audio格式使用RTMP推薦: format=\(AudioCodecSettings.recommendedRtmpFormat.audioDescription) bitrate=\(AudioCodecSettings.recommendedRtmpBitrate/1000)kbps")
 
         await mediaMixer.setAudioMixerSettings(audioSettings)
 
@@ -1455,7 +1477,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 onAudioPage: RPConfig.shared.onAudioPage
             )
         sendlog(message: "[Init] audioProcessor created \(audioProcessor != nil)")
-        
+
             videoProcessor = VideoFrameProcessor(
                 mediaMixer: mediaMixer,
                 sendlog: { message in
@@ -1465,7 +1487,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         sendlog(message: "[Init] videoProcessor created \(videoProcessor != nil)")
 
 
-            
+
 
 
 
@@ -1582,7 +1604,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             sendlog(message: "🔄 RTMP connect \(url)")
             let connectResult = try await rtmpConnection?.connect(url)
             sendlog(message: "🔄 RTMP connect 完成: \(connectResult?.description ?? "nil")")
-            
+
 
             sendlog(message:"🎉 RTMP:\(url)/ KEY:\(fixlogSafeKey(key)) 連線成功",flush: true)
 
@@ -1742,7 +1764,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 logger.info("✅ MediaMixer 配置完成")
 
-                
+
                 // configureVideo_init() 已套用完整 videoSettings，此處僅 log 確認
                 let publishSize = await self.rtmpStream.videoSettings.videoSize
                 sendlog(message: "RTMP Publish 前 videoSize: \(Int(publishSize.width))x\(Int(publishSize.height))")
@@ -1778,17 +1800,17 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     let key = self.rtmpKey
 
                     await self.startRTMP(url: url, key: key)
-                
-                }
-                
 
-                
+                }
+
+
+
 
                 self.isInitialSyncDone = true
                 sendlog(message: "Socket初始配置完成")
 
 
-                
+
             }
 
 
@@ -1810,10 +1832,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         guard isSessionReady, !isStopping else { return }
 
-        // 暫停 <3s 視為正常快速切換，不做重建避免每次 resume 都造成推流 reconfig 閃斷；
-        // 暫停 ≥3s 才可能被系統 suspend 造成 encoder stall，保留重建保險。
         let pauseDuration = pausedAt.map { Date().timeIntervalSince($0) } ?? 0
-        let needsRecovery = pauseDuration >= broadcastPauseRecoveryThreshold
         pausedAt = nil
 
         Task(priority: .medium) { [weak self] in
@@ -1828,16 +1847,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 sendlog(message: "📹 MediaMixer 已重新啟動")
             }
 
-            // 只有「暫停夠久、很可能真的 stall」才強制重建 encoder session；
-            // 短暫切換不做，交由 HaishinKit 的 gap>3s 偵測與 ensureVideoProcessor 自動補救
-            if needsRecovery, let stream = rtmpStream {
-                do {
-                    let settings = await stream.videoSettings
-                    try await stream.setVideoSettings(settings)
-                    sendlog(message: "📹 Video encoder 已重建（暫停 \(Int(pauseDuration))s）")
-                } catch {
-                    sendlog(message: "⚠️ Video encoder 重建失敗: \(error)")
-                }
+            // ReplayKit resume 是明確的 lifecycle 邊界；不要用同值 setVideoSettings
+            // 依賴 settings diff 副作用，直接要求底層重接 video publish pipeline。
+            if let stream = rtmpStream {
+                await stream.restartVideoEncoding(
+                    reason: "broadcast resumed after \(String(format: "%.1f", pauseDuration))s"
+                )
+                sendlog(message: "📹 Video pipeline 已恢復（暫停 \(String(format: "%.1f", pauseDuration))s）")
             }
 
             // video processor 只在真的失效時重建
@@ -1851,7 +1867,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     private var isBroadcastPaused = false
     private var pausedAt: Date?
     private var isReconnecting = false
-    private let broadcastPauseRecoveryThreshold: TimeInterval = 3
 
     // MARK: 直播結束處理
     private var broadcastEndTask: Task<Void, Never>?
@@ -1875,7 +1890,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             // 1. 關閉串流：停 codec + 送出 closeStream 指令
 
             _ = try? await rtmpStream.close()
-            
+
             // 2. 從 mixer 移除輸出（避免 stopRunning 時還有 data flow）
             await mediaMixer.removeOutput(rtmpStream)
 
@@ -1883,8 +1898,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             // 3. 最後關RTMP 連接
             _ = try? await rtmpConnection?.close()
-            
-            
+
+
 
             videoProcessor?.cleanup()
             audioProcessor?.cleanup()
@@ -1963,6 +1978,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         }
     }
 
+    // MARK: - Video Configuration 可能未使用
     private func configureVideoUnsafe(dims: CMVideoDimensions) {
 
         var width = Int(dims.width)
@@ -2063,7 +2079,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         }
 
         switch avfrom {
-            
+
         case .portrait, .portraitUpsideDown:
             newSize = CGSize(width: CGFloat(width), height: CGFloat(height))
             sendlog(message: "[旋轉時間軸] 初始更新直向 size:\(newSize)")
@@ -2085,7 +2101,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         let dimsCopy = (width, height)
         Task {
-            await applyAllVideoSettings(width: dimsCopy.0, height: dimsCopy.1, setSize: false)
+            await applyAllVideoSettings(width: dimsCopy.0, height: dimsCopy.1)
         }
 
         if lastConfiguredSize != newSize {
@@ -2094,6 +2110,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 var vs2 = await rtmpStream.videoSettings
                 vs2.videoSize = newSize
                 try? await rtmpStream.setVideoSettings(vs2)
+
+                await rtmpStream.restartVideoEncoding(reason: "video settings updated")
             }
         }
 
@@ -2112,11 +2130,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     override func processSampleBuffer(_ sampleBuffer: CMSampleBuffer, with sampleBufferType: RPSampleBufferType) {
 
 
-        
+
         guard sampleBuffer.dataReadiness == .ready else {
             sendlog(message:"ReplyKIT數據流未就緒")
             return
-        }   
+        }
 
         // 這裡的 sampleBuffer 是 ReplayKit 給的原始幀數據，還沒有經過我們的處理器修改
         let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
@@ -2150,28 +2168,31 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 if dims.width > 0 && dims.height > 0 {
                     let w = Int(dims.width)
                     let h = Int(dims.height)
-                    let SharedW = SharedDefaults.group?.integer(forKey: "ReplyKitWidth") ?? 0
-                    let SharedH = SharedDefaults.group?.integer(forKey: "ReplyKitHeight") ?? 0
-                    logger.debug("Width+H ReplyKit:\(h)x\(w)")
-                    logger.debug("Shared \(SharedW)x\(SharedH)")
+
                     ReplyKitW = h; ReplyKitH = w
+
                     if RPConfig.shared.enableSocketLog {
                         SocketClient.shared.sendSettings(key: "ReplyKitWidth", value: h)
                         SocketClient.shared.sendSettings(key: "ReplyKitHeight", value: w)
                     } else {
+
+                        let SharedW = SharedDefaults.group?.integer(forKey: "ReplyKitWidth") ?? 0
+                        let SharedH = SharedDefaults.group?.integer(forKey: "ReplyKitHeight") ?? 0
+
+                        logger.debug("Width+H ReplyKit:\(h)x\(w)")
+                        logger.debug("Shared \(SharedW)x\(SharedH)")
+
+
                         if SharedW != h { SharedDefaults.group?.set(h, forKey: "ReplyKitWidth") }
                         if SharedH != w { SharedDefaults.group?.set(w, forKey: "ReplyKitHeight") }
                     }
                     let configW = ADWidth > 0 && ADHeight > 0 ? ADHeight : h
                     let configH = ADWidth > 0 && ADHeight > 0 ? ADWidth : w
                     let rotate = RPConfig.shared.state.Rotate
+
+
                     Task {
-                        if rotate == 0 || rotate == 180 {
-                            await mediaMixer.setVideoOrientation(.portrait)
-                        } else {
-                            await mediaMixer.setVideoOrientation(.landscapeRight)
-                        }
-                        await applyAllVideoSettings(width: configW, height: configH, setSize: false)
+                        await applyAllVideoSettings(width: configW, height: configH)
                     }
                 }
 
@@ -2195,11 +2216,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 sendlog(message: "[Video流水] #\(videoFrameCount) PTS:\(String(format:"%.3f",sinceStart))s vp:\(p != nil ? "Y" : "N") init:\(processorsInitialized) drop:\(p?.droppedCount ?? 0) proc:\(p?.processedCount ?? 0)")
             }
 
-            
+
             ensureVideoProcessor(sampleBuffer, timing: timing)
 
 
-            
+
 
 
             break
@@ -2219,11 +2240,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 } else if RPConfig.shared.enablePipelineLog, audioFrameCount % 600 == 0 {
                     let sinceStart = timestamp.seconds
                     sendlog(message: "[Audio流水] #\(audioFrameCount) track:\(trackType) PTS:\(String(format:"%.3f",sinceStart))s proc:\(audioProcessor != nil ? "Y" : "N") init:\(processorsInitialized)")
-                
+
                 }
 
 
-                
+
                 if needAudioConfiguration  && !didConfigureAudio {
                     didConfigureAudio = true
                     needAudioConfiguration = false
@@ -2236,7 +2257,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 ensureAudioProcessor(sampleBuffer, trackType: trackType, timing: timing)
 
 
-            
+
 
 
 

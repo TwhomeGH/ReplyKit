@@ -382,7 +382,12 @@ final class VideoFrameProcessor {
                 return
             }
             processedCount &+= 1
-            guard await mediaMixer.isRunning else { return }
+            guard await mediaMixer.isRunning else {
+                if processedCount % 300 == 0 {
+                    sendlog("[VProc] ⚠️ MediaMixer 未運行，丟棄 processed video")
+                }
+                return
+            }
             await mediaMixer.append(rotated)
         }
     }
