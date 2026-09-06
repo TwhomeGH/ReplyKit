@@ -6,6 +6,20 @@ import CoreMedia
 import CoreVideo
 import os
 
+struct VideoProcessorDiagnostics: Sendable {
+    let isActive: Bool
+    let processedCount: Int
+    let droppedCount: Int
+    let consecutiveDropCount: Int
+    let hasGpuRotator: Bool
+    let gpuPermanentFailure: Bool
+    let commandStats: GPUCommandStats
+
+    var summary: String {
+        "active:\(isActive) proc:\(processedCount) drop:\(droppedCount) rotateDrop:\(consecutiveDropCount) gpu:\(hasGpuRotator ? "Y" : "N") gpuDead:\(gpuPermanentFailure) \(commandStats.summary)"
+    }
+}
+
 actor FrameProcessorActor {
     private var gpuRotator: RPVideoRotatorNV12BatchQueueOptimized?
     private var cpuRotator: RPVideoRotatorCPU_NV12?
@@ -347,6 +361,18 @@ actor FrameProcessorActor {
         cpuRotator?.OutHH = outHeight
         lastKey = nil
     }
+
+    func diagnostics(isActive: Bool, processedCount: Int, droppedCount: Int) -> VideoProcessorDiagnostics {
+        VideoProcessorDiagnostics(
+            isActive: isActive,
+            processedCount: processedCount,
+            droppedCount: droppedCount,
+            consecutiveDropCount: consecutiveDropCount,
+            hasGpuRotator: gpuRotator != nil,
+            gpuPermanentFailure: gpuRotator?.isPermanentlyDead ?? false,
+            commandStats: gpuRotator?.commandStats() ?? .empty
+        )
+    }
 }
 
 final class VideoFrameProcessor {
@@ -425,6 +451,14 @@ final class VideoFrameProcessor {
             adHeight: adHeight,
             outWidth: outWidth,
             outHeight: outHeight
+        )
+    }
+
+    func diagnostics() async -> VideoProcessorDiagnostics {
+        await actor.diagnostics(
+            isActive: isActive,
+            processedCount: processedCount,
+            droppedCount: droppedCount
         )
     }
 }

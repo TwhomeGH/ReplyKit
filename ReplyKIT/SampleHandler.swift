@@ -2128,6 +2128,86 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     var videoFrameCount: Int = 0
     var audioFrameCount: Int = 0
     var lastDetailLogTime: Double = 0.0
+    private var lastVideoHealthLogTime: Double = 0.0
+    private var lastVideoHealthFrameCount: Int = 0
+    private var lastVideoHealthProcessedCount: Int = 0
+    private var lastVideoHealthDroppedCount: Int = 0
+    private var lastVideoHealthTimeoutCount: UInt64 = 0
+
+    private func logVideoHealthIfNeeded(timestamp: CMTime) {
+        let now = timestamp.seconds
+        guard now.isFinite, now > 0 else { return }
+
+        if lastVideoHealthLogTime <= 0 {
+            lastVideoHealthLogTime = now
+            lastVideoHealthFrameCount = videoFrameCount
+            lastVideoHealthProcessedCount = videoProcessor?.processedCount ?? 0
+            lastVideoHealthDroppedCount = videoProcessor?.droppedCount ?? 0
+            return
+        }
+
+        let elapsed = now - lastVideoHealthLogTime
+        guard elapsed >= 1.0 else { return }
+
+        let inputDelta = videoFrameCount - lastVideoHealthFrameCount
+        let processedNow = videoProcessor?.processedCount ?? 0
+        let droppedNow = videoProcessor?.droppedCount ?? 0
+        let processedDelta = processedNow - lastVideoHealthProcessedCount
+        let droppedDelta = droppedNow - lastVideoHealthDroppedCount
+        let previousTimeoutCount = lastVideoHealthTimeoutCount
+        let processor = videoProcessor
+
+        lastVideoHealthLogTime = now
+        lastVideoHealthFrameCount = videoFrameCount
+        lastVideoHealthProcessedCount = processedNow
+        lastVideoHealthDroppedCount = droppedNow
+
+        Task { [weak self, processor] in
+            guard let self else { return }
+            let diagnostics = await processor?.diagnostics()
+            let timeoutNow = diagnostics?.commandStats.timedOut ?? previousTimeoutCount
+            let timeoutDelta = timeoutNow >= previousTimeoutCount ? timeoutNow - previousTimeoutCount : 0
+            self.lastVideoHealthTimeoutCount = timeoutNow
+
+            let inputFPS = Double(inputDelta) / elapsed
+            let processedFPS = Double(processedDelta) / elapsed
+            let droppedFPS = Double(droppedDelta) / elapsed
+            let status: String
+
+            if inputFPS < 20, timeoutDelta == 0, diagnostics?.isActive != false {
+                status = "upstream-throttle"
+            } else if timeoutDelta > 0 || (diagnostics?.commandStats.inFlight ?? 0) > 2 {
+                status = "metal-pressure"
+            } else if inputFPS >= 20, processedFPS < inputFPS * 0.6 {
+                status = "processor-pressure"
+            } else if droppedDelta > 0 {
+                status = "processor-drop"
+            } else {
+                status = "healthy"
+            }
+
+            let diagText = diagnostics?.summary ?? "processor:nil"
+            SocketClient.shared.sendVideoHealth(
+                status: status,
+                inputFPS: inputFPS,
+                processedFPS: processedFPS,
+                droppedFPS: droppedFPS,
+                timeoutDelta: timeoutDelta
+            )
+            sendlog(
+                title: "[VHealth]",
+                message: String(
+                    format: "%@ input:%.1ffps processed:%.1ffps dropped:%.1ffps timeoutDelta:%llu %@",
+                    status,
+                    inputFPS,
+                    processedFPS,
+                    droppedFPS,
+                    timeoutDelta,
+                    diagText
+                )
+            )
+        }
+    }
 
 
     override func processSampleBuffer(_ sampleBuffer: CMSampleBuffer, with sampleBufferType: RPSampleBufferType) {
@@ -2219,6 +2299,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             }
 
             videoFrameCount += 1
+            logVideoHealthIfNeeded(timestamp: timestamp)
 
             // ✅ 強制診斷日誌：每 1500 幀或首幀輸出，不依賴 enablePipelineLog
             if videoFrameCount % 1500 == 0 {

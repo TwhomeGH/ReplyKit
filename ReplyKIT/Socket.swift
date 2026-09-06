@@ -55,6 +55,15 @@ enum TimeoutError: Error {
     case timedOut
 }
 
+private struct VideoHealthPayload: Codable {
+    let type = "videoHealth"
+    let status: String
+    let inputFPS: Double
+    let processedFPS: Double
+    let droppedFPS: Double
+    let timeoutDelta: Int
+}
+
 func withTimeout<T>(
     _ seconds: TimeInterval,
     operation: @escaping () async throws -> T
@@ -123,6 +132,15 @@ class SocketClient : @unchecked Sendable {
 
     // 廣播 RTMP 配置套用後的音訊 DSP 設定（micGain, echoFix, noiseFix, agcFix, metalAudio）
     var onAudioConfigChanged: ((Float, Bool, Bool, Bool, Bool) -> Void)?
+
+    private func dictionary<T: Encodable>(from payload: T) -> [String: Any]? {
+        guard let data = try? JSONEncoder().encode(payload),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let dictionary = object as? [String: Any] else {
+            return nil
+        }
+        return dictionary
+    }
 
     var latestAppVolume: Float = 0
     var latestMicVolume: Float = 0
@@ -599,6 +617,26 @@ class SocketClient : @unchecked Sendable {
                 "persist":persist
             ]
             self.sendPayload(payload)
+        }
+    }
+
+    func sendVideoHealth(status: String,
+                         inputFPS: Double,
+                         processedFPS: Double,
+                         droppedFPS: Double,
+                         timeoutDelta: UInt64) {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            guard self.connection?.state == .ready else { return }
+            let payload = VideoHealthPayload(
+                status: status,
+                inputFPS: inputFPS,
+                processedFPS: processedFPS,
+                droppedFPS: droppedFPS,
+                timeoutDelta: Int(timeoutDelta)
+            )
+            guard let dictionary = self.dictionary(from: payload) else { return }
+            self.sendPayload(dictionary)
         }
     }
 

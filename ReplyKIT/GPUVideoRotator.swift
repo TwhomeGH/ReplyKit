@@ -8,8 +8,22 @@ import Foundation
 import AVFoundation
 import Accelerate
 import QuartzCore
+import MachO
 
 import HaishinKit
+
+struct GPUCommandStats: Sendable {
+    let submitted: UInt64
+    let completed: UInt64
+    let timedOut: UInt64
+    let inFlight: Int
+
+    static let empty = GPUCommandStats(submitted: 0, completed: 0, timedOut: 0, inFlight: 0)
+
+    var summary: String {
+        "submitted:\(submitted) completed:\(completed) timeout:\(timedOut) inflight:\(inFlight)"
+    }
+}
 
 
 
@@ -466,10 +480,19 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     }
 
     private func commandStatsSnapshot() -> String {
+        commandStats().summary
+    }
+
+    func commandStats() -> GPUCommandStats {
         commandStatsLock.lock()
-        let text = "submitted:\(submittedCommandCount) completed:\(completedCommandCount) timeout:\(timedOutCommandCount) inflight:\(commandBufferInFlight)"
+        let stats = GPUCommandStats(
+            submitted: submittedCommandCount,
+            completed: completedCommandCount,
+            timedOut: timedOutCommandCount,
+            inFlight: commandBufferInFlight
+        )
         commandStatsLock.unlock()
-        return text
+        return stats
     }
 
     private func poolSnapshot() -> String {
@@ -483,8 +506,17 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     }
 
     private func memorySnapshot() -> String {
-        let used = ProcessInfo.processInfo.physicalMemory
-        return "physical:\(used / 1024 / 1024)MB"
+        var info = mach_task_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+            }
+        }
+        guard result == KERN_SUCCESS else {
+            return "resident:unknown status:\(result)"
+        }
+        return "resident:\(info.resident_size / 1024 / 1024)MB"
     }
 
     private func describeCommandBufferError(_ error: Error?) -> String {
@@ -799,6 +831,7 @@ private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
     let attrs: [String: Any] = [
         kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
         kCVPixelBufferMetalCompatibilityKey as String: true,
+        kCVMetalTextureUsage as String: NSNumber(value: MTLTextureUsage.shaderWrite.rawValue),
         kCVPixelBufferWidthKey as String: width,
         kCVPixelBufferHeightKey as String: height
     ]

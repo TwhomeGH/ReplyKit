@@ -180,6 +180,29 @@
 
 ---
 
+### `videoHealth` — 視訊管線健康樣本
+
+| 方向 | → Server |
+|------|----------|
+| Payload | `{"type":"videoHealth","status":String,"inputFPS":Double,"processedFPS":Double,"droppedFPS":Double,"timeoutDelta":Int}` |
+| 觸發 | ReplayKit extension 每秒從 `SampleHandler` 彙整一次 |
+| Server 行為 | 更新 `VideoHealthModel`，供設備信息頁圖表化顯示 |
+| 實作 | Extension 端使用 `VideoHealthPayload: Codable` 產生 payload，Server 端 decode 為 `VideoHealthPayload` |
+
+這是正式 telemetry 訊息，不應從 `[VHealth]` log 字串解析圖表資料。
+
+`status` 目前可能值：
+
+| 值 | 含義 |
+|----|------|
+| `healthy` | 輸入與處理 FPS 接近，沒有 Metal timeout |
+| `upstream-throttle` | ReplayKit 上游擷取 FPS 偏低，通常是前景遊戲/GPU 排程壓制 |
+| `metal-pressure` | Metal command buffer timeout 或 in-flight 壓力升高 |
+| `processor-pressure` | input 正常但 processed 明顯落後 |
+| `processor-drop` | 單秒內有處理 drop |
+
+---
+
 ### `settings` — 設定同步
 
 | 方向 | → Server |

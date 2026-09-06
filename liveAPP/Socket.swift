@@ -521,6 +521,14 @@ class SocketServer:ObservableObject {
         var persist:Bool = false
     }
 
+    struct VideoHealthPayload: Codable {
+        let status: String
+        let inputFPS: Double
+        let processedFPS: Double
+        let droppedFPS: Double
+        let timeoutDelta: Int
+    }
+
     struct AudiencePayload: Codable {
         let userNum: Int?
         let userList: [String]?
@@ -1015,6 +1023,16 @@ class SocketServer:ObservableObject {
                 let dict = try decoder.decode(AudioLive.self, from: data)
                 LiveVolumeModel.shared.updateVolumes(mic: dict.micVol, app: dict.appVol, persist: dict.persist)
                 logTo("Updated UserVol APP:\(formatLinearVolumeForLog(dict.appVol)) Mic:\(formatLinearVolumeForLog(dict.micVol)) Persist:\(dict.persist)")
+
+            case "videoHealth":
+                let dict = try decoder.decode(VideoHealthPayload.self, from: data)
+                VideoHealthModel.shared.record(
+                    status: dict.status,
+                    inputFPS: dict.inputFPS,
+                    processedFPS: dict.processedFPS,
+                    droppedFPS: dict.droppedFPS,
+                    timeoutDelta: Double(dict.timeoutDelta)
+                )
 
             case "settings":
                 let dict = try decoder.decode([String: JSONValue].self, from: data)

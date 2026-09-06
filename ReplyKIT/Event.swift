@@ -230,7 +230,7 @@ final class LogManager {
 
     let batcher = LogBatcher()
     // 合計為 summary 的 title 前綴
-    static let batchedTitles: Set<String> = ["[VFrame]", "[AudioFRAME]", "[VProc]"]
+    static let batchedTitles: Set<String> = ["[VFrame]", "[AudioFRAME]", "[VProc]", "[VHealth]"]
 
     private let logQueue = DispatchQueue(
         label: "com.liveapp.logQueue",
@@ -997,7 +997,8 @@ func sendlog(title: String = "ReplyKit", message: String, flush: Bool = false) {
     // 非側載且不在日誌頁時，跳過高頻框架日誌
     if !RPConfig.isSideload && !RPConfig.shared.onLogPage {
         if title.hasPrefix("[VFrame]") || title.hasPrefix("[AudioFRAME]") ||
-           title.hasPrefix("[VProc]") || title.hasPrefix("BitRate統計") {
+           title.hasPrefix("[VProc]") || title.hasPrefix("[VHealth]") ||
+           title.hasPrefix("BitRate統計") {
             return
         }
     }

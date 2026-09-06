@@ -70,38 +70,6 @@ float bicubicSampleY_4tap(texture2d<half, access::sample> tex, float2 uv, float2
     return h0 * (1.0 - f.y) + h1 * f.y;
 }
 
-// --- True 16-tap Catmull-Rom bicubic for Y plane (float precision) ---
-float bicubicSampleY_16tap(
-    texture2d<half, access::sample> tex,
-    float2 uv_px,
-    uint2 texSize
-) {
-    float2 p = uv_px - 0.5f;
-    int2 ip = int2(floor(p));
-    float2 f = p - float2(ip);
-    float2 texSizeF = float2(texSize);
-
-    float4 rows[4];
-    for (int r = 0; r < 4; r++) {
-        int y = clamp(ip.y + r - 1, 0, int(texSize.y) - 1);
-        float4 col;
-        for (int c = 0; c < 4; c++) {
-            int x = clamp(ip.x + c - 1, 0, int(texSize.x) - 1);
-            float2 norm = (float2(x, y) + 0.5f) / texSizeF;
-            col[c] = float(tex.sample(nearestClampSampler, norm).x);
-        }
-        rows[r] = col;
-    }
-
-    float4 temp = float4(
-        catmullRom1D(rows[0], f.x),
-        catmullRom1D(rows[1], f.x),
-        catmullRom1D(rows[2], f.x),
-        catmullRom1D(rows[3], f.x)
-    );
-    return catmullRom1D(temp, f.y);
-}
-
 // --- 4-tap bicubic for UV plane (uses bilinear hardware) ---
 float2 bicubicSampleUV_4tap(texture2d<half, access::sample> tex, float2 uv, float2 texSize) {
     float2 px = uv * texSize - 0.5;
@@ -265,5 +233,4 @@ kernel void rotateNV12_bicubic(
         }
     }
 }
-
 

@@ -20,6 +20,48 @@ struct DataPoint: Identifiable {
     let value: Double
 }
 
+final class VideoHealthModel: ObservableObject {
+    static let shared = VideoHealthModel()
+
+    @Published private(set) var latestStatus: String = "waiting"
+    @Published private(set) var inputHistory: [DataPoint] = []
+    @Published private(set) var processedHistory: [DataPoint] = []
+    @Published private(set) var droppedHistory: [DataPoint] = []
+    @Published private(set) var timeoutHistory: [DataPoint] = []
+
+    private var dataPointCounter = 0
+    private let maxHistory = 120
+
+    private init() {}
+
+    func record(status: String, inputFPS: Double, processedFPS: Double, droppedFPS: Double, timeoutDelta: Double) {
+        DispatchQueue.main.async {
+            self.appendOnMain(status: status, inputFPS: inputFPS, processedFPS: processedFPS, droppedFPS: droppedFPS, timeoutDelta: timeoutDelta)
+        }
+    }
+
+    private func appendOnMain(status: String, inputFPS: Double, processedFPS: Double, droppedFPS: Double, timeoutDelta: Double) {
+        dataPointCounter &+= 1
+        let id = dataPointCounter
+        let now = Date()
+
+        latestStatus = status
+        inputHistory.append(DataPoint(id: id, time: now, value: inputFPS))
+        processedHistory.append(DataPoint(id: id, time: now, value: processedFPS))
+        droppedHistory.append(DataPoint(id: id, time: now, value: droppedFPS))
+        timeoutHistory.append(DataPoint(id: id, time: now, value: timeoutDelta))
+
+        trim()
+    }
+
+    private func trim() {
+        if inputHistory.count > maxHistory { inputHistory.removeFirst(inputHistory.count - maxHistory) }
+        if processedHistory.count > maxHistory { processedHistory.removeFirst(processedHistory.count - maxHistory) }
+        if droppedHistory.count > maxHistory { droppedHistory.removeFirst(droppedHistory.count - maxHistory) }
+        if timeoutHistory.count > maxHistory { timeoutHistory.removeFirst(timeoutHistory.count - maxHistory) }
+    }
+}
+
 struct DeviceInfo {
 
     // 屏幕寬高獲取本身寬高 剛好是反過來
@@ -279,6 +321,7 @@ struct DeviceView: View {
     let cpuInfo = SystemCPU()
     let diskIO = SystemDiskIO()
     @ObservedObject private var laManager = StreamActivityManager.shared
+    @ObservedObject private var videoHealth = VideoHealthModel.shared
 
     @State private var appMemoryMB: Double = 0
     @State private var cpuHistory: [DataPoint] = []
@@ -444,6 +487,66 @@ struct DeviceView: View {
                     Label("GPU / Metal", systemImage: "cpu")
             ) {
                 Text("GPU: \(DeviceInfo.cpuName)")
+            }
+
+            Section(
+                header:
+                    Label("Video Pipeline", systemImage: "waveform.path.ecg")
+            ) {
+                Text("狀態: \(videoHealth.latestStatus)")
+                    .foregroundColor(videoHealth.latestStatus == "healthy" ? .green : .orange)
+
+                Chart {
+                    ForEach(videoHealth.inputHistory) { pt in
+                        LineMark(
+                            x: .value("Time", pt.time),
+                            y: .value("FPS", pt.value),
+                            series: .value("Series", "Input")
+                        )
+                        .foregroundStyle(.blue)
+                    }
+                    ForEach(videoHealth.processedHistory) { pt in
+                        LineMark(
+                            x: .value("Time", pt.time),
+                            y: .value("FPS", pt.value),
+                            series: .value("Series", "Processed")
+                        )
+                        .foregroundStyle(.green)
+                    }
+                    ForEach(videoHealth.droppedHistory) { pt in
+                        LineMark(
+                            x: .value("Time", pt.time),
+                            y: .value("FPS", pt.value),
+                            series: .value("Series", "Dropped")
+                        )
+                        .foregroundStyle(.red)
+                    }
+                }
+                .chartYAxisLabel("FPS")
+                .chartYScale(domain: 0...70)
+                .frame(height: 140)
+
+                Chart {
+                    ForEach(videoHealth.timeoutHistory) { pt in
+                        BarMark(
+                            x: .value("Time", pt.time),
+                            y: .value("Timeout", pt.value)
+                        )
+                        .foregroundStyle(.purple)
+                    }
+                }
+                .chartYAxisLabel("Timeout/s")
+                .frame(height: 90)
+
+                let input = videoHealth.inputHistory.last?.value ?? 0
+                let processed = videoHealth.processedHistory.last?.value ?? 0
+                let dropped = videoHealth.droppedHistory.last?.value ?? 0
+                let timeout = videoHealth.timeoutHistory.last?.value ?? 0
+                Text("Input: \(input, specifier: "%.1f") fps  Processed: \(processed, specifier: "%.1f") fps")
+                    .font(.caption)
+                Text("Dropped: \(dropped, specifier: "%.1f") fps  Timeout: \(timeout, specifier: "%.0f")/s")
+                    .font(.caption)
+                    .foregroundColor(timeout > 0 || dropped > 0 ? .orange : .secondary)
             }
 
             Section(
