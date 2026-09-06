@@ -104,6 +104,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
     private var needVideoConfiguration = false
+    private var needsReplayKitDimensionReport = false
     private var needAudioConfiguration = false
 
     private var isSessionReady = false
@@ -192,58 +193,49 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         }
     }
 
-    private func readVideoDimension(_ key: String, fallback: Int, trigger: String) async -> Int {
-        var value = fallback
-
-        guard RPConfig.shared.enableSocketLog else {
-            return value
-        }
-
-        if let raw = try? await SocketClient.shared.requestSet(for: key, type: "Int") {
-            if let intValue = raw as? Int {
-                sendlog(message: "Socket原始\(trigger)尺寸 \(key):\(intValue) -> \(value)")
-                value = intValue
-            } else {
-                logger.error("\(trigger) \(key) 型別錯誤: \(type(of: raw))")
-            }
-        }
-
-        return value
-    }
-
     private func reloadVideoDimensions(trigger: String) async -> (
         adWidth: Int,
         adHeight: Int,
         outWidth: Int,
         outHeight: Int
-    ) {
-        let sharedADWidth = SharedDefaults.group?.integer(forKey: "dstW") ?? 0
-        let sharedADHeight = SharedDefaults.group?.integer(forKey: "dstH") ?? 0
-        let sharedOutWidth = SharedDefaults.group?.integer(forKey: "odstW") ?? 0
-        let sharedOutHeight = SharedDefaults.group?.integer(forKey: "odstH") ?? 0
+    )? {
+        if !RPConfig.shared.enableSocketLog {
+            RPConfig.shared.updateState(
+                ADWidth: SharedDefaults.group?.integer(forKey: "dstW") ?? 0,
+                ADHeight: SharedDefaults.group?.integer(forKey: "dstH") ?? 0,
+                ODWidth: SharedDefaults.group?.integer(forKey: "odstW") ?? 0,
+                ODHeight: SharedDefaults.group?.integer(forKey: "odstH") ?? 0
+            )
+        }
 
-        let adWidth = await readVideoDimension("dstW", fallback: sharedADWidth, trigger: trigger)
-        let adHeight = await readVideoDimension("dstH", fallback: sharedADHeight, trigger: trigger)
-        let outWidth = await readVideoDimension("odstW", fallback: sharedOutWidth, trigger: trigger)
-        let outHeight = await readVideoDimension("odstH", fallback: sharedOutHeight, trigger: trigger)
+        let state = RPConfig.shared.state
+        let adWidth = state.ADWidth
+        let adHeight = state.ADHeight
+        let outWidth = state.ODWidth
+        let outHeight = state.ODHeight
+
+        if RPConfig.shared.enableSocketLog,
+           adWidth <= 0,
+           adHeight <= 0,
+           outWidth <= 0,
+           outHeight <= 0 {
+            sendlog(message: "\(trigger) 跳過: socket 初始 RTMP batch 尚未同步尺寸")
+            return nil
+        }
 
         ADWidth = adWidth
         ADHeight = adHeight
         ODWidth = outWidth
         ODHeight = outHeight
 
-        RPConfig.shared.updateState(
-            ADWidth: adWidth,
-            ADHeight: adHeight,
-            ODWidth: outWidth,
-            ODHeight: outHeight
-        )
-
         return (adWidth, adHeight, outWidth, outHeight)
     }
 
     private func applyVideoDimensions(trigger: String) async {
-        let dims = await reloadVideoDimensions(trigger: trigger)
+        guard let dims = await reloadVideoDimensions(trigger: trigger) else {
+            sendlog(message: "\(trigger) 跳過: socket 尺寸未完整回傳")
+            return
+        }
 
         let encoderWidth: Int
         let encoderHeight: Int
@@ -1382,6 +1374,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         } else if RPConfig.shared.state.ADWidth > 0 && RPConfig.shared.state.ADHeight > 0 {
             encoderW = RPConfig.shared.state.ADWidth
             encoderH = RPConfig.shared.state.ADHeight
+        } else if RPConfig.shared.enableSocketLog {
+            encoderW = 0
+            encoderH = 0
+            sendlog(message: "socket 模式未取得尺寸，跳過 App Group fallback")
         } else {
             // fallback: 讀取 App Group 中上次設定的值
             let outW = SharedDefaults.group?.integer(forKey: "odstW") ?? 0
@@ -1755,7 +1751,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
                 self.lastConfiguredSize = nil
 
-                self.needVideoConfiguration = true
+                self.needVideoConfiguration = false
+                self.needsReplayKitDimensionReport = true
 
                 await self.configureVideo_init()
                 await self.configureAudio()
@@ -2046,6 +2043,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             sendlog(message: "使用與GPU一致設定寬高：\(ADWidth) x \(ADHeight)")
             width = ADHeight
             height = ADWidth
+        } else if RPConfig.shared.enableSocketLog {
+            sendlog(message: "configureVideo socket 模式未取得尺寸，跳過 App Group fallback")
         } else {
             // fallback: 讀取 App Group 中上次設定的值，encoder 優先使用最終畫布 OD/odst。
             let outW = SharedDefaults.group?.integer(forKey: "odstW") ?? 0
@@ -2157,7 +2156,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         switch sampleBufferType {
         case .video:
 
-            if needVideoConfiguration {
+            if needVideoConfiguration || needsReplayKitDimensionReport {
                 let formatDesc = sampleBuffer.formatDescription
                 let dims = formatDesc.map(CMVideoFormatDescriptionGetDimensions) ?? CMVideoDimensions(width: 0, height: 0)
 
@@ -2190,17 +2189,29 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                         if SharedW != h { SharedDefaults.group?.set(h, forKey: "ReplyKitWidth") }
                         if SharedH != w { SharedDefaults.group?.set(w, forKey: "ReplyKitHeight") }
                     }
-                    let configW = ADWidth > 0 && ADHeight > 0 ? ADHeight : h
-                    let configH = ADWidth > 0 && ADHeight > 0 ? ADWidth : w
-                    let rotate = RPConfig.shared.state.Rotate
+                    if needVideoConfiguration {
+                        let state = RPConfig.shared.state
+                        let configW: Int
+                        let configH: Int
+                        if state.ODWidth > 0 && state.ODHeight > 0 {
+                            configW = state.ODWidth
+                            configH = state.ODHeight
+                        } else if state.ADWidth > 0 && state.ADHeight > 0 {
+                            configW = state.ADWidth
+                            configH = state.ADHeight
+                        } else {
+                            configW = h
+                            configH = w
+                        }
 
-
-                    Task {
-                        await applyAllVideoSettings(width: configW, height: configH)
+                        Task {
+                            await applyAllVideoSettings(width: configW, height: configH)
+                        }
                     }
                 }
 
                 needVideoConfiguration = false
+                needsReplayKitDimensionReport = false
 
 
 

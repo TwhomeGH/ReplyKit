@@ -412,9 +412,9 @@ kernel void unsharpY(
 - **start()**：先調用 cleanupStaleListener() 再檢查狀態
 
 #### 3. SampleHandler（`ReplyKIT/SampleHandler.swift`）
-- **configureVideo_init()**：當 OD/AD 皆為 0 時，從 App Group UserDefaults 先讀取 `odstW`/`odstH` 作為 encoder fallback，沒有 OD 時才 fallback 到 `dstW`/`dstH`
-- **configureVideo()**：相同 fallback 邏輯
-- **broadcastStarted publish 前**：最終 videoSize 檢查也加入 UserDefaults fallback
+- **configureVideo_init()**：encoder 優先使用 OD，沒有 OD 才使用 AD；socket bridge 模式不使用 App Group fallback
+- **configureVideo()**：相同尺寸來源規則
+- **broadcastStarted publish 前**：最終 videoSize 檢查也遵守 OD 優先、socket 不 fallback 到 App Group 的規則
 
 ## 修復 GPU 旋轉初始化失敗造成畫面無法送出 (0x0)
 

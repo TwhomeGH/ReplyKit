@@ -33,15 +33,14 @@ runtime 更新時必須同時刷新 AD 與 OD，避免 encoder 已經切到新�
 
 ## Runtime 同步
 
-`OutW` 與 `OutH` 是兩個獨立 Darwin Notification，但 Extension 端不能只更新單一軸。  
-每次收到任一事件時，都要一次讀齊四個欄位：
+`OutW` 與 `OutH` 是兩個獨立 Darwin Notification，但 Extension 端不能只更新單一軸。
 
-- `dstW`
-- `dstH`
-- `odstW`
-- `odstH`
+資料來源依模式分開：
 
-讀齊後再原子套用：
+- socket bridge 啟用時，初始握手的完整 RTMP batch 會由 `applyRTMP()` 統一寫入 `RPConfig.shared.state`；事件處理器只讀 `RPConfig`，不再額外向主 App 發 `requestRTMP` 或 `requestSet`。
+- App Group 可用且未啟用 socket bridge 時，才從 `SharedDefaults.group` 讀取尺寸並寫回 `RPConfig`。
+
+取得最新 `RPConfig` 後再原子套用：
 
 - 更新 `ADWidth` / `ADHeight`
 - 更新 `ODWidth` / `ODHeight`
@@ -49,6 +48,19 @@ runtime 更新時必須同時刷新 AD 與 OD，避免 encoder 已經切到新�
 - 更新 rotator 的 AD / OD 尺寸
 
 這樣可以避免 `OutW` 先到、`OutH` 後到時產生 `(新寬度, 舊高度)` 的暫態解析度。
+
+## 開播初始化順序
+
+開播時的正常尺寸資料流是：
+
+1. `broadcastStarted` 建立 socket 並請求 RTMP batch。
+2. `SocketClient.applyRTMP()` 將 `dstW` / `dstH` / `odstW` / `odstH` 寫入 `RPConfig.shared.state`。
+3. `configureVideo_init()` 在 publish 前先用 OD 優先規則套用 encoder `videoSize`。
+4. 第一幀到來時，只用 `needsReplayKitDimensionReport` 回報 ReplayKit 原始尺寸，不重新套用 encoder。
+
+注意：`applyRTMP()` 不應送出 `VideoReconfig`。開播前設定已經完整同步並在 `configureVideo_init()` 套用；若第一幀路徑再重配，就可能把 AD `1552x1080` 反餵成 `1080x1552` 覆蓋正確的 OD `1920x1080`。
+
+`VideoReconfig` 只保留給開播後明確需要重配 encoder 的事件。即使 runtime 重配，也必須沿用 OD 優先規則。
 
 ## Preset 對照
 

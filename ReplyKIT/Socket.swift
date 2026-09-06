@@ -1061,12 +1061,6 @@ class SocketClient : @unchecked Sendable {
         sendlog(message:"[Get]Audio App:\(c.appVolume) Mic:\(c.micVolume) AppAdd:\(c.appVolumeAdd) MicAdd:\(c.micVolumeAdd)")
         sendlog(message:"[Get]Audio 降噪處理:\(c.enableNoiseFix) 回音處理:\(c.enableEchoFix) 自動增益:\(c.enableAGCFix) Metal:\(c.enableMetalAudio) ")
 
-        CFNotificationCenterPostNotification(
-            CFNotificationCenterGetDarwinNotifyCenter(),
-            CFNotificationName("VideoReconfig" as CFString),
-            nil, nil, true
-        )
-
         if !self.isProcessingBatch {
             guard let cont = self.rtmpContinuation else {
                 self.logTo("[RTMP] no pending continuation, ignore")

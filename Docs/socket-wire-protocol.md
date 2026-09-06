@@ -154,7 +154,7 @@
 | Request | `{"type":"requestRTMP"}` |
 | Response | `{"type":"RTMP","rtmpURL":String,"rtmpKey":String,"BitRate":Int,"dstW":Int,"dstH":Int,"odstW":Int,"odstH":Int,"Rotate":Int,"videoBuffer":Int,"useEnhancedRTMP":Bool?, ...}` |
 | Server 行為 | 從 UserDefaults 讀取 RTMP 設定後回應 |
-| 用戶端行為 | 收到後套用到 `RPConfig.shared`，通知 VideoReconfig |
+| 用戶端行為 | 收到後套用到 `RPConfig.shared`，由開播流程在 publish 前套用 video settings |
 
 `dstW` / `dstH` 是 GPU 中間處理尺寸，`odstW` / `odstH` 是最終畫布與 encoder 輸出尺寸。完整設計見 [video-dimensions.md](video-dimensions.md)。
 
