@@ -112,6 +112,47 @@ sendlog() / receiveSocketLog() / Socket logbatch / [PIP_Chat] 每一條
 
 ---
 
+## 3.1.1 AppLogPersister handle lifecycle 補強 (2026-09)
+
+### 目前定位
+
+`AppLogPersister` 是主 App 端的 Documents 日誌持久化器，產物是：
+
+```text
+Documents/log.txt
+```
+
+它不是 UI log buffer，也不是 extension 的早期兜底檔。三者分工如下：
+
+| 元件 | 位置 | 用途 |
+|------|------|------|
+| `LogBuffer` | 主 App 記憶體 | UI 即時顯示，0.05s debounce |
+| `AppLogPersister` | 主 App `Documents/log.txt` | 檔案 App 可讀、設備資訊頁 App Write 指標 |
+| `early-log.txt` | App Group / extension | 主 App 被殺或 socket 不可用時的兜底，主 App 啟動時合併 |
+
+### 寫入行為
+
+主 App 運行期間，`AppLogPersister` 應維持「長生命週期 handle」：
+
+1. `append(line:)` / `append(lines:)` 只把 log 放進 `pendingLines`
+2. 滿 50 筆或 0.5 秒後 `flushPending()`
+3. `openWriteHandle()` 首次建立並保存 `writeHandle`
+4. 後續 flush 重用同一個 handle，做 `seekToEndOfFile()` + `write()`
+5. `clear()` / `trimNow()` 只重設檔案內容與 offset，不做每筆 close/open
+6. `deinit` 時 flush pending 並關閉 `writeHandle`
+
+### 本次補強
+
+| 問題 | 修正 |
+|------|------|
+| `openWriteHandle()` 在 `log.txt` 不存在時回 nil | 先建立空檔，再開啟持久 handle |
+| fallback 使用 `data.write(..., .atomic)` | 改為一次性 `FileHandle` append，避免 open 失敗時覆寫既有 log |
+| singleton 沒有明確 close 收尾 | 新增 `deinit`：取消 pending flush、落盤、關閉 `writeHandle` |
+
+注意：`AppLogPersister.shared` 是 singleton，正常 iOS app 結束時不保證一定跑 `deinit`。所以 `deinit` 是資源收尾保險，不是可靠落盤機制；可靠落盤仍靠 0.5 秒批次 flush 與進入背景時的 `flushNow()`。
+
+---
+
 ## 3.2 early-log.txt 接線 + 消除每筆 open/close (2026-08)
 
 ### 背景問題

@@ -152,6 +152,16 @@ final class AppLogPersister {
         }
     }
 
+    deinit {
+        queue.sync {
+            flushWorkItem?.cancel()
+            flushWorkItem = nil
+            flushPending()
+            writeHandle?.closeFile()
+            writeHandle = nil
+        }
+    }
+
     private func calibrateLineCount() {
         guard let handle = try? FileHandle(forReadingFrom: logURL),
               let currentData = try? handle.readToEnd()
@@ -266,9 +276,13 @@ final class AppLogPersister {
         if let handle = writeHandle ?? openWriteHandle() {
             handle.seekToEndOfFile()
             handle.write(data)
-        } else {
-            try? data.write(to: logURL, options: .atomic)
+            return
         }
+
+        guard let handle = try? FileHandle(forWritingTo: logURL) else { return }
+        defer { handle.closeFile() }
+        handle.seekToEndOfFile()
+        handle.write(data)
     }
 
     private func write(_ data: Data) {
@@ -279,8 +293,11 @@ final class AppLogPersister {
     }
 
     private func openWriteHandle() -> FileHandle? {
-        guard FileManager.default.fileExists(atPath: logURL.path),
-              let handle = try? FileHandle(forWritingTo: logURL) else {
+        if !FileManager.default.fileExists(atPath: logURL.path) {
+            _ = FileManager.default.createFile(atPath: logURL.path, contents: nil)
+        }
+
+        guard let handle = try? FileHandle(forWritingTo: logURL) else {
             return nil
         }
         writeHandle = handle
