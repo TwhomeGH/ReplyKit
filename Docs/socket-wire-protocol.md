@@ -156,6 +156,8 @@
 | Server 行為 | 從 UserDefaults 讀取 RTMP 設定後回應 |
 | 用戶端行為 | 收到後套用到 `RPConfig.shared`，通知 VideoReconfig |
 
+`dstW` / `dstH` 是 GPU 中間處理尺寸，`odstW` / `odstH` 是最終畫布與 encoder 輸出尺寸。完整設計見 [video-dimensions.md](video-dimensions.md)。
+
 ---
 
 ### `logConfig` — 日誌設定

@@ -114,7 +114,7 @@ final class GPUSettingsViewModel: ObservableObject {
             odstW = cfg.owidth
         }
 
-        if odstH != cfg.owidth {
+        if odstH != cfg.oheight {
             odstH = cfg.oheight
 
         }
@@ -275,13 +275,13 @@ struct GPURotateView: View {
 
 
                 Text("畫布輸出寬高 [\(viewModel.odstW) x \(viewModel.odstH)]")
-                Text("0代表 以GPU輸出寬高為準")
+                Text("0代表 以GPU處理寬高為準")
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .padding(.bottom, 5)
 
 
-                Text("GPU輸出寬高 [\(viewModel.dstW) x \(viewModel.dstH)]")
+                Text("GPU處理寬高 [\(viewModel.dstW) x \(viewModel.dstH)]")
                 Text("0代表 使用原始寬高")
                     .font(.footnote)
                     .foregroundColor(.secondary)
@@ -408,7 +408,7 @@ struct GPURotateView: View {
 
 
 
-                Text("GPU輸出寬度")
+                Text("GPU處理寬度")
 
                 TextField("寬度", value: $viewModel.dstW, format: .number)
                   .textFieldStyle(RoundedBorderTextFieldStyle())
@@ -428,7 +428,7 @@ struct GPURotateView: View {
                   }
 
 
-                Text("GPU輸出高度")
+                Text("GPU處理高度")
 
                 TextField("高度", value: $viewModel.dstH, format: .number)
                   .textFieldStyle(RoundedBorderTextFieldStyle())
@@ -501,7 +501,7 @@ struct GPURotateView: View {
 
             }
         }
-        .navigationTitle("GPU輸出設置")
+        .navigationTitle("GPU處理設置")
 
         .onDisappear {
             GPUOutputConfig.save(viewModel.configs)

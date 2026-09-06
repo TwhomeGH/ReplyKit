@@ -412,7 +412,7 @@ kernel void unsharpY(
 - **start()**：先調用 cleanupStaleListener() 再檢查狀態
 
 #### 3. SampleHandler（`ReplyKIT/SampleHandler.swift`）
-- **configureVideo_init()**：當 OD/AD 皆為 0 時，從 App Group UserDefaults 讀取 dstW/dstH 作為 fallback；若仍為 0 則設定 1280x720 預設值
+- **configureVideo_init()**：當 OD/AD 皆為 0 時，從 App Group UserDefaults 先讀取 `odstW`/`odstH` 作為 encoder fallback，沒有 OD 時才 fallback 到 `dstW`/`dstH`
 - **configureVideo()**：相同 fallback 邏輯
 - **broadcastStarted publish 前**：最終 videoSize 檢查也加入 UserDefaults fallback
 
@@ -456,10 +456,8 @@ Extension 端原本的處理方式：
 若編碼器在此時讀取，會得到錯誤解析度（如 854x480 或 0x0）。
 
 ### 修復
-- **OutW/OutH 各自讀取雙維度**：兩個 handler 現在都同時讀取 `dstW` 與 `dstH`
-- **0 值保護**：若任一維度為 0，則跳過本次更新，等待另一方補齊
-- **原子設定**：`videoSize` 設為完整的 `CGSize(width:height:)`，不再分軸修改
-- **雙軸同步**：`ADWidth`/`ADHeight` 與 `rotator.dstWW`/`dstHH` 同時更新
+`OutW`/`OutH` 現在會一次讀齊完整尺寸並原子套用，encoder 使用最終畫布尺寸，GPU rotator 使用中間處理尺寸。
+詳細 AD/OD 設計與 preset 對照見 [Docs/video-dimensions.md](Docs/video-dimensions.md)。
 
 ## 停用 AdaptiveVideoBufferManager
 
@@ -1044,7 +1042,7 @@ HaishinKit 的 TCP timeout 為 15 秒，在這段期間 frame 持續積累，可
 ### 可設定參數
 
 - **畫布輸出寬高**：可自定義輸出畫面的寬度與高度
-- **GPU輸出寬高**：可自定義GPU處理後輸出畫面的寬度與高度
+- **GPU處理寬高**：可自定義GPU旋轉/縮放使用的中間處理寬高
 - **配置名稱**：方便辨識用
 - **選擇方向**：橫向直向
 - **只改輸出寬高[畫布本身]**：開啟後GPU處理最終產物寬高與原始一致
@@ -1054,12 +1052,10 @@ HaishinKit 的 TCP timeout 為 15 秒，在這段期間 frame 持續積累，可
   - 對大動態畫面可減少模糊
   - 預設不使用 用線性即可
 
-### 參考分辨率對應表
+### GPU/畫布分辨率
 
-| 寬度 | 高度 | 解析度 |
-| --- | --- | --- |
-| 1034 | 720  | 720p  |
-| 1552 | 1080 | 1080p |
+`dstW`/`dstH` 是 GPU 中間處理尺寸，`odstW`/`odstH` 是最終畫布與 encoder 輸出尺寸。
+詳細設計與 preset 對照見 [Docs/video-dimensions.md](Docs/video-dimensions.md)。
 
 ## 音訊設定
 

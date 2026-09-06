@@ -325,13 +325,27 @@ actor FrameProcessorActor {
         gpuRotator?.tsDebug(on)
     }
 
-    nonisolated func setRotatorDestination(width: Int, height: Int) {
-        Task { await _setRotatorDestination(width: width, height: height) }
+    nonisolated func updateRotatorDimensions(adWidth: Int, adHeight: Int, outWidth: Int, outHeight: Int) {
+        Task {
+            await _updateRotatorDimensions(
+                adWidth: adWidth,
+                adHeight: adHeight,
+                outWidth: outWidth,
+                outHeight: outHeight
+            )
+        }
     }
 
-    private func _setRotatorDestination(width: Int, height: Int) {
-        gpuRotator?.OutWW = width
-        gpuRotator?.OutHH = height
+    private func _updateRotatorDimensions(adWidth: Int, adHeight: Int, outWidth: Int, outHeight: Int) {
+        gpuRotator?.dstWW = adWidth
+        gpuRotator?.dstHH = adHeight
+        gpuRotator?.OutWW = outWidth
+        gpuRotator?.OutHH = outHeight
+        cpuRotator?.dstWW = adWidth
+        cpuRotator?.dstHH = adHeight
+        cpuRotator?.OutWW = outWidth
+        cpuRotator?.OutHH = outHeight
+        lastKey = nil
     }
 }
 
@@ -405,7 +419,12 @@ final class VideoFrameProcessor {
         actor.setRotatorTsDebug(on)
     }
 
-    func setRotatorDestination(width: Int, height: Int) {
-        actor.setRotatorDestination(width: width, height: height)
+    func updateRotatorDimensions(adWidth: Int, adHeight: Int, outWidth: Int, outHeight: Int) {
+        actor.updateRotatorDimensions(
+            adWidth: adWidth,
+            adHeight: adHeight,
+            outWidth: outWidth,
+            outHeight: outHeight
+        )
     }
 }

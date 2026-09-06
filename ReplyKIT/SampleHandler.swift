@@ -192,6 +192,83 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         }
     }
 
+    private func readVideoDimension(_ key: String, fallback: Int, trigger: String) async -> Int {
+        var value = fallback
+
+        guard RPConfig.shared.enableSocketLog else {
+            return value
+        }
+
+        if let raw = try? await SocketClient.shared.requestSet(for: key, type: "Int") {
+            if let intValue = raw as? Int {
+                sendlog(message: "Socket原始\(trigger)尺寸 \(key):\(intValue) -> \(value)")
+                value = intValue
+            } else {
+                logger.error("\(trigger) \(key) 型別錯誤: \(type(of: raw))")
+            }
+        }
+
+        return value
+    }
+
+    private func reloadVideoDimensions(trigger: String) async -> (
+        adWidth: Int,
+        adHeight: Int,
+        outWidth: Int,
+        outHeight: Int
+    ) {
+        let sharedADWidth = SharedDefaults.group?.integer(forKey: "dstW") ?? 0
+        let sharedADHeight = SharedDefaults.group?.integer(forKey: "dstH") ?? 0
+        let sharedOutWidth = SharedDefaults.group?.integer(forKey: "odstW") ?? 0
+        let sharedOutHeight = SharedDefaults.group?.integer(forKey: "odstH") ?? 0
+
+        let adWidth = await readVideoDimension("dstW", fallback: sharedADWidth, trigger: trigger)
+        let adHeight = await readVideoDimension("dstH", fallback: sharedADHeight, trigger: trigger)
+        let outWidth = await readVideoDimension("odstW", fallback: sharedOutWidth, trigger: trigger)
+        let outHeight = await readVideoDimension("odstH", fallback: sharedOutHeight, trigger: trigger)
+
+        ADWidth = adWidth
+        ADHeight = adHeight
+        ODWidth = outWidth
+        ODHeight = outHeight
+
+        RPConfig.shared.updateState(
+            ADWidth: adWidth,
+            ADHeight: adHeight,
+            ODWidth: outWidth,
+            ODHeight: outHeight
+        )
+
+        return (adWidth, adHeight, outWidth, outHeight)
+    }
+
+    private func applyVideoDimensions(trigger: String) async {
+        let dims = await reloadVideoDimensions(trigger: trigger)
+
+        let encoderWidth: Int
+        let encoderHeight: Int
+        if dims.outWidth > 0 && dims.outHeight > 0 {
+            encoderWidth = dims.outWidth
+            encoderHeight = dims.outHeight
+        } else if dims.adWidth > 0 && dims.adHeight > 0 {
+            encoderWidth = dims.adWidth
+            encoderHeight = dims.adHeight
+        } else {
+            sendlog(message: "\(trigger) 跳過: AD=\(dims.adWidth)x\(dims.adHeight) OD=\(dims.outWidth)x\(dims.outHeight) 無有效尺寸")
+            return
+        }
+
+        videoProcessor?.updateRotatorDimensions(
+            adWidth: dims.adWidth,
+            adHeight: dims.adHeight,
+            outWidth: dims.outWidth,
+            outHeight: dims.outHeight
+        )
+
+        await applyAllVideoSettings(width: encoderWidth, height: encoderHeight)
+        sendlog(message: "\(trigger): encoder=\(encoderWidth)x\(encoderHeight) AD=\(dims.adWidth)x\(dims.adHeight) OD=\(dims.outWidth)x\(dims.outHeight)")
+    }
+
     actor FrameState {
         var frameRate: Double = 30.0
 
@@ -786,49 +863,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
             Task {
-                var dstRW=SharedDefaults.group?.integer(forKey: "dstW") ?? 0
-                if RPConfig.shared.enableSocketLog {
-                    if let raw = try await SocketClient.shared.requestSet(
-                        for: "dstW",
-                        type: "Int"
-                    ) {
-
-                        if let av = raw as? Int {
-                            let oldV = dstRW
-                            dstRW = av
-
-                            logger.debug("OutW \(av)")
-                            sendlog(message: "Socket原始OutW數據包:\(av) -> \(oldV)")
-                        } else {
-                            logger.error("OutW 型別錯誤: \(type(of: raw))")
-                        }
-
-                    }
-                }
-
-                guard dstRW > 0 else {
-                    sendlog(message: "OutW 跳過: dstW=\(dstRW) 無效")
-                    return
-                }
-
-                let dstRH = SharedDefaults.group?.integer(forKey: "dstH") ?? 0
-                guard dstRH > 0 else {
-                    sendlog(message: "OutW 跳過: dstH=\(dstRH) 無效(尚未收到 OutH)")
-                    return
-                }
-
-                var VSET = await rtmpStream.videoSettings
-                VSET.videoSize = CGSize(width: CGFloat(dstRW), height: CGFloat(dstRH))
-
-                try? await rtmpStream.setVideoSettings(VSET)
-
-                await rtmpStream.restartVideoEncoding(reason: "video settings updated")
-
-                ADWidth = dstRW
-                ADHeight = dstRH
-                videoProcessor?.setRotatorDestination(width: dstRW, height: dstRH)
-                sendlog(message: "OutW:\(dstRW)x\(dstRH)")
-
+                await self.applyVideoDimensions(trigger: "OutW")
             }
 
             break
@@ -839,48 +874,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
             Task {
-                var dstRH=SharedDefaults.group?.integer(forKey: "dstH") ?? 0
-                if RPConfig.shared.enableSocketLog {
-                    if let raw = try await SocketClient.shared.requestSet(for: "dstH", type: "Int") {
-
-                        if let av = raw as? Int {
-                            let oldV = dstRH
-                            dstRH = av
-
-                            logger.debug("OutH \(av)")
-                            sendlog(message: "Socket原始OutH數據包:\(av) -> \(oldV)")
-                        } else {
-                            logger.error("OutH 型別錯誤: \(type(of: raw))")
-                        }
-
-                    }
-                }
-
-                guard dstRH > 0 else {
-                    sendlog(message: "OutH 跳過: dstH=\(dstRH) 無效")
-                    return
-                }
-
-                let dstRW = SharedDefaults.group?.integer(forKey: "dstW") ?? 0
-                guard dstRW > 0 else {
-                    sendlog(message: "OutH 跳過: dstW=\(dstRW) 無效(尚未收到 OutW)")
-                    return
-                }
-
-                var VSET = await rtmpStream.videoSettings
-                VSET.videoSize = CGSize(width: CGFloat(dstRW), height: CGFloat(dstRH))
-
-                try? await rtmpStream.setVideoSettings(VSET)
-
-                await rtmpStream.restartVideoEncoding(reason: "video settings updated")
-
-                ADWidth = dstRW
-                ADHeight = dstRH
-                videoProcessor?.setRotatorDestination(width: dstRW, height: dstRH)
-
-                sendlog(message: "OutH:\(dstRW)x\(dstRH)")
-
-
+                await self.applyVideoDimensions(trigger: "OutH")
             }
 
             break
@@ -1378,27 +1372,35 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         // 初始 buffer count（auto mode 下 videoSize 變更時會自動重算）
         await rtmpStream.setVideoInputBufferCounts(RPConfig.shared.state.BufferCount)
 
-        // 在 frame 到來前先用 socket 配置設定 video size
-        var dstW: Int
-        var dstH: Int
+        // 在 frame 到來前先用 socket 配置設定 encoder video size。
+        // OD/odst 是最終畫布輸出；AD/dst 只作為 GPU 中間處理尺寸。
+        var encoderW: Int
+        var encoderH: Int
         if RPConfig.shared.state.ODWidth > 0 && RPConfig.shared.state.ODHeight > 0 {
-            dstW = RPConfig.shared.state.ODWidth
-            dstH = RPConfig.shared.state.ODHeight
+            encoderW = RPConfig.shared.state.ODWidth
+            encoderH = RPConfig.shared.state.ODHeight
         } else if RPConfig.shared.state.ADWidth > 0 && RPConfig.shared.state.ADHeight > 0 {
-            dstW = RPConfig.shared.state.ADWidth
-            dstH = RPConfig.shared.state.ADHeight
+            encoderW = RPConfig.shared.state.ADWidth
+            encoderH = RPConfig.shared.state.ADHeight
         } else {
             // fallback: 讀取 App Group 中上次設定的值
-            dstW = SharedDefaults.group?.integer(forKey: "dstW") ?? 0
-            dstH = SharedDefaults.group?.integer(forKey: "dstH") ?? 0
-            if dstW > 0 && dstH > 0 {
-                sendlog(message: "使用 UserDefaults fallback: \(dstW)x\(dstH)")
+            let outW = SharedDefaults.group?.integer(forKey: "odstW") ?? 0
+            let outH = SharedDefaults.group?.integer(forKey: "odstH") ?? 0
+            if outW > 0 && outH > 0 {
+                encoderW = outW
+                encoderH = outH
+            } else {
+                encoderW = SharedDefaults.group?.integer(forKey: "dstW") ?? 0
+                encoderH = SharedDefaults.group?.integer(forKey: "dstH") ?? 0
+            }
+            if encoderW > 0 && encoderH > 0 {
+                sendlog(message: "使用 UserDefaults fallback encoder: \(encoderW)x\(encoderH)")
             }
         }
 
-        if dstW > 0 && dstH > 0 {
-            await applyAllVideoSettings(width: dstW, height: dstH)
-            sendlog(message: "預設影片尺寸: \(dstW)x\(dstH)")
+        if encoderW > 0 && encoderH > 0 {
+            await applyAllVideoSettings(width: encoderW, height: encoderH)
+            sendlog(message: "預設影片尺寸: \(encoderW)x\(encoderH)")
         } else {
             sendlog(message: "⚠️ 警告：未指定影片尺寸，將沿用ReplyKIT的寬高 Auto自動設置")
         }
@@ -2045,11 +2047,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             width = ADHeight
             height = ADWidth
         } else {
-            // fallback: 讀取 App Group 中上次設定的值
-            let fbW = SharedDefaults.group?.integer(forKey: "dstW") ?? 0
-            let fbH = SharedDefaults.group?.integer(forKey: "dstH") ?? 0
+            // fallback: 讀取 App Group 中上次設定的值，encoder 優先使用最終畫布 OD/odst。
+            let outW = SharedDefaults.group?.integer(forKey: "odstW") ?? 0
+            let outH = SharedDefaults.group?.integer(forKey: "odstH") ?? 0
+            let fbW = outW > 0 ? outW : (SharedDefaults.group?.integer(forKey: "dstW") ?? 0)
+            let fbH = outH > 0 ? outH : (SharedDefaults.group?.integer(forKey: "dstH") ?? 0)
             if fbW > 0 && fbH > 0 {
-                sendlog(message: "configureVideo fallback UserDefaults: \(fbW)x\(fbH)")
+                sendlog(message: "configureVideo fallback UserDefaults encoder: \(fbW)x\(fbH)")
                 width = fbH
                 height = fbW
             }

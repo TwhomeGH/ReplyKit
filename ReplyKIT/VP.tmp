@@ -85,7 +85,7 @@ final class VideoFrameProcessor {
             rotator?.tsDebug(value)
         }
 
-        func updateDestination(width: Int, height: Int) {
+        func updateProcessingDimensions(width: Int, height: Int) {
             rotator?.dstWW = width
             rotator?.dstHH = height
         }
@@ -176,8 +176,8 @@ final class VideoFrameProcessor {
         await processorActor?.updateTsDebug(value)
     }
 
-    func setRotatorDestination(width: Int, height: Int) async {
-        await processorActor?.updateDestination(width: width, height: height)
+    func updateProcessingDimensions(width: Int, height: Int) async {
+        await processorActor?.updateProcessingDimensions(width: width, height: height)
     }
 
     deinit {
