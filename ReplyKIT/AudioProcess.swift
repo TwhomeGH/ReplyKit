@@ -218,20 +218,31 @@ final class VolumeNotifier {
 }
 
 
-// MARK: UI 百分比 (0~1) → 真實音量 (0~1)，曲線控制低音量更細膩
-func percentageToVolume(_ percentage: Double) -> Double {
-    let clamped = max(0, min(1, percentage))
+private let minimumAudibleVolume: Double = 0.0000001
 
-    // 指數曲線 exponent < 1 → 前段變化慢，後段變化快
-    let exponent: Double = 0.5
-    return pow(clamped, exponent)
+private func clampUnit(_ value: Double) -> Double {
+    min(max(value, 0), 1)
+}
+
+// MARK: UI 百分比 (0~1) → 真實音量 (0~1)，用 dB 對數曲線控制低音量精度
+func percentageToVolume(_ percentage: Double) -> Double {
+    let clamped = clampUnit(percentage)
+    guard clamped > 0 else { return 0 }
+
+    let minimumDecibels = 20 * log10(minimumAudibleVolume)
+    let decibels = minimumDecibels + (0 - minimumDecibels) * clamped
+    return pow(10, decibels / 20)
 }
 
 // MARK: 真實音量 (0~1) → UI 百分比 (0~1)
 func volumeToPercentage(_ volume: Double) -> Double {
-    let clamped = max(0, min(1, volume))
-    let exponent: Double = 0.5
-    return pow(clamped, 1.0 / exponent)
+    let clamped = clampUnit(volume)
+    guard clamped > 0 else { return 0 }
+    guard clamped < 1 else { return 1 }
+
+    let minimumDecibels = 20 * log10(minimumAudibleVolume)
+    let decibels = max(20 * log10(clamped), minimumDecibels)
+    return clampUnit((decibels - minimumDecibels) / -minimumDecibels)
 }
 
 

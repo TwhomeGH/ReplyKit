@@ -346,20 +346,57 @@ final class LiveVolumeModel: ObservableObject {
 
 
 
-// MARK: UI 百分比 (0~1) → 真實音量 (0~1)，曲線控制低音量更細膩
-func percentageToVolume(_ percentage: Double) -> Double {
-    let clamped = max(0, min(1, percentage))
+let minimumAudibleVolume: Double = 0.0000001
+let volumeSliderStep: Double = 0.0000001
 
-    // 指數曲線 exponent < 1 → 前段變化慢，後段變化快
-    let exponent: Double = 0.5
-    return pow(clamped, exponent)
+private func clampUnit(_ value: Double) -> Double {
+    min(max(value, 0), 1)
+}
+
+private func formatPreciseVolumePercent(_ volume: Double) -> String {
+    let percent = clampUnit(volume) * 100
+    switch percent {
+    case 0:
+        return "0%"
+    case ..<0.00001:
+        return String(format: "%.8f%%", percent)
+    case ..<0.01:
+        return String(format: "%.5f%%", percent)
+    case ..<1:
+        return String(format: "%.3f%%", percent)
+    default:
+        return String(format: "%.2f%%", percent)
+    }
+}
+
+private func formatSliderPercent(_ percentage: Double) -> String {
+    String(format: "%.5f%%", clampUnit(percentage) * 100)
+}
+
+private func visualVolumeLevel(_ volume: Double) -> Double {
+    guard volume > 0 else { return 0 }
+    return volumeToPercentage(volume)
+}
+
+// MARK: UI 百分比 (0~1) → 真實音量 (0~1)，用 dB 對數曲線控制低音量精度
+func percentageToVolume(_ percentage: Double) -> Double {
+    let clamped = clampUnit(percentage)
+    guard clamped > 0 else { return 0 }
+
+    let minimumDecibels = 20 * log10(minimumAudibleVolume)
+    let decibels = minimumDecibels + (0 - minimumDecibels) * clamped
+    return pow(10, decibels / 20)
 }
 
 /// 真實音量 (0~1) → UI 百分比 (0~1)
 func volumeToPercentage(_ volume: Double) -> Double {
-    let clamped = max(0, min(1, volume))
-    let exponent: Double = 0.5
-    return pow(clamped, 1.0 / exponent)
+    let clamped = clampUnit(volume)
+    guard clamped > 0 else { return 0 }
+    guard clamped < 1 else { return 1 }
+
+    let minimumDecibels = 20 * log10(minimumAudibleVolume)
+    let decibels = max(20 * log10(clamped), minimumDecibels)
+    return clampUnit((decibels - minimumDecibels) / -minimumDecibels)
 }
 
 // 自繪進度條 (取代 ProgressView)
@@ -371,11 +408,29 @@ struct SafeProgressBar: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(Color.gray.opacity(0.3))
-                Capsule()
-                    .fill(color)
-                    .frame(width: geometry.size.width * CGFloat(min(max(value, 0), 1)))
+                RoundedRectangle(cornerRadius: height / 2, style: .continuous)
+                    .fill(Color.gray.opacity(0.18))
+                RoundedRectangle(cornerRadius: height / 2, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                color.opacity(0.45),
+                                color
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: max(height, geometry.size.width * CGFloat(clampUnit(value))))
+                    .opacity(value > 0 ? 1 : 0)
+                HStack(spacing: 0) {
+                    ForEach(1..<4) { _ in
+                        Spacer()
+                        Rectangle()
+                            .fill(Color.primary.opacity(0.16))
+                            .frame(width: 1)
+                    }
+                }
             }
         }
         .frame(height: height)
@@ -507,7 +562,7 @@ struct LiveVolumeView: View {
 
             VStack {
 
-                Text("App音量: \(String(format: "%.2f%%", volumeToPercentage(appVolume) * 100)) 原始:\(String(format: "%.2f%", appVolume * 100))")
+                Text("App音量: \(formatSliderPercent(volumeToPercentage(appVolume))) 原始:\(formatPreciseVolumePercent(appVolume))")
                     .font(.headline)
 
 
@@ -519,9 +574,9 @@ struct LiveVolumeView: View {
                     set: { newValue in
 
                              // 邊界保護，避免浮點誤差
-                            if abs(newValue - 1.0) < 0.001 {
+                            if abs(newValue - 1.0) < volumeSliderStep {
                                 appVolume = 1.0
-                            } else if abs(newValue - 0.0) < 0.001 {
+                            } else if abs(newValue - 0.0) < volumeSliderStep {
                                 appVolume = 0.0
                             } else {
                                 appVolume = percentageToVolume(newValue)
@@ -529,7 +584,7 @@ struct LiveVolumeView: View {
 
                         }
                     )
-                        , in: 0.0...0.99, step: 0.01,
+                        , in: 0.0...1.0, step: volumeSliderStep,
                         onEditingChanged: { editing in
 
                     if !editing {
@@ -556,8 +611,8 @@ struct LiveVolumeView: View {
 #endif
 
                         sendlog(message: String(
-                            format: "應用音量更新: %.2f%% (真實值: %.5f)",
-                            appVolume * 100,
+                            format: "應用音量更新: %.5f%% (真實值: %.8f)",
+                            volumeToPercentage(appVolume) * 100,
                             appVolume
                         ))
 
@@ -585,7 +640,7 @@ struct LiveVolumeView: View {
 
 
                 // 自繪進度條 (取代 ProgressView)
-                SafeProgressBar(value: appVolume, color: .blue)
+                SafeProgressBar(value: visualVolumeLevel(appVolume), color: .blue)
                     .padding(.vertical, 4)
 
 
@@ -595,7 +650,7 @@ struct LiveVolumeView: View {
 
             VStack {
                 // 顯示用：直接顯示真實音量百分比
-                Text("Mic音量: \(String(format: "%.2f%%", volumeToPercentage(micVolume) * 100)) 原始:\(String(format: "%.2f%", micVolume * 100))")
+                Text("Mic音量: \(formatSliderPercent(volumeToPercentage(micVolume))) 原始:\(formatPreciseVolumePercent(micVolume))")
                     .font(.headline)
 
 
@@ -607,9 +662,9 @@ struct LiveVolumeView: View {
                     set: { newValue in
 
                            // 邊界保護，避免浮點誤差
-                            if abs(newValue - 1.0) < 0.001 {
+                            if abs(newValue - 1.0) < volumeSliderStep {
                                 micVolume = 1.0
-                            } else if abs(newValue - 0.0) < 0.001 {
+                            } else if abs(newValue - 0.0) < volumeSliderStep {
                                 micVolume = 0.0
                             } else {
                                 micVolume = percentageToVolume(newValue)
@@ -619,14 +674,14 @@ struct LiveVolumeView: View {
                         }
                     )
 
-                        , in: 0.0...0.99, step: 0.01,
+                        , in: 0.0...1.0, step: volumeSliderStep,
                         onEditingChanged: { editing in
 
                     if !editing {
                         //let realVolume = percentageToVolume(Mic_percentage)
                         sendlog(message: String(
-                            format: "麥克風音量更新: %.2f%% (真實值: %.5f)",
-                            micVolume * 100,
+                            format: "麥克風音量更新: %.5f%% (真實值: %.8f)",
+                            volumeToPercentage(micVolume) * 100,
                             micVolume
                         ))
 
@@ -646,7 +701,7 @@ struct LiveVolumeView: View {
 #else
                         NotificationCenter.default
                             .post(
-                                name: Notification.Name("appVolumeChanged"),
+                                name: Notification.Name("micVolumeChanged"),
                                 object: nil
                             )
 #endif
@@ -673,7 +728,7 @@ struct LiveVolumeView: View {
 
 
                 // 自繪進度條 (取代 ProgressView)
-                SafeProgressBar(value: micVolume, color: .red)
+                SafeProgressBar(value: visualVolumeLevel(micVolume), color: .red)
                     .padding(.vertical, 4)
 
             }
@@ -682,19 +737,19 @@ struct LiveVolumeView: View {
 
 
             VStack(alignment: .leading) {
-                Text("Mic Volume \(model.micVolumeLive)")
+                Text("Mic Volume \(formatPreciseVolumePercent(Double(model.micVolumeLive)))")
 
 
                 // 自繪進度條 (取代 ProgressView)
-                SafeProgressBar(value: Double(model.micVolumeLive), color: .red)
+                SafeProgressBar(value: visualVolumeLevel(Double(model.micVolumeLive)), color: .red)
                     .padding(.vertical, 4)
 
             }
             VStack(alignment: .leading) {
-                Text("App Volume \(model.appVolumeLive)")
+                Text("App Volume \(formatPreciseVolumePercent(Double(model.appVolumeLive)))")
 
                 // 自繪進度條 (取代 ProgressView)
-                SafeProgressBar(value: Double(model.appVolumeLive), color: .blue)
+                SafeProgressBar(value: visualVolumeLevel(Double(model.appVolumeLive)), color: .blue)
                     .padding(.vertical, 4)
 
 
