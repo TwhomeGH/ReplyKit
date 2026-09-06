@@ -205,7 +205,7 @@ final class VolumeNotifier {
             changed = true
         }
         guard changed else { return }
-        sendlog(message: "[Volume] app=\(SocketClient.shared.latestAppVolume) mic=\(SocketClient.shared.latestMicVolume)")
+        sendlog(message: "[Volume] app=\(formatLinearVolumeForLog(SocketClient.shared.latestAppVolume)) mic=\(formatLinearVolumeForLog(SocketClient.shared.latestMicVolume))")
         SocketClient.shared.flushVolumeBatch()
         if !RPConfig.isSideload {
             CFNotificationCenterPostNotification(
@@ -222,6 +222,21 @@ private let minimumAudibleVolume: Double = 0.0000001
 
 private func clampUnit(_ value: Double) -> Double {
     min(max(value, 0), 1)
+}
+
+private func formatLinearVolumeForLog(_ value: Float) -> String {
+    let linear = Double(value)
+    guard linear > 0 else {
+        return "0.00000000 (0%, muted)"
+    }
+
+    let decibels = 20 * log10(linear)
+    return String(
+        format: "%.8f (%.8f%%, %.2f dB)",
+        linear,
+        linear * 100,
+        decibels
+    )
 }
 
 // MARK: UI 百分比 (0~1) → 真實音量 (0~1)，用 dB 對數曲線控制低音量精度

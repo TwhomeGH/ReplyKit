@@ -41,6 +41,21 @@ extension SocketServer.JSONValue {
     }
 }
 
+private func formatLinearVolumeForLog(_ value: Float) -> String {
+    let linear = Double(value)
+    guard linear > 0 else {
+        return "0.00000000 (0%, muted)"
+    }
+
+    let decibels = 20 * log10(linear)
+    return String(
+        format: "%.8f (%.8f%%, %.2f dB)",
+        linear,
+        linear * 100,
+        decibels
+    )
+}
+
 class SocketServer:ObservableObject {
 
     // MARK: - Properties
@@ -999,7 +1014,7 @@ class SocketServer:ObservableObject {
             case "audioLive":
                 let dict = try decoder.decode(AudioLive.self, from: data)
                 LiveVolumeModel.shared.updateVolumes(mic: dict.micVol, app: dict.appVol, persist: dict.persist)
-                logTo("Updated UserVol APP:\(dict.appVol) Mic:\(dict.micVol) Persist:\(dict.persist)")
+                logTo("Updated UserVol APP:\(formatLinearVolumeForLog(dict.appVol)) Mic:\(formatLinearVolumeForLog(dict.micVol)) Persist:\(dict.persist)")
 
             case "settings":
                 let dict = try decoder.decode([String: JSONValue].self, from: data)
@@ -1033,7 +1048,7 @@ class SocketServer:ObservableObject {
                 let batch = try decoder.decode(LogBatchPayload.self, from: data)
                 if let appVol = batch.appVol, let micVol = batch.micVol {
                     if appVol > 0.0 || micVol > 0.0 {
-                        logTo("[Volume] recv app=\(appVol) mic=\(micVol)")
+                        logTo("[Volume] recv app=\(formatLinearVolumeForLog(appVol)) mic=\(formatLinearVolumeForLog(micVol))")
                         LiveVolumeModel.shared.updateVolumes(mic: micVol, app: appVol)
                     }
                 }
