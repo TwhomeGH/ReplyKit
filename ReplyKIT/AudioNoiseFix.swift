@@ -371,7 +371,6 @@ final class AudioPreProcessor {
     private var state = State()
 
     private let stateQueue = DispatchQueue(label: "audio.state.queue")
-    private let processLock = NSLock()
 
 
     // MARK: - Public control API
@@ -510,9 +509,6 @@ final class AudioPreProcessor {
     // ======================================================
     func process(_ sampleBuffer: CMSampleBuffer,
                 track: AudioTrackType) {
-
-        processLock.lock()
-        defer { processLock.unlock() }
 
         guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else {
             return

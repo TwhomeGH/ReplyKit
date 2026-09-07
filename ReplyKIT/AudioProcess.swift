@@ -280,6 +280,8 @@ actor AudioProcessorActor {
     private var lastMicRMS: Float = 0
     private var lastAppRMSUpdateTime: CFTimeInterval = 0
     private var lastMicRMSUpdateTime: CFTimeInterval = 0
+    private var lastAppGainLogTime: CFTimeInterval = 0
+    private var lastMicGainLogTime: CFTimeInterval = 0
 
     init(mediaMixer: MediaMixer,
          volumeNotifier: VolumeNotifier,
@@ -324,33 +326,109 @@ actor AudioProcessorActor {
 
 
 
-    // 原地增益：直接對原始 block buffer 做 int16 → float → 增益 → 寫回，
-    // 不重建 CMSampleBuffer（避免 use-after-free 與每幀分配）。
-    // 維持 boost-only 語意（gain > 1.0）：addVolume 是放大倍率，
-    // 0.0（UserDefaults 死碼預設）不能被當成合法衰減值而消音。
+    private enum PCMGainFormat {
+        case signedInt16
+        case float32
+
+        var logName: String {
+            switch self {
+            case .signedInt16:
+                return "signedInt16"
+            case .float32:
+                return "float32"
+            }
+        }
+    }
+
+    // useOriginal 預設應接近 passthrough。只有明確、有效的 boost 值，
+    // 且確認來源是支援的 PCM 格式時，才原地套用增益。
     func applyGain(_ sampleBuffer: CMSampleBuffer, trackType: AudioTrackType) -> CMSampleBuffer {
-        let gain = (trackType == .app) ? appAddVolume : micAddVolume
+        let rawGain = (trackType == .app) ? appAddVolume : micAddVolume
+        guard rawGain.isFinite else { return sampleBuffer }
+        let gain = min(max(rawGain, 1.0), 30.0)
         guard gain > 1.0 else { return sampleBuffer }
+        guard let format = pcmGainFormat(sampleBuffer) else {
+            logGainPathIfNeeded(trackType: trackType, message: "skip unsupportedPCM rawGain:\(rawGain)")
+            return sampleBuffer
+        }
         guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { return sampleBuffer }
         var ptr: UnsafeMutablePointer<Int8>?
         CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0, lengthAtOffsetOut: nil,
                                     totalLengthOut: nil, dataPointerOut: &ptr)
         guard let rawPtr = ptr else { return sampleBuffer }
         let byteCount = CMBlockBufferGetDataLength(blockBuffer)
-        let sampleCount = byteCount / MemoryLayout<Int16>.size
+        let bytesPerSample: Int
+        switch format {
+        case .signedInt16:
+            bytesPerSample = MemoryLayout<Int16>.size
+        case .float32:
+            bytesPerSample = MemoryLayout<Float>.size
+        }
+        let sampleCount = byteCount / bytesPerSample
         guard sampleCount > 0 else { return sampleBuffer }
-        ensureGainBufferCapacity(sampleCount)
 
-        let int16Ptr = UnsafeMutableRawPointer(rawPtr).bindMemory(to: Int16.self, capacity: sampleCount)
-        var scale: Float = 1.0 / 32768.0
         var g = gain
-        var invScale: Float = 32768.0
-        vDSP_vflt16(int16Ptr, 1, &gainFloatBuffer, 1, vDSP_Length(sampleCount))
-        vDSP_vsmul(gainFloatBuffer, 1, &scale, &gainFloatBuffer, 1, vDSP_Length(sampleCount))
-        vDSP_vsmul(gainFloatBuffer, 1, &g, &gainFloatBuffer, 1, vDSP_Length(sampleCount))
-        vDSP_vsmul(gainFloatBuffer, 1, &invScale, &gainFloatBuffer, 1, vDSP_Length(sampleCount))
-        vDSP_vfix16(gainFloatBuffer, 1, int16Ptr, 1, vDSP_Length(sampleCount))
+        switch format {
+        case .signedInt16:
+            ensureGainBufferCapacity(sampleCount)
+            let int16Ptr = UnsafeMutableRawPointer(rawPtr).bindMemory(to: Int16.self, capacity: sampleCount)
+            var scale: Float = 1.0 / 32768.0
+            var invScale: Float = 32768.0
+            var minInt16Float: Float = -32768.0
+            var maxInt16Float: Float = 32767.0
+            vDSP_vflt16(int16Ptr, 1, &gainFloatBuffer, 1, vDSP_Length(sampleCount))
+            vDSP_vsmul(gainFloatBuffer, 1, &scale, &gainFloatBuffer, 1, vDSP_Length(sampleCount))
+            vDSP_vsmul(gainFloatBuffer, 1, &g, &gainFloatBuffer, 1, vDSP_Length(sampleCount))
+            vDSP_vsmul(gainFloatBuffer, 1, &invScale, &gainFloatBuffer, 1, vDSP_Length(sampleCount))
+            vDSP_vclip(gainFloatBuffer, 1, &minInt16Float, &maxInt16Float, &gainFloatBuffer, 1, vDSP_Length(sampleCount))
+            vDSP_vfix16(gainFloatBuffer, 1, int16Ptr, 1, vDSP_Length(sampleCount))
+            logGainPathIfNeeded(trackType: trackType, format: format, gain: gain, sampleCount: sampleCount)
+
+        case .float32:
+            let floatPtr = UnsafeMutableRawPointer(rawPtr).bindMemory(to: Float.self, capacity: sampleCount)
+            var minFloat: Float = -1.0
+            var maxFloat: Float = 1.0
+            vDSP_vsmul(floatPtr, 1, &g, floatPtr, 1, vDSP_Length(sampleCount))
+            vDSP_vclip(floatPtr, 1, &minFloat, &maxFloat, floatPtr, 1, vDSP_Length(sampleCount))
+            logGainPathIfNeeded(trackType: trackType, format: format, gain: gain, sampleCount: sampleCount)
+        }
         return sampleBuffer
+    }
+
+    private func pcmGainFormat(_ sampleBuffer: CMSampleBuffer) -> PCMGainFormat? {
+        guard let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer),
+              let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc)?.pointee else {
+            return nil
+        }
+        let isFloat = (asbd.mFormatFlags & kAudioFormatFlagIsFloat) != 0
+        let isSignedInteger = (asbd.mFormatFlags & kAudioFormatFlagIsSignedInteger) != 0
+        guard asbd.mFormatID == kAudioFormatLinearPCM else { return nil }
+        if asbd.mBitsPerChannel == 16, isSignedInteger, !isFloat {
+            return .signedInt16
+        }
+        if asbd.mBitsPerChannel == 32, isFloat {
+            return .float32
+        }
+        return nil
+    }
+
+    private func logGainPathIfNeeded(trackType: AudioTrackType, format: PCMGainFormat, gain: Float, sampleCount: Int) {
+        logGainPathIfNeeded(
+            trackType: trackType,
+            message: String(format: "apply format:%@ gain:%.3f samples:%d", format.logName, Double(gain), sampleCount)
+        )
+    }
+
+    private func logGainPathIfNeeded(trackType: AudioTrackType, message: String) {
+        let now = CACurrentMediaTime()
+        let lastLogTime = (trackType == .app) ? lastAppGainLogTime : lastMicGainLogTime
+        guard now - lastLogTime > 5.0 else { return }
+        if trackType == .app {
+            lastAppGainLogTime = now
+        } else {
+            lastMicGainLogTime = now
+        }
+        sendlog(message: "[AudioGain] \(trackType) \(message)")
     }
 
     private func ensureGainBufferCapacity(_ count: Int) {

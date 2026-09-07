@@ -173,17 +173,18 @@ AudioProcessorActor.enqueue(sampleBuffer, trackType:, originalTime:)
     ├── useOriginal == true ─────────────────────────┐
     │     │                                           │
     │     ▼                                           ▼
-    │  applyGain(sampleBuffer, trackType:)      audioEngine?.process(sampleBuffer, track:)
+    │  applyGainIfSafe(sampleBuffer)            audioEngine?.process(sampleBuffer, track:)
     │     │                                           │
-    │     │  vDSP_vsmul gain (appAdd/micAdd)          │  Int16→Float→DSP→Float→Int16
-    │     │                                           ▼
-    │     ▼                                     AsyncStream<ProcessedAudio>
-    │  processRMS()                            stream consumer Task:
+    │     │  Int16/Float32 PCM + gain > 1 才改寫      │  Int16→Float→DSP→Float→Int16
+    │     │                                           │
+    │     ▼                                           ▼
+    │  processRMS()                            processRMS()
     │     │                                       │
-    │     │  rmsSIMD() → vDSP_measqv               ├── processRMS()
-    │     │  更新 lastAppRMS/lastMicRMS             │     rmsSIMD() → 更新 lastRMS
-    │     │  VolumeNotifier.updateVolume()          │     VolumeNotifier.updateVolume()
-    │     ▼                                       ├── mediaMixer.append()
+    │     │  rmsSIMD() → vDSP_measqv               │  rmsSIMD() → 更新 lastRMS
+    │     │  更新 lastAppRMS/lastMicRMS             │  VolumeNotifier.updateVolume()
+    │     │  VolumeNotifier.updateVolume()          │
+    │     ▼                                       ▼
+    │  mediaMixer.append()                    mediaMixer.append()
     ▼                                           ▼
 MediaMixer.append(processed, track:)
 ```
@@ -195,6 +196,8 @@ AudioEngine.process(sampleBuffer, track:, originalTime:)
     │
     ▼
 AudioPreProcessor.process(sampleBuffer, track:)
+    │
+    │  AudioProcessorActor 已序列化呼叫；AudioPreProcessor 不再額外加 processLock
     │
     │  Int16 → Float (vDSP_vflt16 + vDSP_vsmul scale)
     │
@@ -210,16 +213,54 @@ AudioPreProcessor.process(sampleBuffer, track:)
     │  Float → Int16 (vDSP_vsmul invScale + vDSP_vfix16)
     │
     ▼
-yield to AsyncStream<ProcessedAudio>
+return to AudioProcessorActor.enqueue()
 ```
 
-### AudioEngine AsyncStream 消費者
+### AudioEngine 直送 MediaMixer
 
 ```
-AudioProcessorActor.init()
+AudioProcessorActor.enqueue()
     │
-    └── AudioEngine.startStream() → AsyncStream<ProcessedAudio>
-         （bufferingPolicy: .bufferingNewest(8)，有界背壓）
+    ├── audioEngine.process(sampleBuffer, track:)   ← 同步原地 DSP
+    ├── processRMS(sampleBuffer, trackType:)
+    └── await mediaMixer.append(sampleBuffer, track:)
+```
+
+AudioEngine 現在是純 DSP wrapper，不再建立 `AsyncStream<ProcessedAudio>` 或 detached consumer。HaishinKit 底層已經有 `MediaMixer` / `AudioMixerByMultiTrack` 的非同步處理層，上層再包一層 stream 會把延遲、背壓和 flush 節奏變複雜。
+
+同理，`AudioPreProcessor.process()` 不再額外使用 `processLock`。外層 `AudioProcessorActor` 已經序列化進入 DSP 的呼叫；DSP 內部鎖會在 100Hz audio hot path 增加同步成本，且容易讓後續維護者誤以為可以從 actor 外多執行緒重入。
+
+### 音訊斷續根因與修正（2026-08）
+
+#### 歷史根因（五層疊加）
+
+| # | 問題 | 位置 |
+|---|------|------|
+| ① | **producer 與 consumer 共用同一 actor executor**：`enqueue`（含同步 DSP）與舊 `streamTask` 同在 `AudioProcessorActor` 上，DSP 慢時 consumer 被凍結、反之亦然 → 節奏耦合 | `AudioProcess.swift` |
+| ② | **AsyncStream unbounded**：consumer 落後時 producer 無限 yield → 延遲無限堆積，MediaMixer 一空就一次消化大量 → 節奏暴衝 | `AudioNoiseFix.swift` |
+| ③ | **MediaMixer 是共用 actor**：video/audio append 全串列排隊，video 慢時 audio 被卡 | `MediaMixer.swift` |
+| ④ | **`AudioMixerTrack.resample()` 同步 convert 迴圈**：`repeat { convert } while .haveData` 在 ring buffer 積壓時一次轉完所有幀，同步霸佔 MediaMixer actor → 阻塞所有 append | `AudioMixerTrack.swift` |
+| ⑤ | **`AudioRingBuffer` 的 `skip` 補 silence**：producer 節奏亂 → PTS 缺口 → 插 silence → 聽覺斷續 | `AudioRingBuffer.swift` |
+
+聽覺斷續來自 ⑤，但觸發源是 ①②③④。**使用者也確認：`useOriginal`（不經 DSP/Metal）也斷續 → 底層 ③④⑤ 是共用瓶頸**，兩條路徑最終都進 `mediaMixer.append` → `AudioMixerByMultiTrack` → `AudioMixerTrack.resample()`。
+
+#### 現行修正
+
+**Extension 端（`AudioProcess.swift`、`AudioNoiseFix.swift`）**：
+
+- 移除 AudioEngine / useOriginal 上層 AsyncStream，`AudioProcessorActor.enqueue` 直接做同步 DSP / gain / RMS 後 `await mediaMixer.append`。
+- 移除 `AudioPreProcessor.processLock`，保留 `AudioProcessorActor` 作為單一序列化邊界。
+
+**底層（`AudioMixerTrack.swift`）**：
+
+- `resample()` 改為動態 inputBlock（`min(inNumberFrames, ringBuffer.counts)`）+ **無界 `while .haveData` 迴圈**。原 `repeat { convert } while .haveData` 在 actor 上執行會霸佔 MediaMixer；方案 C 將 resample 移到專用 queue 後，無界迴圈只佔自己的 queue，積壓時一次消化全部才能追上延遲。
+
+#### 已移除的過渡方案
+
+過渡期曾嘗試：
+
+```
+AudioEngine.startStream() → AsyncStream<ProcessedAudio>
     │
     ▼
 streamTask = Task.detached { [weak self] in        ← detached，脫離 actor executor
@@ -231,30 +272,7 @@ streamTask = Task.detached { [weak self] in        ← detached，脫離 actor e
 }
 ```
 
-### 音訊斷續根因與修正（2026-08）
-
-#### 根因（五層疊加）
-
-| # | 問題 | 位置 |
-|---|------|------|
-| ① | **producer 與 consumer 共用同一 actor executor**：`enqueue`（含同步 DSP）與 `streamTask` 同在 `AudioProcessorActor` 上，DSP 慢時 consumer 被凍結、反之亦然 → 節奏耦合 | `AudioProcess.swift` |
-| ② | **AsyncStream unbounded**：consumer 落後時 producer 無限 yield → 延遲無限堆積，MediaMixer 一空就一次消化大量 → 節奏暴衝 | `AudioNoiseFix.swift` |
-| ③ | **MediaMixer 是共用 actor**：video/audio append 全串列排隊，video 慢時 audio 被卡 | `MediaMixer.swift` |
-| ④ | **`AudioMixerTrack.resample()` 同步 convert 迴圈**：`repeat { convert } while .haveData` 在 ring buffer 積壓時一次轉完所有幀，同步霸佔 MediaMixer actor → 阻塞所有 append | `AudioMixerTrack.swift` |
-| ⑤ | **`AudioRingBuffer` 的 `skip` 補 silence**：producer 節奏亂 → PTS 缺口 → 插 silence → 聽覺斷續 | `AudioRingBuffer.swift` |
-
-聽覺斷續來自 ⑤，但觸發源是 ①②③④。**使用者也確認：`useOriginal`（不經 DSP/Metal）也斷續 → 底層 ③④⑤ 是共用瓶頸**，兩條路徑最終都進 `mediaMixer.append` → `AudioMixerByMultiTrack` → `AudioMixerTrack.resample()`。
-
-#### 修正
-
-**Extension 端（`AudioProcess.swift`、`AudioNoiseFix.swift`）**：
-
-- `streamTask` 改 `Task.detached`：consumer 脫離 `AudioProcessorActor` executor，producer 的同步 DSP 與 consumer 的 `mediaMixer.append` 真正並行。
-- `AudioEngine.startStream()` 改用 `.bufferingNewest(8)`：有界背壓（~184ms @44.1k），consumer 落後時丟最舊而非無限堆積。
-
-**底層（`AudioMixerTrack.swift`）**：
-
-- `resample()` 改為動態 inputBlock（`min(inNumberFrames, ringBuffer.counts)`）+ **無界 `while .haveData` 迴圈**。原 `repeat { convert } while .haveData` 在 actor 上執行會霸佔 MediaMixer；方案 C 將 resample 移到專用 queue 後，無界迴圈只佔自己的 queue，積壓時一次消化全部才能追上延遲。
+後續判定這是過度設計，因為 HaishinKit 底層已經有必要的 queue / stream 邊界；上層 stream 只會新增一層背壓語意。
 
 #### 效能參數調整（2026-08）
 
@@ -351,16 +369,18 @@ AAC 端同理：AAC 需要固定 1024 幀 PCM 才產出一個 packet，部分幀
 
 #### originAudio（useOriginal）路徑修正（2026-08-21）
 
-**目標：** useOriginal 模式（`isOringinAudio`）原本與 DSP 路徑不同步——gain 用危險的 CMSampleBuffer 重建往返、音量讀取有 0.0 死碼預設。修正三件套：
+**目標：** useOriginal 模式（`isOringinAudio`）應盡量接近 passthrough。只有使用者明確設定 boost，且來源格式確認安全時，才允許改動原始音訊資料。
 
 | 問題 | 原因 | 修正 |
 |------|------|------|
 | **use-after-free（斷序主因，增益 >1.0 時）** | `applyGain` → `pcmBufferToCMSampleBuffer` 用 `kCFAllocatorNull` 包住區域變數 `AVAudioPCMBuffer` 的記憶體建 CMBlockBuffer；函式返回後記憶體釋放，append 非同步讀到已釋放資料 | `applyGain` 改**原地增益**：直接對原始 block buffer 做 int16→float→增益→寫回，不重建 CMSampleBuffer（AudioProcess.swift:346-369） |
-| 增益形同虛設 / Float32 閃退 | `toPCMBuffer` 強制 `int16ChannelData!`（Float32 會 crash）；`applyGainPCM` 用 `floatChannelData`（Int16 buffer 為 nil → gain 永遠 no-op） | 移除 `toPCMBuffer`/`applyGainPCM`/`pcmBufferToCMSampleBuffer` 死碼，原地增益保證真正生效 |
+| 增益誤套到其他 PCM 格式 | `applyGain` 直接把 block buffer bind 成 `Int16`，若 ReplayKit 給 Float32 或其他 PCM 格式，gain >1 時會用錯格式改壞原始音訊 | `applyGain` 先檢查 ASBD：signed Int16 走 Int16→Float→gain→clip→Int16；Float32 走原地 gain→clip；其他格式 passthrough 並節流 log |
 | 預設配置斷序 | useOriginal 路徑 producer（enqueue）與 consumer（`mediaMixer.append`）未解耦 | 初期嘗試 AsyncStream + detached consumer 解耦，後續判定為**過度設計而移除**——見下方「上層 AsyncStream 移除」 |
 | 0.0 死碼預設（誤判） | `SharedDefaults.group?.double(forKey:) ?? 1.0` 未設定時回傳 0.0（`?? 1.0` 死碼，memory 261）；0.0 被當 `micGain` → 麥克風靜音 | 改用 `(object(forKey:) as? Double) ?? 1.0`（SampleHandler.swift 4 處 event handler + Event.swift 4 處 config 載入） |
 
-**關鍵決策 — 維持 boost-only 語意**：`applyGain` 的 guard 是 `gain > 1.0`，不能用 `abs(gain-1.0) > 0.001`——否則 0.0（死碼預設）會被當成合法衰減 → 音訊消音。`addVolume` 是放大倍率，只有 >1.0 才需要處理。
+**關鍵決策 — 維持 boost-only + 格式安全語意**：`applyGain` 的 guard 是 `finite && clamp(1...30) && gain > 1.0 && supported PCM`。目前支援 signed Int16 與 Float32；不能用 `abs(gain-1.0) > 0.001`，也不能未檢查 ASBD 就 bind `Int16`；useOriginal 管線的預設行為必須是不改動未知格式的原始音訊。
+
+**診斷 log**：`[AudioGain] <track> apply format:<signedInt16|float32> gain:<value> samples:<count>` 會每軌最多 5 秒輸出一次；不支援格式時輸出 `skip unsupportedPCM rawGain:<value>`。這用來確認 useOriginal boost 實際走哪個 PCM 分支。
 
 #### 上層 AsyncStream 移除（過度設計修正，2026-08-21）
 
@@ -542,8 +562,8 @@ liveAPP SocketServer → LiveVolumeModel.updateVolumes(mic:micVol, app:appVol)
 | V6 | `await mediaMixer.append(rotated)` | HaishinKit actor/media | Task → encoder |
 | A1 | `AudioProcessor` → `Task { await actor.enqueue() }` | `Task {}` | sync → async |
 | A2 | `actor` → `audioEngine.process()` | sync method | actor → DSP |
-| A3 | `audioEngine` → `AsyncStream.yield()` | continuation yield | DSP → stream |
-| A4 | stream consumer Task → `mediaMixer.append()` | HaishinKit API | stream → encoder |
+| A3 | `actor` → `processRMS()` | sync method | actor → RMS/volume telemetry |
+| A4 | `actor` → `mediaMixer.append()` | HaishinKit API | actor → encoder |
 
 ---
 

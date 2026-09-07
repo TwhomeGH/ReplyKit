@@ -715,28 +715,32 @@ Task { await oldActor?.cleanup() }
 ## 8. 原始音訊管線效能優化（AudioProcessor original path）
 
 ### 問題
-使用原始音訊管線 (`UseOringin = true`) 時，音訊出現斷斷續續（stutter）。根因有三：
+使用原始音訊管線 (`UseOringin = true`) 時，音訊出現斷斷續續（stutter）。主要根因是熱路徑上的重複分配與多餘保護：
 
 1. **每秒 ~100 次 heap allocation**：`amplifySIMD()` 原本是自由函數，每次呼叫都 `UnsafeMutablePointer<Float>.allocate(capacity:)` / `deallocate()`。app + mic 雙軌合計每秒近百次 malloc/free，造成 heap 碎片化與 GC 壓力。
 
 2. **每秒百次 CMSampleBuffer shallow copy**：`retimeAudioBuffer()` 在 `processRMS()` 外部呼叫，每次 buffer 入隊都建立一份 shallow copy。但 `processRMS()` 受 1 秒間隔節流保護 — 99% 的呼叫中這份 copy 是浪費的。CMSampleBuffer 的淺拷貝雖然不複製音訊資料，但仍需分配新物件並 retain block buffer。
 
-3. **Drop gate 無同步 data race**：`isEnqueuingApp` / `isEnqueuingMic` 在 ReplayKit callback thread 設為 `true`，在 `Task.detached` 的 utility thread 設為 `false`，跨執行緒讀寫無任何同步保護，可能導致不必要的掉幀。
+3. **上層 drop/lock gate 過度保護**：音訊已由 `AudioProcessorActor` 序列化，若再以 `isEnqueuing*` 或 `AudioPreProcessor.processLock` 保護熱路徑，容易把處理延遲放大成確定掉幀或額外同步成本。
+
+4. **useOriginal 增益格式誤判**：`applyGain()` 原地改寫原始 `CMSampleBuffer`，但若未先檢查 ASBD，就可能把 Float32 或其他 PCM 格式誤當 Int16 寫回，造成原音管線反而破壞音訊內容。
 
 ### 修正
 
 | 項目 | 改前 | 改後 |
 |------|------|------|
-| **Gain buffer** | `UnsafeMutablePointer<Float>.allocate(capacity:)` 每次分配/釋放 | `_appGainBuffer` / `_micGainBuffer` 兩個 per-track 預分配 `[Float]`，只在 buffer 不足時擴容一次，後續全部重用 |
+| **Gain buffer** | `UnsafeMutablePointer<Float>.allocate(capacity:)` 每次分配/釋放 | `gainFloatBuffer` 預分配 `[Float]` 重用，只在 buffer 不足時擴容一次 |
+| **Gain format guard** | gain > 1 時直接把 block buffer bind 成 Int16 | `finite && clamp(1...30) && gain > 1` 後依 ASBD 分支：signed Int16 與 Float32 可原地增益；其他格式 passthrough |
+| **Gain path log** | 現場無法確認 useOriginal boost 走 Int16、Float32 還是 skip | `[AudioGain] <track> apply format:<signedInt16|float32> gain:<value> samples:<count>` 每軌 5 秒節流輸出 |
 | **retimeAudioBuffer** | `enqueue()` 內每次都呼叫 → 傳入 `processRMS()` | `retimeAudioBuffer()` 移入 `processRMS()` 內部，只在一秒間隔 RMS 真正觸發時建立 shallow copy |
-| **Drop gate** | 裸 `Bool` 跨線程無保護讀寫 | 新增 `os_unfair_lock` (`_enqueueLock`)，讀寫經 `setEnqueuing()` helper 統一保護 |
+| **Drop/lock gate** | 上層 `isEnqueuing*` / DSP 內部 `processLock` 疊加保護 | 移除重複 gate，保留 `AudioProcessorActor` 作為序列化邊界 |
 
 ### 預期改善
 | 場景 | 改前 | 改後 |
 |------|------|------|
-| 原始音訊（增益 > 1.0） | 每秒 ~100 次 heap alloc + 每秒 ~100 次 CMSampleBuffer 淺拷貝 + 可能因 data race 誤掉幀 → 音訊斷續 | 零 heap alloc（buffer 重用）、99% 跳過 shallow copy、無 data race → 音訊流暢 |
-| 原始音訊（增益 ≤ 1.0） | 每秒 ~100 次 shallow copy + data race 掉幀 | 每秒 1 次 shallow copy（僅 RMS），其餘跳過 |
-| 專用 DSP 管線 | 同上（retimeAudioBuffer + data race） | shallow copy 同樣移入 RMS 內部，drop gate 同步保護 |
+| 原始音訊（增益 > 1.0） | 每秒 ~100 次 heap alloc + 每秒 ~100 次 CMSampleBuffer 淺拷貝 + 可能誤寫 Float32/其他 PCM + 多餘 gate/lock | 零 heap alloc（buffer 重用）、99% 跳過 shallow copy、Int16/Float32 格式安全增益、由 actor 單一序列化 |
+| 原始音訊（增益 ≤ 1.0） | 每秒 ~100 次 shallow copy + 多餘 gate | 每秒 1 次 shallow copy（僅 RMS），其餘跳過 |
+| 專用 DSP 管線 | DSP 內部額外 `processLock` 疊在 actor 外 | 移除 `processLock`，DSP 熱路徑只跑 actor 序列化 |
 
 ### 記憶體影響
 - **改前**：無持久 buffer，每秒 ~2KB × 100 = ~200KB heap churn

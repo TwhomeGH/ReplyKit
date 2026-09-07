@@ -527,9 +527,10 @@ Extension 端原本的處理方式：
 
 | 問題 | 修復 | 預期效果 |
 |------|------|---------|
-| `amplifySIMD` 每次呼叫 heap alloc Float buffer（每秒近百次 malloc/free） | 改用 per-track 預分配 `[Float]` buffer 重用 | 零 heap alloc，消除碎片化 |
+| `amplifySIMD` 每次呼叫 heap alloc Float buffer（每秒近百次 malloc/free） | 改用預分配 `[Float]` buffer 重用 | 零 heap alloc，消除碎片化 |
+| useOriginal 的增益可能誤改原始音訊格式 | `applyGain` 先檢查 ASBD，signed Int16 / Float32 PCM 且 gain > 1 時才原地增益 | 未支援 PCM 維持 passthrough，避免原音管線破壞音訊 |
 | `retimeAudioBuffer` 每秒百次 shallow copy，但 99% 只用於 RMS（每秒才觸發一次） | 移入 `processRMS` 內部，只在真正需要時建立 | 每秒節省 ~99 次 CMSampleBuffer 物件建立 |
-| Drop gate `isEnqueuing*` 跨線程無同步 data race | 加 `os_unfair_lock` 保護讀寫 | 消除誤掉幀，乾淨的 gate 語意 |
+| 上層 drop/lock gate 疊在 `AudioProcessorActor` 外 | 移除重複 gate；`AudioPreProcessor.processLock` 也移除 | 減少熱路徑同步成本，避免把延遲放大成掉幀 |
 
 ### GPU 密集型遊戲導致直播掉幀（已知 iOS 系統限制）
 
