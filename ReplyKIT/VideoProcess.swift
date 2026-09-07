@@ -380,8 +380,6 @@ final class VideoFrameProcessor {
     private let sendlog: (String) -> Void
     private var actor: FrameProcessorActor
     private var angle: RotationAngle
-    private let processingLock = NSLock()
-    private var isProcessingFrame = false
     private(set) var isActive = true
     private(set) var processedCount = 0
     private(set) var droppedCount = 0
@@ -403,13 +401,6 @@ final class VideoFrameProcessor {
 
     func process(_ sampleBuffer: CMSampleBuffer, originalTime: CMSampleTimingInfo) {
         guard let imageBuffer = sampleBuffer.imageBuffer else { return }
-        guard beginProcessingFrame() else {
-            droppedCount &+= 1
-            if droppedCount % 300 == 0 {
-                sendlog("[VProc] ⚠️ GPU rotate 忙碌，丟棄等待幀，避免完成順序亂序 (drop:\(droppedCount) proc:\(processedCount))")
-            }
-            return
-        }
         if processedCount % 1500 == 0 || processedCount == 60 {
             let fmt = CVPixelBufferGetPixelFormatType(imageBuffer)
             let fmtStr: String
@@ -423,7 +414,6 @@ final class VideoFrameProcessor {
             sendlog("[VFormat] #\(processedCount) fmt=\(fmtStr) \(CVPixelBufferGetWidth(imageBuffer))x\(CVPixelBufferGetHeight(imageBuffer))")
         }
         Task {
-            defer { self.finishProcessingFrame() }
             guard let rotated = await actor.processFrame(imageBuffer: imageBuffer, originalTime: originalTime, angle: angle) else {
                 droppedCount &+= 1
                 if droppedCount % 300 == 0 {
@@ -444,22 +434,7 @@ final class VideoFrameProcessor {
 
     func cleanup() {
         isActive = false
-        finishProcessingFrame()
         Task { await actor.cleanup() }
-    }
-
-    private func beginProcessingFrame() -> Bool {
-        processingLock.lock()
-        defer { processingLock.unlock() }
-        guard !isProcessingFrame else { return false }
-        isProcessingFrame = true
-        return true
-    }
-
-    private func finishProcessingFrame() {
-        processingLock.lock()
-        isProcessingFrame = false
-        processingLock.unlock()
     }
 
     func setRotatorDebug(_ on: Bool) {

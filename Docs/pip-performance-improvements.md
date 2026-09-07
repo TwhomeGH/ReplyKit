@@ -655,8 +655,8 @@ func forceFlushBatch() {
 
 | 問題 | 原因 | 修正 |
 |------|------|------|
-| `FrameProcessorActor` 在 `await rotateAsync()` 等 Metal completion 時可重入，下一幀可能進來並提交新的 GPU command | Swift actor 只序列化同步片段，不會在 await 期間鎖住整個 async chain | 在 `VideoFrameProcessor.process()` 外層加入 `processingLock + isProcessingFrame` gate，同時間只允許一幀進旋轉熱路徑 |
-| 多個 `MTLCommandBuffer` in-flight 時完成順序可能不同於提交順序，造成 MediaMixer append out-of-order | 後提交的 command 先完成時，會帶著較新的 PTS 先送出；舊 command 晚到後造成 FLV DTS 倒退或 zero delta | 忙碌時直接 drop 新幀，`Task` 結束以 `defer finishProcessingFrame()` 釋放 gate，維持 live 低延遲與 timestamp 單調 |
+| `FrameProcessorActor` 在 `await rotateAsync()` 等 Metal completion 時可重入，下一幀可能進來並提交新的 GPU command | Swift actor 只序列化同步片段，不會在 await 期間鎖住整個 async chain | 記錄為 FLV DTS 倒退的疑點；暫不在 video hot path 加 `NSLock` gate |
+| 外層 lock/gate 會把潛在 completion 亂序轉成確定掉幀 | 若底層 MediaMixer/encoder/RTMP 已按 PTS 排序，這層保護多餘且增加同步成本 | 優先驗證底層 PTS 排序/單調化；若要修，放在最靠近 timestamp 輸出邊界的位置 |
 
 ### `ReplyKIT/AudioNoiseMetal.swift` — DispatchSemaphore 設計取捨
 

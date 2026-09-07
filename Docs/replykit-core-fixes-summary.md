@@ -672,7 +672,7 @@ Task { await oldActor?.cleanup() }
 
 ---
 
-## 16.1 GPU completion 亂序造成 FLV DTS 倒退修正
+## 16.1 FLV DTS 倒退觀察與 GPU completion 亂序疑點
 
 ### 問題
 
@@ -684,28 +684,31 @@ Task { await oldActor?.cleanup() }
 
 這不是 `configureVideoUnsafe()` 造成；該函數目前沒有呼叫點，是棄用函數。
 
-### 根因
+### 可能原因
 
 原先誤以為 `FrameProcessorActor` 可以自然序列化整個 video frame async chain。但 Swift actor 在 `await rotator.rotateAsync()` 時允許 reentrancy：actor 等待 Metal command completion 期間，下一個 frame 可以進入 `processFrame()`，提交新的 `MTLCommandBuffer`。
 
-當多個 GPU command 同時 in-flight 時，後提交的 command 可能先完成，並先進入 `MediaMixer.append()`。下游 RTMP/FLV 看到的 frame timestamp 就會 out-of-order，進一步造成 DTS 倒退、zero delta 和 FPS 抖動。
+當多個 GPU command 同時 in-flight 時，後提交的 command 可能先完成，並先進入 `MediaMixer.append()`。若底層沒有按 PTS 排序或單調化，下游 RTMP/FLV 看到的 frame timestamp 就可能 out-of-order，進一步造成 DTS 倒退、zero delta 和 FPS 抖動。
 
-### 修正
+但這仍只是疑點，不是最終結論。若 MediaMixer / VideoToolbox / RTMP pipeline 已有 PTS 排序或 timestamp 單調保護，外層 completion 順序不應直接影響最終 FLV tag 順序；異常也可能來自 timestamp 基準更新、RTMP timestamp delta 轉換，或 probe 取樣方式。
 
-`VideoFrameProcessor.process()` 新增外層 processing gate：
+### 不採用 hot-path NSLock gate
 
-- `processingLock + isProcessingFrame` 保護 check/set，避免兩幀同時通過。
-- gate 在建立 `Task` 前取得，確保 Swift actor reentrancy 不會再放入第二幀。
-- `Task` 內用 `defer finishProcessingFrame()`，不論 GPU 成功、timeout、CPU fallback 或 drop 都會釋放 gate。
-- 忙碌時直接丟棄新幀並累計 `droppedCount`，維持 live 低延遲，不做排隊重排。
+曾考慮在 `VideoFrameProcessor.process()` 外層加入 `NSLock + isProcessingFrame`，同時間只允許一幀進入 GPU/CPU 旋轉；忙碌時直接丟棄新幀。此方案目前不採用：
 
-### 預期改善
+- video hot path 每幀加鎖會增加一層同步開銷與保護複雜度。
+- 它會改變吞吐策略，把潛在亂序問題轉成確定掉幀。
+- 如果底層已有 PTS 排序，這層 gate 是多餘保護。
+- 真要處理 out-of-order，應優先在最靠近 MediaMixer/encoder/RTMP mux 的 timestamp 邊界做單調檢查、排序或丟棄晚到幀。
 
-| 場景 | 改前 | 改後 |
+### 後續驗證方向
+
+| 觀察點 | 判斷 |
 |------|------|------|
-| GPU command 完成順序與提交順序不同 | 後完成/先完成的 frame 可能直接 out-of-order append | 同時間只處理一幀，append 順序等於輸入順序 |
-| 高 GPU 壓力 | 多個 command in-flight，FLV DTS 可能倒退或重複 | 忙碌幀被丟棄，輸出 PTS 保持單調 |
-| FPS 監控 | timestamp 倒退/歸零造成瞬間 FPS 亂跳 | 以掉幀換穩定 cadence，避免假性 FPS 震盪 |
+| `GPU Frame down cmd` 的 `cmd id` 與 PTS 是否倒序 | 若 completion 順序倒，GPU out-of-order 疑點成立 |
+| `MediaMixer.append(rotated)` 前後 PTS 是否單調 | 若 append 前已倒序，問題在上游 async completion |
+| RTMP/FLV tag timestamp 是否在 append PTS 單調時仍倒退 | 若仍倒退，問題在 encoder/mux timestamp 轉換 |
+| 底層是否按 PTS 排序 | 若有排序，外層 lock/gate 不應加入 |
 
 ---
 

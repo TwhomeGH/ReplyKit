@@ -31,9 +31,7 @@ SampleHandler
     ▼ YES
 VideoFrameProcessor.process(_:originalTime:)
     │
-    │  beginProcessingFrame()
-    │  ├── busy → drop current frame (保持 live 低延遲，避免排隊)
-    │  └── idle → Task { defer finishProcessingFrame() }
+    │  Task { }
     │  │
     │  ▼
     │  FrameProcessorActor.processFrame(imageBuffer:originalTime:angle:)
@@ -95,32 +93,31 @@ GPU rotator 正常 ────────────────────�
 
 | 機制 | 閥值 | 行為 |
 |------|------|------|
-| `VideoFrameProcessor` processing gate | 1 frame | `NSLock` 保護 `isProcessingFrame`，同時間只允許一幀進入 GPU/CPU 旋轉；忙碌時直接丟棄新幀，避免完成順序亂序 |
 | `commandBufferTimeout` | 1.0s | GPU command buffer 逾時 → 回 nil + `handleMetalFailure` |
 | `CommandCompletionState` | NSLock | 保證 completion vs watchdog 恰好一次 resume |
 | `outputPool` maxPoolSize | 10 | CVPixelBuffer 重用池上限，溢位 evict 最舊 |
 
-#### 為何需要外層 processing gate
+#### GPU completion 順序與 PTS 排序
 
 Swift actor 只保證同步片段互斥，不保證整個 `async` 方法從頭到尾不可重入。`FrameProcessorActor.processFrame()` 在 `await rotator.rotateAsync()` 等待 Metal completion 時，actor executor 可以讓下一個 frame 進入，於是多個 `MTLCommandBuffer` 可能同時 in-flight。
 
-現場 FLV 觀察到真正 H.264 NALU tag 的 DTS 有倒退與重複，例如 timestamp 反覆回到 `0/10/33/66ms` 附近。若後提交的 GPU command 先完成並先 `MediaMixer.append()`，下游 RTMP/FLV 時間戳會看到 frame out-of-order，表現為 FPS 亂跳、DTS 倒退或大量 zero delta。
+現場 FLV 曾觀察到真正 H.264 NALU tag 的 DTS 有倒退與重複，例如 timestamp 反覆回到 `0/10/33/66ms` 附近。這可能來自 GPU completion out-of-order，也可能來自更底層的 RTMP/FLV timestamp 基準更新或 probe 取樣方式；不能只憑這個現象直接判定上游一定需要丟幀 gate。
 
-因此背壓放在 `VideoFrameProcessor.process()` 的最外層：
+目前不在 `VideoFrameProcessor.process()` 加 `NSLock` hot-path gate：
 
-- `beginProcessingFrame()` 在進入 `Task` 前同步設 gate。
-- GPU/CPU/freeze fallback 完成或失敗後，用 `defer finishProcessingFrame()` 釋放 gate。
-- 忙碌時丟棄新幀，不排隊重排。live 串流優先保低延遲與 PTS 單調，掉幀比延遲堆積安全。
+- 30/60fps 熱路徑上每幀同步鎖雖然絕對成本不高，但會增加不必要的保護層與掉幀策略。
+- 如果底層 MediaMixer/VideoToolbox/RTMP pipeline 已按 PTS 排序或保證單調輸出，外層 gate 只是重複保護。
+- 若後續證實確有 out-of-order append，優先在底層 timestamp/queue 邊界做 PTS 單調檢查、排序或丟棄晚到幀，而不是在最上游用 lock 擋所有並行。
 
 #### 為何沒有 in-flight semaphore
 
 早期版本有 `DispatchSemaphore(value:2)` 限制 GPU 同時 in-flight 數量，但分析後發現多餘：
 
-- 外層 processing gate 已確保同時間只有一個 frame 進入旋轉熱路徑。
-- `rotateAsync` 內 `withCheckedContinuation` 只負責等待目前 command 完成，不能單獨阻止 actor reentrancy。
+- `rotateAsync` 內 `withCheckedContinuation` 負責等待目前 command 完成。
+- 若底層已按 PTS 單調輸出，限制 GPU in-flight 不是必要條件。
 - Watchdog (1s) 已處理 GPU hang 的罕見狀況，不需要額外 semaphore 做 timeout
 
-目前管線為：outer gate → actor → rotateAsync → continuation → completion → append。序列化邊界在外層 gate，而不是依賴 actor await 期間保持獨占。
+目前管線維持：actor → rotateAsync → continuation → completion → append。若要加入順序保護，應先確認底層沒有既有 PTS 排序，再選擇最靠近 mux/encoder 的單調邊界處理。
 
 ### 重建路徑
 
