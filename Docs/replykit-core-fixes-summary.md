@@ -672,6 +672,43 @@ Task { await oldActor?.cleanup() }
 
 ---
 
+## 16.1 GPU completion 亂序造成 FLV DTS 倒退修正
+
+### 問題
+
+直播中觀察 `http://192.168.0.102:882/live/livestream.flv` 的 FLV tag timestamp，真正 H.264 NALU tag 仍出現大量 DTS 倒退與重複：
+
+- 約 10 秒 probe 中 video NALU frame 242 個。
+- DTS negative delta 33 次，zero delta 123 次。
+- timestamp 反覆回到 `0/10/33/66ms` 附近，表現為播放器或監控端 FPS 亂跳。
+
+這不是 `configureVideoUnsafe()` 造成；該函數目前沒有呼叫點，是棄用函數。
+
+### 根因
+
+原先誤以為 `FrameProcessorActor` 可以自然序列化整個 video frame async chain。但 Swift actor 在 `await rotator.rotateAsync()` 時允許 reentrancy：actor 等待 Metal command completion 期間，下一個 frame 可以進入 `processFrame()`，提交新的 `MTLCommandBuffer`。
+
+當多個 GPU command 同時 in-flight 時，後提交的 command 可能先完成，並先進入 `MediaMixer.append()`。下游 RTMP/FLV 看到的 frame timestamp 就會 out-of-order，進一步造成 DTS 倒退、zero delta 和 FPS 抖動。
+
+### 修正
+
+`VideoFrameProcessor.process()` 新增外層 processing gate：
+
+- `processingLock + isProcessingFrame` 保護 check/set，避免兩幀同時通過。
+- gate 在建立 `Task` 前取得，確保 Swift actor reentrancy 不會再放入第二幀。
+- `Task` 內用 `defer finishProcessingFrame()`，不論 GPU 成功、timeout、CPU fallback 或 drop 都會釋放 gate。
+- 忙碌時直接丟棄新幀並累計 `droppedCount`，維持 live 低延遲，不做排隊重排。
+
+### 預期改善
+
+| 場景 | 改前 | 改後 |
+|------|------|------|
+| GPU command 完成順序與提交順序不同 | 後完成/先完成的 frame 可能直接 out-of-order append | 同時間只處理一幀，append 順序等於輸入順序 |
+| 高 GPU 壓力 | 多個 command in-flight，FLV DTS 可能倒退或重複 | 忙碌幀被丟棄，輸出 PTS 保持單調 |
+| FPS 監控 | timestamp 倒退/歸零造成瞬間 FPS 亂跳 | 以掉幀換穩定 cadence，避免假性 FPS 震盪 |
+
+---
+
 ## 8. 原始音訊管線效能優化（AudioProcessor original path）
 
 ### 問題

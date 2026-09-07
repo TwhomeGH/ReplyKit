@@ -31,7 +31,9 @@ SampleHandler
     ▼ YES
 VideoFrameProcessor.process(_:originalTime:)
     │
-    │  Task { }
+    │  beginProcessingFrame()
+    │  ├── busy → drop current frame (保持 live 低延遲，避免排隊)
+    │  └── idle → Task { defer finishProcessingFrame() }
     │  │
     │  ▼
     │  FrameProcessorActor.processFrame(imageBuffer:originalTime:angle:)
@@ -93,21 +95,32 @@ GPU rotator 正常 ────────────────────�
 
 | 機制 | 閥值 | 行為 |
 |------|------|------|
-| Actor serialization | 自然序列化 | `FrameProcessorActor` 一次只處理一個 frame 的 async chain（`processFrame` → `rotateAsync` → 續） |
+| `VideoFrameProcessor` processing gate | 1 frame | `NSLock` 保護 `isProcessingFrame`，同時間只允許一幀進入 GPU/CPU 旋轉；忙碌時直接丟棄新幀，避免完成順序亂序 |
 | `commandBufferTimeout` | 1.0s | GPU command buffer 逾時 → 回 nil + `handleMetalFailure` |
 | `CommandCompletionState` | NSLock | 保證 completion vs watchdog 恰好一次 resume |
 | `outputPool` maxPoolSize | 10 | CVPixelBuffer 重用池上限，溢位 evict 最舊 |
+
+#### 為何需要外層 processing gate
+
+Swift actor 只保證同步片段互斥，不保證整個 `async` 方法從頭到尾不可重入。`FrameProcessorActor.processFrame()` 在 `await rotator.rotateAsync()` 等待 Metal completion 時，actor executor 可以讓下一個 frame 進入，於是多個 `MTLCommandBuffer` 可能同時 in-flight。
+
+現場 FLV 觀察到真正 H.264 NALU tag 的 DTS 有倒退與重複，例如 timestamp 反覆回到 `0/10/33/66ms` 附近。若後提交的 GPU command 先完成並先 `MediaMixer.append()`，下游 RTMP/FLV 時間戳會看到 frame out-of-order，表現為 FPS 亂跳、DTS 倒退或大量 zero delta。
+
+因此背壓放在 `VideoFrameProcessor.process()` 的最外層：
+
+- `beginProcessingFrame()` 在進入 `Task` 前同步設 gate。
+- GPU/CPU/freeze fallback 完成或失敗後，用 `defer finishProcessingFrame()` 釋放 gate。
+- 忙碌時丟棄新幀，不排隊重排。live 串流優先保低延遲與 PTS 單調，掉幀比延遲堆積安全。
 
 #### 為何沒有 in-flight semaphore
 
 早期版本有 `DispatchSemaphore(value:2)` 限制 GPU 同時 in-flight 數量，但分析後發現多餘：
 
-- Actor 已經序列化 frame 處理 — 一次只有一個 frame 在 actor 上執行 async chain
-- GPU 旋轉耗時 1-5ms，而 60fps frame 間隔 16.7ms — GPU 有充裕時間完成
-- `rotateAsync` 內 `withCheckedContinuation` 已是自然的 backpressure：GPU 完成後才 resume
+- 外層 processing gate 已確保同時間只有一個 frame 進入旋轉熱路徑。
+- `rotateAsync` 內 `withCheckedContinuation` 只負責等待目前 command 完成，不能單獨阻止 actor reentrancy。
 - Watchdog (1s) 已處理 GPU hang 的罕見狀況，不需要額外 semaphore 做 timeout
 
-移除後管線更簡單：actor → rotateAsync → continuation → completion → append，零隔離衝突。
+目前管線為：outer gate → actor → rotateAsync → continuation → completion → append。序列化邊界在外層 gate，而不是依賴 actor await 期間保持獨占。
 
 ### 重建路徑
 

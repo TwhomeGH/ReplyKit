@@ -655,8 +655,8 @@ func forceFlushBatch() {
 
 | 問題 | 原因 | 修正 |
 |------|------|------|
-| `isProcessing` check-then-set 非原子，兩幀可能同時進入 GPU 旋轉造成 PTS 順序錯亂 | 檢查與設定之間無鎖保護，`Task.detached` 可能同時通過 guard | 加入 `processingLock`（NSLock）保護所有 `isProcessing`、`processingStartedAt`、`processingGeneration` 的讀寫 |
-| `processingGeneration &+= 1` 非原子遞增，併發下可能跳號導致 `defer` 永不清理 `isProcessing`，管線永久停滯 | generation 在非原子環境下遞增，兩個 task 可能拿到相同 generation | 同鎖保護 generation 遞增與 `defer` 中的清除判斷 |
+| `FrameProcessorActor` 在 `await rotateAsync()` 等 Metal completion 時可重入，下一幀可能進來並提交新的 GPU command | Swift actor 只序列化同步片段，不會在 await 期間鎖住整個 async chain | 在 `VideoFrameProcessor.process()` 外層加入 `processingLock + isProcessingFrame` gate，同時間只允許一幀進旋轉熱路徑 |
+| 多個 `MTLCommandBuffer` in-flight 時完成順序可能不同於提交順序，造成 MediaMixer append out-of-order | 後提交的 command 先完成時，會帶著較新的 PTS 先送出；舊 command 晚到後造成 FLV DTS 倒退或 zero delta | 忙碌時直接 drop 新幀，`Task` 結束以 `defer finishProcessingFrame()` 釋放 gate，維持 live 低延遲與 timestamp 單調 |
 
 ### `ReplyKIT/AudioNoiseMetal.swift` — DispatchSemaphore 設計取捨
 
