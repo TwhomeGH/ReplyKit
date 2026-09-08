@@ -108,6 +108,7 @@ ReplayKit Extension：
 - GPU rotator 已在旋轉後追加 Metal overlay pass，把時間圖層疊到最終 NV12 畫布。
 - Overlay 時間貼圖只保留目前需要的一張 texture，避免每秒新增 texture 導致長時間推流記憶體與 PTS 壓力。
 - CoreGraphics 產生的 overlay bitmap 與 Metal texture 座標系不同，合成 shader 會翻轉 overlay Y 軸再取樣。
+- `[OverlayMetal]` 診斷 log 已做節流；錯誤類 log 最短 5 秒送一次，CPU 消耗時間統計每 120 幀且至少間隔 2 秒才送一次。
 
 刻意保留：
 
@@ -160,4 +161,4 @@ enum OverlayLayerConfig: Codable {
 - Codable schema 要保留 `version`，未來增加欄位時需提供 fallback 預設值。
 - 位置計算應以最終畫布尺寸為準，也就是 OD 尺寸，不應使用 GPU 中間處理尺寸 AD。
 - Overlay 若進入推流畫布，必須確認是否會影響 encoder timing、pixel buffer reuse 與記憶體壓力。
-- 若直播中看到 PTS 抖動，先看 `[OverlayMetal]` log 是否大量重建 pipeline 或 texture；正常情況下時間文字每秒更新一次，但 overlay composite 會每幀執行。
+- 若直播中看到 PTS 抖動，先看 `[OverlayMetal]` log 是否大量重建 pipeline 或 texture；正常情況下時間文字每秒更新一次，但 overlay composite 會每幀執行，log 只會低頻回報 CPU 消耗時間。

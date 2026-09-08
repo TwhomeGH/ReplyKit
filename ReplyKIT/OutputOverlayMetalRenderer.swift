@@ -17,7 +17,11 @@ final class OutputOverlayMetalRenderer: @unchecked Sendable {
     private let startedAt = Date()
     private let configLock = NSLock()
     private let textureLock = NSLock()
+    private let logLock = NSLock()
     private var currentConfig = OverlayConfigStore.load()
+    private var lastLogTimes: [String: CFAbsoluteTime] = [:]
+    private var overlayFrameCount: UInt64 = 0
+    private var lastOverlayDurationLogTime: CFAbsoluteTime = 0
 
     private init() {}
 
@@ -25,6 +29,7 @@ final class OutputOverlayMetalRenderer: @unchecked Sendable {
         let config = loadCurrentConfig()
         guard config.enabled, config.time.enabled else { return }
         guard ensurePipeline() else { return }
+        let start = CFAbsoluteTimeGetCurrent()
         guard let item = makeTimeTexture(config: config.time) else { return }
 
         let canvas = CGSize(width: dstY.width, height: dstY.height)
@@ -64,6 +69,7 @@ final class OutputOverlayMetalRenderer: @unchecked Sendable {
             threadsPerThreadgroup: MTLSize(width: tgWidth, height: tgHeight, depth: 1)
         )
         encoder.endEncoding()
+        recordOverlayDuration(start: start)
     }
 
     func clearCache() {
@@ -103,13 +109,17 @@ final class OutputOverlayMetalRenderer: @unchecked Sendable {
         if pipeline != nil { return true }
         do {
             guard let function = MetalContext.shared.library.makeFunction(name: "compositeOverlayBGRAToNV12") else {
-                sendlog(message: "[OverlayMetal] compositeOverlayBGRAToNV12 not found")
+                logThrottled("missingCompositeFunction", interval: 5) {
+                    "[OverlayMetal] compositeOverlayBGRAToNV12 not found"
+                }
                 return false
             }
             pipeline = try MetalContext.shared.device.makeComputePipelineState(function: function)
             return true
         } catch {
-            sendlog(message: "[OverlayMetal] pipeline failed: \(error.localizedDescription)")
+            logThrottled("pipelineFailed", interval: 5) {
+                "[OverlayMetal] pipeline failed: \(error.localizedDescription)"
+            }
             return false
         }
     }
@@ -157,7 +167,12 @@ final class OutputOverlayMetalRenderer: @unchecked Sendable {
             bytesPerRow: width * 4,
             space: CGColorSpaceCreateDeviceRGB(),
             bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
-        ) else { return nil }
+        ) else {
+            logThrottled("bitmapContextFailed", interval: 5) {
+                "[OverlayMetal] bitmap context failed size:\(width)x\(height)"
+            }
+            return nil
+        }
 
         context.clear(CGRect(x: 0, y: 0, width: width, height: height))
         UIGraphicsPushContext(context)
@@ -178,6 +193,9 @@ final class OutputOverlayMetalRenderer: @unchecked Sendable {
         )
         descriptor.usage = .shaderRead
         guard let texture = MetalContext.shared.device.makeTexture(descriptor: descriptor) else {
+            logThrottled("textureCreateFailed", interval: 5) {
+                "[OverlayMetal] texture create failed size:\(width)x\(height)"
+            }
             return nil
         }
         pixels.withUnsafeBytes {
@@ -229,6 +247,36 @@ final class OutputOverlayMetalRenderer: @unchecked Sendable {
             let seconds = totalSeconds % 60
             return String(format: "%02d:%02d:%02d", hours, minutes, seconds)
         }
+    }
+
+    private func logThrottled(_ key: String, interval: CFAbsoluteTime = 2, message: () -> String) {
+        let now = CFAbsoluteTimeGetCurrent()
+        logLock.lock()
+        let last = lastLogTimes[key] ?? 0
+        guard now - last >= interval else {
+            logLock.unlock()
+            return
+        }
+        lastLogTimes[key] = now
+        logLock.unlock()
+        sendlog(message: message())
+    }
+
+    private func recordOverlayDuration(start: CFAbsoluteTime) {
+        let now = CFAbsoluteTimeGetCurrent()
+        let elapsedMs = (now - start) * 1000
+
+        logLock.lock()
+        overlayFrameCount += 1
+        let frame = overlayFrameCount
+        let shouldLog = frame % 120 == 0 && now - lastOverlayDurationLogTime >= 2
+        if shouldLog {
+            lastOverlayDurationLogTime = now
+        }
+        logLock.unlock()
+
+        guard shouldLog else { return }
+        sendlog(message: "[OverlayMetal] cpu cost \(String(format: "%.3f", elapsedMs))ms frame:\(frame)")
     }
 }
 
