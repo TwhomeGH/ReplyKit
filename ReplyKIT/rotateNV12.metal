@@ -33,14 +33,6 @@ constexpr sampler linearClampSampler(
     filter::linear
 );
 
-constexpr sampler nearestClampSampler(
-    coord::normalized,
-    address::clamp_to_edge,
-    filter::nearest
-);
-
-
-
 // --- 4-tap texture bicubic for Y plane (uses bilinear hardware) ---
 float bicubicSampleY_4tap(texture2d<half, access::sample> tex, float2 uv, float2 texSize) {
     float2 px = uv * texSize - 0.5;
@@ -233,4 +225,3 @@ kernel void rotateNV12_bicubic(
         }
     }
 }
-

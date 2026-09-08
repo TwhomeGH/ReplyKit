@@ -56,7 +56,7 @@ enum TimeoutError: Error {
 }
 
 private struct VideoHealthPayload: Codable {
-    let type = "videoHealth"
+    var type: String { "videoHealth" }
     let status: String
     let inputFPS: Double
     let processedFPS: Double

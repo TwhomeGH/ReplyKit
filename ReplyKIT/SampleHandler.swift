@@ -1632,7 +1632,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             sendlog(message: "🔄 RTMP publish \(fixlogSafeKey(key))")
 
             do {
-                try await rtmpStream.publish(key)
+                _ = try await rtmpStream.publish(key)
 
                 await MainActor.run { self.isSessionReady = true }
 

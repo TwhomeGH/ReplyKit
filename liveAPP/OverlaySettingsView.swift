@@ -144,7 +144,7 @@ private struct OverlayPreview: View {
 
                 if config.enabled && config.time.enabled {
                     Text(previewText)
-                        .font(.system(size: CGFloat(config.time.fontSize), weight: fontWeight(config.time.fontWeight), design: .monospaced))
+                        .font(.system(size: CGFloat(config.time.fontSize), weight: swiftUIFontWeight(config.time.fontWeight), design: .monospaced))
                         .foregroundStyle(Color(hex: config.time.textColorHex) ?? .white)
                         .padding(.horizontal, CGFloat(config.time.paddingX))
                         .padding(.vertical, CGFloat(config.time.paddingY))
@@ -217,7 +217,7 @@ private struct OverlayAnchorGrid: View {
     }
 }
 
-private func fontWeight(_ weight: OverlayFontWeight) -> Font.Weight {
+private func swiftUIFontWeight(_ weight: OverlayFontWeight) -> Font.Weight {
     switch weight {
     case .regular: return .regular
     case .medium: return .medium
