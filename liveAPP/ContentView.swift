@@ -913,6 +913,7 @@ class GPUOutputConfig: Identifiable, ObservableObject, Codable {
 
 struct LogSettingsView: View {
     @AppStorage("logURL", store: userDefaults) private var logURL = "http://192.168.0.242:3000/post"
+    @AppStorage("AppLanguage", store: userDefaults) private var appLanguageRawValue = AppLanguage.system.rawValue
     @Environment(\.dismiss) private var dismiss
 
     @State private var tempEndpoint = ""
@@ -944,43 +945,54 @@ struct LogSettingsView: View {
                 
                 LogSettingView()
 
-                NavigationLink("音訊處理設置") {
-                    AudioSettingsView()
-                }
-
-                NavigationLink("PIP子母窗口設置") {
-                    PIPSettingsView()
-                }
-
-                NavigationLink(String(localized: "settings.pipLayout.title")) {
-                    PIPLayoutSettingsView()
-                }
-
-                NavigationLink(String(localized: "settings.outputOverlay.title")) {
-                    OverlaySettingsView()
-                }
-
-                NavigationLink("GPU旋轉處理設置") {
-                    GPURotateView(viewModel: gpuSettings)
-                }
-
-
-                Section(header: Text("廣播擴展 Bundle ID")) {
-                    TextField((Bundle.main.bundleIdentifier ?? "nuclear.liveAPP") + ".ReplyKIT", text: $broadcastExtension)
-                        .autocapitalization(.none)
-                        .disableAutocorrection(true)
-                        .font(.caption)
-                    Text("設定後需重新啟動廣播才生效")
+                Section(header: Text("appLanguage.section")) {
+                    Picker("appLanguage.picker", selection: $appLanguageRawValue) {
+                        ForEach(AppLanguage.allCases) { language in
+                            Text(LocalizedStringKey(language.titleKey)).tag(language.rawValue)
+                        }
+                    }
+                    Text("appLanguage.restartHint")
                         .font(.footnote)
                         .foregroundColor(.secondary)
                 }
 
-                Section(header: Text("API 接口地址")) {
+                NavigationLink("settings.audio.title") {
+                    AudioSettingsView()
+                }
+
+                NavigationLink("settings.pipLog.title") {
+                    PIPSettingsView()
+                }
+
+                NavigationLink("settings.pipLayout.title") {
+                    PIPLayoutSettingsView()
+                }
+
+                NavigationLink("settings.outputOverlay.title") {
+                    OverlaySettingsView()
+                }
+
+                NavigationLink("settings.gpu.title") {
+                    GPURotateView(viewModel: gpuSettings)
+                }
+
+
+                Section(header: Text("settings.broadcastExtension.section")) {
+                    TextField((Bundle.main.bundleIdentifier ?? "nuclear.liveAPP") + ".ReplyKIT", text: $broadcastExtension)
+                        .autocapitalization(.none)
+                        .disableAutocorrection(true)
+                        .font(.caption)
+                    Text("settings.broadcastExtension.restartNote")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                }
+
+                Section(header: Text("settings.apiEndpoint.section")) {
                     TextField("https://example.com/api/logs", text: $tempEndpoint)
                         .keyboardType(.URL)
                         .autocapitalization(.none)
 
-                    Button("測試連線") {
+                    Button("settings.apiEndpoint.testConnection") {
                         testResult = nil
                         isTesting = true
                         testConnection(to: tempEndpoint)
@@ -992,13 +1004,13 @@ struct LogSettingsView: View {
                             .foregroundColor(result.contains("成功") ? .green : .red)
                     }
 
-                    Button("取得視頻輸出設定") {
+                    Button("settings.apiEndpoint.fetchVideoOutput") {
                         CFNotificationCenterPostNotification(cfCenter, CFNotificationName("VideoSet" as CFString), nil, nil, true)
                     }
                 }
 
 
-                Section(header: Text("PIP 子母窗口")) {
+                Section(header: Text("settings.pipLegacy.section")) {
 
                     // MARK: 主要訊息
 
@@ -1276,7 +1288,7 @@ struct LogSettingsView: View {
 
 
             }
-            .navigationTitle("主設定頁面")
+            .navigationTitle("settings.main.title")
             .onAppear {
                 tempEndpoint = logURL
             }
@@ -1904,7 +1916,7 @@ struct FormView: View {
 
     var con: some View{
         List {
-            Section(header: Text("選擇配置")) {
+            Section(header: Text("stream.config.selectSection")) {
 
                 if #available(iOS 17.0, *) {
                     Picker("配置", selection: $selectedConfigID) {
@@ -1964,7 +1976,7 @@ struct FormView: View {
                 }
             }
 
-            Section(header: Text("RTMP 設定")) {
+            Section(header: Text("stream.rtmp.section")) {
                 TextField("配置名稱", text: $name)
 #if os(iOS)
                     .textInputAutocapitalization(.never)
@@ -2101,7 +2113,7 @@ struct FormView: View {
 
         NavigationView {
             con
-                .navigationTitle("推流設定")
+                .navigationTitle("stream.settings.title")
                 .toolbar {
                     ToolbarItem(placement: .automatic) {
                         Button("完成") {
@@ -2742,34 +2754,34 @@ struct ContentView: View {
         TabView(selection: $pageState.currentPage) {
 
             homeView()
-                .tabItem { Label("主頁", systemImage: "gear") }
+                .tabItem { Label("tab.home", systemImage: "gear") }
                 .tag(AppPage.home)
 
 
 
             DeviceView()
-                .tabItem { Label("設備信息", systemImage: "cpu") }
+                .tabItem { Label("tab.deviceInfo", systemImage: "cpu") }
                 .tag(AppPage.testpage)
 
             LogView()
                 .environmentObject(logModel)
-                .tabItem { Label("日誌", systemImage: "apple.terminal") }
+                .tabItem { Label("tab.logs", systemImage: "apple.terminal") }
                 .tag(AppPage.log)
 
             LiveVolumeView()
                 .environmentObject(pageState)
-                .tabItem { Label("音量", systemImage: "speaker.wave.2.circle.fill") }
+                .tabItem { Label("tab.volume", systemImage: "speaker.wave.2.circle.fill") }
                 .tag(AppPage.audio)
 
-            PIPView().tabItem { Label("聊天室", systemImage: "pip.enter") }
+            PIPView().tabItem { Label("tab.chat", systemImage: "pip.enter") }
                 .tag(AppPage.PIPChat)
 
             TTSSettingsView()
-                .tabItem { Label("TTS", systemImage: "speaker.wave.2") }
+                .tabItem { Label("tab.tts", systemImage: "speaker.wave.2") }
                 .tag(AppPage.tts)
 
             VideoBitrateView()
-                .tabItem { Label("碼率", systemImage: "chart.bar.xaxis") }
+                .tabItem { Label("tab.bitrate", systemImage: "chart.bar.xaxis") }
                 .tag(AppPage.videoBitrate)
 
         }

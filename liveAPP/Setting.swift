@@ -228,11 +228,11 @@ struct GPURotateView: View {
 
     var body: some View {
         Form {
-            Section(header: Text("輸出設置")) {
+            Section(header: Text("gpu.output.section")) {
 
 
                 Picker(
-                    "選擇配置",
+                    String(localized: "gpu.config.select"),
                     selection:$viewModel.selectedConfigID
                 ) {
                     ForEach(viewModel.configs) { config in
@@ -245,8 +245,8 @@ struct GPURotateView: View {
 
 
 
-                Button("新增自訂配置") {
-                    let newConfig = GPUOutputConfig(name: "自訂 \(viewModel.configs.count + 1)", width: viewModel.dstW, height: viewModel.dstH)
+                Button("gpu.config.addCustom") {
+                    let newConfig = GPUOutputConfig(name: "\(AppLanguage.localized("gpu.config.customName")) \(viewModel.configs.count + 1)", width: viewModel.dstW, height: viewModel.dstH)
 
                     viewModel.configs.append(newConfig)
                     viewModel.selectedConfig = newConfig
@@ -256,7 +256,7 @@ struct GPURotateView: View {
                 }
                 if let index = viewModel.configs.firstIndex(where: { $0.id == viewModel.selectedConfig?.id }) {
 
-                    Button("刪除當前配置: \(viewModel.configs[index].name)") {
+                    Button("\(AppLanguage.localized("gpu.config.deleteCurrent")): \(viewModel.configs[index].name)") {
                         viewModel.configs.remove(at: index)
                         viewModel.selectedConfig = viewModel.configs.last
 
@@ -269,30 +269,30 @@ struct GPURotateView: View {
                     // 如果只剩 3 個，按鈕停用
                 }
 
-                Button("重建預設配置") {
+                Button("gpu.config.rebuildDefaults") {
                     viewModel.rebuildDefaultsIfMissing()
                 }
 
 
-                Text("畫布輸出寬高 [\(viewModel.odstW) x \(viewModel.odstH)]")
-                Text("0代表 以GPU處理寬高為準")
+                Text("\(AppLanguage.localized("gpu.canvas.outputSize")) [\(viewModel.odstW) x \(viewModel.odstH)]")
+                Text("gpu.canvas.zeroUsesGpuSize")
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .padding(.bottom, 5)
 
 
-                Text("GPU處理寬高 [\(viewModel.dstW) x \(viewModel.dstH)]")
-                Text("0代表 使用原始寬高")
+                Text("\(AppLanguage.localized("gpu.processing.size")) [\(viewModel.dstW) x \(viewModel.dstH)]")
+                Text("gpu.processing.zeroUsesOriginal")
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .padding(.bottom, 5)
 
 
 
-                Text("配置名稱")
+                Text("gpu.config.name")
 
                 TextField(
-                    "配置名稱 可以重新設定",
+                    AppLanguage.localized("gpu.config.namePlaceholder"),
                     text: $viewModel.displayName
                 )
                     .textFieldStyle(RoundedBorderTextFieldStyle())
@@ -314,7 +314,7 @@ struct GPURotateView: View {
 
 
                     Picker(
-                        "選擇方向",
+                        AppLanguage.localized("gpu.rotate.selectDirection"),
                         selection:$viewModel.RotateRawValue
                     ) {
                         ForEach(RotateDirection.allCases) { direction in
@@ -352,21 +352,21 @@ struct GPURotateView: View {
 
 
                 Toggle(isOn:$viewModel.RotateOriginal){
-                    Text("只改輸出寬高[畫布本身]")
+                    Text("gpu.rotate.outputOnly")
                 }.onChange(of:viewModel.RotateOriginal) { newVal in
                     viewModel.selectedConfig?.originonly = newVal
                     logTo("只改輸出寬高->\(newVal)")
                 }
 
-                Text("開啟後GPU旋轉處理 會忽視寬高設定按原始大小")
+                Text("gpu.rotate.outputOnlyHint")
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .padding(.bottom, 5)
 
 
-                Text("畫布輸出寬度")
+                Text("gpu.canvas.width")
 
-                TextField("畫布寬度", value: $viewModel.odstW, format: .number)
+                TextField(AppLanguage.localized("gpu.canvas.width"), value: $viewModel.odstW, format: .number)
                   .textFieldStyle(RoundedBorderTextFieldStyle())
                   .onChange(of: viewModel.odstW) { newVal in
 
@@ -384,9 +384,9 @@ struct GPURotateView: View {
 
                   }
 
-                Text("畫布輸出高度")
+                Text("gpu.canvas.height")
 
-                TextField("畫布高度", value: $viewModel.odstH, format: .number)
+                TextField(AppLanguage.localized("gpu.canvas.height"), value: $viewModel.odstH, format: .number)
                   .textFieldStyle(RoundedBorderTextFieldStyle())
 
                   .onChange(of: viewModel.odstH) { newVal in
@@ -408,9 +408,9 @@ struct GPURotateView: View {
 
 
 
-                Text("GPU處理寬度")
+                Text("gpu.processing.width")
 
-                TextField("寬度", value: $viewModel.dstW, format: .number)
+                TextField(AppLanguage.localized("gpu.processing.width"), value: $viewModel.dstW, format: .number)
                   .textFieldStyle(RoundedBorderTextFieldStyle())
 
                   .onChange(of: viewModel.dstW) { newVal in
@@ -428,9 +428,9 @@ struct GPURotateView: View {
                   }
 
 
-                Text("GPU處理高度")
+                Text("gpu.processing.height")
 
-                TextField("高度", value: $viewModel.dstH, format: .number)
+                TextField(AppLanguage.localized("gpu.processing.height"), value: $viewModel.dstH, format: .number)
                   .textFieldStyle(RoundedBorderTextFieldStyle())
 
                   .onChange(of: viewModel.dstH) { newVal in
@@ -451,7 +451,7 @@ struct GPURotateView: View {
 
 
                 TextField(
-                    "直接輸入數量，-1=自動",
+                    AppLanguage.localized("gpu.buffer.placeholder"),
                     value: $viewModel.BufferCount,
                     format: .number
                 )
@@ -467,7 +467,7 @@ struct GPURotateView: View {
                     }
 
                 Stepper(
-                    "輸入緩衝區數量：\(viewModel.BufferCount == -1 ? "自動" : "\(viewModel.BufferCount)")",
+                    "\(AppLanguage.localized("gpu.buffer.count")): \(viewModel.BufferCount == -1 ? AppLanguage.localized("common.auto") : "\(viewModel.BufferCount)")",
                     value: $viewModel.BufferCount,
                     in: -1...100
                 )
@@ -477,21 +477,21 @@ struct GPURotateView: View {
 
                     }
 
-                Text("建議值: -1=自動，5或10 太大可能爆內存"
+                Text("gpu.buffer.recommendation"
                 )
                         .font(.footnote)
                         .foregroundColor(.secondary)
                         .padding(.bottom, 5)
 
                 Toggle(isOn:$useBic){
-                    Text("啟用Bicubic")
+                    Text("gpu.bicubic.enable")
                 }
-                Text("雙三次插值算法經常用於圖像或者影片的縮放，它能比占主導地位的雙線性濾波算法保留更好的細節品質"
+                Text("gpu.bicubic.description"
                 )
                         .font(.footnote)
                         .foregroundColor(.secondary)
                         .padding(.bottom, 5)
-                Text("預設使用：雙線性內插值算法放大後的圖像質量較高，不會出現像素值不連續的的情況。然而此算法具有低通濾波器的性質，使高頻分量受損，所以可能會使圖像輪廓在一定程度上變得模糊"
+                Text("gpu.bilinear.description"
                 )
                         .font(.footnote)
                         .foregroundColor(.secondary)
@@ -501,7 +501,7 @@ struct GPURotateView: View {
 
             }
         }
-        .navigationTitle("GPU處理設置")
+        .navigationTitle(String(localized: "settings.gpu.title"))
 
         .onDisappear {
             GPUOutputConfig.save(viewModel.configs)
@@ -524,59 +524,59 @@ struct AudioSettingsView:View {
 
     var body: some View {
         Form {
-            Section(header: Text("音訊設置")) {
+            Section(header: Text("settings.audio.title")) {
             
                 Toggle(isOn:$isOringinAudio){
-                                Text("啟用原味音訊處理！")
+                                Text("audio.original.enable")
                             }
 
-                Text("啟用後忽視音訊處理 直接原封不動送進去")                                                                                                     
+                Text("audio.original.description")
                 .font(.footnote)
                 .foregroundColor(.secondary)
                 .padding(.bottom, 5)
 
                 Toggle(isOn:$enableNoiseFix){
-                    Text("啟用降噪功能！")
+                    Text("audio.noiseReduction.enable")
                 }
 
-                Text("啟用後會對音訊進行降噪處理，減少背景噪聲，提升語音清晰度 頻譜減法去除")                                                                                                     
+                Text("audio.noiseReduction.description")
                 .font(.footnote)
                 .foregroundColor(.secondary)
                 .padding(.bottom, 5)
 
                 Toggle(isOn:$enableEchoFix){
-                    Text("啟用回音消除功能！")
+                    Text("audio.echoCancellation.enable")
                 }
 
-                Text("啟用後會對音訊進行回音處理，減少應用音量重疊 [此功能如果使用原始音訊可控制內置回音消除功能]")                                                                                                     
+                Text("audio.echoCancellation.description")
                 .font(.footnote)
                 .foregroundColor(.secondary)
                 .padding(.bottom, 5)
 
                 Toggle(isOn:$enableAGCFix){
-                    Text("啟用自動音量調整功能！")
+                    Text("audio.agc.enable")
                 }
 
-                Text("啟用後會對音訊進行自動大小增益")                                                                                                     
+                Text("audio.agc.description")
                 .font(.footnote)
                 .foregroundColor(.secondary)
                 .padding(.bottom, 5)
 
                 Toggle(isOn:$enableMetalAudio){
-                    Text("啟用 Metal 加速降噪！")
+                    Text("audio.metalNoise.enable")
                 }
 
-                Text("使用 GPU 加速降噪處理，降低 CPU 使用率，僅在啟用降噪時生效")                                                                                                     
+                Text("audio.metalNoise.description")
                 .font(.footnote)
                 .foregroundColor(.secondary)
                 .padding(.bottom, 5)
 
 
-                Text("敬請期待！")
+                Text("common.comingSoon")
 
 
             }
-        }.navigationTitle("音訊設置")
+        }.navigationTitle(String(localized: "settings.audio.title"))
     }
     
 }
@@ -592,39 +592,39 @@ struct PIPSettingsView: View {
     var body: some View {
         Form {
             Toggle(isOn: $PIPLog){
-                Text("啟用PIP子母窗口調試用日誌 ！")
+                Text("pipLog.pip.enable")
             }.onChange(of:PIPLog) { newValue in
                 logger.debug("PIPLog:\(newValue)")
                 LPConfig.shared.PIPLog = newValue
             }
 
-            Text("啟用後顯示, 關於PIP畫面情況")
+            Text("pipLog.pip.description")
                 .font(.footnote)
                 .foregroundColor(.secondary)
                 .padding(.bottom, 5)
 
             Toggle(isOn: $PIPChatLog){
-                Text("啟用PIP子母窗口 訊息處理 調試日誌 ！")
+                Text("pipLog.chat.enable")
             }.onChange(of:PIPChatLog) { newValue in
                 logger.debug("PIPChatLog:\(newValue)")
                 LPConfig.shared.PIPChatLog = newValue
             }
 
-            Text("啟用後顯示, 關於PIP訊息處理動畫日誌")
+            Text("pipLog.chat.description")
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .padding(.bottom, 5)
 
 
             Toggle(isOn: $PIPLayoutLog){
-                Text("啟用PIP子母窗口 佈局調試日誌 ！")
+                Text("pipLog.layout.enable")
             }.onChange(of:PIPLayoutLog) { newValue in
                 logger.debug("PIPLayoutLog:\(newValue)")
                 sendlog(message: "PIPLayoutLog:\(newValue)")
             }
 
             Toggle(isOn: $PIPFrameLog){
-                Text("啟用PIP子母窗口 畫面幀調試日誌 ！")
+                Text("pipLog.frame.enable")
             }.onChange(of:PIPFrameLog) { newValue in
                 logger.debug("PIPFrameLog:\(newValue)")
                 sendlog(message: "PIPFrameLog:\(newValue)")
@@ -632,7 +632,7 @@ struct PIPSettingsView: View {
 
 
         }
-        .navigationTitle("PIP日誌設置")
+        .navigationTitle(String(localized: "settings.pipLog.title"))
     }
     
 }
@@ -673,7 +673,7 @@ struct LogSettingView:View {
     @ObservedObject var socket = SocketServer.shared
 
     var body: some View {
-        Section(header: Text("除錯日誌")) {
+        Section(header: Text("logSettings.debug.section")) {
 
             Toggle(isOn: $Enablelog){
                 Text("啟用調試用日誌 ！")
@@ -878,7 +878,7 @@ struct LogSettingView:View {
             }
 
         }
-        Section(header: Text("直播計時器")) {
+        Section(header: Text("logSettings.liveTimer.section")) {
 
             Button("重新開始直播計時器"){
                 sendlog(message: "直播開始計時器重啟")
@@ -906,7 +906,7 @@ struct LogSettingView:View {
 
         }
 
-        Section(header: Text("網路")) {
+        Section(header: Text("logSettings.network.section")) {
 
             Button("測試擴展通信傳遞"){
                 // 未來計畫棄用 已經用Socket轉送處理了

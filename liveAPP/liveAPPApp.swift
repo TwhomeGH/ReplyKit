@@ -931,6 +931,7 @@ struct liveAPPApp: App {
     let notificationDelegate = NotificationDelegate()
 
     @StateObject var logModel = LogModel()
+    @AppStorage("AppLanguage", store: userDefaults) private var appLanguageRawValue = AppLanguage.system.rawValue
 
 
 
@@ -1045,6 +1046,7 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
         WindowGroup {
             ContentView()
                 .environmentObject(logModel)
+                .environment(\.locale, AppLanguage(rawValue: appLanguageRawValue)?.locale ?? .autoupdatingCurrent)
                 .onChange(of: scenePhase) { phase in
                     switch phase {
                     case .inactive:

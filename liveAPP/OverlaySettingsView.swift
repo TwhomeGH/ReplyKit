@@ -39,7 +39,7 @@ struct OverlaySettingsView: View {
                 Toggle("outputOverlay.timeLayer.showTime", isOn: $viewModel.config.time.enabled)
                     .disabled(!viewModel.config.enabled)
 
-                Picker(String(localized: "outputOverlay.timeLayer.content"), selection: $viewModel.config.time.format) {
+                Picker(AppLanguage.localized("outputOverlay.timeLayer.content"), selection: $viewModel.config.time.format) {
                     ForEach(TimeOverlayFormat.allCases) { format in
                         Text(format.title).tag(format)
                     }
@@ -50,15 +50,15 @@ struct OverlaySettingsView: View {
                     OverlayAnchorGrid(selection: $viewModel.config.time.anchor)
                 }
 
-                Stepper("\(String(localized: "outputOverlay.timeLayer.fontSize")) \(Int(viewModel.config.time.fontSize))", value: $viewModel.config.time.fontSize, in: 10...48, step: 1)
+                Stepper("\(AppLanguage.localized("outputOverlay.timeLayer.fontSize")) \(Int(viewModel.config.time.fontSize))", value: $viewModel.config.time.fontSize, in: 10...48, step: 1)
 
-                Picker(String(localized: "outputOverlay.timeLayer.fontWeight"), selection: $viewModel.config.time.fontWeight) {
+                Picker(AppLanguage.localized("outputOverlay.timeLayer.fontWeight"), selection: $viewModel.config.time.fontWeight) {
                     ForEach(OverlayFontWeight.allCases) { weight in
                         Text(weight.title).tag(weight)
                     }
                 }
 
-                ColorPicker(String(localized: "outputOverlay.timeLayer.textColor"), selection: Binding(
+                ColorPicker(AppLanguage.localized("outputOverlay.timeLayer.textColor"), selection: Binding(
                     get: { Color(hex: viewModel.config.time.textColorHex) ?? .white },
                     set: { viewModel.config.time.textColorHex = $0.hexString }
                 ))
@@ -67,7 +67,7 @@ struct OverlaySettingsView: View {
             Section(header: Text("outputOverlay.background.section")) {
                 Toggle("outputOverlay.background.enabled", isOn: $viewModel.config.time.backgroundEnabled)
 
-                ColorPicker(String(localized: "outputOverlay.background.color"), selection: Binding(
+                ColorPicker(AppLanguage.localized("outputOverlay.background.color"), selection: Binding(
                     get: { Color(hex: viewModel.config.time.backgroundColorHex) ?? .black },
                     set: { viewModel.config.time.backgroundColorHex = $0.hexString }
                 ))
@@ -82,15 +82,15 @@ struct OverlaySettingsView: View {
                 }
                 .disabled(!viewModel.config.time.backgroundEnabled)
 
-                Stepper("\(String(localized: "outputOverlay.background.cornerRadius")) \(Int(viewModel.config.time.cornerRadius))", value: $viewModel.config.time.cornerRadius, in: 0...24, step: 1)
+                Stepper("\(AppLanguage.localized("outputOverlay.background.cornerRadius")) \(Int(viewModel.config.time.cornerRadius))", value: $viewModel.config.time.cornerRadius, in: 0...24, step: 1)
                     .disabled(!viewModel.config.time.backgroundEnabled)
             }
 
             Section(header: Text("outputOverlay.spacing.section")) {
-                Stepper("\(String(localized: "outputOverlay.spacing.marginX")) \(Int(viewModel.config.time.marginX))", value: $viewModel.config.time.marginX, in: 0...160, step: 2)
-                Stepper("\(String(localized: "outputOverlay.spacing.marginY")) \(Int(viewModel.config.time.marginY))", value: $viewModel.config.time.marginY, in: 0...160, step: 2)
-                Stepper("\(String(localized: "outputOverlay.spacing.offsetX")) \(Int(viewModel.config.time.offsetX))", value: $viewModel.config.time.offsetX, in: -240...240, step: 2)
-                Stepper("\(String(localized: "outputOverlay.spacing.offsetY")) \(Int(viewModel.config.time.offsetY))", value: $viewModel.config.time.offsetY, in: -240...240, step: 2)
+                Stepper("\(AppLanguage.localized("outputOverlay.spacing.marginX")) \(Int(viewModel.config.time.marginX))", value: $viewModel.config.time.marginX, in: 0...160, step: 2)
+                Stepper("\(AppLanguage.localized("outputOverlay.spacing.marginY")) \(Int(viewModel.config.time.marginY))", value: $viewModel.config.time.marginY, in: 0...160, step: 2)
+                Stepper("\(AppLanguage.localized("outputOverlay.spacing.offsetX")) \(Int(viewModel.config.time.offsetX))", value: $viewModel.config.time.offsetX, in: -240...240, step: 2)
+                Stepper("\(AppLanguage.localized("outputOverlay.spacing.offsetY")) \(Int(viewModel.config.time.offsetY))", value: $viewModel.config.time.offsetY, in: -240...240, step: 2)
             }
 
             Section {
@@ -99,7 +99,7 @@ struct OverlaySettingsView: View {
                 }
             }
         }
-        .navigationTitle(String(localized: "settings.outputOverlay.title"))
+        .navigationTitle("settings.outputOverlay.title")
     }
 }
 

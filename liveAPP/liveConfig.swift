@@ -80,9 +80,9 @@ final class LPConfig {
     var PIPAdOverlayUserFontSize: Double = 14.0
     var PIPAdOverlaySpacing: Double = 4.5
     var PIPAdOverlayDuration: Double = 5.0
-    var PIPNowTimeLabel: String = String(localized: "pip.default.nowTimeLabel")
-    var PIPLiveLabel: String = String(localized: "pip.default.liveLabel")
-    var PIPEndedLabel: String = String(localized: "pip.default.endedLabel")
+    var PIPNowTimeLabel: String = AppLanguage.localized("pip.default.nowTimeLabel")
+    var PIPLiveLabel: String = AppLanguage.localized("pip.default.liveLabel")
+    var PIPEndedLabel: String = AppLanguage.localized("pip.default.endedLabel")
 
     var PIPLog: Bool = false
     var PIPChatLog:Bool = false
@@ -141,7 +141,7 @@ final class LPConfig {
 
     private static func localizedOverride(key: String, localizedKey: String) -> String {
         let override = userDefaults?.string(forKey: key)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return override.isEmpty ? String(localized: String.LocalizationValue(localizedKey)) : String(override.prefix(12))
+        return override.isEmpty ? AppLanguage.localized(localizedKey) : String(override.prefix(12))
     }
 
 

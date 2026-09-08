@@ -472,7 +472,7 @@ final class PIPServiceMessages {
     var adOverlayOffset: CGFloat = 0
 
     var topMargin: CGFloat {
-        max(78, container.bounds.height * 0.22) + adOverlayOffset
+        max(88, container.bounds.height * 0.26) + adOverlayOffset
     }
 
     func setAdOverlayOffset(_ offset: CGFloat) {

@@ -18,7 +18,7 @@ struct PIPLayoutSettingsView: View {
     var body: some View {
         Form {
             Section {
-                Picker(String(localized: "pipLayout.preview.mode"), selection: $previewMode) {
+                Picker(AppLanguage.localized("pipLayout.preview.mode"), selection: $previewMode) {
                     ForEach(PIPLayoutPreviewMode.allCases) { mode in
                         Text(mode.title).tag(mode)
                     }
@@ -40,14 +40,14 @@ struct PIPLayoutSettingsView: View {
             }
 
             Section(header: Text("pipLayout.statusText.section")) {
-                TextField(String(localized: "pipLayout.statusText.nowTime.placeholder"), text: $nowTimeLabelOverride)
+                TextField(AppLanguage.localized("pipLayout.statusText.nowTime.placeholder"), text: $nowTimeLabelOverride)
                     .onChange(of: nowTimeLabelOverride) { newVal in
                         nowTimeLabelOverride = limitedOverride(newVal)
                         LPConfig.shared.PIPNowTimeLabel = effectiveLabel(nowTimeLabelOverride, localizedKey: "pip.default.nowTimeLabel")
                         PIPService.shared.markOverlayDirty()
                     }
 
-                TextField(String(localized: "pipLayout.statusText.live.placeholder"), text: $liveLabelOverride)
+                TextField(AppLanguage.localized("pipLayout.statusText.live.placeholder"), text: $liveLabelOverride)
                     .onChange(of: liveLabelOverride) { newVal in
                         liveLabelOverride = limitedOverride(newVal)
                         LPConfig.shared.PIPLiveLabel = effectiveLabel(liveLabelOverride, localizedKey: "pip.default.liveLabel")
@@ -57,7 +57,7 @@ struct PIPLayoutSettingsView: View {
                         PIPService.shared.markOverlayDirty()
                     }
 
-                TextField(String(localized: "pipLayout.statusText.ended.placeholder"), text: $endedLabelOverride)
+                TextField(AppLanguage.localized("pipLayout.statusText.ended.placeholder"), text: $endedLabelOverride)
                     .onChange(of: endedLabelOverride) { newVal in
                         endedLabelOverride = limitedOverride(newVal)
                         LPConfig.shared.PIPEndedLabel = effectiveLabel(endedLabelOverride, localizedKey: "pip.default.endedLabel")
@@ -73,13 +73,13 @@ struct PIPLayoutSettingsView: View {
             }
 
             Section(header: Text("pipLayout.chat.section")) {
-                Stepper("\(String(localized: "pipLayout.chat.mainSize")) \(PIPFontMain, specifier: "%.1f")", value: $PIPFontMain, in: 1...100, step: 0.1)
+                Stepper("\(AppLanguage.localized("pipLayout.chat.mainSize")) \(PIPFontMain, specifier: "%.1f")", value: $PIPFontMain, in: 1...100, step: 0.1)
                     .onChange(of: PIPFontMain) { newVal in
                         LPConfig.shared.PIPChatFontMainSize = newVal
                         PIPService.shared.markOverlayDirty()
                     }
 
-                Stepper("\(String(localized: "pipLayout.chat.secondSize")) \(PIPFontSecond, specifier: "%.1f")", value: $PIPFontSecond, in: 1...100, step: 0.1)
+                Stepper("\(AppLanguage.localized("pipLayout.chat.secondSize")) \(PIPFontSecond, specifier: "%.1f")", value: $PIPFontSecond, in: 1...100, step: 0.1)
                     .onChange(of: PIPFontSecond) { newVal in
                         LPConfig.shared.PIPChatFontSecondSize = newVal
                         PIPService.shared.markOverlayDirty()
@@ -87,25 +87,25 @@ struct PIPLayoutSettingsView: View {
             }
 
             Section(header: Text("pipLayout.ad.section")) {
-                Stepper("\(String(localized: "pipLayout.ad.bodyFont")) \(PIPAdOverlayFont, specifier: "%.1f")", value: $PIPAdOverlayFont, in: 1...100, step: 0.1)
+                Stepper("\(AppLanguage.localized("pipLayout.ad.bodyFont")) \(PIPAdOverlayFont, specifier: "%.1f")", value: $PIPAdOverlayFont, in: 1...100, step: 0.1)
                     .onChange(of: PIPAdOverlayFont) { newVal in
                         LPConfig.shared.PIPAdOverlayFontSize = newVal
                         PIPService.shared.markOverlayDirty()
                     }
 
-                Stepper("\(String(localized: "pipLayout.ad.userFont")) \(PIPAdOverlayUserFont, specifier: "%.1f")", value: $PIPAdOverlayUserFont, in: 1...100, step: 0.1)
+                Stepper("\(AppLanguage.localized("pipLayout.ad.userFont")) \(PIPAdOverlayUserFont, specifier: "%.1f")", value: $PIPAdOverlayUserFont, in: 1...100, step: 0.1)
                     .onChange(of: PIPAdOverlayUserFont) { newVal in
                         LPConfig.shared.PIPAdOverlayUserFontSize = newVal
                         PIPService.shared.markOverlayDirty()
                     }
 
-                Stepper("\(String(localized: "pipLayout.ad.spacing")) \(PIPAdOverlaySpacing, specifier: "%.1f")", value: $PIPAdOverlaySpacing, in: 0...50, step: 0.5)
+                Stepper("\(AppLanguage.localized("pipLayout.ad.spacing")) \(PIPAdOverlaySpacing, specifier: "%.1f")", value: $PIPAdOverlaySpacing, in: 0...50, step: 0.5)
                     .onChange(of: PIPAdOverlaySpacing) { newVal in
                         LPConfig.shared.PIPAdOverlaySpacing = newVal
                         PIPService.shared.markOverlayDirty()
                     }
 
-                Stepper("\(String(localized: "pipLayout.ad.duration")) \(PIPAdOverlayDuration, specifier: "%.1f")", value: $PIPAdOverlayDuration, in: 1...60, step: 0.5)
+                Stepper("\(AppLanguage.localized("pipLayout.ad.duration")) \(PIPAdOverlayDuration, specifier: "%.1f")", value: $PIPAdOverlayDuration, in: 1...60, step: 0.5)
                     .onChange(of: PIPAdOverlayDuration) { newVal in
                         LPConfig.shared.PIPAdOverlayDuration = newVal
                         PIPService.shared.markOverlayDirty()
@@ -113,26 +113,26 @@ struct PIPLayoutSettingsView: View {
             }
 
             Section(header: Text("pipLayout.animation.section")) {
-                Stepper("\(String(localized: "pipLayout.animation.fadeSpeed")) \(fadeAlpha, specifier: "%.2f")", value: $fadeAlpha, in: 0...100, step: 0.01)
+                Stepper("\(AppLanguage.localized("pipLayout.animation.fadeSpeed")) \(fadeAlpha, specifier: "%.2f")", value: $fadeAlpha, in: 0...100, step: 0.01)
                     .onChange(of: fadeAlpha) { newVal in
                         LPConfig.shared.FadeAlpha = newVal
                         PIPService.shared.markOverlayDirty()
                     }
 
-                Stepper("\(String(localized: "pipLayout.animation.fadeInterval")) \(fadeTime, specifier: "%.2f") \(String(localized: "unit.seconds"))", value: $fadeTime, in: 0...100, step: 0.1)
+                Stepper("\(AppLanguage.localized("pipLayout.animation.fadeInterval")) \(fadeTime, specifier: "%.2f") \(AppLanguage.localized("unit.seconds"))", value: $fadeTime, in: 0...100, step: 0.1)
                     .onChange(of: fadeTime) { newVal in
                         LPConfig.shared.MessageFadeTime = newVal
                         PIPService.shared.fadeTime(newVal)
                     }
 
-                Stepper("\(String(localized: "pipLayout.animation.scrollTime")) \(scrollTime, specifier: "%.2f") \(String(localized: "unit.seconds"))", value: $scrollTime, in: 0...100, step: 0.1)
+                Stepper("\(AppLanguage.localized("pipLayout.animation.scrollTime")) \(scrollTime, specifier: "%.2f") \(AppLanguage.localized("unit.seconds"))", value: $scrollTime, in: 0...100, step: 0.1)
                     .onChange(of: scrollTime) { newVal in
                         LPConfig.shared.ScrollTime = newVal
                         PIPService.shared.scrollTime(newVal)
                     }
             }
         }
-        .navigationTitle(String(localized: "settings.pipLayout.title"))
+        .navigationTitle("settings.pipLayout.title")
     }
 
     private func limitedOverride(_ value: String) -> String {
@@ -142,7 +142,7 @@ struct PIPLayoutSettingsView: View {
 
     private func effectiveLabel(_ value: String, localizedKey: String) -> String {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? String(localized: String.LocalizationValue(localizedKey)) : String(trimmed.prefix(12))
+        return trimmed.isEmpty ? AppLanguage.localized(localizedKey) : String(trimmed.prefix(12))
     }
 }
 
@@ -154,8 +154,8 @@ private enum PIPLayoutPreviewMode: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .normal: return String(localized: "pipLayout.preview.normal")
-        case .adOverlay: return String(localized: "pipLayout.preview.adOverlay")
+        case .normal: return AppLanguage.localized("pipLayout.preview.normal")
+        case .adOverlay: return AppLanguage.localized("pipLayout.preview.adOverlay")
         }
     }
 }
@@ -173,7 +173,7 @@ private struct PIPLayoutPreview: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let width = proxy.size.width
+            let width = max(300, proxy.size.width)
             let height = width * 2 / 3
             let scale = width / 300
             let metrics = PIPPreviewMetrics(scale: scale)
@@ -185,16 +185,16 @@ private struct PIPLayoutPreview: View {
 
                 VStack(alignment: .leading, spacing: 4 * scale) {
                     messageRow(
-                        name: String(localized: "pipLayout.preview.hostName"),
-                        message: String(localized: "pipLayout.preview.mainMessage"),
+                        name: AppLanguage.localized("pipLayout.preview.hostName"),
+                        message: AppLanguage.localized("pipLayout.preview.mainMessage"),
                         fontSize: mainFontSize,
                         accent: .cyan,
                         scale: scale
                     )
 
                     messageRow(
-                        name: String(localized: "pipLayout.preview.viewerName"),
-                        message: String(localized: "pipLayout.preview.secondMessage"),
+                        name: AppLanguage.localized("pipLayout.preview.viewerName"),
+                        message: AppLanguage.localized("pipLayout.preview.secondMessage"),
                         fontSize: secondFontSize,
                         accent: .green,
                         scale: scale
@@ -227,6 +227,7 @@ private struct PIPLayoutPreview: View {
             .clipShape(RoundedRectangle(cornerRadius: 8))
         }
         .aspectRatio(3.0 / 2.0, contentMode: .fit)
+        .frame(minHeight: 200)
     }
 
     private func elapsedBadge(scale: CGFloat) -> some View {
@@ -257,6 +258,8 @@ private struct PIPLayoutPreview: View {
         .padding(.vertical, 4 * scale)
         .frame(maxWidth: canvasWidth - 12 * scale)
         .background(Color.black.opacity(0.45))
+        .lineLimit(1)
+        .minimumScaleFactor(0.35)
     }
 
     private func statusBadge(scale: CGFloat) -> some View {
@@ -268,6 +271,7 @@ private struct PIPLayoutPreview: View {
             .background((mode == .normal ? Color.orange : Color.gray).opacity(0.9))
             .clipShape(RoundedRectangle(cornerRadius: 4 * scale))
             .lineLimit(1)
+            .minimumScaleFactor(0.6)
     }
 
     private func viewerBadge(scale: CGFloat) -> some View {
@@ -284,6 +288,7 @@ private struct PIPLayoutPreview: View {
         .background(Color(white: 0.83))
         .clipShape(Capsule())
         .lineLimit(1)
+        .minimumScaleFactor(0.7)
     }
 
     private func messageRow(name: String, message: String, fontSize: Double, accent: Color, scale: CGFloat) -> some View {
@@ -348,12 +353,12 @@ private struct PIPPreviewMetrics {
 
     var elapsedX: CGFloat { 50 * scale }
     var elapsedY: CGFloat { 20 * scale }
-    var nowTimeCenterY: CGFloat { (40 + 13) * scale }
+    var nowTimeCenterY: CGFloat { (48 + 13) * scale }
     var sponsorY: CGFloat { 85 }
     var messageLeading: CGFloat { 10 * scale }
 
     func chatTopY(mode: PIPLayoutPreviewMode) -> CGFloat {
-        let base = max(78, 200 * 0.22)
+        let base = max(88, 200 * 0.26)
         let adOffset = mode == .adOverlay ? 145.0 : 0
         return (base + adOffset) * scale
     }

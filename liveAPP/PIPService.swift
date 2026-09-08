@@ -625,7 +625,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         let textSize = fullLine.size()
         let paddingX: CGFloat = 6
         let paddingY: CGFloat = 4
-        let spacingY: CGFloat = 20
+        let spacingY: CGFloat = 28
 
         let bgRect = CGRect(
             x: (size.width - textSize.width) / 2 - paddingX,

@@ -23,6 +23,139 @@
         }
       }
     },
+    "appLanguage.en" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "English" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "English" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "English" } }
+      }
+    },
+    "appLanguage.ja" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "日本語" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "日本語" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "日本語" } }
+      }
+    },
+    "appLanguage.picker" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Language" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "言語" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "語言" } }
+      }
+    },
+    "appLanguage.restartHint" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Most SwiftUI screens update immediately. Some system or cached text may update after reopening the app." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "多くのSwiftUI画面はすぐ更新されます。一部のシステム表示やキャッシュされた文字は、アプリ再起動後に反映される場合があります。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "大部分 SwiftUI 畫面會立即更新；少數系統文字或快取文字可能需要重新打開 App 才會刷新。" } }
+      }
+    },
+    "appLanguage.section" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "App Language" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "アプリの言語" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "App 語言" } }
+      }
+    },
+    "appLanguage.system" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "System" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "システム" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "跟隨系統" } }
+      }
+    },
+    "appLanguage.zhHant" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "繁體中文" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "繁體中文" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "繁體中文" } }
+      }
+    },
+    "audio.agc.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Automatically adjusts audio gain." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "音量ゲインを自動調整します。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "啟用後會對音訊進行自動大小增益" } }
+      }
+    },
+    "audio.agc.enable" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enable Auto Gain" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "自動音量調整を有効化" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "啟用自動音量調整功能！" } }
+      }
+    },
+    "audio.echoCancellation.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Reduces echo and app audio overlap. Original audio can use the built-in echo control." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "エコーとアプリ音声の重なりを抑えます。原音声では内蔵エコー制御を使用できます。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "啟用後會對音訊進行回音處理，減少應用音量重疊 [此功能如果使用原始音訊可控制內置回音消除功能]" } }
+      }
+    },
+    "audio.echoCancellation.enable" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enable Echo Cancellation" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "エコー除去を有効化" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "啟用回音消除功能！" } }
+      }
+    },
+    "audio.metalNoise.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Uses the GPU for noise reduction to lower CPU usage. Only applies when noise reduction is enabled." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "GPUでノイズ低減を行い、CPU使用率を下げます。ノイズ低減が有効な場合のみ適用されます。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "使用 GPU 加速降噪處理，降低 CPU 使用率，僅在啟用降噪時生效" } }
+      }
+    },
+    "audio.metalNoise.enable" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enable Metal Noise Reduction" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "Metalノイズ低減を有効化" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "啟用 Metal 加速降噪！" } }
+      }
+    },
+    "audio.noiseReduction.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Reduces background noise and improves speech clarity with spectral subtraction." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "スペクトル減算で背景ノイズを抑え、音声の明瞭さを高めます。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "啟用後會對音訊進行降噪處理，減少背景噪聲，提升語音清晰度 頻譜減法去除" } }
+      }
+    },
+    "audio.noiseReduction.enable" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enable Noise Reduction" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ノイズ低減を有効化" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "啟用降噪功能！" } }
+      }
+    },
+    "audio.original.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Bypasses audio processing and sends the original audio through." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "音声処理を通さず、元の音声をそのまま送ります。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "啟用後忽視音訊處理 直接原封不動送進去" } }
+      }
+    },
+    "audio.original.enable" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Use Original Audio" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "原音声を使用" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "啟用原味音訊處理！" } }
+      }
+    },
+    "common.auto" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Auto" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "自動" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "自動" } }
+      }
+    },
+    "common.comingSoon" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Coming soon." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "近日対応予定です。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "敬請期待！" } }
+      }
+    },
     "fontWeight.bold" : {
       "localizations" : {
         "en" : {
@@ -87,6 +220,202 @@
             "value" : "一般"
           }
         }
+      }
+    },
+    "gpu.bicubic.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Bicubic scaling can preserve more detail than bilinear filtering when resizing images or video." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "Bicubicは画像や映像の拡大縮小で、バイリニアより細部を保ちやすい方式です。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "雙三次插值算法經常用於圖像或者影片的縮放，它能比占主導地位的雙線性濾波算法保留更好的細節品質" } }
+      }
+    },
+    "gpu.bicubic.enable" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enable Bicubic" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "Bicubicを有効化" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "啟用Bicubic" } }
+      }
+    },
+    "gpu.bilinear.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Default bilinear scaling is stable and smooth, but can soften high-frequency detail." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "標準のバイリニア拡大は安定して滑らかですが、高周波の細部はやや柔らかくなります。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "預設使用：雙線性內插值算法放大後的圖像質量較高，不會出現像素值不連續的的情況。然而此算法具有低通濾波器的性質，使高頻分量受損，所以可能會使圖像輪廓在一定程度上變得模糊" } }
+      }
+    },
+    "gpu.buffer.count" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Buffer Count" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "バッファ数" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "輸入緩衝區數量" } }
+      }
+    },
+    "gpu.buffer.placeholder" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enter count, -1 = Auto" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "数を入力、-1 = 自動" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "直接輸入數量，-1=自動" } }
+      }
+    },
+    "gpu.buffer.recommendation" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recommended: -1 = Auto. 5 or 10 may use too much memory." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "推奨: -1 = 自動。5や10はメモリ使用量が大きくなる場合があります。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "建議值: -1=自動，5或10 太大可能爆內存" } }
+      }
+    },
+    "gpu.canvas.height" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Canvas Height" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "キャンバス高さ" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "畫布輸出高度" } }
+      }
+    },
+    "gpu.canvas.outputSize" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Canvas Output Size" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "キャンバス出力サイズ" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "畫布輸出寬高" } }
+      }
+    },
+    "gpu.canvas.width" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Canvas Width" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "キャンバス幅" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "畫布輸出寬度" } }
+      }
+    },
+    "gpu.canvas.zeroUsesGpuSize" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "0 uses the GPU processing size." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "0の場合はGPU処理サイズを使用します。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "0代表 以GPU處理寬高為準" } }
+      }
+    },
+    "gpu.config.addCustom" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Add Custom Preset" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "カスタム設定を追加" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "新增自訂配置" } }
+      }
+    },
+    "gpu.config.customName" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Custom" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "カスタム" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "自訂" } }
+      }
+    },
+    "gpu.config.deleteCurrent" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Delete Current Preset" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "現在の設定を削除" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "刪除當前配置" } }
+      }
+    },
+    "gpu.config.name" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Preset Name" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "設定名" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "配置名稱" } }
+      }
+    },
+    "gpu.config.namePlaceholder" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Rename preset" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "設定名を変更" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "配置名稱 可以重新設定" } }
+      }
+    },
+    "gpu.config.rebuildDefaults" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Rebuild Default Presets" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "デフォルト設定を再作成" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "重建預設配置" } }
+      }
+    },
+    "gpu.config.select" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Preset" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "設定" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "選擇配置" } }
+      }
+    },
+    "gpu.output.section" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Output" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "出力" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "輸出設置" } }
+      }
+    },
+    "gpu.processing.height" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "GPU Height" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "GPU高さ" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "GPU處理高度" } }
+      }
+    },
+    "gpu.processing.size" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "GPU Processing Size" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "GPU処理サイズ" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "GPU處理寬高" } }
+      }
+    },
+    "gpu.processing.width" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "GPU Width" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "GPU幅" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "GPU處理寬度" } }
+      }
+    },
+    "gpu.processing.zeroUsesOriginal" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "0 uses the original size." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "0の場合は元のサイズを使用します。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "0代表 使用原始寬高" } }
+      }
+    },
+    "gpu.rotate.outputOnly" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Only Change Canvas Size" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "キャンバスサイズのみ変更" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "只改輸出寬高[畫布本身]" } }
+      }
+    },
+    "gpu.rotate.outputOnlyHint" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "When enabled, GPU rotation ignores processing size and uses the original size." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "有効時、GPU回転処理は処理サイズを無視して元のサイズを使用します。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "開啟後GPU旋轉處理 會忽視寬高設定按原始大小" } }
+      }
+    },
+    "gpu.rotate.selectDirection" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Direction" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "方向" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "選擇方向" } }
+      }
+    },
+    "logSettings.debug.section" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Debug Logs" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "デバッグログ" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "除錯日誌" } }
+      }
+    },
+    "logSettings.liveTimer.section" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Live Timer" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "配信タイマー" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "直播計時器" } }
+      }
+    },
+    "logSettings.network.section" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Network" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ネットワーク" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "網路" } }
       }
     },
     "outputOverlay.background.color" : {
@@ -751,6 +1080,104 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "建議 2 到 6 個字，最多 12 個字；太長會擠壓時間與觀眾數徽章。" } }
       }
     },
+    "pipLog.chat.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Shows PiP message processing and animation logs." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "PiPメッセージ処理とアニメーションのログを表示します。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "啟用後顯示, 關於PIP訊息處理動畫日誌" } }
+      }
+    },
+    "pipLog.chat.enable" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enable PiP Chat Logs" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "PiPチャットログを有効化" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "啟用PIP子母窗口 訊息處理 調試日誌 ！" } }
+      }
+    },
+    "pipLog.frame.enable" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enable PiP Frame Logs" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "PiPフレームログを有効化" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "啟用PIP子母窗口 畫面幀調試日誌 ！" } }
+      }
+    },
+    "pipLog.layout.enable" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enable PiP Layout Logs" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "PiPレイアウトログを有効化" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "啟用PIP子母窗口 佈局調試日誌 ！" } }
+      }
+    },
+    "pipLog.pip.description" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Shows debug information about the PiP view." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "PiP画面のデバッグ情報を表示します。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "啟用後顯示, 關於PIP畫面情況" } }
+      }
+    },
+    "pipLog.pip.enable" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enable PiP Debug Logs" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "PiPデバッグログを有効化" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "啟用PIP子母窗口調試用日誌 ！" } }
+      }
+    },
+    "settings.apiEndpoint.fetchVideoOutput" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Fetch Video Output Settings" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "映像出力設定を取得" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "取得視頻輸出設定" } }
+      }
+    },
+    "settings.apiEndpoint.section" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "API Endpoint" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "APIエンドポイント" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "API 接口地址" } }
+      }
+    },
+    "settings.apiEndpoint.testConnection" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Test Connection" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "接続をテスト" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "測試連線" } }
+      }
+    },
+    "settings.audio.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Audio Settings" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "音声設定" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "音訊處理設置" } }
+      }
+    },
+    "settings.broadcastExtension.restartNote" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Restart the broadcast for changes to take effect." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "変更を反映するには配信を再起動してください。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "設定後需重新啟動廣播才生效" } }
+      }
+    },
+    "settings.broadcastExtension.section" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Broadcast Extension Bundle ID" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "配信拡張Bundle ID" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "廣播擴展 Bundle ID" } }
+      }
+    },
+    "settings.gpu.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "GPU Processing" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "GPU処理" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "GPU旋轉處理設置" } }
+      }
+    },
+    "settings.main.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Main Settings" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "メイン設定" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "主設定頁面" } }
+      }
+    },
     "settings.outputOverlay.title" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Output Overlay" } },
@@ -763,6 +1190,90 @@
         "en" : { "stringUnit" : { "state" : "translated", "value" : "PiP Layout" } },
         "ja" : { "stringUnit" : { "state" : "translated", "value" : "PiPレイアウト" } },
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "PIP排版加工設置" } }
+      }
+    },
+    "settings.pipLog.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "PiP Logs" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "PiPログ" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "PIP子母窗口設置" } }
+      }
+    },
+    "settings.pipLegacy.section" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "PiP Window" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "PiPウィンドウ" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "PIP 子母窗口" } }
+      }
+    },
+    "stream.config.selectSection" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Select Preset" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "設定を選択" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "選擇配置" } }
+      }
+    },
+    "stream.rtmp.section" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "RTMP Settings" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "RTMP設定" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "RTMP 設定" } }
+      }
+    },
+    "stream.settings.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Streaming Settings" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "配信設定" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "推流設定" } }
+      }
+    },
+    "tab.bitrate" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Bitrate" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ビットレート" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "碼率" } }
+      }
+    },
+    "tab.chat" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Chat" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "チャット" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "聊天室" } }
+      }
+    },
+    "tab.deviceInfo" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Device" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "デバイス" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "設備信息" } }
+      }
+    },
+    "tab.home" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Home" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ホーム" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "主頁" } }
+      }
+    },
+    "tab.logs" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Logs" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ログ" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "日誌" } }
+      }
+    },
+    "tab.tts" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "TTS" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "TTS" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "TTS" } }
+      }
+    },
+    "tab.volume" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Volume" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "音量" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "音量" } }
       }
     },
     "timeFormat.dateTime" : {

@@ -7,6 +7,8 @@ ReplyKit 的主 app 介面逐步改用 Apple String Catalog。現階段先把新
 - 主 app UI 字串集中放在 `liveAPP/Localizable.xcstrings`。
 - 專案 source language 是 `zh-Hant`，目前目標語系是 `en` 與 `ja`。
 - `liveAPP.xcodeproj/project.pbxproj` 的 `knownRegions` 已加入 `ja`，讓 Xcode 知道日文是支援語系。
+- App 內語言選擇由 `liveAPP/AppLanguage.swift` 定義，使用 `AppLanguage` UserDefaults key 儲存。
+- `liveAPP/liveAPPApp.swift` 會把選擇的語言套到 SwiftUI root 的 `.environment(\.locale, ...)`。
 - 如果後續要翻譯 app 名稱、權限文案或 Info.plist 內顯示文字，再新增 `InfoPlist.xcstrings`。
 
 ## Key 命名
@@ -24,17 +26,47 @@ Picker(String(localized: "outputOverlay.timeLayer.content"), selection: $format)
 目前已使用的 key 類型：
 
 - `settings.*`：設定頁入口與頁面標題。
+- `appLanguage.*`：App 內語言切換器。
+- `tab.*`：底部 Tab 名稱。
+- `stream.*`：推流設定頁標題與主要區段。
+- `audio.*`：音訊設定頁可見選項。
+- `gpu.*`：GPU 旋轉處理設定頁可見選項。
+- `pipLog.*`：PIP 日誌設定頁可見選項。
+- `logSettings.*`：主設定頁中的日誌、計時器、網路區段。
 - `pip.default.*`：PIP 預設狀態文字。
 - `pipLayout.*`：PIP 排版加工頁。
 - `outputOverlay.*`：輸出畫面加工頁。
 - `overlayAnchor.*`、`timeFormat.*`、`fontWeight.*`：可重用選項名稱。
 - `common.*`、`unit.*`：通用操作與單位。
 
+## 目前覆蓋範圍
+
+已接入本地化：
+
+- App 內語言切換器。
+- 底部 Tab 名稱。
+- 主設定頁標題與主要入口。
+- 音訊設定頁。
+- PIP 日誌設定頁。
+- PIP 排版加工頁。
+- 輸出畫面加工頁。
+- GPU 旋轉處理設定頁。
+- 推流設定頁的標題與主要區段。
+
+尚未完整搬移：
+
+- 主設定頁內舊版 PIP 子母窗口的深層欄位。
+- 推流設定頁內 RTMP 表單欄位與提示。
+- TTS 設定頁與可用語音清單。
+- 設備資訊、日誌、音量、碼率分析頁。
+- debug log、socket log、開發者用提示文字。
+
 ## Swift 寫法
 
 - SwiftUI 靜態文字優先用 `Text("key")`、`Toggle("key", ...)`。
 - 需要傳 `String` 的地方用 `String(localized: "key")`，例如 `navigationTitle`、`Picker` label、`TextField` placeholder。
 - 動態組合字串先取本地化 label，再和數字組合，避免把完整中文句子硬寫進程式碼。
+- 需要跟 App 內語言切換即時刷新時，優先用 `Text("key")`、`Label("key", systemImage:)`、`NavigationLink("key")` 這種 SwiftUI key 形式。
 
 ## 使用者自訂文字
 

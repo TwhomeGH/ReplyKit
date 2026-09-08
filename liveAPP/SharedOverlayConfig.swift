@@ -16,15 +16,15 @@ enum OverlayAnchor: String, Codable, CaseIterable, Identifiable, Hashable {
 
     var title: String {
         switch self {
-        case .topLeft: return String(localized: "overlayAnchor.topLeft")
-        case .topCenter: return String(localized: "overlayAnchor.topCenter")
-        case .topRight: return String(localized: "overlayAnchor.topRight")
-        case .centerLeft: return String(localized: "overlayAnchor.centerLeft")
-        case .center: return String(localized: "overlayAnchor.center")
-        case .centerRight: return String(localized: "overlayAnchor.centerRight")
-        case .bottomLeft: return String(localized: "overlayAnchor.bottomLeft")
-        case .bottomCenter: return String(localized: "overlayAnchor.bottomCenter")
-        case .bottomRight: return String(localized: "overlayAnchor.bottomRight")
+        case .topLeft: return AppLanguage.localized("overlayAnchor.topLeft")
+        case .topCenter: return AppLanguage.localized("overlayAnchor.topCenter")
+        case .topRight: return AppLanguage.localized("overlayAnchor.topRight")
+        case .centerLeft: return AppLanguage.localized("overlayAnchor.centerLeft")
+        case .center: return AppLanguage.localized("overlayAnchor.center")
+        case .centerRight: return AppLanguage.localized("overlayAnchor.centerRight")
+        case .bottomLeft: return AppLanguage.localized("overlayAnchor.bottomLeft")
+        case .bottomCenter: return AppLanguage.localized("overlayAnchor.bottomCenter")
+        case .bottomRight: return AppLanguage.localized("overlayAnchor.bottomRight")
         }
     }
 
@@ -62,9 +62,9 @@ enum OverlayFontWeight: String, Codable, CaseIterable, Identifiable, Hashable {
 
     var title: String {
         switch self {
-        case .regular: return String(localized: "fontWeight.regular")
-        case .medium: return String(localized: "fontWeight.medium")
-        case .bold: return String(localized: "fontWeight.bold")
+        case .regular: return AppLanguage.localized("fontWeight.regular")
+        case .medium: return AppLanguage.localized("fontWeight.medium")
+        case .bold: return AppLanguage.localized("fontWeight.bold")
         }
     }
 }
@@ -78,9 +78,9 @@ enum TimeOverlayFormat: String, Codable, CaseIterable, Identifiable, Hashable {
 
     var title: String {
         switch self {
-        case .timeOnly: return String(localized: "timeFormat.timeOnly")
-        case .dateTime: return String(localized: "timeFormat.dateTime")
-        case .elapsed: return String(localized: "timeFormat.elapsed")
+        case .timeOnly: return AppLanguage.localized("timeFormat.timeOnly")
+        case .dateTime: return AppLanguage.localized("timeFormat.dateTime")
+        case .elapsed: return AppLanguage.localized("timeFormat.elapsed")
         }
     }
 
