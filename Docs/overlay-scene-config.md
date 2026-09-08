@@ -109,6 +109,7 @@ ReplayKit Extension：
 - Overlay 時間貼圖只保留目前需要的一張 texture，避免每秒新增 texture 導致長時間推流記憶體與 PTS 壓力。
 - CoreGraphics 產生的 overlay bitmap 與 Metal texture 座標系不同，合成 shader 會翻轉 overlay Y 軸再取樣。
 - `[OverlayMetal]` 診斷 log 已做節流；錯誤類 log 最短 5 秒送一次，CPU 消耗時間統計每 120 幀且至少間隔 2 秒才送一次。
+- 診斷 log 節流不再使用額外 lock，避免在影像熱路徑引入多餘同步點。
 
 刻意保留：
 
@@ -127,6 +128,8 @@ ReplayKit Extension：
 2. 加入文字 layer、Logo/image layer、狀態 badge layer。
 3. 讓主 App 預覽與 Extension renderer 共用同一套座標計算。
 4. 為 overlay texture cache 加上上限與 memory warning 清理。
+5. 將 overlay renderer 改成 render snapshot：設定變更或秒數變更時才準備 texture/params，每幀 render 只讀已準備好的不可變資料。
+6. 評估把 overlay 合成合併進 `rotateNV12_bilinear` / `rotateNV12_bicubic`，減少第二個 compute encoder 與額外的 Y/UV 寫入。
 
 ## 擴展方向
 
@@ -162,3 +165,4 @@ enum OverlayLayerConfig: Codable {
 - 位置計算應以最終畫布尺寸為準，也就是 OD 尺寸，不應使用 GPU 中間處理尺寸 AD。
 - Overlay 若進入推流畫布，必須確認是否會影響 encoder timing、pixel buffer reuse 與記憶體壓力。
 - 若直播中看到 PTS 抖動，先看 `[OverlayMetal]` log 是否大量重建 pipeline 或 texture；正常情況下時間文字每秒更新一次，但 overlay composite 會每幀執行，log 只會低頻回報 CPU 消耗時間。
+- 目前 overlay pass 只 dispatch overlay texture 範圍，不是整張輸出畫布；但它仍是第二個 Metal pass。若後續要追求最低延遲，應把 overlay sampling/blend 放進主旋轉 kernel，在輸出座標落入 overlay rect 時才做混合。

@@ -17,11 +17,13 @@ final class OutputOverlayMetalRenderer: @unchecked Sendable {
     private let startedAt = Date()
     private let configLock = NSLock()
     private let textureLock = NSLock()
-    private let logLock = NSLock()
     private var currentConfig = OverlayConfigStore.load()
-    private var lastLogTimes: [String: CFAbsoluteTime] = [:]
     private var overlayFrameCount: UInt64 = 0
     private var lastOverlayDurationLogTime: CFAbsoluteTime = 0
+    private var lastMissingCompositeFunctionLogTime: CFAbsoluteTime = 0
+    private var lastPipelineFailedLogTime: CFAbsoluteTime = 0
+    private var lastBitmapContextFailedLogTime: CFAbsoluteTime = 0
+    private var lastTextureCreateFailedLogTime: CFAbsoluteTime = 0
 
     private init() {}
 
@@ -109,7 +111,7 @@ final class OutputOverlayMetalRenderer: @unchecked Sendable {
         if pipeline != nil { return true }
         do {
             guard let function = MetalContext.shared.library.makeFunction(name: "compositeOverlayBGRAToNV12") else {
-                logThrottled("missingCompositeFunction", interval: 5) {
+                logThrottled(last: &lastMissingCompositeFunctionLogTime, interval: 5) {
                     "[OverlayMetal] compositeOverlayBGRAToNV12 not found"
                 }
                 return false
@@ -117,7 +119,7 @@ final class OutputOverlayMetalRenderer: @unchecked Sendable {
             pipeline = try MetalContext.shared.device.makeComputePipelineState(function: function)
             return true
         } catch {
-            logThrottled("pipelineFailed", interval: 5) {
+            logThrottled(last: &lastPipelineFailedLogTime, interval: 5) {
                 "[OverlayMetal] pipeline failed: \(error.localizedDescription)"
             }
             return false
@@ -168,7 +170,7 @@ final class OutputOverlayMetalRenderer: @unchecked Sendable {
             space: CGColorSpaceCreateDeviceRGB(),
             bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
         ) else {
-            logThrottled("bitmapContextFailed", interval: 5) {
+            logThrottled(last: &lastBitmapContextFailedLogTime, interval: 5) {
                 "[OverlayMetal] bitmap context failed size:\(width)x\(height)"
             }
             return nil
@@ -193,7 +195,7 @@ final class OutputOverlayMetalRenderer: @unchecked Sendable {
         )
         descriptor.usage = .shaderRead
         guard let texture = MetalContext.shared.device.makeTexture(descriptor: descriptor) else {
-            logThrottled("textureCreateFailed", interval: 5) {
+            logThrottled(last: &lastTextureCreateFailedLogTime, interval: 5) {
                 "[OverlayMetal] texture create failed size:\(width)x\(height)"
             }
             return nil
@@ -249,16 +251,10 @@ final class OutputOverlayMetalRenderer: @unchecked Sendable {
         }
     }
 
-    private func logThrottled(_ key: String, interval: CFAbsoluteTime = 2, message: () -> String) {
+    private func logThrottled(last: inout CFAbsoluteTime, interval: CFAbsoluteTime = 2, message: () -> String) {
         let now = CFAbsoluteTimeGetCurrent()
-        logLock.lock()
-        let last = lastLogTimes[key] ?? 0
-        guard now - last >= interval else {
-            logLock.unlock()
-            return
-        }
-        lastLogTimes[key] = now
-        logLock.unlock()
+        guard now - last >= interval else { return }
+        last = now
         sendlog(message: message())
     }
 
@@ -266,14 +262,12 @@ final class OutputOverlayMetalRenderer: @unchecked Sendable {
         let now = CFAbsoluteTimeGetCurrent()
         let elapsedMs = (now - start) * 1000
 
-        logLock.lock()
         overlayFrameCount += 1
         let frame = overlayFrameCount
         let shouldLog = frame % 120 == 0 && now - lastOverlayDurationLogTime >= 2
         if shouldLog {
             lastOverlayDurationLogTime = now
         }
-        logLock.unlock()
 
         guard shouldLog else { return }
         sendlog(message: "[OverlayMetal] cpu cost \(String(format: "%.3f", elapsedMs))ms frame:\(frame)")
