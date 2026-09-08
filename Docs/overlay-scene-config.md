@@ -2,6 +2,8 @@
 
 本文整理主 App 可視化配置與 ReplayKit Extension 讀取 Overlay 設定的設計。此功能是可選加工層；用戶不啟用時，既有輸出與原本 PiP overlay 行為應保持不變。
 
+注意：本文件中的 Overlay 指「最終推流畫布加工」，不是 PiP 子母窗口排版。PiP 應使用獨立的 `PIPLayoutSettingsView` 與現有 `PIP*` 設定 key。
+
 ## 目標
 
 - 在主 UI 提供獨立的「畫面加工設置」頁面。
@@ -79,7 +81,7 @@ struct TimeOverlayConfig: Codable, Identifiable, Equatable {
 3. `OverlaySettingsViewModel` 將 `OverlaySceneConfig` encode 成 JSON data。
 4. `OverlayConfigStore.save()` 寫入 App Group `UserDefaults` 的 `OverlaySceneConfig` key。
 5. 發送 Darwin notification：`OverlaySceneConfigChanged`。
-6. 呼叫 `PIPService.shared.markOverlayDirty()`，讓 PiP 預覽重新繪製。
+6. 此設定不直接驅動 `PIPService`；最終應由 ReplayKit Extension 的 video processor 套用到輸出畫布。
 
 ReplayKit Extension：
 
@@ -96,7 +98,6 @@ ReplayKit Extension：
 - 新增主 App「畫面加工設置」入口。
 - 新增 16:9 預覽畫布。
 - 新增時間圖層位置與樣式控制。
-- PiP 時間 overlay 可讀取新配置。
 - Extension 可收到配置變更通知並讀取配置。
 
 刻意保留：
@@ -104,6 +105,7 @@ ReplayKit Extension：
 - 畫面加工預設關閉。
 - 未啟用時維持原本 `drawTimeOverlay()` 行為。
 - 保活模式仍使用原本中央提示樣式，不受一般時間圖層覆蓋。
+- PiP 排版加工與最終輸出 Overlay 分離，避免調整輸出畫布時改壞 PiP 子母窗口樣式。
 
 ## 下一步
 

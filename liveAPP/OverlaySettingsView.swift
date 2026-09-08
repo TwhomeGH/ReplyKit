@@ -19,7 +19,6 @@ final class OverlaySettingsViewModel: ObservableObject {
 
     private func save() {
         OverlayConfigStore.save(config)
-        PIPService.shared.markOverlayDirty()
     }
 }
 
@@ -99,7 +98,7 @@ struct OverlaySettingsView: View {
                 }
             }
         }
-        .navigationTitle("畫面加工")
+        .navigationTitle("輸出畫面加工")
     }
 }
 
@@ -160,7 +159,7 @@ private struct OverlayPreview: View {
             .frame(width: canvas.width, height: canvas.height)
             .clipShape(RoundedRectangle(cornerRadius: 8))
         }
-        .aspectRatio(16 / 9, contentMode: .fit)
+        .aspectRatio(16.0 / 9.0, contentMode: .fit)
     }
 
     private var previewItemSize: CGSize {

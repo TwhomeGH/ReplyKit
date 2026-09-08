@@ -55,7 +55,7 @@ enum TimeoutError: Error {
     case timedOut
 }
 
-private struct VideoHealthPayload: Codable {
+private struct VideoHealthPayload: Encodable {
     var type: String { "videoHealth" }
     let status: String
     let inputFPS: Double

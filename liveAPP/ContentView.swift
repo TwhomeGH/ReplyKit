@@ -952,7 +952,11 @@ struct LogSettingsView: View {
                     PIPSettingsView()
                 }
 
-                NavigationLink("畫面加工設置") {
+                NavigationLink("PIP排版加工設置") {
+                    PIPLayoutSettingsView()
+                }
+
+                NavigationLink("輸出畫面加工設置") {
                     OverlaySettingsView()
                 }
 
