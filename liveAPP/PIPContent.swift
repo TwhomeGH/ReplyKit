@@ -71,27 +71,13 @@ actor PiPImageCache {
     // 注意：Version token 目前跟隨 OS 版本（ProcessInfo），
     // 但真實 Safari 的 Version（如 27.0）從 iOS 18 起與 OS 脫鉤，ProcessInfo 給不出。
     private static func makeUserAgent() -> String {
-        let isIPad = deviceModelIdentifier().hasPrefix("iPad")
+        let isIPad = DeviceInfo.deviceCode.hasPrefix("iPad")
         let device = isIPad ? "iPad" : "iPhone"
         let cpuToken = isIPad ? "CPU OS" : "CPU iPhone OS"
         let os = ProcessInfo.processInfo.operatingSystemVersion
         let osVersion = "\(os.majorVersion)_\(os.minorVersion)"
         let safariVersion = "\(os.majorVersion).\(os.minorVersion)"
         return "Mozilla/5.0 (\(device); \(cpuToken) \(osVersion) like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/\(safariVersion) Mobile/15E148 Safari/604.1"
-    }
-
-    private static func deviceModelIdentifier() -> String {
-        if let simulatorModel = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] {
-            return simulatorModel
-        }
-
-        var systemInfo = utsname()
-        uname(&systemInfo)
-        return withUnsafePointer(to: &systemInfo.machine) {
-            $0.withMemoryRebound(to: CChar.self, capacity: 1) {
-                String(validatingUTF8: $0) ?? ""
-            }
-        }
     }
 
     private var inFlightTasks: [String: Task<UIImage?, Never>] = [:]
