@@ -831,7 +831,7 @@ private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
     let attrs: [String: Any] = [
         kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
         kCVPixelBufferMetalCompatibilityKey as String: true,
-        kCVMetalTextureUsage as String: NSNumber(value: MTLTextureUsage.shaderWrite.rawValue),
+        kCVMetalTextureUsage as String: NSNumber(value: MTLTextureUsage.shaderRead.rawValue | MTLTextureUsage.shaderWrite.rawValue),
         kCVPixelBufferWidthKey as String: width,
         kCVPixelBufferHeightKey as String: height
     ]
@@ -1126,6 +1126,7 @@ private func fallbackSampleBuffer(
         }
 
         encoder.endEncoding()
+        OutputOverlayMetalRenderer.shared.applyIfNeeded(commandBuffer: cmd, dstY: dstY, dstUV: dstUV)
         return true
     }
 

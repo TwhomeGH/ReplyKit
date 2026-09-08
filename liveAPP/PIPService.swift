@@ -618,7 +618,8 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         let labelFont = UIFont.systemFont(ofSize: fontSize, weight: .medium)
 
         let fullLine = NSMutableAttributedString()
-        fullLine.append(NSAttributedString(string: "現在時間 ", attributes: [.font: labelFont, .foregroundColor: UIColor.systemCyan]))
+        let nowLabel = LPConfig.shared.PIPNowTimeLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        fullLine.append(NSAttributedString(string: "\(nowLabel.isEmpty ? "現在時間" : nowLabel) ", attributes: [.font: labelFont, .foregroundColor: UIColor.systemCyan]))
         fullLine.append(NSAttributedString(string: timeText, attributes: [.font: timeFont, .foregroundColor: UIColor.white]))
 
         let textSize = fullLine.size()

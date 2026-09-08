@@ -32,6 +32,9 @@ PiP 排版頁使用現有 `@AppStorage` key：
 | `fadeAlpha` | 訊息淡出速度 |
 | `fadeTime` | 訊息淡出間隔 |
 | `scrollTime` | 訊息滾動時間 |
+| `PIPNowTimeLabel` | 現在時間標籤文字 |
+| `PIPLiveLabel` | 直播中狀態文字 |
+| `PIPEndedLabel` | 直播已結束狀態文字 |
 
 這些 key 已經由 `LPConfig.shared` 與 `PIPService` 使用，因此第一版 PIP 排版頁只整理入口，不改資料模型。
 
@@ -40,8 +43,11 @@ PiP 排版頁使用現有 `@AppStorage` key：
 - `liveAPP/PIPLayoutSettingsView.swift`：獨立的 PiP 排版加工頁。
 - `liveAPP/ContentView.swift`：主設定頁提供 `PIP排版加工設置` 入口。
 - `liveAPP/PIPService.swift`：維持原本 `drawTimeOverlay()` 與聊天室排版邏輯，不讀取最終輸出 Overlay config。
+- `liveAPP/Socket.swift`：直播狀態 fallback 使用 PiP 自訂文案；上游若傳回舊固定字串，會映射成目前自訂文字。
 
 `PIPLayoutSettingsView` 頁面頂部提供 3:2 靜態預覽，對齊目前 PiP 啟動尺寸 `300x200`。預覽會即時反映聊天室字體、贊助覆蓋字體與間距，方便調整時快速查看視覺密度。
+
+狀態文字限制最多 12 個字，UI 提醒建議 2 到 6 個字。這是為了避免上方時間列、直播狀態與觀眾數徽章互相擠壓。
 
 ## 原則
 

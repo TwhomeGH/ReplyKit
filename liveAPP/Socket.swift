@@ -663,7 +663,7 @@ class SocketServer:ObservableObject {
     // MARK: - 直播狀態管理 直播開始/結束 狀態更新
     func StreamStatusChanged(isLive: Bool, message: String? = nil) {
         LPConfig.shared.StreamEnded = !isLive
-        LPConfig.shared.StreamEndMes = message ?? (isLive ? "直播中" : "直播已結束")
+        LPConfig.shared.StreamEndMes = normalizedPIPStatusMessage(isLive: isLive, message: message)
         PIPService.shared.markOverlayDirty()
 
         if isLive {
@@ -675,6 +675,20 @@ class SocketServer:ObservableObject {
                 StreamActivityManager.shared.endStreamActivity()
             }
         }
+    }
+
+    private func normalizedPIPStatusMessage(isLive: Bool, message: String?) -> String {
+        let trimmed = message?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if trimmed.isEmpty {
+            return isLive ? LPConfig.shared.PIPLiveLabel : LPConfig.shared.PIPEndedLabel
+        }
+        if trimmed == "直播中" {
+            return LPConfig.shared.PIPLiveLabel
+        }
+        if trimmed == "直播已結束" || trimmed == "StreamEnded" {
+            return LPConfig.shared.PIPEndedLabel
+        }
+        return trimmed
     }
 
     func GetRTMPConfig() -> [String: Any]  {

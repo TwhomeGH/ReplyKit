@@ -87,8 +87,9 @@ ReplayKit Extension：
 
 1. `Eventlisten.eventNames` 註冊 `OverlaySceneConfigChanged`。
 2. `SampleHandler.handleEvent()` 收到事件。
-3. `OverlayConfigStore.load()` 從 App Group `UserDefaults` 讀取 Codable data。
-4. 目前先記錄配置更新 log，後續接入最終 video processor。
+3. `OutputOverlayMetalRenderer.reloadConfig()` 從 App Group `UserDefaults` 讀取 Codable data。
+4. `GPUVideoRotator.renderPlaneYUV()` 完成旋轉/縮放後，呼叫 `OutputOverlayMetalRenderer.applyIfNeeded()`。
+5. Metal kernel `compositeOverlayBGRAToNV12` 將 overlay BGRA texture 混入最終 NV12 輸出畫布。
 
 ## 第一版實作範圍
 
@@ -99,6 +100,7 @@ ReplayKit Extension：
 - 新增 16:9 預覽畫布。
 - 新增時間圖層位置與樣式控制。
 - Extension 可收到配置變更通知並讀取配置。
+- GPU rotator 已在旋轉後追加 Metal overlay pass，把時間圖層疊到最終 NV12 畫布。
 
 刻意保留：
 
@@ -109,15 +111,14 @@ ReplayKit Extension：
 
 ## 下一步
 
-下一階段應該把 `OverlaySceneConfig` 接進 ReplyKIT 的最終影片輸出路徑。
+下一階段應該擴展 `OverlaySceneConfig` 的 layer 能力。
 
 建議順序：
 
-1. 在 Extension 端新增持有目前 overlay config 的狀態，例如 `currentOverlayConfig`。
-2. 收到 `OverlaySceneConfigChanged` 時 reload 並更新該狀態。
-3. 在 `VideoProcess` 或 rotator 輸出最終 `ODWidth x ODHeight` 畫布後，套用 overlay。
-4. 先支援 CPU/CoreGraphics 疊時間，驗證尺寸與座標正確。
-5. 再視效能需求轉成 Metal overlay pass。
+1. 把單一 `time` 欄位演進成 ordered `layers`。
+2. 加入文字 layer、Logo/image layer、狀態 badge layer。
+3. 讓主 App 預覽與 Extension renderer 共用同一套座標計算。
+4. 為 overlay texture cache 加上上限與 memory warning 清理。
 
 ## 擴展方向
 

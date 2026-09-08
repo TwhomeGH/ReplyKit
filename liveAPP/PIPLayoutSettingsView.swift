@@ -10,6 +10,9 @@ struct PIPLayoutSettingsView: View {
     @AppStorage("fadeAlpha", store: userDefaults) private var fadeAlpha = 0.08
     @AppStorage("fadeTime", store: userDefaults) private var fadeTime = 0.5
     @AppStorage("scrollTime", store: userDefaults) private var scrollTime = 0.2
+    @AppStorage("PIPNowTimeLabel", store: userDefaults) private var nowTimeLabel = "現在時間"
+    @AppStorage("PIPLiveLabel", store: userDefaults) private var liveLabel = "直播中"
+    @AppStorage("PIPEndedLabel", store: userDefaults) private var endedLabel = "直播已結束"
     @State private var previewMode: PIPLayoutPreviewMode = .normal
 
     var body: some View {
@@ -28,9 +31,45 @@ struct PIPLayoutSettingsView: View {
                     secondFontSize: PIPFontSecond,
                     adFontSize: PIPAdOverlayFont,
                     adUserFontSize: PIPAdOverlayUserFont,
-                    adSpacing: PIPAdOverlaySpacing
+                    adSpacing: PIPAdOverlaySpacing,
+                    nowTimeLabel: sanitizedLabel(nowTimeLabel, fallback: "現在時間"),
+                    liveLabel: sanitizedLabel(liveLabel, fallback: "直播中"),
+                    endedLabel: sanitizedLabel(endedLabel, fallback: "直播已結束")
                 )
                 .listRowInsets(EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))
+            }
+
+            Section(header: Text("狀態文字")) {
+                TextField("現在時間", text: $nowTimeLabel)
+                    .onChange(of: nowTimeLabel) { newVal in
+                        nowTimeLabel = limitedLabel(newVal, fallback: "現在時間")
+                        LPConfig.shared.PIPNowTimeLabel = sanitizedLabel(nowTimeLabel, fallback: "現在時間")
+                        PIPService.shared.markOverlayDirty()
+                    }
+
+                TextField("直播中", text: $liveLabel)
+                    .onChange(of: liveLabel) { newVal in
+                        liveLabel = limitedLabel(newVal, fallback: "直播中")
+                        LPConfig.shared.PIPLiveLabel = sanitizedLabel(liveLabel, fallback: "直播中")
+                        if !LPConfig.shared.StreamEnded {
+                            LPConfig.shared.StreamEndMes = LPConfig.shared.PIPLiveLabel
+                        }
+                        PIPService.shared.markOverlayDirty()
+                    }
+
+                TextField("直播已結束", text: $endedLabel)
+                    .onChange(of: endedLabel) { newVal in
+                        endedLabel = limitedLabel(newVal, fallback: "直播已結束")
+                        LPConfig.shared.PIPEndedLabel = sanitizedLabel(endedLabel, fallback: "直播已結束")
+                        if LPConfig.shared.StreamEnded {
+                            LPConfig.shared.StreamEndMes = LPConfig.shared.PIPEndedLabel
+                        }
+                        PIPService.shared.markOverlayDirty()
+                    }
+
+                Text("建議 2 到 6 個字，最多 12 個字；太長會擠壓時間與觀眾數徽章。")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
             }
 
             Section(header: Text("聊天室文字")) {
@@ -95,6 +134,17 @@ struct PIPLayoutSettingsView: View {
         }
         .navigationTitle("PIP排版加工")
     }
+
+    private func limitedLabel(_ value: String, fallback: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .newlines)
+        let limited = String(trimmed.prefix(12))
+        return limited.isEmpty ? fallback : limited
+    }
+
+    private func sanitizedLabel(_ value: String, fallback: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? fallback : String(trimmed.prefix(12))
+    }
 }
 
 private enum PIPLayoutPreviewMode: String, CaseIterable, Identifiable {
@@ -118,6 +168,9 @@ private struct PIPLayoutPreview: View {
     let adFontSize: Double
     let adUserFontSize: Double
     let adSpacing: Double
+    let nowTimeLabel: String
+    let liveLabel: String
+    let endedLabel: String
 
     var body: some View {
         GeometryReader { proxy in
@@ -155,6 +208,9 @@ private struct PIPLayoutPreview: View {
                 elapsedBadge(scale: scale)
                     .position(x: (50 + 38) * scale, y: (20 + 8) * scale)
 
+                statusBadge(scale: scale)
+                    .position(x: 155 * scale, y: 28 * scale)
+
                 nowTimeBadge(scale: scale, canvasWidth: width)
                     .position(x: width * 0.5, y: (40 + 13) * scale)
 
@@ -183,7 +239,7 @@ private struct PIPLayoutPreview: View {
 
     private func nowTimeBadge(scale: CGFloat, canvasWidth: CGFloat) -> some View {
         HStack(spacing: 0) {
-            Text("現在時間 ")
+            Text("\(nowTimeLabel) ")
                 .font(.system(size: 16 * scale, weight: .medium))
                 .foregroundStyle(.cyan)
 
@@ -197,6 +253,17 @@ private struct PIPLayoutPreview: View {
         .padding(.vertical, 4 * scale)
         .frame(maxWidth: canvasWidth - 12 * scale)
         .background(Color.black.opacity(0.45))
+    }
+
+    private func statusBadge(scale: CGFloat) -> some View {
+        Text(mode == .normal ? liveLabel : endedLabel)
+            .font(.system(size: 14 * scale, weight: .medium))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 8 * scale)
+            .padding(.vertical, 2 * scale)
+            .background((mode == .normal ? Color.orange : Color.gray).opacity(0.9))
+            .clipShape(RoundedRectangle(cornerRadius: 4 * scale))
+            .lineLimit(1)
     }
 
     private func messageRow(name: String, message: String, fontSize: Double, accent: Color, scale: CGFloat) -> some View {

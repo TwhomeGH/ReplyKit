@@ -80,6 +80,9 @@ final class LPConfig {
     var PIPAdOverlayUserFontSize: Double = 14.0
     var PIPAdOverlaySpacing: Double = 4.5
     var PIPAdOverlayDuration: Double = 5.0
+    var PIPNowTimeLabel: String = "現在時間"
+    var PIPLiveLabel: String = "直播中"
+    var PIPEndedLabel: String = "直播已結束"
 
     var PIPLog: Bool = false
     var PIPChatLog:Bool = false
@@ -121,6 +124,9 @@ final class LPConfig {
         PIPAdOverlayUserFontSize = (userDefaults?.object(forKey: "PIPAdOverlayUserFont") as? Double) ?? 14.0
         PIPAdOverlaySpacing = (userDefaults?.object(forKey: "PIPAdOverlaySpacing") as? Double) ?? 4.5
         PIPAdOverlayDuration = (userDefaults?.object(forKey: "PIPAdOverlayDuration") as? Double) ?? 5.0
+        PIPNowTimeLabel = userDefaults?.string(forKey: "PIPNowTimeLabel") ?? "現在時間"
+        PIPLiveLabel = userDefaults?.string(forKey: "PIPLiveLabel") ?? "直播中"
+        PIPEndedLabel = userDefaults?.string(forKey: "PIPEndedLabel") ?? "直播已結束"
 
     }
 
