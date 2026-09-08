@@ -1139,6 +1139,16 @@ acquire/recycle 就地改 `bucket.items`，不再每次寫回 dictionary 觸發 
 - `commandStatsLock` **未**併成 os_unfair_lock/atomic：每幀兩次（submit+completion）都是納秒級、無 contention 的計數；等 profile 顯示有影響再改（屆時是獨立小 commit）。
 - Overlay **未** inline 進 `rotateNV12_bilinear/bicubic`：評估為不優先，理由見 `overlay-scene-config.md` 下一步第 6 點。
 
+### 18.5 Bicubic shader 追修
+
+近期 `rotateNV12.metal` 的 4-tap bicubic 優化存在座標系混用：helper 以 normalized UV 計算 `uv * texSize - 0.5`，但 `rotateNV12_bicubic` 傳入的是 pixel coordinate (`srcXf/srcYf` 與 `uvClamped`)。這會讓採樣座標被再次乘上 texture size，進而錯位或 clamp 到邊界。
+
+修正策略：
+
+- 先回退為 pixel-coordinate 16-tap Catmull-Rom bicubic，確保 quality 模式畫面正確。
+- 保留 bilinear 路徑不動，避免影響 live 預設模式。
+- 後續若要重做 4-tap 優化，必須讓呼叫端與 helper 明確統一為 normalized UV 或 pixel coordinate，並用測試圖驗證旋轉、縮放、邊界 clamp 與 UV 平面色彩。
+
 ### 驗證狀態
 
 - 三個檔案均通過 `swiftc -frontend -parse` 語法驗證。

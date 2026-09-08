@@ -43,62 +43,60 @@ constexpr sampler linearClampSampler(
     filter::linear
 );
 
-// --- 4-tap texture bicubic for Y plane (uses bilinear hardware) ---
-float bicubicSampleY_4tap(texture2d<half, access::sample> tex, float2 uv, float2 texSize) {
-    float2 px = uv * texSize - 0.5;
-    float2 f = fract(px);
-    float2 i = floor(px);
-
-    float2 w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
-    float2 w2 = f * (0.5 + f * (2.0 - 1.5 * f));
-
-    float2 w12 = w1 + w2;
-    float2 offset12 = w2 / (w12 + 1e-10);
-    float2 texelSize = 1.0 / texSize;
-
-    float2 tc0 = (i - 0.5) * texelSize;
-    float2 tc1 = (i + offset12) * texelSize;
-    float2 tc2 = (i + 1.0 + offset12) * texelSize;
-    float2 tc3 = (i + 1.5) * texelSize;
-
-    float s0 = float(tex.sample(linearClampSampler, float2(tc0.x, uv.y)).x);
-    float s1 = float(tex.sample(linearClampSampler, float2(tc1.x, uv.y)).x);
-    float s2 = float(tex.sample(linearClampSampler, float2(tc2.x, uv.y)).x);
-    float s3 = float(tex.sample(linearClampSampler, float2(tc3.x, uv.y)).x);
-
-    float h0 = s1 * w12.x + s2 * (1.0 - w12.x);
-    float h1 = s0 * (1.0 - w12.x) + s3 * w12.x;
-
-    return h0 * (1.0 - f.y) + h1 * f.y;
+float2 catmullRom1D2(float2 p0, float2 p1, float2 p2, float2 p3, float t) {
+    float t2 = t * t;
+    float t3 = t2 * t;
+    return 0.5f * ((2.0f * p1) +
+                   (-p0 + p2) * t +
+                   (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * t2 +
+                   (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * t3);
 }
 
-// --- 4-tap bicubic for UV plane (uses bilinear hardware) ---
-float2 bicubicSampleUV_4tap(texture2d<half, access::sample> tex, float2 uv, float2 texSize) {
-    float2 px = uv * texSize - 0.5;
-    float2 f = fract(px);
-    float2 i = floor(px);
+float sampleYAtPixel(texture2d<half, access::read> tex, float2 pixel, float2 texSize) {
+    float2 clamped = clamp(pixel, float2(0.0), texSize - 1.0);
+    return float(tex.read(uint2(clamped)).x);
+}
 
-    float2 w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
-    float2 w2 = f * (0.5 + f * (2.0 - 1.5 * f));
+float2 sampleUVAtPixel(texture2d<half, access::read> tex, float2 pixel, float2 texSize) {
+    float2 clamped = clamp(pixel, float2(0.0), texSize - 1.0);
+    return float2(tex.read(uint2(clamped)).rg);
+}
 
-    float2 w12 = w1 + w2;
-    float2 offset12 = w2 / (w12 + 1e-10);
-    float2 texelSize = 1.0 / texSize;
+// Pixel-coordinate Catmull-Rom bicubic. Keep quality mode correct before re-optimizing.
+float bicubicSampleY_16tap(texture2d<half, access::read> tex, float2 pixel, float2 texSize) {
+    float2 base = floor(pixel);
+    float2 f = fract(pixel);
 
-    float2 tc0 = (i - 0.5) * texelSize;
-    float2 tc1 = (i + offset12) * texelSize;
-    float2 tc2 = (i + 1.0 + offset12) * texelSize;
-    float2 tc3 = (i + 1.5) * texelSize;
+    float4 row;
+    for (int j = -1; j <= 2; j++) {
+        float y = base.y + float(j);
+        float4 col = float4(
+            sampleYAtPixel(tex, float2(base.x - 1.0, y), texSize),
+            sampleYAtPixel(tex, float2(base.x, y), texSize),
+            sampleYAtPixel(tex, float2(base.x + 1.0, y), texSize),
+            sampleYAtPixel(tex, float2(base.x + 2.0, y), texSize)
+        );
+        row[j + 1] = catmullRom1D(col, f.x);
+    }
 
-    float2 s0 = float2(tex.sample(linearClampSampler, float2(tc0.x, uv.y)).rg);
-    float2 s1 = float2(tex.sample(linearClampSampler, float2(tc1.x, uv.y)).rg);
-    float2 s2 = float2(tex.sample(linearClampSampler, float2(tc2.x, uv.y)).rg);
-    float2 s3 = float2(tex.sample(linearClampSampler, float2(tc3.x, uv.y)).rg);
+    return clamp(catmullRom1D(row, f.y), 0.0, 1.0);
+}
 
-    float2 h0 = s1 * w12.x + s2 * (1.0 - w12.x);
-    float2 h1 = s0 * (1.0 - w12.x) + s3 * w12.x;
+float2 bicubicSampleUV_16tap(texture2d<half, access::read> tex, float2 pixel, float2 texSize) {
+    float2 base = floor(pixel);
+    float2 f = fract(pixel);
 
-    return h0 * (1.0 - f.y) + h1 * f.y;
+    float2 row[4];
+    for (int j = -1; j <= 2; j++) {
+        float y = base.y + float(j);
+        float2 c0 = sampleUVAtPixel(tex, float2(base.x - 1.0, y), texSize);
+        float2 c1 = sampleUVAtPixel(tex, float2(base.x, y), texSize);
+        float2 c2 = sampleUVAtPixel(tex, float2(base.x + 1.0, y), texSize);
+        float2 c3 = sampleUVAtPixel(tex, float2(base.x + 2.0, y), texSize);
+        row[j + 1] = catmullRom1D2(c0, c1, c2, c3, f.x);
+    }
+
+    return clamp(catmullRom1D2(row[0], row[1], row[2], row[3], f.y), 0.0, 1.0);
 }
 
 inline float2 mapDstToSrc(
@@ -236,10 +234,10 @@ kernel void rotateNV12_bilinear(
     }
 }
 
-// --- Bicubic kernel (4-tap for Y, 16-tap for UV) ---
+// --- Bicubic kernel ---
 kernel void rotateNV12_bicubic(
-    texture2d<half, access::sample> srcY   [[ texture(0) ]],
-    texture2d<half, access::sample> srcUV  [[ texture(1) ]],
+    texture2d<half, access::read> srcY   [[ texture(0) ]],
+    texture2d<half, access::read> srcUV  [[ texture(1) ]],
     texture2d<half, access::write> dstY  [[ texture(2) ]],
     texture2d<half, access::write> dstUV  [[ texture(3) ]],
     constant Params& params               [[ buffer(0) ]],
@@ -262,12 +260,12 @@ kernel void rotateNV12_bicubic(
     float srcXf = src.x;
     float srcYf = src.y;
 
-    // --- Y 4-tap bicubic ---
+    // --- Y bicubic ---
     if (srcXf < 0.0f || srcXf > float(W - 1) ||
         srcYf < 0.0f || srcYf > float(H - 1)) {
         dstY.write(half(0.0), gid);
     } else {
-        float yF = bicubicSampleY_4tap(
+        float yF = bicubicSampleY_16tap(
             srcY,
             float2(srcXf, srcYf),
             float2(srcY.get_width(), srcY.get_height())
@@ -275,7 +273,7 @@ kernel void rotateNV12_bicubic(
         dstY.write(half(yF), gid);
     }
 
-    // --- UV 16-tap bicubic ---
+    // --- UV bicubic ---
     if (((gid.x & 1u) == 0u) && ((gid.y & 1u) == 0u)) {
         uint2 uvPos = uint2(gid.x >> 1, gid.y >> 1);
 
@@ -286,7 +284,7 @@ kernel void rotateNV12_bicubic(
             float2 uvSrc = src * 0.5f;
             float2 uvClamped = clamp(uvSrc, 0.0f, float2(params.halfW - 1.0f, params.halfH - 1.0f));
 
-            float2 uvF = bicubicSampleUV_4tap(
+            float2 uvF = bicubicSampleUV_16tap(
                 srcUV,
                 uvClamped,
                 float2(srcUV.get_width(), srcUV.get_height())

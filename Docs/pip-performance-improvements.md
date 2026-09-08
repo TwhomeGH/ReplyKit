@@ -783,13 +783,15 @@ float2 uvClamped = clamp(uvSrc, 0.0f, float2(params.halfW - 1.0f, params.halfH -
 float2 uvNorm = (uvClamped + 0.5f) / float2(params.halfW, params.halfH);
 ```
 
-**3. Bicubic Y 取樣：16-tap → 4-tap texture bicubic**
+**3. Bicubic Y 取樣：16-tap → 4-tap texture bicubic（已回退）**
+
+> 2026-09 追修：此 4-tap 版本存在座標系錯誤，helper 以 normalized UV 設計，但 `rotateNV12_bicubic` 傳入的是 pixel coordinate，會造成 bicubic 採樣錯位。現已先回退為 pixel-coordinate 16-tap Catmull-Rom，確保 quality 模式畫面正確；4-tap 優化需重新以同一座標系設計後再啟用。
 
 | 項目 | 改前 | 改後 |
 |------|------|------|
-| 採樣方式 | 16× `nearest`（逐個 texel 手動 Catmull-Rom） | 4× `linear`（利用 GPU bilinear 硬體，一筆採樣涵蓋 2×2 texel） |
-| texture reads/frame | Y: 1920×1080 × 16 = 33M reads | Y: 1920×1080 × 4 = **8.3M reads**（↓75%） |
-| 視覺品質 | 相同（都使用 Catmull-Rom 加權） | 相同 |
+| 採樣方式 | 16× Catmull-Rom | 4× `linear`（已回退） |
+| texture reads/frame | Y: 1920×1080 × 16 = 33M reads | 4-tap 目標為 8.3M reads，但目前不啟用 |
+| 視覺品質 | 正確 | 舊 4-tap 版本座標錯誤，不能視為相同 |
 
 4-tap 原理：
 - 計算 Catmull-Rom 加權係數 w0~w3
@@ -814,7 +816,7 @@ g *= speechScale;
 | 場景 | 改善 | 說明 |
 |------|------|------|
 | Bilinear 路徑 | ~10-15% ALU 減少 | 旋轉矩陣預算、UV 常數化 |
-| Bicubic 路徑 | ~75% texture read 頻寬減少 | 16-tap → 4-tap |
+| Bicubic 路徑 | 正確性優先，暫無讀取數減少 | 舊 4-tap 座標錯誤，已回退 16-tap |
 | NoiseSuppress | 消除 ~50% thread warp divergence | select() 無分支 |
 
 ---
