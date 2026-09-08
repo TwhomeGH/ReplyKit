@@ -43,6 +43,8 @@ enum OverlayFontWeight: String, Codable, CaseIterable, Identifiable, Hashable {
     case regular
     case medium
     case bold
+
+    var id: String { rawValue }
 }
 
 enum TimeOverlayFormat: String, Codable, CaseIterable, Identifiable, Hashable {
