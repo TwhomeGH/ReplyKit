@@ -10,11 +10,20 @@ struct PIPLayoutSettingsView: View {
     @AppStorage("fadeAlpha", store: userDefaults) private var fadeAlpha = 0.08
     @AppStorage("fadeTime", store: userDefaults) private var fadeTime = 0.5
     @AppStorage("scrollTime", store: userDefaults) private var scrollTime = 0.2
+    @State private var previewMode: PIPLayoutPreviewMode = .normal
 
     var body: some View {
         Form {
             Section {
+                Picker("預覽狀態", selection: $previewMode) {
+                    ForEach(PIPLayoutPreviewMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+
                 PIPLayoutPreview(
+                    mode: previewMode,
                     mainFontSize: PIPFontMain,
                     secondFontSize: PIPFontSecond,
                     adFontSize: PIPAdOverlayFont,
@@ -88,7 +97,22 @@ struct PIPLayoutSettingsView: View {
     }
 }
 
+private enum PIPLayoutPreviewMode: String, CaseIterable, Identifiable {
+    case normal
+    case adOverlay
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .normal: return "一般"
+        case .adOverlay: return "贊助顯示中"
+        }
+    }
+}
+
 private struct PIPLayoutPreview: View {
+    let mode: PIPLayoutPreviewMode
     let mainFontSize: Double
     let secondFontSize: Double
     let adFontSize: Double
@@ -99,16 +123,12 @@ private struct PIPLayoutPreview: View {
         GeometryReader { proxy in
             let width = proxy.size.width
             let height = width * 2 / 3
-            let scale = max(0.75, min(width / 300, 1.4))
+            let scale = width / 300
+            let topMargin = (mode == .adOverlay ? 210.0 : 65.0) * scale
 
             ZStack(alignment: .topLeading) {
                 Rectangle()
                     .fill(Color(red: 0.07, green: 0.08, blue: 0.09))
-                    .overlay(alignment: .topTrailing) {
-                        timeBadge(scale: scale)
-                            .padding(.top, 10 * scale)
-                            .padding(.trailing, 10 * scale)
-                    }
 
                 VStack(alignment: .leading, spacing: 4 * scale) {
                     messageRow(
@@ -129,12 +149,19 @@ private struct PIPLayoutPreview: View {
                     .opacity(0.82)
                 }
                 .padding(.leading, 10 * scale)
-                .padding(.top, 74 * scale)
+                .padding(.top, topMargin)
                 .frame(width: width * 0.88, alignment: .leading)
 
-                sponsorBanner(scale: scale)
-                    .padding(.horizontal, width * 0.06)
-                    .padding(.top, 18 * scale)
+                elapsedBadge(scale: scale)
+                    .position(x: (50 + 38) * scale, y: (20 + 8) * scale)
+
+                nowTimeBadge(scale: scale, canvasWidth: width)
+                    .position(x: width * 0.5, y: (40 + 13) * scale)
+
+                if mode == .adOverlay {
+                    sponsorBanner(scale: scale, canvasWidth: width)
+                        .position(x: width * 0.5, y: sponsorCenterY(scale: scale))
+                }
             }
             .frame(width: width, height: height)
             .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -142,20 +169,34 @@ private struct PIPLayoutPreview: View {
         .aspectRatio(3.0 / 2.0, contentMode: .fit)
     }
 
-    private func timeBadge(scale: CGFloat) -> some View {
+    private func elapsedBadge(scale: CGFloat) -> some View {
         HStack(spacing: 4 * scale) {
             Image(systemName: "clock.fill")
-                .font(.system(size: 11 * scale, weight: .medium))
+                .font(.system(size: 14 * scale, weight: .medium))
                 .foregroundStyle(.pink)
 
             Text("00:12:34")
-                .font(.system(size: 11 * scale, weight: .regular, design: .monospaced))
+                .font(.system(size: 14 * scale, weight: .regular, design: .monospaced))
                 .foregroundStyle(.white)
         }
-        .padding(.horizontal, 7 * scale)
+    }
+
+    private func nowTimeBadge(scale: CGFloat, canvasWidth: CGFloat) -> some View {
+        HStack(spacing: 0) {
+            Text("現在時間 ")
+                .font(.system(size: 16 * scale, weight: .medium))
+                .foregroundStyle(.cyan)
+
+            Text("2026/09/09 上午00:48:31")
+                .font(.system(size: 16 * scale, weight: .regular, design: .monospaced))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.45)
+        }
+        .padding(.horizontal, 6 * scale)
         .padding(.vertical, 4 * scale)
+        .frame(maxWidth: canvasWidth - 12 * scale)
         .background(Color.black.opacity(0.45))
-        .clipShape(RoundedRectangle(cornerRadius: 5 * scale))
     }
 
     private func messageRow(name: String, message: String, fontSize: Double, accent: Color, scale: CGFloat) -> some View {
@@ -177,7 +218,7 @@ private struct PIPLayoutPreview: View {
         }
     }
 
-    private func sponsorBanner(scale: CGFloat) -> some View {
+    private func sponsorBanner(scale: CGFloat, canvasWidth: CGFloat) -> some View {
         HStack(alignment: .top, spacing: 8 * scale) {
             Circle()
                 .fill(Color.white.opacity(0.92))
@@ -202,7 +243,15 @@ private struct PIPLayoutPreview: View {
             Spacer(minLength: 0)
         }
         .padding(8 * scale)
+        .frame(width: canvasWidth * 0.88, alignment: .leading)
         .background(Color.orange.opacity(0.86))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func sponsorCenterY(scale: CGFloat) -> CGFloat {
+        let labelHeight = UIFont.boldSystemFont(ofSize: max(1, CGFloat(adUserFontSize))).lineHeight
+        let textHeight = UIFont.systemFont(ofSize: max(1, CGFloat(adFontSize))).lineHeight
+        let bannerHeight = max(52, 6 + labelHeight + CGFloat(adSpacing) + textHeight * 2 + 4 + 4)
+        return (85 + bannerHeight * 0.5) * scale
     }
 }
