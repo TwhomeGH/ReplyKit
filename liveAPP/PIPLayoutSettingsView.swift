@@ -211,7 +211,7 @@ private struct PIPLayoutPreview: View {
                     elapsedBadge(scale: scale)
                         .layoutPriority(3)
                     statusBadge(scale: scale)
-                        .layoutPriority(2)
+                        .layoutPriority(4)
                     viewerBadge(scale: scale)
                         .layoutPriority(1)
                     Spacer(minLength: 0)
@@ -282,7 +282,7 @@ private struct PIPLayoutPreview: View {
             .clipShape(RoundedRectangle(cornerRadius: 4 * scale))
             .lineLimit(1)
             .minimumScaleFactor(0.6)
-            .truncationMode(.tail)
+            .fixedSize(horizontal: true, vertical: false)
     }
 
     private func viewerBadge(scale: CGFloat) -> some View {
