@@ -539,6 +539,69 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         return f.string(from: Date())
     }
 
+    private func timeOverlayString(config: TimeOverlayConfig) -> String {
+        switch config.format {
+        case .elapsed:
+            if let start = LPConfig.shared.streamStartTime, !LPConfig.shared.StreamEnded {
+                LPConfig.shared.lastStreamTime = Date().timeIntervalSince(start)
+            }
+            let totalSeconds = Int(LPConfig.shared.lastStreamTime)
+            let hours = totalSeconds / 3600
+            let minutes = (totalSeconds % 3600) / 60
+            let seconds = totalSeconds % 60
+            return String(format: "%02d:%02d:%02d", hours, minutes, seconds)
+        case .timeOnly, .dateTime:
+            let formatter = StaticFormatter.formatter
+            formatter.dateFormat = config.format.dateFormat
+            return formatter.string(from: Date())
+        }
+    }
+
+    private func drawConfiguredTimeOverlay(in cg: CGContext, size: CGSize, config: TimeOverlayConfig) {
+        let text = timeOverlayString(config: config)
+        cachedTimeString = text
+        if config.format == .elapsed {
+            cachedElapsedString = text
+        }
+
+        let font = UIFont.monospacedDigitSystemFont(
+            ofSize: max(1, CGFloat(config.fontSize)),
+            weight: uiFontWeight(config.fontWeight)
+        )
+        let textColor = UIColor(overlayHex: config.textColorHex) ?? .white
+        let textSize = (text as NSString).size(withAttributes: [.font: font])
+        let paddingX = max(0, CGFloat(config.paddingX))
+        let paddingY = max(0, CGFloat(config.paddingY))
+        let itemSize = CGSize(width: textSize.width + paddingX * 2, height: textSize.height + paddingY * 2)
+        let origin = config.anchor.origin(
+            container: size,
+            item: itemSize,
+            marginX: CGFloat(config.marginX),
+            marginY: CGFloat(config.marginY),
+            offsetX: CGFloat(config.offsetX),
+            offsetY: CGFloat(config.offsetY)
+        )
+
+        cg.saveGState()
+        cg.translateBy(x: 0, y: size.height)
+        cg.scaleBy(x: 1.0, y: -1.0)
+
+        if config.backgroundEnabled {
+            let background = UIColor(overlayHex: config.backgroundColorHex) ?? .black
+            let rect = CGRect(origin: origin, size: itemSize)
+            cg.setFillColor(background.withAlphaComponent(CGFloat(config.backgroundOpacity)).cgColor)
+            UIBezierPath(roundedRect: rect, cornerRadius: CGFloat(config.cornerRadius)).fill()
+        }
+
+        UIGraphicsPushContext(cg)
+        (text as NSString).draw(
+            at: CGPoint(x: origin.x + paddingX, y: origin.y + paddingY),
+            withAttributes: [.font: font, .foregroundColor: textColor]
+        )
+        UIGraphicsPopContext()
+        cg.restoreGState()
+    }
+
     // MARK: 時間顯示
     private func drawTimeOverlay(in cg: CGContext, size: CGSize) {
 
@@ -574,6 +637,13 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             cg.restoreGState()
             return
         }
+
+        let overlayConfig = OverlayConfigStore.load()
+        if overlayConfig.enabled && overlayConfig.time.enabled {
+            drawConfiguredTimeOverlay(in: cg, size: size, config: overlayConfig.time)
+            return
+        }
+
         var elapsedSeconds: Double = 0
 
         if let start = LPConfig.shared.streamStartTime {
@@ -1254,6 +1324,22 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         DispatchQueue.main.async { [weak self] in
             self?.attachToForegroundWindow {}
         }
+    }
+}
+
+private extension UIColor {
+    convenience init?(overlayHex hex: String) {
+        var raw = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        if raw.hasPrefix("#") {
+            raw.removeFirst()
+        }
+        guard raw.count == 6, let value = Int(raw, radix: 16) else { return nil }
+        self.init(
+            red: CGFloat((value >> 16) & 0xff) / 255.0,
+            green: CGFloat((value >> 8) & 0xff) / 255.0,
+            blue: CGFloat(value & 0xff) / 255.0,
+            alpha: 1.0
+        )
     }
 }
 

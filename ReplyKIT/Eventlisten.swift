@@ -25,7 +25,8 @@ class Eventlisten {
         "PauseStream","ResumeStream",
         "ChangeBit","SocketRetry","bitRateChange",
         "SocketLog","Rotate","RotateOriginal",
-        "VideoReconfig"
+        "VideoReconfig",
+        OverlayConfigStore.notificationName
 
     ]
 

@@ -941,6 +941,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             break
 
+        case OverlayConfigStore.notificationName:
+            let config = OverlayConfigStore.load()
+            sendlog(message: "Overlay 配置更新 enabled=\(config.enabled) time=\(config.time.enabled) anchor=\(config.time.anchor.rawValue)")
+            break
+
 
 
         default:

@@ -952,6 +952,10 @@ struct LogSettingsView: View {
                     PIPSettingsView()
                 }
 
+                NavigationLink("畫面加工設置") {
+                    OverlaySettingsView()
+                }
+
                 NavigationLink("GPU旋轉處理設置") {
                     GPURotateView(viewModel: gpuSettings)
                 }
