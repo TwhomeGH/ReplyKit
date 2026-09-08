@@ -179,6 +179,69 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         var offsetY: Float
     }
 
+    /// Params 幾何快照的 key：Params 只依「輸入尺寸 / 輸出尺寸 / oDst / 角度」
+    /// 而定，對同一解析度與角度是常數。frame 每幀只比對 key，命中就重用
+    /// 已算好的 Params，不再重算 scale/offset/rot matrix。
+    struct RenderParamsKey: Equatable {
+        let srcW: UInt32
+        let srcH: UInt32
+        let dstW: UInt32
+        let dstH: UInt32
+        let oDstW: UInt32
+        let oDstH: UInt32
+        let angleRaw: UInt32
+    }
+
+    /// Params 快照（geometry snapshot）：由 frame preamble 執行緒在 rotateAsync 內
+    /// 計算/更新；多幀 preamble 併行，因此以 lifecycleLock 保護 key 與值。
+    private var renderParamsKey: RenderParamsKey?
+    private var renderParamsValue: Params?
+
+    /// 純函式：依尺寸/角度計算 Params（scale/offset/rot matrix）。
+    /// 分離出來以便快照重算與測試；無共享狀態。
+    static func makeParams(
+        srcW: UInt32, srcH: UInt32,
+        dstW: UInt32, dstH: UInt32,
+        oDstW: UInt32, oDstH: UInt32,
+        angle: RotationAngle
+    ) -> Params {
+        let rotW: Float, rotH: Float
+        if angle.rawValue % 180 == 0 {
+            rotW = Float(srcW); rotH = Float(srcH)
+        } else {
+            rotW = Float(srcH); rotH = Float(srcW)
+        }
+        let targetW = Float(oDstW > 0 ? oDstW : dstW)
+        let targetH = Float(oDstH > 0 ? oDstH : dstH)
+        let scaleX = targetW / rotW
+        let scaleY = targetH / rotH
+        let uniformScale = min(scaleX, scaleY)
+        let scaledW = rotW * uniformScale
+        let scaledH = rotH * uniformScale
+        let offsetX = (targetW - scaledW) * 0.5
+        let offsetY = (targetH - scaledH) * 0.5
+
+        let (r00, r01, r10, r11): (Float, Float, Float, Float)
+        switch angle {
+        case .portrait:          r00 = 1; r01 = 0; r10 = 0; r11 = 1
+        case .landscapeRight:    r00 = 0; r01 = 1; r10 = -1; r11 = 0
+        case .portraitUpsideDown: r00 = -1; r01 = 0; r10 = 0; r11 = -1
+        case .landscapeLeft:     r00 = 0; r01 = -1; r10 = 1; r11 = 0
+        }
+
+        return Params(
+            srcWidth: srcW, srcHeight: srcH,
+            dstWidth: dstW, dstHeight: dstH,
+            oDstW: oDstW, oDstH: oDstH,
+            rot00: r00, rot01: r01, rot10: r10, rot11: r11,
+            rotCenterX: rotW * 0.5, rotCenterY: rotH * 0.5,
+            srcCenterX: Float(srcW) * 0.5, srcCenterY: Float(srcH) * 0.5,
+            halfW: Float(srcW) * 0.5, halfH: Float(srcH) * 0.5,
+            uniformScale: uniformScale,
+            offsetX: offsetX, offsetY: offsetY
+        )
+    }
+
 
     struct OutputKey: Hashable {
         let width: Int
@@ -439,6 +502,14 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     private var completedCommandCount: UInt64 = 0
     private var timedOutCommandCount: UInt64 = 0
     private var commandBufferInFlight = 0
+
+    // GPU completion latency 統計（fixed-capacity circular buffer）。只在
+    // commandStatsLock 內讀寫。completion handler 每次成功記錄一筆 submit→down
+    // 延遲（覆寫最舊）；診斷快照（5s 一次）取出排序算 avg/max/p95，不影響熱路徑。
+    private let latencyRingCapacity = 600
+    private var latencyRing = [Double](repeating: 0, count: 600)
+    private var latencyRingCount = 0
+    private var latencyRingWrite = 0
     /// 限制 in-flight command buffer 數量，防止 GPU 被淹沒
     private var originalQualityMode: QualityMode?
 
@@ -531,13 +602,45 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         return snapshot
     }
 
-    private func markCommandCompleted() -> (inFlight: Int, completed: UInt64) {
+    private func markCommandCompleted(elapsedMs: Double) -> (inFlight: Int, completed: UInt64) {
         commandStatsLock.lock()
         completedCommandCount &+= 1
         commandBufferInFlight = max(0, commandBufferInFlight - 1)
+        // 記錄 completion latency（覆寫最舊樣本）
+        latencyRing[latencyRingWrite] = elapsedMs
+        latencyRingWrite = (latencyRingWrite + 1) % latencyRingCapacity
+        if latencyRingCount < latencyRingCapacity {
+            latencyRingCount += 1
+        }
         let snapshot = (commandBufferInFlight, completedCommandCount)
         commandStatsLock.unlock()
         return snapshot
+    }
+
+    /// completion latency 彙總（avg/max/p95 ms）。僅診斷取樣時呼叫。
+    private func latencyStats() -> (avgMs: Double, maxMs: Double, p95Ms: Double) {
+        commandStatsLock.lock()
+        let count = latencyRingCount
+        guard count > 0 else {
+            commandStatsLock.unlock()
+            return (0, 0, 0)
+        }
+        // 依寫入順序展開成時間序
+        var samples = [Double](repeating: 0, count: count)
+        var idx = 0
+        for i in 0..<count {
+            let ringIndex = (latencyRingWrite - count + i + latencyRingCapacity) % latencyRingCapacity
+            samples[idx] = latencyRing[ringIndex]
+            idx += 1
+        }
+        commandStatsLock.unlock()
+
+        let sorted = samples.sorted()
+        let avg = sorted.reduce(0, +) / Double(sorted.count)
+        let maxMs = sorted.last ?? 0
+        let p95Index = Int((Double(sorted.count) * 0.95).rounded(.up)) - 1
+        let p95 = sorted[max(0, min(sorted.count - 1, p95Index))]
+        return (avg, maxMs, p95)
     }
 
     private func markCommandTimedOut() -> UInt64 {
@@ -562,6 +665,11 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         )
         commandStatsLock.unlock()
         return stats
+    }
+
+    /// completion latency 彙總（診斷用）。空樣本時回傳 0。
+    func completionLatencyStats() -> (avgMs: Double, maxMs: Double, p95Ms: Double) {
+        latencyStats()
     }
 
     private func poolSnapshot() -> String {
@@ -814,7 +922,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                         srcY: ycvTexIn.tex, srcUV: uvcvTexIn.tex,
                         dstY: outSet.yTex, dstUV: outSet.uvTex, angle: angle) else {
             recycleOutput(outSet)
-            _ = markCommandCompleted()
+            _ = markCommandCompleted(elapsedMs: 0)
             handleMetalFailure("renderPlaneYUV 建立 encoder 失敗 cmd:#\(commandSnapshot.id) srcY:\(textureDescription(ycvTexIn.tex)) srcUV:\(textureDescription(uvcvTexIn.tex)) dstY:\(textureDescription(outSet.yTex)) dstUV:\(textureDescription(outSet.uvTex))")
             return nil
         }
@@ -835,7 +943,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             cmd.addCompletedHandler { [self] _ in
                 let completion = completionState.markCompletion()
                 let elapsedMs = (CACurrentMediaTime() - submittedAt) * 1000
-                let completedStats = self.markCommandCompleted()
+                let completedStats = self.markCommandCompleted(elapsedMs: elapsedMs)
 
 
                 frameC.inY = nil
@@ -1163,50 +1271,13 @@ private func fallbackSampleBuffer(
         let tgWidth = compute.threadExecutionWidth
         let tgHeight = compute.maxTotalThreadsPerThreadgroup / tgWidth
 
-
-        let srcW = UInt32(srcY.width)
-        let srcH = UInt32(srcY.height)
-        let dstW = UInt32(dstY.width)
-        let dstH = UInt32(dstY.height)
-        let oDstW_val = UInt32(OutWW)
-        let oDstH_val = UInt32(OutHH)
-
-        let rotW: Float, rotH: Float
-        if angle.rawValue % 180 == 0 {
-            rotW = Float(srcW); rotH = Float(srcH)
-        } else {
-            rotW = Float(srcH); rotH = Float(srcW)
-        }
-        let scaleX = Float(oDstW_val > 0 ? oDstW_val : dstW) / Float(rotW)
-        let scaleY = Float(oDstH_val > 0 ? oDstH_val : dstH) / Float(rotH)
-        let uniformScale = min(scaleX, scaleY)
-        let scaledW = rotW * uniformScale
-        let scaledH = rotH * uniformScale
-        let offsetX = (Float(oDstW_val > 0 ? oDstW_val : dstW) - scaledW) * 0.5
-        let offsetY = (Float(oDstH_val > 0 ? oDstH_val : dstH) - scaledH) * 0.5
-
-        let (r00, r01, r10, r11): (Float, Float, Float, Float)
-        switch angle {
-        case .portrait:          r00 = 1; r01 = 0; r10 = 0; r11 = 1
-        case .landscapeRight:    r00 = 0; r01 = 1; r10 = -1; r11 = 0
-        case .portraitUpsideDown: r00 = -1; r01 = 0; r10 = 0; r11 = -1
-        case .landscapeLeft:     r00 = 0; r01 = -1; r10 = 1; r11 = 0
-        }
-
-        var params = Params(
-            srcWidth: srcW, srcHeight: srcH,
-            dstWidth: dstW, dstHeight: dstH,
-            oDstW: oDstW_val, oDstH: oDstH_val,
-            rot00: r00, rot01: r01, rot10: r10, rot11: r11,
-            rotCenterX: rotW * 0.5, rotCenterY: rotH * 0.5,
-            srcCenterX: Float(srcW) * 0.5, srcCenterY: Float(srcH) * 0.5,
-            halfW: Float(srcW) * 0.5, halfH: Float(srcH) * 0.5,
-            uniformScale: uniformScale,
-            offsetX: offsetX, offsetY: offsetY
+        // Params 幾何快照：只依 src/dst/oDst/angle 而定；同一解析度與角度下
+        // 每幀直接重用已算好的 Params，不再重算 scale/offset/rot matrix。
+        var params = paramsForFrame(
+            srcW: UInt32(srcY.width), srcH: UInt32(srcY.height),
+            dstW: UInt32(dstY.width), dstH: UInt32(dstY.height),
+            angle: angle
         )
-
-
-        
 
         encoder.setBytes(&params, length: MemoryLayout<Params>.stride, index: 0)
 
@@ -1225,6 +1296,40 @@ private func fallbackSampleBuffer(
         encoder.endEncoding()
         OutputOverlayMetalRenderer.shared.applyIfNeeded(commandBuffer: cmd, dstY: dstY, dstUV: dstUV)
         return true
+    }
+
+    /// Params 幾何快照查詢/更新。lifecycleLock 保護快照 key 與值（多幀 preamble
+    /// 併行時只做一次幾何計算，其餘幀命中快照）。
+    private func paramsForFrame(
+        srcW: UInt32, srcH: UInt32,
+        dstW: UInt32, dstH: UInt32,
+        angle: RotationAngle
+    ) -> Params {
+        let oDstW = UInt32(OutWW)
+        let oDstH = UInt32(OutHH)
+        let key = RenderParamsKey(
+            srcW: srcW, srcH: srcH,
+            dstW: dstW, dstH: dstH,
+            oDstW: oDstW, oDstH: oDstH,
+            angleRaw: angle.rawValue
+        )
+
+        lifecycleLock.lock()
+        if let cachedKey = renderParamsKey, cachedKey == key,
+           let cached = renderParamsValue {
+            lifecycleLock.unlock()
+            return cached
+        }
+        let params = Self.makeParams(
+            srcW: srcW, srcH: srcH,
+            dstW: dstW, dstH: dstH,
+            oDstW: oDstW, oDstH: oDstH,
+            angle: angle
+        )
+        renderParamsKey = key
+        renderParamsValue = params
+        lifecycleLock.unlock()
+        return params
     }
 
 

@@ -28,28 +28,59 @@ final class VideoHealthModel: ObservableObject {
     @Published private(set) var processedHistory: [DataPoint] = []
     @Published private(set) var droppedHistory: [DataPoint] = []
     @Published private(set) var timeoutHistory: [DataPoint] = []
+    @Published private(set) var latencyHistory: [DataPoint] = []
+
+    // 窗口彙總顯示（每 5s 一筆）
+    @Published private(set) var lastInputRange: String = "-"
+    @Published private(set) var lastProcessedRange: String = "-"
+    @Published private(set) var lastLatencyText: String = "-"
 
     private var dataPointCounter = 0
     private let maxHistory = 120
 
     private init() {}
 
-    func record(status: String, inputFPS: Double, processedFPS: Double, droppedFPS: Double, timeoutDelta: Double) {
+    func record(status: String,
+                inputFPSAvg: Double, inputFPSMin: Double, inputFPSMax: Double,
+                processedFPSAvg: Double, processedFPSMin: Double, processedFPSMax: Double,
+                droppedFPSAvg: Double,
+                latencyAvg: Double, latencyMax: Double, latencyP95: Double,
+                timeoutDelta: Double) {
         DispatchQueue.main.async {
-            self.appendOnMain(status: status, inputFPS: inputFPS, processedFPS: processedFPS, droppedFPS: droppedFPS, timeoutDelta: timeoutDelta)
+            self.appendOnMain(
+                status: status,
+                inputFPSAvg: inputFPSAvg,
+                inputFPSMin: inputFPSMin,
+                inputFPSMax: inputFPSMax,
+                processedFPSAvg: processedFPSAvg,
+                processedFPSMin: processedFPSMin,
+                processedFPSMax: processedFPSMax,
+                droppedFPSAvg: droppedFPSAvg,
+                latencyAvg: latencyAvg, latencyMax: latencyMax, latencyP95: latencyP95,
+                timeoutDelta: timeoutDelta
+            )
         }
     }
 
-    private func appendOnMain(status: String, inputFPS: Double, processedFPS: Double, droppedFPS: Double, timeoutDelta: Double) {
+    private func appendOnMain(status: String,
+                              inputFPSAvg: Double, inputFPSMin: Double, inputFPSMax: Double,
+                              processedFPSAvg: Double, processedFPSMin: Double, processedFPSMax: Double,
+                              droppedFPSAvg: Double,
+                              latencyAvg: Double, latencyMax: Double, latencyP95: Double,
+                              timeoutDelta: Double) {
         dataPointCounter &+= 1
         let id = dataPointCounter
         let now = Date()
 
         latestStatus = status
-        inputHistory.append(DataPoint(id: id, time: now, value: inputFPS))
-        processedHistory.append(DataPoint(id: id, time: now, value: processedFPS))
-        droppedHistory.append(DataPoint(id: id, time: now, value: droppedFPS))
+        inputHistory.append(DataPoint(id: id, time: now, value: inputFPSAvg))
+        processedHistory.append(DataPoint(id: id, time: now, value: processedFPSAvg))
+        droppedHistory.append(DataPoint(id: id, time: now, value: droppedFPSAvg))
         timeoutHistory.append(DataPoint(id: id, time: now, value: timeoutDelta))
+        latencyHistory.append(DataPoint(id: id, time: now, value: latencyAvg))
+        lastInputRange = String(format: "%.0f–%.0f", inputFPSMin, inputFPSMax)
+        lastProcessedRange = String(format: "%.0f–%.0f", processedFPSMin, processedFPSMax)
+        lastLatencyText = String(format: "avg:%.1f max:%.1f p95:%.1f ms", latencyAvg, latencyMax, latencyP95)
 
         trim()
     }
@@ -59,6 +90,7 @@ final class VideoHealthModel: ObservableObject {
         if processedHistory.count > maxHistory { processedHistory.removeFirst(processedHistory.count - maxHistory) }
         if droppedHistory.count > maxHistory { droppedHistory.removeFirst(droppedHistory.count - maxHistory) }
         if timeoutHistory.count > maxHistory { timeoutHistory.removeFirst(timeoutHistory.count - maxHistory) }
+        if latencyHistory.count > maxHistory { latencyHistory.removeFirst(latencyHistory.count - maxHistory) }
     }
 }
 
@@ -538,6 +570,19 @@ struct DeviceView: View {
                 .chartYAxisLabel("Timeout/s")
                 .frame(height: 90)
 
+                Chart {
+                    ForEach(videoHealth.latencyHistory) { pt in
+                        LineMark(
+                            x: .value("Time", pt.time),
+                            y: .value("Latency", pt.value),
+                            series: .value("Series", "GPU Latency")
+                        )
+                        .foregroundStyle(.orange)
+                    }
+                }
+                .chartYAxisLabel("completion ms")
+                .frame(height: 90)
+
                 let input = videoHealth.inputHistory.last?.value ?? 0
                 let processed = videoHealth.processedHistory.last?.value ?? 0
                 let dropped = videoHealth.droppedHistory.last?.value ?? 0
@@ -547,6 +592,12 @@ struct DeviceView: View {
                 Text("Dropped: \(dropped, specifier: "%.1f") fps  Timeout: \(timeout, specifier: "%.0f")/s")
                     .font(.caption)
                     .foregroundColor(timeout > 0 || dropped > 0 ? .orange : .secondary)
+                Text("Input range: \(videoHealth.lastInputRange)  Processed range: \(videoHealth.lastProcessedRange)")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                Text("GPU completion: \(videoHealth.lastLatencyText)")
+                    .font(.caption2)
+                    .foregroundColor(.orange)
             }
 
             Section(

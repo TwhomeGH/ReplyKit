@@ -23,6 +23,7 @@ import AVFoundation    // 提供 AVAudioPCMBuffer, AVAudioFormat, AVAudioTime �
 import CoreAudio
 import CoreMedia       // 提供 CMSampleBuffer, CMSampleBufferGetFormatDescription 等
 import CoreImage
+import MachO
 
 
 import os
@@ -2146,11 +2147,67 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     var videoFrameCount: Int = 0
     var audioFrameCount: Int = 0
     var lastDetailLogTime: Double = 0.0
-    private var lastVideoHealthLogTime: Double = 0.0
-    private var lastVideoHealthFrameCount: Int = 0
-    private var lastVideoHealthProcessedCount: Int = 0
-    private var lastVideoHealthDroppedCount: Int = 0
-    private var lastVideoHealthTimeoutCount: UInt64 = 0
+
+    // MARK: - 設備診斷採集（VHealth 用）
+
+    /// 目前 thermal state（影響 GPU/CPU 降頻 → 掉幀的重要判據）。
+    static func thermalStateText() -> String {
+        switch ProcessInfo.processInfo.thermalState {
+        case .nominal: return "nominal"
+        case .fair: return "fair"
+        case .serious: return "serious"
+        case .critical: return "critical"
+        @unknown default: return "unknown"
+        }
+    }
+
+    /// Extension process 的 resident memory（MB）。broadcast extension 記憶體上限
+    /// 遠低於 main app（~50-150MB），接近上限會觸發系統 kill / GPU throttling。
+    static func extensionMemoryMB() -> Double {
+        var info = mach_task_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+            }
+        }
+        guard result == KERN_SUCCESS else { return 0 }
+        return Double(info.resident_size) / 1024 / 1024
+    }
+
+    // VHealth 視窗彙總：每秒累積一筆樣本，每 healthWindowInterval 秒彙總送出一次。
+    // 避免高頻發送干擾判斷，且窗口 min/avg/max 能分辨「偶發 spike vs 持續低」。
+    private let healthWindowInterval: Double = 5.0
+    private let healthSampleLock = NSLock()
+    private var healthSampleInputFPS: [Double] = []
+    private var healthSampleProcessedFPS: [Double] = []
+    private var healthSampleDroppedFPS: [Double] = []
+    private var healthWindowTimeoutDelta: UInt64 = 0
+
+    /// 在 processSampleBuffer 執行緒（每秒一次）累積樣本；窗口滿時搬出樣本並回傳。
+    private func accumulateHealthSample(
+        inputFPS: Double, processedFPS: Double, droppedFPS: Double,
+        timeoutDelta: UInt64
+    ) -> (input: [Double], processed: [Double], dropped: [Double], timeout: UInt64)? {
+        healthSampleLock.lock()
+        defer { healthSampleLock.unlock() }
+        healthSampleInputFPS.append(inputFPS)
+        healthSampleProcessedFPS.append(processedFPS)
+        healthSampleDroppedFPS.append(droppedFPS)
+        healthWindowTimeoutDelta &+= timeoutDelta
+        guard healthSampleInputFPS.count >= Int(healthWindowInterval) else {
+            return nil
+        }
+        let window = (
+            healthSampleInputFPS, healthSampleProcessedFPS,
+            healthSampleDroppedFPS, healthWindowTimeoutDelta
+        )
+        healthSampleInputFPS.removeAll()
+        healthSampleProcessedFPS.removeAll()
+        healthSampleDroppedFPS.removeAll()
+        healthWindowTimeoutDelta = 0
+        return window
+    }
 
     private func logVideoHealthIfNeeded(timestamp: CMTime) {
         let now = timestamp.seconds
@@ -2173,54 +2230,83 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         let processedDelta = processedNow - lastVideoHealthProcessedCount
         let droppedDelta = droppedNow - lastVideoHealthDroppedCount
         let previousTimeoutCount = lastVideoHealthTimeoutCount
-        let processor = videoProcessor
 
         lastVideoHealthLogTime = now
         lastVideoHealthFrameCount = videoFrameCount
         lastVideoHealthProcessedCount = processedNow
         lastVideoHealthDroppedCount = droppedNow
 
-        Task { [weak self, processor] in
+        let inputFPS = Double(inputDelta) / elapsed
+        let processedFPS = Double(processedDelta) / elapsed
+        let droppedFPS = Double(droppedDelta) / elapsed
+
+        // 先取 diagnostics（async）；timeout delta 以此為準
+        Task { [weak self, processor, previousTimeoutCount] in
             guard let self else { return }
             let diagnostics = await processor?.diagnostics()
             let timeoutNow = diagnostics?.commandStats.timedOut ?? previousTimeoutCount
             let timeoutDelta = timeoutNow >= previousTimeoutCount ? timeoutNow - previousTimeoutCount : 0
             self.lastVideoHealthTimeoutCount = timeoutNow
 
-            let inputFPS = Double(inputDelta) / elapsed
-            let processedFPS = Double(processedDelta) / elapsed
-            let droppedFPS = Double(droppedDelta) / elapsed
-            let status: String
+            // 累積樣本 + 判窗口滿（在鎖內搬出，無 race）
+            guard let window = self.accumulateHealthSample(
+                inputFPS: inputFPS, processedFPS: processedFPS,
+                droppedFPS: droppedFPS, timeoutDelta: timeoutDelta
+            ) else { return }
 
-            if inputFPS < 20, timeoutDelta == 0, diagnostics?.isActive != false {
+            let inputMin = window.input.min() ?? 0
+            let inputAvg = window.input.reduce(0, +) / Double(max(1, window.input.count))
+            let inputMax = window.input.max() ?? 0
+            let processedMin = window.processed.min() ?? 0
+            let processedAvg = window.processed.reduce(0, +) / Double(max(1, window.processed.count))
+            let processedMax = window.processed.max() ?? 0
+            let droppedAvg = window.dropped.reduce(0, +) / Double(max(1, window.dropped.count))
+            let timeoutDelta = window.timeout
+
+            let status: String
+            if inputAvg < 20, timeoutDelta == 0, diagnostics?.isActive != false {
                 status = "upstream-throttle"
             } else if timeoutDelta > 0 || (diagnostics?.commandStats.inFlight ?? 0) > 2 {
                 status = "metal-pressure"
-            } else if inputFPS >= 20, processedFPS < inputFPS * 0.6 {
+            } else if inputAvg >= 20, processedAvg < inputAvg * 0.6 {
                 status = "processor-pressure"
-            } else if droppedDelta > 0 {
+            } else if droppedAvg > 0 {
                 status = "processor-drop"
             } else {
                 status = "healthy"
             }
 
             let diagText = diagnostics?.summary ?? "processor:nil"
+            let latAvg = diagnostics?.gpuLatency.avgMs ?? 0
+            let latMax = diagnostics?.gpuLatency.maxMs ?? 0
+            let latP95 = diagnostics?.gpuLatency.p95Ms ?? 0
+            let thermalText = Self.thermalStateText()
+            let memText = Self.extensionMemoryMB()
             SocketClient.shared.sendVideoHealth(
                 status: status,
-                inputFPS: inputFPS,
-                processedFPS: processedFPS,
-                droppedFPS: droppedFPS,
+                inputFPSMin: inputMin,
+                inputFPSAvg: inputAvg,
+                inputFPSMax: inputMax,
+                processedFPSMin: processedMin,
+                processedFPSAvg: processedAvg,
+                processedFPSMax: processedMax,
+                droppedFPSAvg: droppedAvg,
+                latencyAvg: latAvg,
+                latencyMax: latMax,
+                latencyP95: latP95,
                 timeoutDelta: timeoutDelta
             )
             sendlog(
                 title: "[VHealth]",
                 message: String(
-                    format: "%@ input:%.1ffps processed:%.1ffps dropped:%.1ffps timeoutDelta:%llu %@",
+                    format: "%@ win:%.0fs in:[min:%.1f avg:%.1f max:%.1f] proc:[min:%.1f avg:%.1f max:%.1f] drop:%.1f thermal:%@ mem:%.0fMB %@",
                     status,
-                    inputFPS,
-                    processedFPS,
-                    droppedFPS,
-                    timeoutDelta,
+                    self.healthWindowInterval,
+                    inputMin, inputAvg, inputMax,
+                    processedMin, processedAvg, processedMax,
+                    droppedAvg,
+                    thermalText,
+                    memText,
                     diagText
                 )
             )

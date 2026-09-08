@@ -6,6 +6,18 @@ import CoreMedia
 import CoreVideo
 import os
 
+struct GPUCompletionLatencyStats: Sendable {
+    let avgMs: Double
+    let maxMs: Double
+    let p95Ms: Double
+
+    static let empty = GPUCompletionLatencyStats(avgMs: 0, maxMs: 0, p95Ms: 0)
+
+    var summary: String {
+        String(format: "lat_avg:%.1f lat_max:%.1f lat_p95:%.1f", avgMs, maxMs, p95Ms)
+    }
+}
+
 struct VideoProcessorDiagnostics: Sendable {
     let isActive: Bool
     let processedCount: Int
@@ -14,9 +26,12 @@ struct VideoProcessorDiagnostics: Sendable {
     let hasGpuRotator: Bool
     let gpuPermanentFailure: Bool
     let commandStats: GPUCommandStats
+    let gpuLatency: GPUCompletionLatencyStats
+    let srcDims: String
+    let dstDims: String
 
     var summary: String {
-        "active:\(isActive) proc:\(processedCount) drop:\(droppedCount) rotateDrop:\(consecutiveDropCount) gpu:\(hasGpuRotator ? "Y" : "N") gpuDead:\(gpuPermanentFailure) \(commandStats.summary)"
+        "active:\(isActive) proc:\(processedCount) drop:\(droppedCount) rotateDrop:\(consecutiveDropCount) gpu:\(hasGpuRotator ? "Y" : "N") gpuDead:\(gpuPermanentFailure) \(commandStats.summary) \(gpuLatency.summary) src:\(srcDims) dst:\(dstDims)"
     }
 }
 
@@ -364,14 +379,31 @@ actor FrameProcessorActor {
     }
 
     func diagnostics(isActive: Bool, processedCount: Int, droppedCount: Int) -> VideoProcessorDiagnostics {
-        VideoProcessorDiagnostics(
+        let rotator = gpuRotator
+        let adW = RPConfig.shared.state.ADWidth
+        let adH = RPConfig.shared.state.ADHeight
+        let odW = RPConfig.shared.state.ODWidth
+        let odH = RPConfig.shared.state.ODHeight
+        let srcText = (adW > 0 && adH > 0) ? "\(adW)x\(adH)" : "auto"
+        let dstText: String
+        if let rotator, rotator.OutWW > 0 && rotator.OutHH > 0 {
+            dstText = "\(rotator.OutWW)x\(rotator.OutHH)"
+        } else if let rotator, rotator.dstWW > 0 && rotator.dstHH > 0 {
+            dstText = "\(rotator.dstWW)x\(rotator.dstHH)"
+        } else {
+            dstText = "passthrough"
+        }
+        return VideoProcessorDiagnostics(
             isActive: isActive,
             processedCount: processedCount,
             droppedCount: droppedCount,
             consecutiveDropCount: consecutiveDropCount,
-            hasGpuRotator: gpuRotator != nil,
-            gpuPermanentFailure: gpuRotator?.isPermanentlyDead ?? false,
-            commandStats: gpuRotator?.commandStats() ?? .empty
+            hasGpuRotator: rotator != nil,
+            gpuPermanentFailure: rotator?.isPermanentlyDead ?? false,
+            commandStats: rotator?.commandStats() ?? .empty,
+            gpuLatency: rotator?.completionLatencyStats() ?? .empty,
+            srcDims: srcText,
+            dstDims: dstText
         )
     }
 }

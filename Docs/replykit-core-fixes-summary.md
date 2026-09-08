@@ -1143,3 +1143,82 @@ acquire/recycle 就地改 `bucket.items`，不再每次寫回 dictionary 觸發 
 
 - 三個檔案均通過 `swiftc -frontend -parse` 語法驗證。
 - Windows 無 iOS SDK，**未完整 typecheck**；需在 Xcode build + 真機確認：GPU rotate 正常出幀、failure 降品質/CPU fallback 路徑照舊、可用 Thread Sanitizer 驗證 data race 清空。
+
+---
+
+## 19. GPU render Params 幾何快照化（2026-09）
+
+`renderPlaneYUV` 原本每幀從頭計算 `Params`（uniformScale / offset / rot matrix / center）——雖然只是幾十次 Float 乘法、非掉幀主因，但同一解析度與角度下這些值不變，屬無意義重算。快照化後 render 層變成純「套用」。
+
+### 設計
+
+- 新增 `makeParams(srcW:srcH:dstW:dstH:oDstW:oDstH:angle:)` 純函式，集中 scale/offset/rot 幾何。
+- 新增 `RenderParamsKey` + `renderParamsKey/renderParamsValue` 快照；`paramsForFrame()` 每幀比對 key（src/dst/oDst/angle），命中即重用，miss 才算一次並更新快照。
+- 快照以 `lifecycleLock` 保護（多幀 preamble 併行），與 overlay RenderPlan、GPU failure/quality 狀態共用同一把鎖。
+- 移除原本 `renderPlaneYUV` 內的 debug log（`GPU Shader 寬高 參數...`）逐幀字串拼裝。
+
+### 預期
+
+| 項目 | 改前 | 改後 |
+|------|------|------|
+| Params 幾何運算 | 每幀重算 | 解析度/角度變才算一次 |
+| renderPlaneYUV | 算 Params + dispatch | key 比對 + dispatch |
+| debug log | 每幀可能噴 | 無 |
+
+### 說明
+
+這項是**架構乾淨化**，不是掉幀解藥——經 FLV + log 驗證，overlay 開啟時 video 掉到 ~46fps 的根源在別層（GPU completion / encoder / timestamp），Params 幾何原本就 <0.1ms/幀。真正定位掉幀需依賴 VHealth 增強（下節）。
+
+---
+
+## 20. VHealth 診斷增強：窗口彙總 + 設備/延遲統計（2026-09）
+
+### 動機
+
+- 高頻（每秒）發送會干擾判斷，且單點樣本看不出「偶發 spike vs 持續低」。
+- log 端缺 GPU completion 延遲分布、extension thermal/記憶體等能看出 GPU 卡點的資訊。
+
+### 設計
+
+**VHealth 改成「每秒累積樣本、每 5s 彙總送出一次」：**
+
+- `SampleHandler`：每秒計算 input/processed/dropped FPS 樣本 push 進 window（`accumulateHealthSample`，NSLock 保護，窗口滿搬出），每 5s 送一次 min/avg/max。
+- `[VHealth]` log 格式改為窗口彙總 + thermal + extension memory：
+  ```
+  healthy win:5s in:[min:56.1 avg:58.2 max:60.0] proc:[...] drop:0.0 thermal:nominal mem:45MB ...
+  ```
+- socket `videoHealth` payload 增加 `latencyAvg/Max/P95` + FPS min/avg/max（extension + liveAPP 兩端 Codable 同步；liveAPP 用 optional 欄位相容舊 build）。
+- liveAPP `OtherView` 新增 GPU completion latency 曲線圖 + 窗口 range / latency 文字。
+
+**GPU completion latency 統計（`GPUVideoRotator`）：**
+- completion handler 記錄 submit→down 延遲進 fixed-capacity circular buffer（600 筆，覆寫最舊，`commandStatsLock` 保護）。
+- `latencyStats()` 取樣排序算 avg/max/p95；空樣本回傳 0。
+- `VideoProcessorDiagnostics` 擴充 `gpuLatency` + `srcDims/dstDims`，`summary` 附上。
+
+**設備採集（extension process）：**
+- `thermalStateText()`：`ProcessInfo.processInfo.thermalState`（nominal/fair/serious/critical）。
+- `extensionMemoryMB()`：`mach_task_basic_info` resident size——broadcast extension 記憶體上限低，逼近會 kill/throttle。
+
+### 判定邏輯（沿用但改吃窗口 avg）
+
+```
+inputAvg < 20 → upstream-throttle
+timeout>0 或 inFlight>2 → metal-pressure
+processedAvg < inputAvg*0.6 → processor-pressure
+droppedAvg>0 → processor-drop
+else → healthy
+```
+
+### 預期
+
+| 能力 | 改前 | 改後 |
+|------|------|------|
+| FPS 趨勢 | 每秒單點 | 5s 窗口 min/avg/max |
+| GPU completion | 無 | avg/max/p95 曲線 |
+| 熱/記憶體 | 無 | thermal state + resident MB |
+| 發送頻率 | 每秒 | 每 5s（干擾降 5 倍） |
+
+### 驗證狀態
+
+- 六個檔案（GPUVideoRotator / VideoProcess / SampleHandler / Socket ×2 / OtherView）均通過 `swiftc -frontend -parse`。
+- 需 Xcode build + 真機：確認 VHealth 5s 一筆、liveAPP latency 曲線顯示、舊 build payload 相容。

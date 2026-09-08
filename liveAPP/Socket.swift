@@ -528,10 +528,22 @@ class SocketServer:ObservableObject {
 
     struct VideoHealthPayload: Codable {
         let status: String
-        let inputFPS: Double
-        let processedFPS: Double
-        let droppedFPS: Double
+        // 新版（窗口彙總）：min/avg/max
+        let inputFPSMin: Double?
+        let inputFPSAvg: Double?
+        let inputFPSMax: Double?
+        let processedFPSMin: Double?
+        let processedFPSAvg: Double?
+        let processedFPSMax: Double?
+        let droppedFPSAvg: Double?
+        let latencyAvg: Double?
+        let latencyMax: Double?
+        let latencyP95: Double?
         let timeoutDelta: Int
+        // 舊版單值相容欄位
+        let inputFPS: Double?
+        let processedFPS: Double?
+        let droppedFPS: Double?
     }
 
     struct AudiencePayload: Codable {
@@ -1075,11 +1087,23 @@ class SocketServer:ObservableObject {
 
             case "videoHealth":
                 let dict = try decoder.decode(VideoHealthPayload.self, from: data)
+                // 新版窗口彙總優先；舊版單值相容（min/max 用單值）
+                let inputAvg = dict.inputFPSAvg ?? dict.inputFPS ?? 0
+                let inputMin = dict.inputFPSMin ?? inputAvg
+                let inputMax = dict.inputFPSMax ?? inputAvg
+                let processedAvg = dict.processedFPSAvg ?? dict.processedFPS ?? 0
+                let processedMin = dict.processedFPSMin ?? processedAvg
+                let processedMax = dict.processedFPSMax ?? processedAvg
+                let droppedAvg = dict.droppedFPSAvg ?? dict.droppedFPS ?? 0
+                let latencyAvg = dict.latencyAvg ?? 0
+                let latencyMax = dict.latencyMax ?? 0
+                let latencyP95 = dict.latencyP95 ?? 0
                 VideoHealthModel.shared.record(
                     status: dict.status,
-                    inputFPS: dict.inputFPS,
-                    processedFPS: dict.processedFPS,
-                    droppedFPS: dict.droppedFPS,
+                    inputFPSAvg: inputAvg, inputFPSMin: inputMin, inputFPSMax: inputMax,
+                    processedFPSAvg: processedAvg, processedFPSMin: processedMin, processedFPSMax: processedMax,
+                    droppedFPSAvg: droppedAvg,
+                    latencyAvg: latencyAvg, latencyMax: latencyMax, latencyP95: latencyP95,
                     timeoutDelta: Double(dict.timeoutDelta)
                 )
 

@@ -58,17 +58,31 @@ enum TimeoutError: Error {
 private struct VideoHealthPayload: Encodable {
     var type: String { "videoHealth" }
     let status: String
-    let inputFPS: Double
-    let processedFPS: Double
-    let droppedFPS: Double
+    let inputFPSMin: Double
+    let inputFPSAvg: Double
+    let inputFPSMax: Double
+    let processedFPSMin: Double
+    let processedFPSAvg: Double
+    let processedFPSMax: Double
+    let droppedFPSAvg: Double
+    let latencyAvg: Double
+    let latencyMax: Double
+    let latencyP95: Double
     let timeoutDelta: Int
 
     enum CodingKeys: String, CodingKey {
         case type
         case status
-        case inputFPS
-        case processedFPS
-        case droppedFPS
+        case inputFPSMin
+        case inputFPSAvg
+        case inputFPSMax
+        case processedFPSMin
+        case processedFPSAvg
+        case processedFPSMax
+        case droppedFPSAvg
+        case latencyAvg
+        case latencyMax
+        case latencyP95
         case timeoutDelta
     }
 
@@ -76,9 +90,16 @@ private struct VideoHealthPayload: Encodable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(type, forKey: .type)
         try container.encode(status, forKey: .status)
-        try container.encode(inputFPS, forKey: .inputFPS)
-        try container.encode(processedFPS, forKey: .processedFPS)
-        try container.encode(droppedFPS, forKey: .droppedFPS)
+        try container.encode(inputFPSMin, forKey: .inputFPSMin)
+        try container.encode(inputFPSAvg, forKey: .inputFPSAvg)
+        try container.encode(inputFPSMax, forKey: .inputFPSMax)
+        try container.encode(processedFPSMin, forKey: .processedFPSMin)
+        try container.encode(processedFPSAvg, forKey: .processedFPSAvg)
+        try container.encode(processedFPSMax, forKey: .processedFPSMax)
+        try container.encode(droppedFPSAvg, forKey: .droppedFPSAvg)
+        try container.encode(latencyAvg, forKey: .latencyAvg)
+        try container.encode(latencyMax, forKey: .latencyMax)
+        try container.encode(latencyP95, forKey: .latencyP95)
         try container.encode(timeoutDelta, forKey: .timeoutDelta)
     }
 }
@@ -642,18 +663,32 @@ class SocketClient : @unchecked Sendable {
     }
 
     func sendVideoHealth(status: String,
-                         inputFPS: Double,
-                         processedFPS: Double,
-                         droppedFPS: Double,
+                         inputFPSMin: Double,
+                         inputFPSAvg: Double,
+                         inputFPSMax: Double,
+                         processedFPSMin: Double,
+                         processedFPSAvg: Double,
+                         processedFPSMax: Double,
+                         droppedFPSAvg: Double,
+                         latencyAvg: Double,
+                         latencyMax: Double,
+                         latencyP95: Double,
                          timeoutDelta: UInt64) {
         queue.async { [weak self] in
             guard let self = self else { return }
             guard self.connection?.state == .ready else { return }
             let payload = VideoHealthPayload(
                 status: status,
-                inputFPS: inputFPS,
-                processedFPS: processedFPS,
-                droppedFPS: droppedFPS,
+                inputFPSMin: inputFPSMin,
+                inputFPSAvg: inputFPSAvg,
+                inputFPSMax: inputFPSMax,
+                processedFPSMin: processedFPSMin,
+                processedFPSAvg: processedFPSAvg,
+                processedFPSMax: processedFPSMax,
+                droppedFPSAvg: droppedFPSAvg,
+                latencyAvg: latencyAvg,
+                latencyMax: latencyMax,
+                latencyP95: latencyP95,
                 timeoutDelta: Int(timeoutDelta)
             )
             guard let dictionary = self.dictionary(from: payload) else { return }
