@@ -62,6 +62,25 @@ private struct VideoHealthPayload: Codable {
     let processedFPS: Double
     let droppedFPS: Double
     let timeoutDelta: Int
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case status
+        case inputFPS
+        case processedFPS
+        case droppedFPS
+        case timeoutDelta
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(type, forKey: .type)
+        try container.encode(status, forKey: .status)
+        try container.encode(inputFPS, forKey: .inputFPS)
+        try container.encode(processedFPS, forKey: .processedFPS)
+        try container.encode(droppedFPS, forKey: .droppedFPS)
+        try container.encode(timeoutDelta, forKey: .timeoutDelta)
+    }
 }
 
 func withTimeout<T>(
