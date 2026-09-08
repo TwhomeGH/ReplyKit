@@ -115,9 +115,6 @@ enum RotationAngle: UInt32, Codable, CaseIterable, Identifiable, CustomStringCon
 final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
 
-    private var cachedFormatDescription: CMVideoFormatDescription?
-    private var cachedFormatSize: CGSize = .zero
-
     var originalTimeBAK: CMSampleTimingInfo?
     
     enum QualityMode: CustomStringConvertible {
@@ -146,7 +143,11 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     private var isActive = true
 
-    var isPermanentlyDead: Bool { metalPermanentFailure }
+    var isPermanentlyDead: Bool {
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
+        return metalPermanentFailure
+    }
 
     var dstWW: Int = 0
     var dstHH: Int = 0
@@ -184,9 +185,16 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         let height: Int
     }
 
+    // class-bucket：讓 pool 在 outputPoolLock 內「就地」修改，避免每幀
+    // outputPool[key] = pool 的 value-type COW copy（removeFirst/append 整列複製）。
+    final class OutputPoolBucket {
+        var items: [ReusableOutputSet] = []
+        init(items: [ReusableOutputSet] = []) { self.items = items }
+    }
+
     
     // 使用結構體作為 Dictionary 的 key
-    private var outputPool: [OutputKey: [ReusableOutputSet]] = [:]
+    private var outputPool: [OutputKey: OutputPoolBucket] = [:]
     private let outputPoolLock = NSLock()
     private let maxPoolSize: Int
 
@@ -195,9 +203,11 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         func addToPool(width: Int, height: Int, set: ReusableOutputSet) {
             let key = OutputKey(width: width, height: height)
             outputPoolLock.lock()
-            var pool = outputPool[key] ?? []
-            pool.append(set)
-            outputPool[key] = pool
+            if let existing = outputPool[key] {
+                existing.items.append(set)
+            } else {
+                outputPool[key] = OutputPoolBucket(items: [set])
+            }
             outputPoolLock.unlock()
         }
 
@@ -210,6 +220,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         let pixelBuffer: CVPixelBuffer
         let yTex: MTLTexture
         let uvTex: MTLTexture
+        let formatDescription: CMVideoFormatDescription?
         var lastUsed: Date
         var cvY: CVMetalTexture?
         var cvUV: CVMetalTexture?
@@ -222,6 +233,17 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             self.cvY = cvY
             self.cvUV = cvUV
             self.lastUsed = lastUsed
+
+            // formatDescription 只依 pixelBuffer 的格式/尺寸而定，同一 pool key 的所有 buffer
+            // 共用相同值；在建立時就生成並以 immutable let 持有，避免 completion thread
+            // 併發寫入共享 cachedFormatDescription 的 data race。
+            var fd: CMVideoFormatDescription?
+            let status = CMVideoFormatDescriptionCreateForImageBuffer(
+                allocator: kCFAllocatorDefault,
+                imageBuffer: pixelBuffer,
+                formatDescriptionOut: &fd
+            )
+            self.formatDescription = (status == noErr) ? fd : nil
         }
     }
 
@@ -326,33 +348,49 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     }
 
     func cleanup() async {
-        guard isActive else { return }
+        // isActive 只在 outputPoolLock 領域讀寫（cleanup 為唯一寫入者，
+        // getReusableOutput / recycleOutput 在該鎖內讀取）。
+        outputPoolLock.lock()
+        guard isActive else {
+            outputPoolLock.unlock()
+            return
+        }
         isActive = false
+        outputPoolLock.unlock()
         cleanupResources()
     }
 
 
     // MARK: - Cleanup
+    /// 需在 lifecycleLock 未被持有的 context 呼叫（self-lock）。
     private func cleanupResources() {
-    hasMetalResources = false
-
-    outputPoolLock.lock()
-    for (_, pool) in outputPool {
-        for outSet in pool {
-            outSet.cvY = nil
-            outSet.cvUV = nil
-        }
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
+        cleanupResourcesLocked()
     }
-    outputPool.removeAll()
-    outputPoolLock.unlock()
 
-    pipelineBilinear = nil
-    pipelineBicubic = nil
+    /// 假設呼叫者已持有 lifecycleLock。
+    private func cleanupResourcesLocked() {
+        hasMetalResources = false
 
-    let poolCount = outputPool.count
-    let bufferCount = outputPool.values.reduce(0) { $0 + $1.count }
-    logTo("cleanup called - releasing \(poolCount) output pool(s), \(bufferCount) pooled buffer(s)")
-}
+        outputPoolLock.lock()
+        for (_, bucket) in outputPool {
+            for outSet in bucket.items {
+                outSet.cvY = nil
+                outSet.cvUV = nil
+            }
+            bucket.items.removeAll(keepingCapacity: false)
+        }
+        outputPool.removeAll()
+        outputPoolLock.unlock()
+
+        pipelineBilinear = nil
+        pipelineBicubic = nil
+
+        let poolCount = outputPool.count
+        let bufferCount = outputPool.values.reduce(0) { $0 + $1.items.count }
+        logTo("cleanup called - releasing \(poolCount) output pool(s), \(bufferCount) pooled buffer(s)")
+    }
 
 
 
@@ -403,13 +441,44 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     private var commandBufferInFlight = 0
     /// 限制 in-flight command buffer 數量，防止 GPU 被淹沒
     private var originalQualityMode: QualityMode?
+
+    /// 保護「qualityMode / originalQualityMode / metalPermanentFailure /
+    /// consecutiveMetalFailures / pipeline 生命週期」等跨執行緒狀態。
+    ///
+    /// 寫入方: handleMetalFailure (GPU completion / timeout queue)、
+    ///         cleanup() (FrameProcessorActor)。
+    /// 讀取方: ensureMetalPipelineSnapshot()、isPermanentlyDead、
+    ///         completion handler 的成功 reset。
+    /// frame 的熱路徑只透過 ensureMetalPipelineSnapshot() 在每幀 preamble 取
+    /// 一次 snapshot，之後 renderPlaneYUV 用傳進來的 local pipeline，不再回頭
+    /// 讀共享 var——因此每幀只多一次短鎖，卻消除整組 data race。
+    private let lifecycleLock = NSLock()
+
     private var effectiveQualityMode: QualityMode {
         if let original = originalQualityMode { return original }
         return qualityMode
     }
 
-    /// 偵測 Metal 操作失敗，自動 cleanup 讓下一幀重新初始化
+    /// 偵測 Metal 操作失敗，自動 cleanup 讓下一幀重新初始化。
+    /// 只會在失敗路徑（completion handler / timeout / preamble 建立失敗）被呼叫，
+    /// 不在逐幀熱路徑上，因此整個 body 在 lifecycleLock 內執行是安全的。
     private func handleMetalFailure(_ reason: String) {
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
+        handleMetalFailureLocked(reason)
+    }
+
+    /// 成功 completion handler 呼叫；與 handleMetalFailure 的累加互斥。
+    private func resetConsecutiveFailures() {
+        lifecycleLock.lock()
+        if consecutiveMetalFailures != 0 {
+            consecutiveMetalFailures = 0
+        }
+        lifecycleLock.unlock()
+    }
+
+    /// 假設呼叫者已持有 lifecycleLock。
+    private func handleMetalFailureLocked(_ reason: String) {
         guard !metalPermanentFailure else { return }
         consecutiveMetalFailures += 1
         let failureCount = consecutiveMetalFailures
@@ -421,7 +490,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         }
         if consecutiveMetalFailures >= maxConsecutiveMetalFailures {
             sendlog(message: "[GPU Rotator] Metal 連續失敗 \(failureCount) 次，重建管線與 command queue")
-            cleanupResources()
+            cleanupResourcesLocked()
             MetalContext.shared.rebuildQueue()
             consecutiveMetalFailures = 0
             metalPermanentFailure = true
@@ -498,7 +567,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     private func poolSnapshot() -> String {
         outputPoolLock.lock()
         let text = outputPool
-            .map { "\($0.key.width)x\($0.key.height):\($0.value.count)" }
+            .map { "\($0.key.width)x\($0.key.height):\($0.value.items.count)" }
             .sorted()
             .joined(separator: ",")
         outputPoolLock.unlock()
@@ -551,26 +620,35 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         return parts.joined(separator: " ")
     }
 
-    private func ensureMetalResources() -> Bool {
+    /// frame preamble 的單一快照點：在 lifecycleLock 內檢查永久死亡、惰性建立
+    /// 目前模式所需的 pipeline、並解析出「這一幀要用的 compute pipeline」。
+    /// renderPlaneYUV 不再回頭讀 effectiveQualityMode / pipelineBilinear /
+    /// pipelineBicubic 等共享 var，因此消除 qualityMode 降級（completion 執行緒
+    /// 寫入）與 frame 讀取之間的 data race。
+    /// - Returns: 本幀可用的 compute pipeline；nil 表示永久死亡或建立失敗。
+    private func ensureMetalPipelineSnapshot() -> MTLComputePipelineState? {
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
+
         guard !metalPermanentFailure else {
             logTo("Metal 已永久死亡，跳過 GPU 初始化")
-            return false
+            return nil
         }
-        guard hasMetalResources == false else {
-            return true
+        guard !hasMetalResources else {
+            return resolvePipelineLocked()
         }
 
         // 只編譯目前選擇的管線（.live = bilinear，.quality = bicubic）
         switch qualityMode {
         case .live where pipelineBilinear == nil:
             guard buildComputePipeline(functionName: "rotateNV12_bilinear", store: &pipelineBilinear) else {
-                handleMetalFailure("建立 Bilinear ComputePipeline 失敗")
-                return false
+                handleMetalFailureLocked("建立 Bilinear ComputePipeline 失敗")
+                return nil
             }
         case .quality where pipelineBicubic == nil:
             guard buildComputePipeline(functionName: "rotateNV12_bicubic", store: &pipelineBicubic) else {
-                handleMetalFailure("建立 Bicubic ComputePipeline 失敗")
-                return false
+                handleMetalFailureLocked("建立 Bicubic ComputePipeline 失敗")
+                return nil
             }
         default:
             break
@@ -578,8 +656,12 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
         hasMetalResources = true
         prewarmPool()
-        return true
+        return resolvePipelineLocked()
+    }
 
+    /// 假設呼叫者已持有 lifecycleLock。
+    private func resolvePipelineLocked() -> MTLComputePipelineState? {
+        effectiveQualityMode == .live ? pipelineBilinear : pipelineBicubic
     }
 
     private func buildComputePipeline(functionName: String, store: inout MTLComputePipelineState?) -> Bool {
@@ -606,7 +688,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     private final class FrameContext:@unchecked Sendable {
 
         var timing: CMSampleTimingInfo
-        let outPB: CVPixelBuffer
         let outSet: RPVideoRotatorNV12BatchQueueOptimized.ReusableOutputSet
 
         // ✅ 新增：撐住 input backing
@@ -622,7 +703,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
             self.timing = timing
             self.outSet = outSet
-            self.outPB = outSet.pixelBuffer
 
             self.inY = inY
             self.inUV = inUV
@@ -667,12 +747,10 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     // MARK: - Enqueue Frame
     func rotateAsync(pixelBuffer: CVPixelBuffer, originalTime: CMSampleTimingInfo, angle: RotationAngle) async -> CMSampleBuffer? {
 
-         // 延遲初始化 Metal/TextureCache
-        guard ensureMetalResources() else {
+         // 延遲初始化 Metal/TextureCache，並解析本幀 compute pipeline（單一快照點）
+        guard let computePipeline = ensureMetalPipelineSnapshot() else {
             return nil
         }
-
-        timing = originalTime
 
         let inBuffer = pixelBuffer
         let srcW = CVPixelBufferGetWidth(inBuffer)
@@ -732,7 +810,8 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         let commandSnapshot = nextCommandSnapshot()
         cmd.label = "ReplyKit.video.rotate#\(commandSnapshot.id) \(srcW)x\(srcH)->\(dstW)x\(dstH)"
 
-        guard renderPlaneYUV(cmd: cmd, srcY: ycvTexIn.tex, srcUV: uvcvTexIn.tex,
+        guard renderPlaneYUV(cmd: cmd, compute: computePipeline,
+                        srcY: ycvTexIn.tex, srcUV: uvcvTexIn.tex,
                         dstY: outSet.yTex, dstUV: outSet.uvTex, angle: angle) else {
             recycleOutput(outSet)
             _ = markCommandCompleted()
@@ -764,11 +843,11 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
                 let isCompleted = cmd.status == .completed && cmd.error == nil
                 let wrapped = isCompleted
-                    ? self.wrapPixelBuffer(frameC.outPB, timing: frameC.timing)
+                    ? self.wrapPixelBuffer(frameC.outSet, timing: frameC.timing)
                     : nil
 
                 if isCompleted, let wrapped {
-                    self.consecutiveMetalFailures = 0
+                    self.resetConsecutiveFailures()
 
                     self.tsDebugger.log(
                         originalTime: frameC.timing,
@@ -805,25 +884,34 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
   // MARK: - Reusable Output
 private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
-    guard isActive else { return nil }
+    var shouldLogPressure = false
     outputPoolLock.lock()
 
+    guard isActive else {
+        outputPoolLock.unlock()
+        return nil
+    }
+
     let key = OutputKey(width: width, height: height)
-    if var pool = outputPool[key], !pool.isEmpty {
-        let set = pool.removeFirst()
-        outputPool[key] = pool
+    if let bucket = outputPool[key], !bucket.items.isEmpty {
+        let set = bucket.items.removeFirst()
         outputPoolLock.unlock()
         return set
     }
     let currentPools = outputPool
-        .map { "\($0.key.width)x\($0.key.height):\($0.value.count)" }
+        .map { "\($0.key.width)x\($0.key.height):\($0.value.items.count)" }
         .sorted()
         .joined(separator: ",")
-    outputPoolLock.unlock()
 
+    // lastPoolPressureLogAt 只在 outputPoolLock 內讀寫，避免併發 pool-miss 的 race
     let now = Date()
     if now.timeIntervalSince(lastPoolPressureLogAt) >= 5.0 {
         lastPoolPressureLogAt = now
+        shouldLogPressure = true
+    }
+    outputPoolLock.unlock()
+
+    if shouldLogPressure {
         logTo("output pool miss \(width)x\(height)，runtime 建立新 buffer，目前 pools:\(currentPools.isEmpty ? "empty" : currentPools)")
     }
 
@@ -863,7 +951,10 @@ private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
 
     // MARK: - Recycle Output
     func recycleOutput(_ outSet: ReusableOutputSet) {
+    outputPoolLock.lock()
+
     guard isActive else {
+        outputPoolLock.unlock()
         outSet.cvY = nil
         outSet.cvUV = nil
         return
@@ -872,16 +963,19 @@ private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
     let height = CVPixelBufferGetHeight(outSet.pixelBuffer)
     let key = OutputKey(width: width, height: height)
 
-    outputPoolLock.lock()
-
-    var pool = outputPool[key] ?? []
-    if pool.count >= maxPoolSize {
-        let removed = pool.removeFirst()
+    let bucket: OutputPoolBucket
+    if let existing = outputPool[key] {
+        bucket = existing
+    } else {
+        bucket = OutputPoolBucket()
+        outputPool[key] = bucket
+    }
+    if bucket.items.count >= maxPoolSize {
+        let removed = bucket.items.removeFirst()
         removed.cvY = nil
         removed.cvUV = nil
     }
-    pool.append(outSet)
-    outputPool[key] = pool
+    bucket.items.append(outSet)
 
     outputPoolLock.unlock()
 }
@@ -896,17 +990,21 @@ private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
             let alreadyExists = outputPool[key] != nil
             outputPoolLock.unlock()
             guard !alreadyExists else { continue }
-            var pool: [ReusableOutputSet] = []
+            var pooled: [ReusableOutputSet] = []
             for _ in 0..<3 {
                 if let set = getReusableOutput(width: w, height: h) {
-                    pool.append(set)
+                    pooled.append(set)
                 }
             }
-            if !pool.isEmpty {
+            if !pooled.isEmpty {
                 outputPoolLock.lock()
-                outputPool[key] = pool
+                if outputPool[key] == nil {
+                    outputPool[key] = OutputPoolBucket(items: pooled)
+                } else {
+                    outputPool[key]?.items.append(contentsOf: pooled)
+                }
                 outputPoolLock.unlock()
-                logTo("prewarm pool \(w)x\(h): \(pool.count) buffers")
+                logTo("prewarm pool \(w)x\(h): \(pooled.count) buffers")
             }
         }
     }
@@ -952,38 +1050,40 @@ private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
 
 
     /// Wraps a CVPixelBuffer into a CMSampleBuffer with the given timing info.
+    /// formatDescription 來自 outSet 建立時就固定的 immutable let，因此 completion thread
+    /// 併發呼叫時不再讀寫共享 mutable cache（cachedFormatDescription/cachedFormatSize），
+    /// 消除既有 data race。
     /// - Parameters:
-    ///   - pixelBuffer: The pixel buffer to wrap.
+    ///   - outSet: pooled output set（內建自己的 formatDescription）
     ///   - timing: The timing information for the sample buffer.
     /// - Returns: A CMSampleBuffer containing the pixel buffer and timing, or nil on failure.
    private func wrapPixelBuffer(
-    _ pixelBuffer: CVPixelBuffer,
+    _ outSet: ReusableOutputSet,
     timing: CMSampleTimingInfo
 ) -> CMSampleBuffer? {
 
-    let width = CVPixelBufferGetWidth(pixelBuffer)
-    let height = CVPixelBufferGetHeight(pixelBuffer)
-    let size = CGSize(width: width, height: height)
+    let pixelBuffer = outSet.pixelBuffer
 
-    // ✅ format cache
-    if cachedFormatDescription == nil || cachedFormatSize != size {
-        var formatDesc: CMFormatDescription?
+    // formatDescription 在 pool 建立時就生成；理論上一定存在，這裡做雙重保險
+    let fmt: CMVideoFormatDescription?
+    if let cached = outSet.formatDescription {
+        fmt = cached
+    } else {
+        var formatDesc: CMVideoFormatDescription?
         let status = CMVideoFormatDescriptionCreateForImageBuffer(
             allocator: kCFAllocatorDefault,
             imageBuffer: pixelBuffer,
             formatDescriptionOut: &formatDesc
         )
-        if status == noErr, let fmt = formatDesc {
-            cachedFormatDescription = fmt
-            cachedFormatSize = size
+        if status == noErr, let created = formatDesc {
+            fmt = created
         } else {
             sendlog(message: "CMVideoFormatDescriptionCreateForImageBuffer failed: \(status)")
-            // ❌ 不要傳 nil，直接 fallback
             return fallbackSampleBuffer(pixelBuffer: pixelBuffer, timing: timing)
         }
     }
 
-    guard let fmt = cachedFormatDescription else {
+    guard let validFmt = fmt else {
         sendlog(message: "No valid formatDescription available")
         return fallbackSampleBuffer(pixelBuffer: pixelBuffer, timing: timing)
     }
@@ -994,7 +1094,7 @@ private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
     let status = CMSampleBufferCreateReadyWithImageBuffer(
         allocator: kCFAllocatorDefault,
         imageBuffer: pixelBuffer,
-        formatDescription: fmt,
+        formatDescription: validFmt,
         sampleTiming: &timingInfo,
         sampleBufferOut: &sampleBuffer
     )
@@ -1043,14 +1143,11 @@ private func fallbackSampleBuffer(
 
     // MARK: - Render YUV
     func renderPlaneYUV(cmd: MTLCommandBuffer,
+                        compute: MTLComputePipelineState,
                         srcY: MTLTexture, srcUV: MTLTexture,
                         dstY: MTLTexture, dstUV: MTLTexture,
                         angle: RotationAngle) -> Bool {
 
-        guard let compute = (effectiveQualityMode == .live ? pipelineBilinear : pipelineBicubic) else {
-            sendlog(message: "[GPU Rotator] renderPlaneYUV 無 compute pipeline mode:\(effectiveQualityMode)")
-            return false
-        }
         guard let encoder = cmd.makeComputeCommandEncoder() else {
             sendlog(message: "[GPU Rotator] renderPlaneYUV makeComputeCommandEncoder nil cmdStatus:\(cmd.status.rawValue) error:\(describeCommandBufferError(cmd.error))")
             return false

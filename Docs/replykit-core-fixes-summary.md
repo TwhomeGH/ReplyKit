@@ -1084,3 +1084,62 @@ private func processReceiveBuffer() {
 | 常態（每次解析 1 行，buffer < 幾 KB） | `removeFirst` 每次 O(n)，但 n 小，差異可忽略 | 同左（無退化） |
 | 大量黏包（burst 後 buffer 數百 KB） | 每行 O(n) memmove → 累積 O(n²) CPU spike | 游標前進 O(1)，每 ~512KB 才 compact 一次 |
 | 長時間連線（logbatch 持續收到） | 重複 memmove 累積數百次 shift | 零 shift，游標直到 compact 閾值才觸發 |
+
+---
+
+## 18. GPU 旋轉管線與畫面加工 data race 修正（2026-09）
+
+跨 `GPUVideoRotator`（主 rotate/scale 管線）、`VideoProcess`（呼叫端）、`OutputOverlayMetalRenderer`（畫面加工）三處的並行安全重構。主軸是使用者提出的設計原則：**每幀不該拿共享 mutable 狀態，應在設定/秒數改變時準備好 immutable snapshot，render 時直接套用**。
+
+### 背景：為何現在修
+
+- `FrameProcessorActor.processFrame` 是 actor-isolated，但 `rotateAsync` 是 nonisolated async（跑在 cooperative pool）；await GPU completion 期間 actor 會讓出，**同時間多幀 preamble 真併行**。因此 `outputPoolLock`/`commandStatsLock` 是真共享點，而下列狀態是真 data race。
+- 使用者回報：這些 race「確實會造成畫面可能直接崩掉」。
+
+### 18.1 OutputOverlayMetalRenderer — RenderPlan snapshot
+
+詳細設計見 `overlay-scene-config.md`「RenderPlan Snapshot 設計」。摘要：
+
+- frame path（`applyIfNeeded`）每幀：1 次短鎖讀 `snapshot + pipeline` → encode。**不再** 5 次 lock、不再每幀重建 cache key 字串/Date、不再有 1Hz CoreGraphics raster spike 在 frame thread 上執行。
+- raster/字串/upload 移到 `producerQueue`（serial），config 寫入（Socket queue、Darwin notification）只換 config + bump `configVersion`。
+- 順帶修掉既有 bug：`DateFormatter`（非 thread-safe）原本在 frame threads 併發使用。
+
+### 18.2 GPUVideoRotator — failure/quality/pipeline 狀態快照化
+
+新增 `lifecycleLock`（NSLock），保護跨執行緒的 `qualityMode / originalQualityMode / metalPermanentFailure / consecutiveMetalFailures / pipeline 生命週期`。
+
+**data race 修正一覽：**
+
+| 位置 | 原本 | 現在 |
+|------|------|------|
+| `cachedFormatDescription`/`cachedFormatSize` | completion thread 併發讀寫共享 cache → 可能崩潰 | 移到每個 `ReusableOutputSet` 建立時的 immutable `let formatDescription` |
+| `qualityMode`/`originalQualityMode` | completion 執行緒降級寫入 vs frame preamble 讀取 | 全在 `lifecycleLock` 內 |
+| pipeline 選擇 | `renderPlaneYUV` 每幀回頭讀共享 `effectiveQualityMode + pipelineBilinear/Bicubic` | `ensureMetalPipelineSnapshot()` 在 preamble 一次快照出 compute pipeline，以參數傳入 `renderPlaneYUV` |
+| `consecutiveMetalFailures = 0` | completion handler 無鎖重置 | `resetConsecutiveFailures()` 在鎖內 |
+| `isActive` | `outputPoolLock` 外讀寫 | 全部在 `outputPoolLock` 內讀寫 |
+| 每幀 `timing = originalTime` | 寫一個無人讀的 var（純寫 race） | 移除 |
+
+**`VideoProcess._updateRotatorDimensions`**：移除對 gpuRotator mutable var 的直寫。維度改變時設 `lastKey = nil` 讓下一幀從 RPConfig 重建新實例；直寫只會改到即將被 cleanup 丟棄的舊實例，同時與 frame preamble 讀取產生 race。（CPU fallback 的長壽實例保留直寫。）
+
+**鎖順序保證**：全檔只有「`lifecycleLock` 可嵌套 `outputPoolLock`」（handleMetalFailure → cleanupResourcesLocked；ensureMetalPipelineSnapshot → prewarmPool），**沒有**持 `outputPoolLock` 再拿 `lifecycleLock` 的路徑 → 無死鎖。
+
+### 18.3 pool COW copy 消除
+
+`outputPool: [OutputKey: [ReusableOutputSet]]`（value-type array，每幀 acquire/recycle 都 `outputPool[key] = pool` 整列複製）改成 class-bucket：
+
+```swift
+final class OutputPoolBucket { var items: [ReusableOutputSet] = [] }
+private var outputPool: [OutputKey: OutputPoolBucket] = [:]
+```
+
+acquire/recycle 就地改 `bucket.items`，不再每次寫回 dictionary 觸發 array COW。這是先前判斷「pool lock 大量鎖」實際痛的來源（指令熱路徑每幀兩次 removeFirst/append 的複製）。
+
+### 18.4 刻意保留
+
+- `commandStatsLock` **未**併成 os_unfair_lock/atomic：每幀兩次（submit+completion）都是納秒級、無 contention 的計數；等 profile 顯示有影響再改（屆時是獨立小 commit）。
+- Overlay **未** inline 進 `rotateNV12_bilinear/bicubic`：評估為不優先，理由見 `overlay-scene-config.md` 下一步第 6 點。
+
+### 驗證狀態
+
+- 三個檔案均通過 `swiftc -frontend -parse` 語法驗證。
+- Windows 無 iOS SDK，**未完整 typecheck**；需在 Xcode build + 真機確認：GPU rotate 正常出幀、failure 降品質/CPU fallback 路徑照舊、可用 Thread Sanitizer 驗證 data race 清空。

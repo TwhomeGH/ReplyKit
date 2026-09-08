@@ -351,10 +351,11 @@ actor FrameProcessorActor {
     }
 
     private func _updateRotatorDimensions(adWidth: Int, adHeight: Int, outWidth: Int, outHeight: Int) {
-        gpuRotator?.dstWW = adWidth
-        gpuRotator?.dstHH = adHeight
-        gpuRotator?.OutWW = outWidth
-        gpuRotator?.OutHH = outHeight
+        // ❗ GPU rotator 的維度由 getOrCreateGpuRotator 依 key 重建時才生效：
+        //    這裡設 lastKey = nil 讓下一幀重建新實例，故不直接改寫 gpuRotator 的
+        //    mutable var —— 直接寫只會改到「即將被 cleanup 丟棄的舊實例」，同時造成
+        //    與 frame preamble 讀取之間的 data race。
+        //    CPU fallback 的 rotator 是長壽實例、無 key 重建機制，仍需要直接更新。
         cpuRotator?.dstWW = adWidth
         cpuRotator?.dstHH = adHeight
         cpuRotator?.OutWW = outWidth

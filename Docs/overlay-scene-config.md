@@ -110,6 +110,7 @@ ReplayKit Extension：
 - CoreGraphics 產生的 overlay bitmap 與 Metal texture 座標系不同，合成 shader 會翻轉 overlay Y 軸再取樣。
 - `[OverlayMetal]` 診斷 log 已做節流；錯誤類 log 最短 5 秒送一次，CPU 消耗時間統計每 120 幀且至少間隔 2 秒才送一次。
 - 診斷 log 節流不再使用額外 lock，避免在影像熱路徑引入多餘同步點。
+- **（2026-09）Overlay renderer 改為 RenderPlan snapshot**：frame 路徑 (`applyIfNeeded`) 每幀只做「一次短鎖讀 snapshot + encode」，不再逐幀讀共享 mutable config / texture cache、不再有每幀字串拼裝與 1Hz CoreGraphics raster spike。詳見下文「RenderPlan Snapshot 設計」。
 
 刻意保留：
 
@@ -117,6 +118,51 @@ ReplayKit Extension：
 - 未啟用時維持原本 `drawTimeOverlay()` 行為。
 - 保活模式仍使用原本中央提示樣式，不受一般時間圖層覆蓋。
 - PiP 排版加工與最終輸出 Overlay 分離，避免調整輸出畫布時改壞 PiP 子母窗口樣式。
+
+## RenderPlan Snapshot 設計（2026-09）
+
+**檔案：** `ReplyKIT/OutputOverlayMetalRenderer.swift`
+
+### 改動前
+
+`applyIfNeeded` 每幀（在 `renderPlaneYUV` 尾端被呼叫）都會：
+
+- 拿一次 `configLock` 讀共享 config
+- 兩次 `textureLock` 做 cache key 比對、兩次在 `cachedTimeText` 內
+- 每次重建整條 key 字串 + `Date()`
+- 每秒一次：text 改變 → key miss → 整顆 **CoreGraphics raster + MTLTexture 建立 + upload 在 frame thread 上執行**（1Hz CPU spike）
+
+### 設計
+
+把「昂貴工作」與「render」徹底分離成 producer / consumer 兩段：
+
+```
+Socket / Darwin notification (config 改變)
+   │  apply()/reloadConfig() 只做：pendingConfig 換值 + configVersion++
+   ▼
+producerQueue (serial) ─── runProducer()
+   │  • config.enabled/time 檢查
+   │  • 目前秒數時間字串 + CoreGraphics raster + texture 建立/upload
+   │  • 打包成不可變 OverlaySnapshot { texture, size, anchor, margins… }
+   ▼
+frame thread ─── applyIfNeeded()
+   │  1 次短鎖讀 snapshot + pipeline → encode（不再碰 config / texture cache）
+   ▼
+MTLCommandBuffer composite encoder
+```
+
+### 並行模型
+
+- `stateLock`（NSLock）只保護「發布點」欄位：`snapshot / pipeline / pendingConfig / configVersion / refreshQueued`。每個 frame 只取一次短鎖。
+- `producerQueue`（serial, `.userInitiated`）是 cache + raster 的唯一執行緒，內部不再需要鎖。
+- Socket queue / Darwin notification 的 `apply()` / `reloadConfig()` 只換 config + bump version + 觸發 producer。
+- 時間 overlay 更新由 frame 偵測秒數變更時觸發 producer 非同步重建，故最多延遲約 1 幀（16ms 內不可察覺）。
+- 原程式 `DateFormatter`（非 thread-safe）在 frame threads 併發使用是隱藏 bug，改後只在 producer 單一執行緒使用。
+
+### 驗證
+
+- 語法經 `swiftc -frontend -parse` 驗證（Windows 無 iOS SDK，未能完整 typecheck）。
+- 需在 Xcode build + 真機確認 overlay 正常顯示、每秒更新。
 
 ## 下一步
 
@@ -128,8 +174,8 @@ ReplayKit Extension：
 2. 加入文字 layer、Logo/image layer、狀態 badge layer。
 3. 讓主 App 預覽與 Extension renderer 共用同一套座標計算。
 4. 為 overlay texture cache 加上上限與 memory warning 清理。
-5. 將 overlay renderer 改成 render snapshot：設定變更或秒數變更時才準備 texture/params，每幀 render 只讀已準備好的不可變資料。
-6. 評估把 overlay 合成合併進 `rotateNV12_bilinear` / `rotateNV12_bicubic`，減少第二個 compute encoder 與額外的 Y/UV 寫入。
+5. ✅ 已實作（2026-09）：將 overlay renderer 改成 render snapshot：設定變更或秒數變更時才準備 texture/params，每幀 render 只讀已準備好的不可變資料。
+6. ⏳ 尚未進行：把 overlay 合成合併進 `rotateNV12_bilinear` / `rotateNV12_bicubic`。**已評估為不優先**——第二個 encoder 只 dispatch overlay rect（非整幀），inline 進主 kernel 的真正收益有限，且會讓 bilinear/bicubic 兩顆 kernel 承擔所有未來加工項目的改動成本、破壞品質模式分離。維持 overlay 獨立 stage；未來新增加工項目時，把「單一時間 overlay 的 snapshot」推廣成「多項目 overlay 清單 snapshot」即可擴展。
 
 ## 擴展方向
 
