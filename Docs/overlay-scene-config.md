@@ -10,7 +10,7 @@
 - 讓用戶控制最終 16:9 畫布上的附加圖層，例如時間、浮水印、Logo、狀態文字。
 - 第一版先支援時間圖層，包含位置與樣式控制。
 - 以一份版本化 `Codable` 配置描述整個 overlay scene，避免設定散落成大量 `UserDefaults` key。
-- 主 App 寫入 App Group `UserDefaults`，ReplayKit Extension 透過 Darwin notification reload。
+- 側載與直播啟動流程必須透過 socket 同步 Overlay config；App Group `UserDefaults` 作為同機快取與 fallback。
 
 ## 設計原則
 
@@ -81,15 +81,18 @@ struct TimeOverlayConfig: Codable, Identifiable, Equatable {
 3. `OverlaySettingsViewModel` 將 `OverlaySceneConfig` encode 成 JSON data。
 4. `OverlayConfigStore.save()` 寫入 App Group `UserDefaults` 的 `OverlaySceneConfig` key。
 5. 發送 Darwin notification：`OverlaySceneConfigChanged`。
-6. 此設定不直接驅動 `PIPService`；最終應由 ReplayKit Extension 的 video processor 套用到輸出畫布。
+6. `SocketServer.pushOverlayConfig()` 透過 socket 對已連線的 Extension 推送 `overlayConfig`。
+7. 此設定不直接驅動 `PIPService`；最終由 ReplayKit Extension 的 video processor 套用到輸出畫布。
 
 ReplayKit Extension：
 
-1. `Eventlisten.eventNames` 註冊 `OverlaySceneConfigChanged`。
-2. `SampleHandler.handleEvent()` 收到事件。
-3. `OutputOverlayMetalRenderer.reloadConfig()` 從 App Group `UserDefaults` 讀取 Codable data。
-4. `GPUVideoRotator.renderPlaneYUV()` 完成旋轉/縮放後，呼叫 `OutputOverlayMetalRenderer.applyIfNeeded()`。
-5. Metal kernel `compositeOverlayBGRAToNV12` 將 overlay BGRA texture 混入最終 NV12 輸出畫布。
+1. 啟動推流時 `SocketClient.requestRTMPKEYAndLog()` 送出 batch，請求 `requestRTMP`、`logConfig`、`requestOverlayConfig`。
+2. 主 App 回傳 `overlayConfig` payload，內含 `OverlaySceneConfig`。
+3. Extension 收到 `overlayConfig` 後呼叫 `OutputOverlayMetalRenderer.apply(config:)`，立即更新 renderer cache，並同步寫回 App Group。
+4. Batch 完成時會檢查 RTMP 與 Overlay config 是否都已收到；這能確保側載流程不是只靠 App Group fallback。
+5. `Eventlisten.eventNames` 仍註冊 `OverlaySceneConfigChanged`，作為同機 App Group 更新 fallback。
+6. `GPUVideoRotator.renderPlaneYUV()` 完成旋轉/縮放後，呼叫 `OutputOverlayMetalRenderer.applyIfNeeded()`。
+7. Metal kernel `compositeOverlayBGRAToNV12` 將 overlay BGRA texture 混入最終 NV12 輸出畫布。
 
 ## 第一版實作範圍
 
@@ -100,6 +103,8 @@ ReplayKit Extension：
 - 新增 16:9 預覽畫布。
 - 新增時間圖層位置與樣式控制。
 - Extension 可收到配置變更通知並讀取配置。
+- Socket batch 已包含 `requestOverlayConfig`，側載啟動時會同步 Overlay config。
+- 主 App 儲存 Overlay 設定時會 push `overlayConfig` 給已連線 Extension。
 - GPU rotator 已在旋轉後追加 Metal overlay pass，把時間圖層疊到最終 NV12 畫布。
 
 刻意保留：
@@ -149,7 +154,7 @@ enum OverlayLayerConfig: Codable {
 
 ## 注意事項
 
-- Extension 不能依賴主 App 記憶體狀態，必須從 App Group `UserDefaults` 或 socket 同步讀取。
+- Extension 不能依賴主 App 記憶體狀態；側載流程以 socket 同步為主，App Group `UserDefaults` 只作快取與 fallback。
 - Codable schema 要保留 `version`，未來增加欄位時需提供 fallback 預設值。
 - 位置計算應以最終畫布尺寸為準，也就是 OD 尺寸，不應使用 GPU 中間處理尺寸 AD。
 - Overlay 若進入推流畫布，必須確認是否會影響 encoder timing、pixel buffer reuse 與記憶體壓力。

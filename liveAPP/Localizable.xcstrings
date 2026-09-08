@@ -1,0 +1,798 @@
+{
+  "sourceLanguage" : "zh-Hant",
+  "strings" : {
+    "common.resetDefaults" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reset Defaults"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "デフォルトに戻す"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢復預設"
+          }
+        }
+      }
+    },
+    "fontWeight.bold" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bold"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "太字"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "粗體"
+          }
+        }
+      }
+    },
+    "fontWeight.medium" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Medium"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "中"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "中等"
+          }
+        }
+      }
+    },
+    "fontWeight.regular" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Regular"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "標準"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一般"
+          }
+        }
+      }
+    },
+    "outputOverlay.background.color" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Background Color"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "背景色"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "背景顏色"
+          }
+        }
+      }
+    },
+    "outputOverlay.background.cornerRadius" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Corner Radius"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "角丸"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "圓角"
+          }
+        }
+      }
+    },
+    "outputOverlay.background.enabled" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Background Fill"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "背景を表示"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "背景底色"
+          }
+        }
+      }
+    },
+    "outputOverlay.background.opacity" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opacity"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "透明度"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "透明度"
+          }
+        }
+      }
+    },
+    "outputOverlay.background.section" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Background"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "背景"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "背景"
+          }
+        }
+      }
+    },
+    "outputOverlay.enable" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Output Overlay"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "出力加工を有効にする"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "啟用畫面加工"
+          }
+        }
+      }
+    },
+    "outputOverlay.spacing.marginX" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Horizontal Margin"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "左右余白"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "水平邊距"
+          }
+        }
+      }
+    },
+    "outputOverlay.spacing.marginY" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vertical Margin"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上下余白"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "垂直邊距"
+          }
+        }
+      }
+    },
+    "outputOverlay.spacing.offsetX" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Horizontal Offset"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "左右オフセット"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "水平偏移"
+          }
+        }
+      }
+    },
+    "outputOverlay.spacing.offsetY" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vertical Offset"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上下オフセット"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "垂直偏移"
+          }
+        }
+      }
+    },
+    "outputOverlay.spacing.section" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spacing and Offset"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "余白と位置調整"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "留白與偏移"
+          }
+        }
+      }
+    },
+    "outputOverlay.timeLayer.content" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Content"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "内容"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "內容"
+          }
+        }
+      }
+    },
+    "outputOverlay.timeLayer.fontSize" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Font Size"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文字サイズ"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "字體大小"
+          }
+        }
+      }
+    },
+    "outputOverlay.timeLayer.fontWeight" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Font Weight"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文字の太さ"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "字重"
+          }
+        }
+      }
+    },
+    "outputOverlay.timeLayer.position" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Position"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "位置"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "位置"
+          }
+        }
+      }
+    },
+    "outputOverlay.timeLayer.section" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Time Layer"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "時間レイヤー"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "時間圖層"
+          }
+        }
+      }
+    },
+    "outputOverlay.timeLayer.showTime" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Time"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "時間を表示"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示時間"
+          }
+        }
+      }
+    },
+    "outputOverlay.timeLayer.textColor" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Text Color"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文字色"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文字顏色"
+          }
+        }
+      }
+    },
+    "overlayAnchor.bottomCenter" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Bottom Center" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "下中央" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "下中" } }
+      }
+    },
+    "overlayAnchor.bottomLeft" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Bottom Left" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "左下" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "左下" } }
+      }
+    },
+    "overlayAnchor.bottomRight" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Bottom Right" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "右下" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "右下" } }
+      }
+    },
+    "overlayAnchor.center" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Center" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "中央" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "中央" } }
+      }
+    },
+    "overlayAnchor.centerLeft" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Center Left" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "左中央" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "左中" } }
+      }
+    },
+    "overlayAnchor.centerRight" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Center Right" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "右中央" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "右中" } }
+      }
+    },
+    "overlayAnchor.topCenter" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Top Center" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "上中央" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "上中" } }
+      }
+    },
+    "overlayAnchor.topLeft" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Top Left" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "左上" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "左上" } }
+      }
+    },
+    "overlayAnchor.topRight" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Top Right" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "右上" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "右上" } }
+      }
+    },
+    "pip.default.endedLabel" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Ended" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "配信終了" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "直播已結束" } }
+      }
+    },
+    "pip.default.liveLabel" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Live" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "配信中" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "直播中" } }
+      }
+    },
+    "pip.default.nowTimeLabel" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Current time" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "現在時刻" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "現在時間" } }
+      }
+    },
+    "pipLayout.ad.bodyFont" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Body Font" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "本文サイズ" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "內文字體" } }
+      }
+    },
+    "pipLayout.ad.duration" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Display Duration" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "表示時間" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "顯示秒數" } }
+      }
+    },
+    "pipLayout.ad.section" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Sponsor Overlay" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "スポンサー表示" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "贊助者 Overlay" } }
+      }
+    },
+    "pipLayout.ad.spacing" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Line Spacing" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "行間" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "上下間距" } }
+      }
+    },
+    "pipLayout.ad.userFont" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Name Font" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "名前サイズ" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "名稱字體" } }
+      }
+    },
+    "pipLayout.animation.fadeInterval" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Fade Interval" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "フェード間隔" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "淡出間隔" } }
+      }
+    },
+    "pipLayout.animation.fadeSpeed" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Fade Speed" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "フェード速度" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "淡出速度" } }
+      }
+    },
+    "pipLayout.animation.scrollTime" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Scroll Time" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "スクロール時間" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "滾動時間" } }
+      }
+    },
+    "pipLayout.animation.section" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Animation" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "アニメーション" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "動畫" } }
+      }
+    },
+    "pipLayout.chat.mainSize" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Main Message Size" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "メイン本文サイズ" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "主要文字大小" } }
+      }
+    },
+    "pipLayout.chat.secondSize" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Secondary Message Size" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "副本文サイズ" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "次要文字大小" } }
+      }
+    },
+    "pipLayout.chat.section" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Chat Text" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "チャット文字" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "聊天室文字" } }
+      }
+    },
+    "pipLayout.preview.adMessage" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Thanks for the support. This text follows the body font." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "応援ありがとうございます。本文フォントで表示されます。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "謝謝支持，這段文字會照內文字體呈現" } }
+      }
+    },
+    "pipLayout.preview.adOverlay" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Sponsor Shown" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "スポンサー表示中" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "贊助顯示中" } }
+      }
+    },
+    "pipLayout.preview.hostName" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Host" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "配信者" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "主播" } }
+      }
+    },
+    "pipLayout.preview.mainMessage" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Testing the new layout today" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "新しいレイアウトをテスト中" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "今天測一下新的排版" } }
+      }
+    },
+    "pipLayout.preview.mode" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Preview State" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "プレビュー状態" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "預覽狀態" } }
+      }
+    },
+    "pipLayout.preview.normal" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Normal" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "通常" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "一般" } }
+      }
+    },
+    "pipLayout.preview.secondMessage" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Font size updates instantly" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "文字サイズは即時に反映されます" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "字體大小會即時跟著變" } }
+      }
+    },
+    "pipLayout.preview.sponsorName" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Sponsor" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "スポンサー" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "贊助者" } }
+      }
+    },
+    "pipLayout.preview.viewerName" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Viewer" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "視聴者" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "觀眾" } }
+      }
+    },
+    "pipLayout.statusText.ended.placeholder" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Ended" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "配信終了" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "直播已結束" } }
+      }
+    },
+    "pipLayout.statusText.live.placeholder" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Live" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "配信中" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "直播中" } }
+      }
+    },
+    "pipLayout.statusText.nowTime.placeholder" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Current time" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "現在時刻" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "現在時間" } }
+      }
+    },
+    "pipLayout.statusText.section" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Status Text" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ステータス文字" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "狀態文字" } }
+      }
+    },
+    "pipLayout.statusText.warning" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recommended length is 2 to 6 characters, with a maximum of 12. Long text can squeeze the time and viewer badges." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "推奨は2から6文字、最大12文字です。長すぎると時刻や視聴者バッジを圧迫します。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "建議 2 到 6 個字，最多 12 個字；太長會擠壓時間與觀眾數徽章。" } }
+      }
+    },
+    "settings.outputOverlay.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Output Overlay" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "出力オーバーレイ" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "輸出畫面加工設置" } }
+      }
+    },
+    "settings.pipLayout.title" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "PiP Layout" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "PiPレイアウト" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "PIP排版加工設置" } }
+      }
+    },
+    "timeFormat.dateTime" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Date + Time" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "日付 + 時刻" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "日期 + 時間" } }
+      }
+    },
+    "timeFormat.elapsed" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Live Duration" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "配信時間" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "直播時長" } }
+      }
+    },
+    "timeFormat.timeOnly" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Time" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "時刻" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "時間" } }
+      }
+    },
+    "unit.seconds" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "sec" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "秒" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "秒" } }
+      }
+    }
+  },
+  "version" : "1.0"
+}

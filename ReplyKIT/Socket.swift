@@ -115,6 +115,7 @@ class SocketClient : @unchecked Sendable {
     private var isProcessingBatch = false
     private var didReceiveRTMPInBatch = false
     private var didReceiveLogConfigInBatch = false
+    private var didReceiveOverlayConfigInBatch = false
 
 
     actor ContinuationStore {
@@ -442,10 +443,11 @@ class SocketClient : @unchecked Sendable {
                     self.isProcessingBatch = true
                     self.didReceiveRTMPInBatch = false
                     self.didReceiveLogConfigInBatch = false
+                    self.didReceiveOverlayConfigInBatch = false
 
                     let payload: [String: Any] = [
                         "type": "batch",
-                        "requests": ["requestRTMP", "logConfig"]
+                        "requests": ["requestRTMP", "logConfig", "requestOverlayConfig"]
 
                     ]
                     self.sendPayload(payload)
@@ -1056,6 +1058,11 @@ class SocketClient : @unchecked Sendable {
         let message: String
     }
 
+    struct OverlayConfigPayload: Codable {
+        let type: String
+        let config: OverlaySceneConfig?
+    }
+
 
     private func applyRTMP(_ c: RTMPConfig) {
 
@@ -1240,18 +1247,18 @@ class SocketClient : @unchecked Sendable {
                 }
 
             case "BatchEnded":
-                self.logTo("Batch Get All Req RTMP:\(self.didReceiveRTMPInBatch) Log:\(self.didReceiveLogConfigInBatch)")
+                self.logTo("Batch Get All Req RTMP:\(self.didReceiveRTMPInBatch) Log:\(self.didReceiveLogConfigInBatch) Overlay:\(self.didReceiveOverlayConfigInBatch)")
                 guard let cont = self.rtmpBatchContinuation else {
                     self.logTo("[rtmpBatch] no pending continuation, ignore")
                     return
                 }
-                let success = self.didReceiveRTMPInBatch
+                let success = self.didReceiveRTMPInBatch && self.didReceiveOverlayConfigInBatch
                 self.rtmpBatchContinuation = nil
                 self.isProcessingBatch = false
                 updateLogFixState()
                 updateONLogFixState()
                 if !success {
-                    self.logTo("[rtmpBatch] RTMP config missing or decode failed")
+                    self.logTo("[rtmpBatch] required config missing or decode failed")
                     self._closeConnection()
                 }
                 cont.resume(returning: success)
@@ -1339,6 +1346,22 @@ class SocketClient : @unchecked Sendable {
                         self.rtmpContinuation = nil
                         cont.resume(returning: true)
                     }
+                }
+
+            case "overlayConfig":
+                do {
+                    let payload = try decoder.decode(OverlayConfigPayload.self, from: data)
+                    if let config = payload.config {
+                        OutputOverlayMetalRenderer.shared.apply(config: config)
+                        self.didReceiveOverlayConfigInBatch = true
+                    } else {
+                        OutputOverlayMetalRenderer.shared.reloadConfig()
+                        self.logTo("[Socket] overlayConfig missing config, fallback reload from App Group")
+                    }
+                } catch {
+                    let raw = String(data: data, encoding: .utf8) ?? "?"
+                    self.logTo("[Socket] overlayConfig decode error: \(error) data=\(raw.prefix(200))")
+                    OutputOverlayMetalRenderer.shared.reloadConfig()
                 }
 
             case "log":

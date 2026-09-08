@@ -76,6 +76,17 @@ final class OutputOverlayMetalRenderer: @unchecked Sendable {
         clearCache()
     }
 
+    func apply(config: OverlaySceneConfig, persist: Bool = true) {
+        if persist {
+            OverlayConfigStore.save(config)
+        }
+        configLock.lock()
+        currentConfig = config
+        configLock.unlock()
+        clearCache()
+        sendlog(message: "[OverlayMetal] config applied enabled:\(config.enabled) time:\(config.time.enabled)")
+    }
+
     private func loadCurrentConfig() -> OverlaySceneConfig {
         configLock.lock()
         defer { configLock.unlock() }

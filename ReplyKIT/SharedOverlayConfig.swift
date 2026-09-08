@@ -100,4 +100,10 @@ enum OverlayConfigStore {
         }
         return config
     }
+
+    static func save(_ config: OverlaySceneConfig, defaults: UserDefaults? = UserDefaults(suiteName: "group.nuclear.liveAPP") ?? .standard) {
+        guard let data = try? JSONEncoder().encode(config) else { return }
+        defaults?.set(data, forKey: key)
+        defaults?.synchronize()
+    }
 }

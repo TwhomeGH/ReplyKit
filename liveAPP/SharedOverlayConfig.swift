@@ -16,15 +16,15 @@ enum OverlayAnchor: String, Codable, CaseIterable, Identifiable, Hashable {
 
     var title: String {
         switch self {
-        case .topLeft: return "左上"
-        case .topCenter: return "上中"
-        case .topRight: return "右上"
-        case .centerLeft: return "左中"
-        case .center: return "中央"
-        case .centerRight: return "右中"
-        case .bottomLeft: return "左下"
-        case .bottomCenter: return "下中"
-        case .bottomRight: return "右下"
+        case .topLeft: return String(localized: "overlayAnchor.topLeft")
+        case .topCenter: return String(localized: "overlayAnchor.topCenter")
+        case .topRight: return String(localized: "overlayAnchor.topRight")
+        case .centerLeft: return String(localized: "overlayAnchor.centerLeft")
+        case .center: return String(localized: "overlayAnchor.center")
+        case .centerRight: return String(localized: "overlayAnchor.centerRight")
+        case .bottomLeft: return String(localized: "overlayAnchor.bottomLeft")
+        case .bottomCenter: return String(localized: "overlayAnchor.bottomCenter")
+        case .bottomRight: return String(localized: "overlayAnchor.bottomRight")
         }
     }
 
@@ -62,9 +62,9 @@ enum OverlayFontWeight: String, Codable, CaseIterable, Identifiable, Hashable {
 
     var title: String {
         switch self {
-        case .regular: return "一般"
-        case .medium: return "中等"
-        case .bold: return "粗體"
+        case .regular: return String(localized: "fontWeight.regular")
+        case .medium: return String(localized: "fontWeight.medium")
+        case .bold: return String(localized: "fontWeight.bold")
         }
     }
 }
@@ -78,9 +78,9 @@ enum TimeOverlayFormat: String, Codable, CaseIterable, Identifiable, Hashable {
 
     var title: String {
         switch self {
-        case .timeOnly: return "時間"
-        case .dateTime: return "日期 + 時間"
-        case .elapsed: return "直播時長"
+        case .timeOnly: return String(localized: "timeFormat.timeOnly")
+        case .dateTime: return String(localized: "timeFormat.dateTime")
+        case .elapsed: return String(localized: "timeFormat.elapsed")
         }
     }
 

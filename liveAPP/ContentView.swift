@@ -952,11 +952,11 @@ struct LogSettingsView: View {
                     PIPSettingsView()
                 }
 
-                NavigationLink("PIP排版加工設置") {
+                NavigationLink(String(localized: "settings.pipLayout.title")) {
                     PIPLayoutSettingsView()
                 }
 
-                NavigationLink("輸出畫面加工設置") {
+                NavigationLink(String(localized: "settings.outputOverlay.title")) {
                     OverlaySettingsView()
                 }
 

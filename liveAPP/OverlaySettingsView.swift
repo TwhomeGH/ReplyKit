@@ -19,6 +19,7 @@ final class OverlaySettingsViewModel: ObservableObject {
 
     private func save() {
         OverlayConfigStore.save(config)
+        SocketServer.shared.pushOverlayConfig()
     }
 }
 
@@ -31,49 +32,49 @@ struct OverlaySettingsView: View {
                 OverlayPreview(config: viewModel.config)
                     .listRowInsets(EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))
 
-                Toggle("啟用畫面加工", isOn: $viewModel.config.enabled)
+                Toggle("outputOverlay.enable", isOn: $viewModel.config.enabled)
             }
 
-            Section(header: Text("時間圖層")) {
-                Toggle("顯示時間", isOn: $viewModel.config.time.enabled)
+            Section(header: Text("outputOverlay.timeLayer.section")) {
+                Toggle("outputOverlay.timeLayer.showTime", isOn: $viewModel.config.time.enabled)
                     .disabled(!viewModel.config.enabled)
 
-                Picker("內容", selection: $viewModel.config.time.format) {
+                Picker(String(localized: "outputOverlay.timeLayer.content"), selection: $viewModel.config.time.format) {
                     ForEach(TimeOverlayFormat.allCases) { format in
                         Text(format.title).tag(format)
                     }
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("位置")
+                    Text("outputOverlay.timeLayer.position")
                     OverlayAnchorGrid(selection: $viewModel.config.time.anchor)
                 }
 
-                Stepper("字體大小 \(Int(viewModel.config.time.fontSize))", value: $viewModel.config.time.fontSize, in: 10...48, step: 1)
+                Stepper("\(String(localized: "outputOverlay.timeLayer.fontSize")) \(Int(viewModel.config.time.fontSize))", value: $viewModel.config.time.fontSize, in: 10...48, step: 1)
 
-                Picker("字重", selection: $viewModel.config.time.fontWeight) {
+                Picker(String(localized: "outputOverlay.timeLayer.fontWeight"), selection: $viewModel.config.time.fontWeight) {
                     ForEach(OverlayFontWeight.allCases) { weight in
                         Text(weight.title).tag(weight)
                     }
                 }
 
-                ColorPicker("文字顏色", selection: Binding(
+                ColorPicker(String(localized: "outputOverlay.timeLayer.textColor"), selection: Binding(
                     get: { Color(hex: viewModel.config.time.textColorHex) ?? .white },
                     set: { viewModel.config.time.textColorHex = $0.hexString }
                 ))
             }
 
-            Section(header: Text("背景")) {
-                Toggle("背景底色", isOn: $viewModel.config.time.backgroundEnabled)
+            Section(header: Text("outputOverlay.background.section")) {
+                Toggle("outputOverlay.background.enabled", isOn: $viewModel.config.time.backgroundEnabled)
 
-                ColorPicker("背景顏色", selection: Binding(
+                ColorPicker(String(localized: "outputOverlay.background.color"), selection: Binding(
                     get: { Color(hex: viewModel.config.time.backgroundColorHex) ?? .black },
                     set: { viewModel.config.time.backgroundColorHex = $0.hexString }
                 ))
                 .disabled(!viewModel.config.time.backgroundEnabled)
 
                 Slider(value: $viewModel.config.time.backgroundOpacity, in: 0...1, step: 0.05) {
-                    Text("透明度")
+                    Text("outputOverlay.background.opacity")
                 } minimumValueLabel: {
                     Text("0")
                 } maximumValueLabel: {
@@ -81,24 +82,24 @@ struct OverlaySettingsView: View {
                 }
                 .disabled(!viewModel.config.time.backgroundEnabled)
 
-                Stepper("圓角 \(Int(viewModel.config.time.cornerRadius))", value: $viewModel.config.time.cornerRadius, in: 0...24, step: 1)
+                Stepper("\(String(localized: "outputOverlay.background.cornerRadius")) \(Int(viewModel.config.time.cornerRadius))", value: $viewModel.config.time.cornerRadius, in: 0...24, step: 1)
                     .disabled(!viewModel.config.time.backgroundEnabled)
             }
 
-            Section(header: Text("留白與偏移")) {
-                Stepper("水平邊距 \(Int(viewModel.config.time.marginX))", value: $viewModel.config.time.marginX, in: 0...160, step: 2)
-                Stepper("垂直邊距 \(Int(viewModel.config.time.marginY))", value: $viewModel.config.time.marginY, in: 0...160, step: 2)
-                Stepper("水平偏移 \(Int(viewModel.config.time.offsetX))", value: $viewModel.config.time.offsetX, in: -240...240, step: 2)
-                Stepper("垂直偏移 \(Int(viewModel.config.time.offsetY))", value: $viewModel.config.time.offsetY, in: -240...240, step: 2)
+            Section(header: Text("outputOverlay.spacing.section")) {
+                Stepper("\(String(localized: "outputOverlay.spacing.marginX")) \(Int(viewModel.config.time.marginX))", value: $viewModel.config.time.marginX, in: 0...160, step: 2)
+                Stepper("\(String(localized: "outputOverlay.spacing.marginY")) \(Int(viewModel.config.time.marginY))", value: $viewModel.config.time.marginY, in: 0...160, step: 2)
+                Stepper("\(String(localized: "outputOverlay.spacing.offsetX")) \(Int(viewModel.config.time.offsetX))", value: $viewModel.config.time.offsetX, in: -240...240, step: 2)
+                Stepper("\(String(localized: "outputOverlay.spacing.offsetY")) \(Int(viewModel.config.time.offsetY))", value: $viewModel.config.time.offsetY, in: -240...240, step: 2)
             }
 
             Section {
-                Button("恢復預設") {
+                Button("common.resetDefaults") {
                     viewModel.reset()
                 }
             }
         }
-        .navigationTitle("輸出畫面加工")
+        .navigationTitle(String(localized: "settings.outputOverlay.title"))
     }
 }
 

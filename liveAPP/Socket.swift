@@ -466,6 +466,11 @@ class SocketServer:ObservableObject {
 
     }
 
+    struct OverlayConfigPayload: Codable {
+        let type: String
+        let config: OverlaySceneConfig
+    }
+
 
     // MARK: - AdOverlay and ChatMessage Structs 廣告用日誌與聊天室訊息
     struct AdOverlay: Codable {
@@ -853,6 +858,32 @@ class SocketServer:ObservableObject {
 
     }
 
+    func GetOverlayConfig() -> [String: Any] {
+        let payload = OverlayConfigPayload(
+            type: "overlayConfig",
+            config: OverlayConfigStore.load()
+        )
+        guard let dictionary = dictionary(from: payload) else {
+            logTo("OverlayConfig encode failed")
+            return ["type": "overlayConfig", "config": NSNull()]
+        }
+        logTo("RTMP DebugOverlayConfig[Socket] enabled:\(payload.config.enabled) time:\(payload.config.time.enabled)")
+        return dictionary
+    }
+
+    func pushOverlayConfig() {
+        queueSend(dictionary: GetOverlayConfig())
+    }
+
+    private func dictionary<T: Encodable>(from payload: T) -> [String: Any]? {
+        guard let data = try? encoder.encode(payload),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let dictionary = object as? [String: Any] else {
+            return nil
+        }
+        return dictionary
+    }
+
     // MARK:JSON 處理
     let encoder = JSONEncoder()
     let decoder = JSONDecoder()
@@ -996,6 +1027,8 @@ class SocketServer:ObservableObject {
                         responses.append(GetRTMPConfig())
                     case "logConfig":
                         responses.append(GetLogConfig())
+                    case "requestOverlayConfig":
+                        responses.append(GetOverlayConfig())
                     case "log":
                         if let batchData = batchData {
                             for (key, value) in batchData {
@@ -1028,6 +1061,9 @@ class SocketServer:ObservableObject {
 
             case "requestRTMP":
                 sendTo(connection, dictionary: GetRTMPConfig())
+
+            case "requestOverlayConfig":
+                sendTo(connection, dictionary: GetOverlayConfig())
 
             case "requestSettings":
                 logTo("棄用Sync UserDefaults to client 該項目不使用")
