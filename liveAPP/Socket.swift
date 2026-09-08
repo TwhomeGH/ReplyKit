@@ -656,8 +656,7 @@ class SocketServer:ObservableObject {
 
         LPConfig.shared.streamViewerCount = nil
         LPConfig.shared.streamViewerList = []
-        LPConfig.shared.isReconnecting = false
-        LPConfig.shared.reconnectStatus = ""
+        resetReconnectState()
 
     }
 
@@ -1087,17 +1086,23 @@ class SocketServer:ObservableObject {
                     let maxAttempts = LPConfig.shared.reconnectMaxAttempts
                     switch status {
                     case "attempting":
-                        LPConfig.shared.isReconnecting = true
-                        LPConfig.shared.reconnectStatus = "🔄 \(attempt)/\(maxAttempts)"
+                        if attempt > 0 {
+                            LPConfig.shared.isReconnecting = true
+                            LPConfig.shared.reconnectStatus = "🔄 \(attempt)/\(maxAttempts)"
+                        } else {
+                            resetReconnectState()
+                        }
                     case "success":
-                        LPConfig.shared.isReconnecting = false
-                        LPConfig.shared.reconnectStatus = ""
+                        resetReconnectState()
                     case "failed":
-                        LPConfig.shared.isReconnecting = true
-                        LPConfig.shared.reconnectStatus = "❌ \(attempt)/\(maxAttempts)"
+                        if attempt > 0 {
+                            LPConfig.shared.isReconnecting = true
+                            LPConfig.shared.reconnectStatus = "❌ \(attempt)/\(maxAttempts)"
+                        } else {
+                            resetReconnectState()
+                        }
                     case "exhausted":
-                        LPConfig.shared.isReconnecting = false
-                        LPConfig.shared.reconnectStatus = ""
+                        resetReconnectState()
                     default:
                         break
                     }
@@ -1503,6 +1508,12 @@ class SocketServer:ObservableObject {
         default:
             return value
         }
+    }
+
+    private func resetReconnectState() {
+        LPConfig.shared.isReconnecting = false
+        LPConfig.shared.reconnectAttempt = 0
+        LPConfig.shared.reconnectStatus = ""
     }
 
 }

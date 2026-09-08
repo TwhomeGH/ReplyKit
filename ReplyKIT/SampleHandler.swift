@@ -1574,19 +1574,27 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             switch state {
             case .started(let attempt, let maxAttempts):
                 sendlog(message: "🔄 RTMP 正在重連 (第 \(attempt)/\(maxAttempts) 次)...")
-                self.notifyReconnectStatus(.attempting, attempt: attempt)
-                self.isReconnecting = true
+                self.reconnectAttempt = attempt
+                if attempt > 0 {
+                    self.notifyReconnectStatus(.attempting, attempt: attempt)
+                    self.isReconnecting = true
+                }
             case .succeeded:
                 sendlog(message: "🎉 RTMP 重連成功")
+                self.reconnectAttempt = 0
                 self.isReconnecting = false
                 self.isSessionReady = true
                 self.notifyReconnectStatus(.success)
                 await self.mediaMixer.startRunning()
             case .failed(let error):
                 sendlog(message: "RTMP 重連失敗 \(error)")
-                self.notifyReconnectStatus(.failed)
+                if self.reconnectAttempt > 0 {
+                    self.notifyReconnectStatus(.failed, attempt: self.reconnectAttempt)
+                }
             case .exhausted:
                 sendlog(message: "⚠️ RTMP 重連次數已達上限，停止直播")
+                self.reconnectAttempt = 0
+                self.isReconnecting = false
                 self.notifyReconnectStatus(.exhausted)
                 self.stopBroadcastWithError("RTMP 重連次數已達上限")
             }
@@ -1626,10 +1634,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 sendlog(message: "🎉 RTMP 推流成功", flush: true)
                 logger.info("🎉 RTMP 推流成功")
 
+                self.reconnectAttempt = 0
+                self.isReconnecting = false
                 self.notifyReconnectStatus(.success)
             } catch {
                 sendlog(message: "❌ RTMP publish 失敗 \(error)，由 RTMPConnection 自動重連")
-                self.notifyReconnectStatus(.failed)
             }
 
         }  catch RTMPConnection.Error.requestFailed(let response) {
@@ -1866,6 +1875,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     private var isBroadcastPaused = false
     private var pausedAt: Date?
     private var isReconnecting = false
+    private var reconnectAttempt = 0
 
     // MARK: 直播結束處理
     private var broadcastEndTask: Task<Void, Never>?
@@ -1878,6 +1888,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             isStopping = true
             isBroadcasting = false
             isInitialSyncDone = false
+            reconnectAttempt = 0
+            isReconnecting = false
 
             SocketClient.shared.sendStreamEnd()
 

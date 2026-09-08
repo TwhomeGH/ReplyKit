@@ -680,6 +680,12 @@ frameCount += 1
 當直播因網路問題 沒有連線成功 會最多嘗試重連 最多5次
 也會顯示在子母窗口上 提示當前重連次數
 
+### 修正 `0/5` 重連狀態誤判
+
+`reconnectStatus` 的 `attempt = 0` 不視為真正斷線重連，只代表 RTMP 狀態機尚未進入有效重連次數，或正在回復正常。主 App 收到 `attempting 0` / `failed 0` 時會清空 PiP / Live Activity 的重連狀態，避免畫面殘留 `0/5` 並誤判為沒連上。
+
+Broadcast Extension 端也避免在初始 `publish` 失敗時送出 `failed 0`；只有 HaishinKit reconnect callback 回報有效次數後，才會顯示重連提示。
+
 
 
 主要是針對音畫時間軸校正

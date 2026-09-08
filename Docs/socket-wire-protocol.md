@@ -239,7 +239,13 @@
 | 方向 | → Server |
 |------|----------|
 | Payload | `{"type":"reconnectStatus","status":"attempting"|"success"|"failed"|"exhausted","attempt":Int}` |
-| Server 行為 | 更新 PiP overlay 的 reconnecting 狀態顯示 |
+| Server 行為 | 只有 `attempt > 0` 的 `attempting` / `failed` 會更新 PiP overlay 的 reconnecting 狀態顯示；`attempt = 0`、`success`、`exhausted` 會清空重連狀態 |
+
+#### `attempt = 0` 防殘留規則
+
+`attempt = 0` 不代表「第 0 次重連中」，只表示 RTMP 狀態機尚未進入有效重連次數，或正在回復到正常狀態。主 App 收到 `attempting 0` / `failed 0` 時必須清掉 `LPConfig.shared.isReconnecting` 與 `LPConfig.shared.reconnectStatus`，避免 PiP / Live Activity 顯示 `0/5` 後誤判為斷線並卡住。
+
+Broadcast Extension 端也不應在初始 `publish` 失敗時直接送出 `failed 0`；需等 HaishinKit 的 reconnect callback 回報 `.started(attempt > 0)` 後，才把後續 `failed` 視為可顯示的重連狀態。
 
 ---
 
