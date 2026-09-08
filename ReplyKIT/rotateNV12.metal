@@ -131,7 +131,8 @@ kernel void compositeOverlayBGRAToNV12(
     uint2 dstPos = uint2(params.originX + gid.x, params.originY + gid.y);
     if (dstPos.x >= params.dstWidth || dstPos.y >= params.dstHeight) return;
 
-    float4 rgba = float4(overlay.read(gid));
+    uint2 overlayPos = uint2(gid.x, params.overlayHeight - 1u - gid.y);
+    float4 rgba = float4(overlay.read(overlayPos));
     float alpha = clamp(rgba.a * params.opacity, 0.0, 1.0);
     if (alpha <= 0.001) return;
 
@@ -151,7 +152,8 @@ kernel void compositeOverlayBGRAToNV12(
                 if (samplePos.x >= params.overlayWidth || samplePos.y >= params.overlayHeight) {
                     continue;
                 }
-                float4 sampleRGBA = float4(overlay.read(samplePos));
+                uint2 overlaySamplePos = uint2(samplePos.x, params.overlayHeight - 1u - samplePos.y);
+                float4 sampleRGBA = float4(overlay.read(overlaySamplePos));
                 float sampleAlpha = clamp(sampleRGBA.a * params.opacity, 0.0, 1.0);
                 if (sampleAlpha <= 0.001) {
                     continue;

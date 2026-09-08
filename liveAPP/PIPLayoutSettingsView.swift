@@ -173,7 +173,7 @@ private struct PIPLayoutPreview: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let width = max(300, proxy.size.width)
+            let width = proxy.size.width
             let height = width * 2 / 3
             let scale = width / 300
             let metrics = PIPPreviewMetrics(scale: scale)
@@ -183,37 +183,44 @@ private struct PIPLayoutPreview: View {
                 Rectangle()
                     .fill(Color(red: 0.07, green: 0.08, blue: 0.09))
 
-                VStack(alignment: .leading, spacing: 4 * scale) {
-                    messageRow(
-                        name: AppLanguage.localized("pipLayout.preview.hostName"),
-                        message: AppLanguage.localized("pipLayout.preview.mainMessage"),
-                        fontSize: mainFontSize,
-                        accent: .cyan,
-                        scale: scale
-                    )
+                if mode == .normal {
+                    VStack(alignment: .leading, spacing: 4 * scale) {
+                        messageRow(
+                            name: AppLanguage.localized("pipLayout.preview.hostName"),
+                            message: AppLanguage.localized("pipLayout.preview.mainMessage"),
+                            fontSize: mainFontSize,
+                            accent: .cyan,
+                            scale: scale
+                        )
 
-                    messageRow(
-                        name: AppLanguage.localized("pipLayout.preview.viewerName"),
-                        message: AppLanguage.localized("pipLayout.preview.secondMessage"),
-                        fontSize: secondFontSize,
-                        accent: .green,
-                        scale: scale
-                    )
-                    .opacity(0.82)
+                        messageRow(
+                            name: AppLanguage.localized("pipLayout.preview.viewerName"),
+                            message: AppLanguage.localized("pipLayout.preview.secondMessage"),
+                            fontSize: secondFontSize,
+                            accent: .green,
+                            scale: scale
+                        )
+                        .opacity(0.82)
+                    }
+                    .padding(.leading, metrics.messageLeading)
+                    .padding(.top, topMargin)
+                    .frame(width: width - metrics.messageLeading - 10 * scale, alignment: .leading)
                 }
-                .padding(.leading, metrics.messageLeading)
-                .padding(.top, topMargin)
-                .frame(width: width - metrics.messageLeading - 10 * scale, alignment: .leading)
 
-                HStack(spacing: 6 * scale) {
+                HStack(spacing: 4 * scale) {
                     elapsedBadge(scale: scale)
+                        .layoutPriority(3)
                     statusBadge(scale: scale)
+                        .layoutPriority(2)
                     viewerBadge(scale: scale)
+                        .layoutPriority(1)
                     Spacer(minLength: 0)
                 }
                 .padding(.leading, metrics.elapsedX)
                 .padding(.top, metrics.elapsedY - 2 * scale)
                 .frame(width: width - metrics.elapsedX - 8 * scale, alignment: .leading)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
 
                 nowTimeBadge(scale: scale, canvasWidth: width)
                     .position(x: width * 0.5, y: metrics.nowTimeCenterY)
@@ -239,7 +246,10 @@ private struct PIPLayoutPreview: View {
             Text("00:12:34")
                 .font(.system(size: 14 * scale, weight: .regular, design: .monospaced))
                 .foregroundStyle(.white)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
         }
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private func nowTimeBadge(scale: CGFloat, canvasWidth: CGFloat) -> some View {
@@ -272,6 +282,7 @@ private struct PIPLayoutPreview: View {
             .clipShape(RoundedRectangle(cornerRadius: 4 * scale))
             .lineLimit(1)
             .minimumScaleFactor(0.6)
+            .truncationMode(.tail)
     }
 
     private func viewerBadge(scale: CGFloat) -> some View {
@@ -289,6 +300,7 @@ private struct PIPLayoutPreview: View {
         .clipShape(Capsule())
         .lineLimit(1)
         .minimumScaleFactor(0.7)
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private func messageRow(name: String, message: String, fontSize: Double, accent: Color, scale: CGFloat) -> some View {

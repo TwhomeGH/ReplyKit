@@ -9,7 +9,10 @@ final class OutputOverlayMetalRenderer: @unchecked Sendable {
     static let shared = OutputOverlayMetalRenderer()
 
     private var pipeline: MTLComputePipelineState?
-    private var textureCache: [String: (texture: MTLTexture, size: CGSize)] = [:]
+    private var cachedTextureKey: String?
+    private var cachedTexture: (texture: MTLTexture, size: CGSize)?
+    private var cachedSecond: Int = -1
+    private var cachedText: String = ""
     private let formatter = DateFormatter()
     private let startedAt = Date()
     private let configLock = NSLock()
@@ -65,7 +68,10 @@ final class OutputOverlayMetalRenderer: @unchecked Sendable {
 
     func clearCache() {
         textureLock.lock()
-        textureCache.removeAll()
+        cachedTextureKey = nil
+        cachedTexture = nil
+        cachedSecond = -1
+        cachedText = ""
         textureLock.unlock()
     }
 
@@ -109,7 +115,7 @@ final class OutputOverlayMetalRenderer: @unchecked Sendable {
     }
 
     private func makeTimeTexture(config: TimeOverlayConfig) -> (texture: MTLTexture, size: CGSize)? {
-        let text = timeText(config: config)
+        let text = cachedTimeText(config: config)
         let key = [
             text,
             "\(config.fontSize)",
@@ -124,7 +130,7 @@ final class OutputOverlayMetalRenderer: @unchecked Sendable {
         ].joined(separator: "|")
 
         textureLock.lock()
-        let cached = textureCache[key]
+        let cached = cachedTextureKey == key ? cachedTexture : nil
         textureLock.unlock()
         if let cached {
             return cached
@@ -185,18 +191,39 @@ final class OutputOverlayMetalRenderer: @unchecked Sendable {
 
         let value = (texture: texture, size: CGSize(width: width, height: height))
         textureLock.lock()
-        textureCache[key] = value
+        cachedTextureKey = key
+        cachedTexture = value
         textureLock.unlock()
         return value
     }
 
-    private func timeText(config: TimeOverlayConfig) -> String {
+    private func cachedTimeText(config: TimeOverlayConfig) -> String {
+        let now = Date()
+        let second = Int(now.timeIntervalSince1970)
+
+        textureLock.lock()
+        if cachedSecond == second, !cachedText.isEmpty {
+            let text = cachedText
+            textureLock.unlock()
+            return text
+        }
+        textureLock.unlock()
+
+        let text = timeText(config: config, now: now)
+        textureLock.lock()
+        cachedSecond = second
+        cachedText = text
+        textureLock.unlock()
+        return text
+    }
+
+    private func timeText(config: TimeOverlayConfig, now: Date) -> String {
         switch config.format {
         case .timeOnly, .dateTime:
             formatter.dateFormat = config.format.dateFormat
-            return formatter.string(from: Date())
+            return formatter.string(from: now)
         case .elapsed:
-            let totalSeconds = max(0, Int(Date().timeIntervalSince(startedAt)))
+            let totalSeconds = max(0, Int(now.timeIntervalSince(startedAt)))
             let hours = totalSeconds / 3600
             let minutes = (totalSeconds % 3600) / 60
             let seconds = totalSeconds % 60
