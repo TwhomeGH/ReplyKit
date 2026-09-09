@@ -501,7 +501,7 @@ final class VideoFrameProcessor {
 
     func diagnostics() async -> VideoProcessorDiagnostics {
         let snapshot = stateSnapshot()
-        await actor.diagnostics(
+        return await actor.diagnostics(
             isActive: snapshot.isActive,
             processedCount: snapshot.processedCount,
             droppedCount: snapshot.droppedCount
