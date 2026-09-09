@@ -158,6 +158,7 @@ MTLCommandBuffer composite encoder
 - Socket queue / Darwin notification 的 `apply()` / `reloadConfig()` 只換 config + bump version + 觸發 producer。
 - 時間 overlay 更新由 frame 偵測秒數變更時觸發 producer 非同步重建，故最多延遲約 1 幀（16ms 內不可察覺）。
 - 原程式 `DateFormatter`（非 thread-safe）在 frame threads 併發使用是隱藏 bug，改後只在 producer 單一執行緒使用。
+- 2026-09 追修：`pipeline` 的存在檢查與發布也統一經過 `stateLock`。雖然建立 pipeline 發生在 serial `producerQueue`，但 frame path 會同時讀取 `pipeline`；所有 published state 必須維持同一套鎖規則，避免後續改動重新引入 data race。
 
 ### 驗證
 

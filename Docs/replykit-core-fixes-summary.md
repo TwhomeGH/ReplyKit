@@ -1165,7 +1165,12 @@ acquire/recycle 就地改 `bucket.items`，不再每次寫回 dictionary 觸發 
 - 新增 `makeParams(srcW:srcH:dstW:dstH:oDstW:oDstH:angle:)` 純函式，集中 scale/offset/rot 幾何。
 - 新增 `RenderParamsKey` + `renderParamsKey/renderParamsValue` 快照；`paramsForFrame()` 每幀比對 key（src/dst/oDst/angle），命中即重用，miss 才算一次並更新快照。
 - 快照以 `lifecycleLock` 保護（多幀 preamble 併行），與 overlay RenderPlan、GPU failure/quality 狀態共用同一把鎖。
-- 移除原本 `renderPlaneYUV` 內的 debug log（`GPU Shader 寬高 參數...`）逐幀字串拼裝。
+- `renderPlaneYUV` 內的 debug log（`GPU Shader 寬高 參數...`）改成先判斷 `debug`，避免關閉 debug 時仍逐幀建立字串。
+
+### 2026-09 追修
+
+- 發現 Swift 的函式參數會先求值；原本 `logTo("GPU Shader...")` 即使 `logTo` 內部檢查 `debug == false`，每幀仍會完成字串插值。
+- 改為 `if debug { logTo(...) }` 包住兩個 dispatch 尺寸 log，讓關閉 rotate debug 時完全不做該字串拼裝。
 
 ### 預期
 
@@ -1204,6 +1209,14 @@ acquire/recycle 就地改 `bucket.items`，不再每次寫回 dictionary 觸發 
 - completion handler 記錄 submit→down 延遲進 fixed-capacity circular buffer（600 筆，覆寫最舊，`commandStatsLock` 保護）。
 - `latencyStats()` 取樣排序算 avg/max/p95；空樣本回傳 0。
 - `VideoProcessorDiagnostics` 擴充 `gpuLatency` + `srcDims/dstDims`，`summary` 附上。
+- `completionLatencyStats()` 回傳 tuple，`VideoProcessorDiagnostics.gpuLatency` 使用正式 `GPUCompletionLatencyStats`；組裝 diagnostics 時需明確轉型，避免 tuple 與 struct 混用造成編譯錯。
+
+**VideoFrameProcessor counter snapshot（2026-09 追修）：**
+
+- `VideoFrameProcessor.isActive / processedCount / droppedCount` 改由 `stateLock` 保護。
+- `process()` 內的 processed/drop 累加與 `diagnostics()` / `[VFrame]` / `[Video流水]` 讀取改走 `stateSnapshot()`。
+- `SampleHandler.logVideoHealthIfNeeded()` 初始化與每秒 delta 計算也改成一次讀取 `videoProcessor.stateSnapshot()`，避免同一筆 VHealth 樣本讀到不一致的 processed/drop 組合。
+- 補齊 VHealth window 所需的 `lastVideoHealth*` 狀態欄位，並在 async diagnostics 前先保存 `let processor = videoProcessor`，讓 capture list 有明確來源。
 
 **設備採集（extension process）：**
 - `thermalStateText()`：`ProcessInfo.processInfo.thermalState`（nominal/fair/serious/critical）。
