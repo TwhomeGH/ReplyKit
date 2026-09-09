@@ -276,7 +276,7 @@ actor FrameProcessorActor {
         if let r = gpuRotator, let last = lastKey, last == key {
             return r
         }
-        await gpuRotator?.cleanup()
+        gpuRotator?.cleanup()
         lastKey = key
         gpuRotator = RPVideoRotatorNV12BatchQueueOptimized(
             dstW: key.dstW, dstH: key.dstH,
@@ -327,7 +327,7 @@ actor FrameProcessorActor {
     }
 
     func cleanup() async {
-        await gpuRotator?.cleanup()
+        gpuRotator?.cleanup()
         cpuRotator?.cleanup()
         gpuRotator = nil
         cpuRotator = nil
@@ -386,8 +386,6 @@ actor FrameProcessorActor {
         } ?? .empty
         let adW = RPConfig.shared.state.ADWidth
         let adH = RPConfig.shared.state.ADHeight
-        let odW = RPConfig.shared.state.ODWidth
-        let odH = RPConfig.shared.state.ODHeight
         let srcText = (adW > 0 && adH > 0) ? "\(adW)x\(adH)" : "auto"
         let dstText: String
         if let rotator, rotator.OutWW > 0 && rotator.OutHH > 0 {

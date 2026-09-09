@@ -410,7 +410,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         }
     }
 
-    func cleanup() async {
+    func cleanup() {
         // isActive 只在 outputPoolLock 領域讀寫（cleanup 為唯一寫入者，
         // getReusableOutput / recycleOutput 在該鎖內讀取）。
         outputPoolLock.lock()

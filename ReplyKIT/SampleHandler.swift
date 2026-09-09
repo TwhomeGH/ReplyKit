@@ -2269,12 +2269,12 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             let processedAvg = window.processed.reduce(0, +) / Double(max(1, window.processed.count))
             let processedMax = window.processed.max() ?? 0
             let droppedAvg = window.dropped.reduce(0, +) / Double(max(1, window.dropped.count))
-            let timeoutDelta = window.timeout
+            let windowTimeoutDelta = window.timeout
 
             let status: String
-            if inputAvg < 20, timeoutDelta == 0, diagnostics?.isActive != false {
+            if inputAvg < 20, windowTimeoutDelta == 0, diagnostics?.isActive != false {
                 status = "upstream-throttle"
-            } else if timeoutDelta > 0 || (diagnostics?.commandStats.inFlight ?? 0) > 2 {
+            } else if windowTimeoutDelta > 0 || (diagnostics?.commandStats.inFlight ?? 0) > 2 {
                 status = "metal-pressure"
             } else if inputAvg >= 20, processedAvg < inputAvg * 0.6 {
                 status = "processor-pressure"
@@ -2302,7 +2302,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 latencyAvg: latAvg,
                 latencyMax: latMax,
                 latencyP95: latP95,
-                timeoutDelta: timeoutDelta
+                timeoutDelta: windowTimeoutDelta
             )
             sendlog(
                 title: "[VHealth]",
