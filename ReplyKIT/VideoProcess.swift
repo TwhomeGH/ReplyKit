@@ -380,6 +380,10 @@ actor FrameProcessorActor {
 
     func diagnostics(isActive: Bool, processedCount: Int, droppedCount: Int) -> VideoProcessorDiagnostics {
         let rotator = gpuRotator
+        let latencyTuple = rotator?.completionLatencyStats()
+        let latency = latencyTuple.map {
+            GPUCompletionLatencyStats(avgMs: $0.avgMs, maxMs: $0.maxMs, p95Ms: $0.p95Ms)
+        } ?? .empty
         let adW = RPConfig.shared.state.ADWidth
         let adH = RPConfig.shared.state.ADHeight
         let odW = RPConfig.shared.state.ODWidth
@@ -401,7 +405,7 @@ actor FrameProcessorActor {
             hasGpuRotator: rotator != nil,
             gpuPermanentFailure: rotator?.isPermanentlyDead ?? false,
             commandStats: rotator?.commandStats() ?? .empty,
-            gpuLatency: rotator?.completionLatencyStats() ?? .empty,
+            gpuLatency: latency,
             srcDims: srcText,
             dstDims: dstText
         )
@@ -413,9 +417,14 @@ final class VideoFrameProcessor {
     private let sendlog: (String) -> Void
     private var actor: FrameProcessorActor
     private var angle: RotationAngle
-    private(set) var isActive = true
-    private(set) var processedCount = 0
-    private(set) var droppedCount = 0
+    private let stateLock = NSLock()
+    private var isActiveState = true
+    private var processedCountState = 0
+    private var droppedCountState = 0
+
+    var isActive: Bool { stateSnapshot().isActive }
+    var processedCount: Int { stateSnapshot().processedCount }
+    var droppedCount: Int { stateSnapshot().droppedCount }
 
     init(mediaMixer: MediaMixer, sendlog: @escaping (String) -> Void) {
         self.mediaMixer = mediaMixer
@@ -426,7 +435,7 @@ final class VideoFrameProcessor {
             sendlog: sendlog
         )
         let onFailure: @Sendable () -> Void = { [weak self] in
-            self?.isActive = false
+            self?.setActive(false)
             return
         }
         actor.setPermanentFailureHandler(onFailure)
@@ -434,7 +443,8 @@ final class VideoFrameProcessor {
 
     func process(_ sampleBuffer: CMSampleBuffer, originalTime: CMSampleTimingInfo) {
         guard let imageBuffer = sampleBuffer.imageBuffer else { return }
-        if processedCount % 1500 == 0 || processedCount == 60 {
+        let initialSnapshot = stateSnapshot()
+        if initialSnapshot.processedCount % 1500 == 0 || initialSnapshot.processedCount == 60 {
             let fmt = CVPixelBufferGetPixelFormatType(imageBuffer)
             let fmtStr: String
             switch fmt {
@@ -444,17 +454,19 @@ final class VideoFrameProcessor {
             case kCVPixelFormatType_32ARGB: fmtStr = "ARGB"
             default: fmtStr = "other(\(String(format: "0x%08x", fmt)))"
             }
-            sendlog("[VFormat] #\(processedCount) fmt=\(fmtStr) \(CVPixelBufferGetWidth(imageBuffer))x\(CVPixelBufferGetHeight(imageBuffer))")
+            sendlog("[VFormat] #\(initialSnapshot.processedCount) fmt=\(fmtStr) \(CVPixelBufferGetWidth(imageBuffer))x\(CVPixelBufferGetHeight(imageBuffer))")
         }
         Task {
             guard let rotated = await actor.processFrame(imageBuffer: imageBuffer, originalTime: originalTime, angle: angle) else {
-                droppedCount &+= 1
+                let snapshot = markDropped()
+                let droppedCount = snapshot.droppedCount
+                let processedCount = snapshot.processedCount
                 if droppedCount % 300 == 0 {
                     sendlog("[VProc] ⚠️ 已累積 drop \(droppedCount) 幀 (proc: \(processedCount))")
                 }
                 return
             }
-            processedCount &+= 1
+            let processedCount = markProcessed()
             guard await mediaMixer.isRunning else {
                 if processedCount % 300 == 0 {
                     sendlog("[VProc] ⚠️ MediaMixer 未運行，丟棄 processed video")
@@ -466,7 +478,7 @@ final class VideoFrameProcessor {
     }
 
     func cleanup() {
-        isActive = false
+        setActive(false)
         Task { await actor.cleanup() }
     }
 
@@ -488,10 +500,47 @@ final class VideoFrameProcessor {
     }
 
     func diagnostics() async -> VideoProcessorDiagnostics {
+        let snapshot = stateSnapshot()
         await actor.diagnostics(
-            isActive: isActive,
-            processedCount: processedCount,
-            droppedCount: droppedCount
+            isActive: snapshot.isActive,
+            processedCount: snapshot.processedCount,
+            droppedCount: snapshot.droppedCount
         )
+    }
+
+    func stateSnapshot() -> (isActive: Bool, processedCount: Int, droppedCount: Int) {
+        stateLock.lock()
+        let snapshot = (
+            isActive: isActiveState,
+            processedCount: processedCountState,
+            droppedCount: droppedCountState
+        )
+        stateLock.unlock()
+        return snapshot
+    }
+
+    private func setActive(_ value: Bool) {
+        stateLock.lock()
+        isActiveState = value
+        stateLock.unlock()
+    }
+
+    private func markProcessed() -> Int {
+        stateLock.lock()
+        processedCountState &+= 1
+        let count = processedCountState
+        stateLock.unlock()
+        return count
+    }
+
+    private func markDropped() -> (processedCount: Int, droppedCount: Int) {
+        stateLock.lock()
+        droppedCountState &+= 1
+        let snapshot = (
+            processedCount: processedCountState,
+            droppedCount: droppedCountState
+        )
+        stateLock.unlock()
+        return snapshot
     }
 }

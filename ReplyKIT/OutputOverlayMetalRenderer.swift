@@ -211,7 +211,11 @@ final class OutputOverlayMetalRenderer: @unchecked Sendable {
     /// Producer 專用:序列執行緒上建立 pipeline(僅一次)。失敗時 frame path 會
     /// 因為 pipeline == nil 而跳過 overlay。
     private func ensurePipeline() {
-        if pipeline != nil { return }
+        stateLock.lock()
+        let hasPipeline = pipeline != nil
+        stateLock.unlock()
+        if hasPipeline { return }
+
         do {
             guard let function = MetalContext.shared.library.makeFunction(name: "compositeOverlayBGRAToNV12") else {
                 logThrottled(last: &lastMissingCompositeFunctionLogTime, interval: 5) {
@@ -221,7 +225,9 @@ final class OutputOverlayMetalRenderer: @unchecked Sendable {
             }
             let state = try MetalContext.shared.device.makeComputePipelineState(function: function)
             stateLock.lock()
-            pipeline = state
+            if pipeline == nil {
+                pipeline = state
+            }
             stateLock.unlock()
         } catch {
             logThrottled(last: &lastPipelineFailedLogTime, interval: 5) {

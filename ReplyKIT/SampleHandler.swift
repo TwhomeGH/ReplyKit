@@ -2183,6 +2183,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     private var healthSampleProcessedFPS: [Double] = []
     private var healthSampleDroppedFPS: [Double] = []
     private var healthWindowTimeoutDelta: UInt64 = 0
+    private var lastVideoHealthLogTime: Double = 0
+    private var lastVideoHealthFrameCount: Int = 0
+    private var lastVideoHealthProcessedCount: Int = 0
+    private var lastVideoHealthDroppedCount: Int = 0
+    private var lastVideoHealthTimeoutCount: UInt64 = 0
 
     /// 在 processSampleBuffer 執行緒（每秒一次）累積樣本；窗口滿時搬出樣本並回傳。
     private func accumulateHealthSample(
@@ -2214,10 +2219,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         guard now.isFinite, now > 0 else { return }
 
         if lastVideoHealthLogTime <= 0 {
+            let processorSnapshot = videoProcessor?.stateSnapshot()
             lastVideoHealthLogTime = now
             lastVideoHealthFrameCount = videoFrameCount
-            lastVideoHealthProcessedCount = videoProcessor?.processedCount ?? 0
-            lastVideoHealthDroppedCount = videoProcessor?.droppedCount ?? 0
+            lastVideoHealthProcessedCount = processorSnapshot?.processedCount ?? 0
+            lastVideoHealthDroppedCount = processorSnapshot?.droppedCount ?? 0
             return
         }
 
@@ -2225,8 +2231,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         guard elapsed >= 1.0 else { return }
 
         let inputDelta = videoFrameCount - lastVideoHealthFrameCount
-        let processedNow = videoProcessor?.processedCount ?? 0
-        let droppedNow = videoProcessor?.droppedCount ?? 0
+        let processorSnapshot = videoProcessor?.stateSnapshot()
+        let processedNow = processorSnapshot?.processedCount ?? 0
+        let droppedNow = processorSnapshot?.droppedCount ?? 0
         let processedDelta = processedNow - lastVideoHealthProcessedCount
         let droppedDelta = droppedNow - lastVideoHealthDroppedCount
         let previousTimeoutCount = lastVideoHealthTimeoutCount
@@ -2241,6 +2248,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         let droppedFPS = Double(droppedDelta) / elapsed
 
         // 先取 diagnostics（async）；timeout delta 以此為準
+        let processor = videoProcessor
         Task { [weak self, processor, previousTimeoutCount] in
             guard let self else { return }
             let diagnostics = await processor?.diagnostics()
@@ -2409,11 +2417,14 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             if videoFrameCount % 1500 == 0 {
                 let sinceStart = timestamp.seconds
                 let p = videoProcessor
-                sendlog(message: "[VFrame] #\(videoFrameCount) PTS:\(String(format:"%.3f",sinceStart))s rdy:\(sampleBuffer.dataReadiness == .ready) vp:\(p != nil ? (p!.isActive ? "Y" : "INACT.") : "N") init:\(processorsInitialized) drop:\(p?.droppedCount ?? 0) proc:\(p?.processedCount ?? 0)")
+                let ps = p?.stateSnapshot()
+                let vpState = ps.map { $0.isActive ? "Y" : "INACT." } ?? "N"
+                sendlog(message: "[VFrame] #\(videoFrameCount) PTS:\(String(format:"%.3f",sinceStart))s rdy:\(sampleBuffer.dataReadiness == .ready) vp:\(vpState) init:\(processorsInitialized) drop:\(ps?.droppedCount ?? 0) proc:\(ps?.processedCount ?? 0)")
             } else if RPConfig.shared.enablePipelineLog, videoFrameCount % 600 == 0 {
                 let sinceStart = timestamp.seconds
                 let p = videoProcessor
-                sendlog(message: "[Video流水] #\(videoFrameCount) PTS:\(String(format:"%.3f",sinceStart))s vp:\(p != nil ? "Y" : "N") init:\(processorsInitialized) drop:\(p?.droppedCount ?? 0) proc:\(p?.processedCount ?? 0)")
+                let ps = p?.stateSnapshot()
+                sendlog(message: "[Video流水] #\(videoFrameCount) PTS:\(String(format:"%.3f",sinceStart))s vp:\(ps != nil ? "Y" : "N") init:\(processorsInitialized) drop:\(ps?.droppedCount ?? 0) proc:\(ps?.processedCount ?? 0)")
             }
 
 
