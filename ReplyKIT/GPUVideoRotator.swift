@@ -248,35 +248,9 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         let height: Int
     }
 
-    // class-bucket：讓 pool 在 outputPoolLock 內「就地」修改，避免每幀
-    // outputPool[key] = pool 的 value-type COW copy（removeFirst/append 整列複製）。
-    final class OutputPoolBucket {
-        var items: [ReusableOutputSet] = []
-        init(items: [ReusableOutputSet] = []) { self.items = items }
-    }
-
-    
-    // 使用結構體作為 Dictionary 的 key
-    private var outputPool: [OutputKey: OutputPoolBucket] = [:]
+    private var outputPool: [OutputKey: CVPixelBufferPool] = [:]
     private let outputPoolLock = NSLock()
     private let maxPoolSize: Int
-
-
-    // 新增統一的 addToPool 方法
-        func addToPool(width: Int, height: Int, set: ReusableOutputSet) {
-            let key = OutputKey(width: width, height: height)
-            outputPoolLock.lock()
-            if let existing = outputPool[key] {
-                existing.items.append(set)
-            } else {
-                outputPool[key] = OutputPoolBucket(items: [set])
-            }
-            outputPoolLock.unlock()
-        }
-
-
-
-
 
     // MARK: - Metal Output Pool
     final class ReusableOutputSet {
@@ -284,18 +258,16 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         let yTex: MTLTexture
         let uvTex: MTLTexture
         let formatDescription: CMVideoFormatDescription?
-        var lastUsed: Date
-        var cvY: CVMetalTexture?
-        var cvUV: CVMetalTexture?
+        let cvY: CVMetalTexture?
+        let cvUV: CVMetalTexture?
 
         init(pixelBuffer: CVPixelBuffer, yTex: MTLTexture, uvTex: MTLTexture,
-             cvY: CVMetalTexture? = nil, cvUV: CVMetalTexture? = nil, lastUsed: Date = Date()) {
+             cvY: CVMetalTexture? = nil, cvUV: CVMetalTexture? = nil) {
             self.pixelBuffer = pixelBuffer
             self.yTex = yTex
             self.uvTex = uvTex
             self.cvY = cvY
             self.cvUV = cvUV
-            self.lastUsed = lastUsed
 
             // formatDescription 只依 pixelBuffer 的格式/尺寸而定，同一 pool key 的所有 buffer
             // 共用相同值；在建立時就生成並以 immutable let 持有，避免 completion thread
@@ -412,7 +384,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     func cleanup() {
         // isActive 只在 outputPoolLock 領域讀寫（cleanup 為唯一寫入者，
-        // getReusableOutput / recycleOutput 在該鎖內讀取）。
+        // outputBufferPool 在該鎖內讀取）。
         outputPoolLock.lock()
         guard isActive else {
             outputPoolLock.unlock()
@@ -437,22 +409,18 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         hasMetalResources = false
 
         outputPoolLock.lock()
-        for (_, bucket) in outputPool {
-            for outSet in bucket.items {
-                outSet.cvY = nil
-                outSet.cvUV = nil
-            }
-            bucket.items.removeAll(keepingCapacity: false)
-        }
+        let retiredPools = outputPool
+        let poolCount = retiredPools.count
         outputPool.removeAll()
         outputPoolLock.unlock()
 
         pipelineBilinear = nil
         pipelineBicubic = nil
 
-        let poolCount = outputPool.count
-        let bufferCount = outputPool.values.reduce(0) { $0 + $1.items.count }
-        logTo("cleanup called - releasing \(poolCount) output pool(s), \(bufferCount) pooled buffer(s)")
+        for pool in retiredPools.values {
+            CVPixelBufferPoolFlush(pool, .excessBuffers)
+        }
+        logTo("cleanup called - releasing \(poolCount) output pool(s)")
     }
 
 
@@ -495,7 +463,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     private let commandBufferTimeout: TimeInterval = 1.0
     private let metalFailureLogLock = NSLock()
     private var lastMetalFailureLogAt = Date.distantPast
-    private var lastPoolPressureLogAt = Date.distantPast
     private let commandStatsLock = NSLock()
     private var nextCommandID: UInt64 = 0
     private var submittedCommandCount: UInt64 = 0
@@ -675,7 +642,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     private func poolSnapshot() -> String {
         outputPoolLock.lock()
         let text = outputPool
-            .map { "\($0.key.width)x\($0.key.height):\($0.value.items.count)" }
+            .map { "\($0.key.width)x\($0.key.height)" }
             .sorted()
             .joined(separator: ",")
         outputPoolLock.unlock()
@@ -895,7 +862,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             return nil
         }
         guard let outSet = getReusableOutput(width: dstW, height: dstH) else {
-            handleMetalFailure("getReusableOutput(\(dstW)x\(dstH)) 返回 nil")
+            // Pool pressure is backpressure, not a Metal device failure.
             return nil
         }
 
@@ -907,7 +874,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             let uvcvTexIn = uvTexture,
             let cmd = commandBuffer else {
 
-            recycleOutput(outSet)
 
             handleMetalFailure("makeTexture 或 makeCommandBuffer 失敗 src:\(srcW)x\(srcH) dst:\(dstW)x\(dstH) y:\(yTexture != nil) uv:\(uvTexture != nil) cmd:\(commandBuffer != nil) fmt:\(pixelFormatDescription(inBuffer)) planes:\(CVPixelBufferGetPlaneCount(inBuffer))")
             
@@ -921,7 +887,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         guard renderPlaneYUV(cmd: cmd, compute: computePipeline,
                         srcY: ycvTexIn.tex, srcUV: uvcvTexIn.tex,
                         dstY: outSet.yTex, dstUV: outSet.uvTex, angle: angle) else {
-            recycleOutput(outSet)
             _ = markCommandCompleted(elapsedMs: 0)
             handleMetalFailure("renderPlaneYUV 建立 encoder 失敗 cmd:#\(commandSnapshot.id) srcY:\(textureDescription(ycvTexIn.tex)) srcUV:\(textureDescription(uvcvTexIn.tex)) dstY:\(textureDescription(outSet.yTex)) dstUV:\(textureDescription(outSet.uvTex))")
             return nil
@@ -967,7 +932,6 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                     self.logTo("commandBuffer 延遲完成 cmd:#\(commandSnapshot.id) status:\(cmd.status.rawValue) elapsed:\(String(format: "%.2f", elapsedMs))ms inflight:\(completedStats.inFlight)")
                 }
 
-                self.recycleOutput(frameC.outSet)
                 if completion.shouldResume {
                     cont.resume(returning: wrapped)
                 }
@@ -991,129 +955,59 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
     
 
   // MARK: - Reusable Output
-private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
-    var shouldLogPressure = false
-    outputPoolLock.lock()
-
-    guard isActive else {
+private func outputBufferPool(width: Int, height: Int) -> CVPixelBufferPool? {
+        let key = OutputKey(width: width, height: height)
+        outputPoolLock.lock()
+        let active = isActive
+        let existing = outputPool[key]
         outputPoolLock.unlock()
-        return nil
+        guard active else { return nil }
+        if let existing { return existing }
+
+        let attributes: [String: Any] = [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+            kCVPixelBufferWidthKey as String: width,
+            kCVPixelBufferHeightKey as String: height,
+            kCVPixelBufferMetalCompatibilityKey as String: true,
+            kCVPixelBufferIOSurfacePropertiesKey as String: [:]
+        ]
+        var created: CVPixelBufferPool?
+        guard CVPixelBufferPoolCreate(nil, nil, attributes as CFDictionary, &created) == kCVReturnSuccess,
+              let created else { return nil }
+
+        outputPoolLock.lock()
+        defer { outputPoolLock.unlock() }
+        guard isActive else { return nil }
+        if let existing = outputPool[key] { return existing }
+        outputPool[key] = created
+        return created
     }
 
-    let key = OutputKey(width: width, height: height)
-    if let bucket = outputPool[key], !bucket.items.isEmpty {
-        let set = bucket.items.removeFirst()
-        outputPoolLock.unlock()
-        return set
-    }
-    let currentPools = outputPool
-        .map { "\($0.key.width)x\($0.key.height):\($0.value.items.count)" }
-        .sorted()
-        .joined(separator: ",")
-
-    // lastPoolPressureLogAt 只在 outputPoolLock 內讀寫，避免併發 pool-miss 的 race
-    let now = Date()
-    if now.timeIntervalSince(lastPoolPressureLogAt) >= 5.0 {
-        lastPoolPressureLogAt = now
-        shouldLogPressure = true
-    }
-    outputPoolLock.unlock()
-
-    if shouldLogPressure {
-        logTo("output pool miss \(width)x\(height)，runtime 建立新 buffer，目前 pools:\(currentPools.isEmpty ? "empty" : currentPools)")
+    private func getReusableOutput(width: Int, height: Int) -> ReusableOutputSet? {
+        guard let pool = outputBufferPool(width: width, height: height) else { return nil }
+        let auxiliary = [
+            kCVPixelBufferPoolAllocationThresholdKey as String: max(3, maxPoolSize)
+        ] as CFDictionary
+        var buffer: CVPixelBuffer?
+        let status = CVPixelBufferPoolCreatePixelBufferWithAuxAttributes(nil, pool, auxiliary, &buffer)
+        guard status == kCVReturnSuccess, let buffer else { return nil }
+        guard let y = makeTexture(from: buffer, planeIndex: 0),
+              let uv = makeTexture(from: buffer, planeIndex: 1) else { return nil }
+        // Core Video may reuse storage only after all consumers release the buffer.
+        return ReusableOutputSet(pixelBuffer: buffer, yTex: y.tex, uvTex: uv.tex,
+                                 cvY: y.cv, cvUV: uv.cv)
     }
 
-    var pb: CVPixelBuffer?
-    let attrs: [String: Any] = [
-        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
-        kCVPixelBufferMetalCompatibilityKey as String: true,
-        kCVMetalTextureUsage as String: NSNumber(value: MTLTextureUsage.shaderRead.rawValue | MTLTextureUsage.shaderWrite.rawValue),
-        kCVPixelBufferWidthKey as String: width,
-        kCVPixelBufferHeightKey as String: height
-    ]
-    let status = CVPixelBufferCreate(nil, width, height,
-                                     kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
-                                     attrs as CFDictionary, &pb)
-    guard status == kCVReturnSuccess, let pixelBuffer = pb else {
-        sendlog(message: "[GPU Rotator] CVPixelBufferCreate 失敗 status:\(status) size:\(width)x\(height) stats:\(commandStatsSnapshot()) pools:\(poolSnapshot()) mem:\(memorySnapshot())")
-        return nil
-    }
-
-    let yTex = makeTexture(from: pixelBuffer, planeIndex: 0)
-    let uvTex = makeTexture(from: pixelBuffer, planeIndex: 1)
-    guard let yTex,
-          let uvTex else {
-        sendlog(message: "[GPU Rotator] output texture 建立失敗 size:\(width)x\(height) y:\(yTex != nil) uv:\(uvTex != nil) fmt:\(pixelFormatDescription(pixelBuffer))")
-        return nil
-    }
-
-    return ReusableOutputSet(pixelBuffer: pixelBuffer,
-                             yTex: yTex.tex,
-                             uvTex: uvTex.tex,
-                             cvY: yTex.cv,
-                             cvUV: uvTex.cv,
-                             lastUsed: Date())
-}
-
-
-
-    // MARK: - Recycle Output
-    func recycleOutput(_ outSet: ReusableOutputSet) {
-    outputPoolLock.lock()
-
-    guard isActive else {
-        outputPoolLock.unlock()
-        outSet.cvY = nil
-        outSet.cvUV = nil
-        return
-    }
-    let width = CVPixelBufferGetWidth(outSet.pixelBuffer)
-    let height = CVPixelBufferGetHeight(outSet.pixelBuffer)
-    let key = OutputKey(width: width, height: height)
-
-    let bucket: OutputPoolBucket
-    if let existing = outputPool[key] {
-        bucket = existing
-    } else {
-        bucket = OutputPoolBucket()
-        outputPool[key] = bucket
-    }
-    if bucket.items.count >= maxPoolSize {
-        let removed = bucket.items.removeFirst()
-        removed.cvY = nil
-        removed.cvUV = nil
-    }
-    bucket.items.append(outSet)
-
-    outputPoolLock.unlock()
-}
-
-    // MARK: - Pre-warm pool
     private func prewarmPool() {
         guard hasMetalResources else { return }
-        let sizes: [(Int, Int)] = [(dstWW, dstHH), (OutWW, OutHH)]
-        for (w, h) in sizes where w > 0 && h > 0 {
-            let key = OutputKey(width: w, height: h)
-            outputPoolLock.lock()
-            let alreadyExists = outputPool[key] != nil
-            outputPoolLock.unlock()
-            guard !alreadyExists else { continue }
-            var pooled: [ReusableOutputSet] = []
+        for (width, height) in [(dstWW, dstHH), (OutWW, OutHH)] where width > 0 && height > 0 {
+            var buffers: [ReusableOutputSet] = []
             for _ in 0..<3 {
-                if let set = getReusableOutput(width: w, height: h) {
-                    pooled.append(set)
+                if let buffer = getReusableOutput(width: width, height: height) {
+                    buffers.append(buffer)
                 }
             }
-            if !pooled.isEmpty {
-                outputPoolLock.lock()
-                if outputPool[key] == nil {
-                    outputPool[key] = OutputPoolBucket(items: pooled)
-                } else {
-                    outputPool[key]?.items.append(contentsOf: pooled)
-                }
-                outputPoolLock.unlock()
-                logTo("prewarm pool \(w)x\(h): \(pooled.count) buffers")
-            }
+            withExtendedLifetime(buffers) {}
         }
     }
 

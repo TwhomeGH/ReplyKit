@@ -70,18 +70,20 @@ actor FrameProcessorActor {
         angle: RotationAngle
     ) async -> CMSampleBuffer? {
         let result: CMSampleBuffer?
+        var ownsOutputStorage = false
         if let rotator = await getOrCreateGpuRotator() {
             if rotator.isPermanentlyDead {
                 onPermanentFailure?()
                 result = await tryCpuFallback(imageBuffer: imageBuffer, originalTime: originalTime, angle: angle)
             } else {
                 result = await rotator.rotateAsync(pixelBuffer: imageBuffer, originalTime: originalTime, angle: angle)
+                ownsOutputStorage = true
             }
         } else {
             result = await tryCpuFallback(imageBuffer: imageBuffer, originalTime: originalTime, angle: angle)
         }
         trackFrameInterval(pts: originalTime.presentationTimeStamp)
-        return settle(result, originalTime: originalTime)
+        return settle(result, originalTime: originalTime, ownsOutputStorage: ownsOutputStorage)
     }
 
     // 量測輸入幀的實際 PTS 間隔（EMA），供 freeze fallback 在 duration 無效時使用，
@@ -105,7 +107,7 @@ actor FrameProcessorActor {
         lastInputPTS = pts
     }
 
-    private func settle(_ result: CMSampleBuffer?, originalTime: CMSampleTimingInfo) -> CMSampleBuffer? {
+    private func settle(_ result: CMSampleBuffer?, originalTime: CMSampleTimingInfo, ownsOutputStorage: Bool) -> CMSampleBuffer? {
         guard let result else {
             consecutiveDropCount += 1
             if consecutiveDropCount == fallbackFreezeThreshold {
@@ -125,16 +127,17 @@ actor FrameProcessorActor {
         }
 
         consecutiveDropCount = 0
-        storeLastGoodSnapshot(from: result)
+        storeLastGoodSnapshot(from: result, ownsOutputStorage: ownsOutputStorage)
         return result
     }
 
-    private func storeLastGoodSnapshot(from sampleBuffer: CMSampleBuffer) {
+    private func storeLastGoodSnapshot(from sampleBuffer: CMSampleBuffer, ownsOutputStorage: Bool) {
+        // GPU pool storage stays unavailable for reuse while this reference is held.
         guard let imageBuffer = sampleBuffer.imageBuffer,
-              let copied = copyPixelBuffer(imageBuffer) else {
+              let snapshot = ownsOutputStorage ? imageBuffer : copyPixelBuffer(imageBuffer) else {
             return
         }
-        lastGoodSnapshot = copied
+        lastGoodSnapshot = snapshot
         lastGoodFormatDescription = sampleBuffer.formatDescription
     }
 
