@@ -94,6 +94,109 @@ final class VideoHealthModel: ObservableObject {
     }
 }
 
+final class AudioHealthModel: ObservableObject {
+    static let shared = AudioHealthModel()
+
+    @Published private(set) var latestStatus: String = "waiting"
+    @Published private(set) var appFPSHistory: [DataPoint] = []
+    @Published private(set) var micFPSHistory: [DataPoint] = []
+    @Published private(set) var alignDropHistory: [DataPoint] = []
+    @Published private(set) var skipHistory: [DataPoint] = []
+    @Published private(set) var noDataHistory: [DataPoint] = []
+    @Published private(set) var mixerOutHistory: [DataPoint] = []
+    @Published private(set) var alignFireHistory: [DataPoint] = []
+    @Published private(set) var outCh0History: [DataPoint] = []
+    @Published private(set) var outCh1History: [DataPoint] = []
+
+    @Published private(set) var lastAppRange: String = "-"
+    @Published private(set) var lastMicRange: String = "-"
+    @Published private(set) var lastGapText: String = "-"
+    @Published private(set) var lastRMSText: String = "-"
+    @Published private(set) var lastAlignInserted: Double = 0
+    @Published private(set) var lastOverflowDropped: Double = 0
+    @Published private(set) var lastAlignDiffSamples: Double = 0
+    @Published private(set) var lastOutChText: String = "-"
+
+    private var dataPointCounter = 0
+    private let maxHistory = 120
+
+    private init() {}
+
+    func record(status: String,
+                appInputFPSMin: Double, appInputFPSAvg: Double, appInputFPSMax: Double,
+                micInputFPSMin: Double, micInputFPSAvg: Double, micInputFPSMax: Double,
+                appGapMaxMs: Double,
+                alignDroppedPerSec: Double, alignInsertedPerSec: Double,
+                alignFirePerSec: Double, alignDiffMaxSamples: Double,
+                skipInsertedPerSec: Double, overflowDroppedPerSec: Double,
+                resampleNoDataPerSec: Double, mixerOutputFPS: Double,
+                appRMS: Double, micRMS: Double,
+                outChannels: Int, outCh0RMS: Double, outCh1RMS: Double) {
+        DispatchQueue.main.async {
+            self.appendOnMain(
+                status: status,
+                appInputFPSMin: appInputFPSMin, appInputFPSAvg: appInputFPSAvg, appInputFPSMax: appInputFPSMax,
+                micInputFPSMin: micInputFPSMin, micInputFPSAvg: micInputFPSAvg, micInputFPSMax: micInputFPSMax,
+                appGapMaxMs: appGapMaxMs,
+                alignDroppedPerSec: alignDroppedPerSec, alignInsertedPerSec: alignInsertedPerSec,
+                alignFirePerSec: alignFirePerSec, alignDiffMaxSamples: alignDiffMaxSamples,
+                skipInsertedPerSec: skipInsertedPerSec, overflowDroppedPerSec: overflowDroppedPerSec,
+                resampleNoDataPerSec: resampleNoDataPerSec, mixerOutputFPS: mixerOutputFPS,
+                appRMS: appRMS, micRMS: micRMS,
+                outChannels: outChannels, outCh0RMS: outCh0RMS, outCh1RMS: outCh1RMS
+            )
+        }
+    }
+
+    private func appendOnMain(status: String,
+                              appInputFPSMin: Double, appInputFPSAvg: Double, appInputFPSMax: Double,
+                              micInputFPSMin: Double, micInputFPSAvg: Double, micInputFPSMax: Double,
+                              appGapMaxMs: Double,
+                              alignDroppedPerSec: Double, alignInsertedPerSec: Double,
+                              alignFirePerSec: Double, alignDiffMaxSamples: Double,
+                              skipInsertedPerSec: Double, overflowDroppedPerSec: Double,
+                              resampleNoDataPerSec: Double, mixerOutputFPS: Double,
+                              appRMS: Double, micRMS: Double,
+                              outChannels: Int, outCh0RMS: Double, outCh1RMS: Double) {
+        dataPointCounter &+= 1
+        let id = dataPointCounter
+        let now = Date()
+
+        latestStatus = status
+        appFPSHistory.append(DataPoint(id: id, time: now, value: appInputFPSAvg))
+        micFPSHistory.append(DataPoint(id: id, time: now, value: micInputFPSAvg))
+        alignDropHistory.append(DataPoint(id: id, time: now, value: alignDroppedPerSec))
+        skipHistory.append(DataPoint(id: id, time: now, value: skipInsertedPerSec))
+        noDataHistory.append(DataPoint(id: id, time: now, value: resampleNoDataPerSec))
+        mixerOutHistory.append(DataPoint(id: id, time: now, value: mixerOutputFPS))
+        alignFireHistory.append(DataPoint(id: id, time: now, value: alignFirePerSec))
+        outCh0History.append(DataPoint(id: id, time: now, value: outCh0RMS))
+        outCh1History.append(DataPoint(id: id, time: now, value: outCh1RMS))
+        lastOutChText = "ch:\(outChannels) L:\(String(format: "%.3f", outCh0RMS)) R:\(String(format: "%.3f", outCh1RMS))"
+        lastAppRange = String(format: "%.0f–%.0f", appInputFPSMin, appInputFPSMax)
+        lastMicRange = String(format: "%.0f–%.0f", micInputFPSMin, micInputFPSMax)
+        lastGapText = String(format: "%.0f ms", appGapMaxMs)
+        lastRMSText = String(format: "app %.3f  mic %.3f", appRMS, micRMS)
+        lastAlignInserted = alignInsertedPerSec
+        lastOverflowDropped = overflowDroppedPerSec
+        lastAlignDiffSamples = alignDiffMaxSamples
+
+        trim()
+    }
+
+    private func trim() {
+        if appFPSHistory.count > maxHistory { appFPSHistory.removeFirst(appFPSHistory.count - maxHistory) }
+        if micFPSHistory.count > maxHistory { micFPSHistory.removeFirst(micFPSHistory.count - maxHistory) }
+        if alignDropHistory.count > maxHistory { alignDropHistory.removeFirst(alignDropHistory.count - maxHistory) }
+        if skipHistory.count > maxHistory { skipHistory.removeFirst(skipHistory.count - maxHistory) }
+        if noDataHistory.count > maxHistory { noDataHistory.removeFirst(noDataHistory.count - maxHistory) }
+        if mixerOutHistory.count > maxHistory { mixerOutHistory.removeFirst(mixerOutHistory.count - maxHistory) }
+        if alignFireHistory.count > maxHistory { alignFireHistory.removeFirst(alignFireHistory.count - maxHistory) }
+        if outCh0History.count > maxHistory { outCh0History.removeFirst(outCh0History.count - maxHistory) }
+        if outCh1History.count > maxHistory { outCh1History.removeFirst(outCh1History.count - maxHistory) }
+    }
+}
+
 struct DeviceInfo {
 
     // 屏幕寬高獲取本身寬高 剛好是反過來
@@ -354,6 +457,7 @@ struct DeviceView: View {
     let diskIO = SystemDiskIO()
     @ObservedObject private var laManager = StreamActivityManager.shared
     @ObservedObject private var videoHealth = VideoHealthModel.shared
+    @ObservedObject private var audioHealth = AudioHealthModel.shared
 
     @State private var appMemoryMB: Double = 0
     @State private var cpuHistory: [DataPoint] = []
@@ -598,6 +702,135 @@ struct DeviceView: View {
                 Text("GPU completion: \(videoHealth.lastLatencyText)")
                     .font(.caption2)
                     .foregroundColor(.orange)
+            }
+
+            Section(
+                header:
+                    Label("Audio Pipeline", systemImage: "waveform")
+            ) {
+                Text("狀態: \(audioHealth.latestStatus)")
+                    .foregroundColor(audioHealth.latestStatus == "healthy" ? .green : .orange)
+
+                Chart {
+                    ForEach(audioHealth.appFPSHistory) { pt in
+                        LineMark(
+                            x: .value("Time", pt.time),
+                            y: .value("FPS", pt.value),
+                            series: .value("Series", "App")
+                        )
+                        .foregroundStyle(.blue)
+                    }
+                    ForEach(audioHealth.micFPSHistory) { pt in
+                        LineMark(
+                            x: .value("Time", pt.time),
+                            y: .value("FPS", pt.value),
+                            series: .value("Series", "Mic")
+                        )
+                        .foregroundStyle(.green)
+                    }
+                }
+                .chartYAxisLabel("Input FPS")
+                .chartYScale(domain: 0...60)
+                .frame(height: 140)
+
+                Chart {
+                    ForEach(audioHealth.alignDropHistory) { pt in
+                        LineMark(
+                            x: .value("Time", pt.time),
+                            y: .value("Samples/s", pt.value),
+                            series: .value("Series", "align drop")
+                        )
+                        .foregroundStyle(.red)
+                    }
+                    ForEach(audioHealth.skipHistory) { pt in
+                        LineMark(
+                            x: .value("Time", pt.time),
+                            y: .value("Samples/s", pt.value),
+                            series: .value("Series", "skip silence")
+                        )
+                        .foregroundStyle(.orange)
+                    }
+                    ForEach(audioHealth.noDataHistory) { pt in
+                        LineMark(
+                            x: .value("Time", pt.time),
+                            y: .value("Samples/s", pt.value),
+                            series: .value("Series", "underrun")
+                        )
+                        .foregroundStyle(.purple)
+                    }
+                    ForEach(audioHealth.alignFireHistory) { pt in
+                        LineMark(
+                            x: .value("Time", pt.time),
+                            y: .value("Samples/s", pt.value),
+                            series: .value("Series", "align fire")
+                        )
+                        .foregroundStyle(.pink)
+                    }
+                }
+                .chartYAxisLabel("samples/s")
+                .frame(height: 110)
+
+                Chart {
+                    ForEach(audioHealth.mixerOutHistory) { pt in
+                        LineMark(
+                            x: .value("Time", pt.time),
+                            y: .value("FPS", pt.value),
+                            series: .value("Series", "Mixer out")
+                        )
+                        .foregroundStyle(.teal)
+                    }
+                }
+                .chartYAxisLabel("mixer out/s")
+                .frame(height: 90)
+
+                Chart {
+                    ForEach(audioHealth.outCh0History) { pt in
+                        LineMark(
+                            x: .value("Time", pt.time),
+                            y: .value("RMS", pt.value),
+                            series: .value("Series", "Out L")
+                        )
+                        .foregroundStyle(.blue)
+                    }
+                    ForEach(audioHealth.outCh1History) { pt in
+                        LineMark(
+                            x: .value("Time", pt.time),
+                            y: .value("RMS", pt.value),
+                            series: .value("Series", "Out R")
+                        )
+                        .foregroundStyle(.red)
+                    }
+                }
+                .chartYAxisLabel("output ch RMS")
+                .chartYScale(domain: 0...1)
+                .frame(height: 90)
+
+                let appFPS = audioHealth.appFPSHistory.last?.value ?? 0
+                let micFPS = audioHealth.micFPSHistory.last?.value ?? 0
+                let alignDrop = audioHealth.alignDropHistory.last?.value ?? 0
+                let alignFire = audioHealth.alignFireHistory.last?.value ?? 0
+                let skip = audioHealth.skipHistory.last?.value ?? 0
+                let noData = audioHealth.noDataHistory.last?.value ?? 0
+                Text("App: \(appFPS, specifier: "%.1f") fps  Mic: \(micFPS, specifier: "%.1f") fps")
+                    .font(.caption)
+                Text("align drop: \(alignDrop, specifier: "%.0f")/s  skip: \(skip, specifier: "%.0f")/s  underrun: \(noData, specifier: "%.0f")/s")
+                    .font(.caption)
+                    .foregroundColor(alignDrop > 0 || noData > 0 ? .orange : .secondary)
+                Text("App range: \(audioHealth.lastAppRange)  Mic range: \(audioHealth.lastMicRange)")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                Text("PTS gap max: \(audioHealth.lastGapText)  RMS: \(audioHealth.lastRMSText)")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                Text("Output \(audioHealth.lastOutChText)")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                Text("align fire: \(alignFire, specifier: "%.1f")/s  diff: \(audioHealth.lastAlignDiffSamples, specifier: "%.0f") smp")
+                    .font(.caption2)
+                    .foregroundColor(alignFire > 0 ? .orange : .secondary)
+                Text("align inserted: \(audioHealth.lastAlignInserted, specifier: "%.0f")/s  overflow drop: \(audioHealth.lastOverflowDropped, specifier: "%.0f")/s")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
             }
 
             Section(

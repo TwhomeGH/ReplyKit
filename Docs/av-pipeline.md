@@ -391,7 +391,7 @@ AAC 端同理：AAC 需要固定 1024 幀 PCM 才產出一個 packet，部分幀
     ─→ HaishinKit 自己的 audioIO.output AsyncStream ─→ encoder
 ```
 
-**底層調查（F:\HaishinKit.swift）：** HaishinKit 已完整處理非同步——`mediaMixer.append` 只是 `AudioMixerByMultiTrack.append` 的 `queue.async`（非阻塞，AudioMixerByMultiTrack.swift:138-146）；resample 在該 queue 上輸出乾淨的 1024-sample 塊、時間戳正確推進；輸出走自己的 `audioIO.output` AsyncStream。**我們上層那層 AsyncStream 是冗餘的第三層。**
+**底層調查（TwhomeGH/HaishinKitFixSwfit）：** HaishinKit 已完整處理非同步——`mediaMixer.append` 只是 `AudioMixerByMultiTrack.append` 的 `queue.async`（非阻塞，AudioMixerByMultiTrack.swift:138-146）；resample 在該 queue 上輸出乾淨的 1024-sample 塊、時間戳正確推進；輸出走自己的 `audioIO.output` AsyncStream。**我們上層那層 AsyncStream 是冗餘的第三層。**
 
 **修正：** 全部移除，`AudioProcessorActor.enqueue` 直接 `await mediaMixer.append`：
 
@@ -596,7 +596,7 @@ liveAPP SocketServer → LiveVolumeModel.updateVolumes(mic:micVol, app:appVol)
 
 ### 修正
 
-**檔案：** `F:\HaishinKit.swift\RTMPHaishinKit\Sources\RTMP\RTMPStream.swift`
+**檔案：** HaishinKit repo `TwhomeGH/HaishinKitFixSwfit` — `RTMPHaishinKit/Sources/RTMP/RTMPStream.swift`
 
 ```swift
 // 改前：gap > 1.5s 只做 log
@@ -636,3 +636,126 @@ if interval > 3.0, readyState == .publishing, videoInputFrames == 0 || frameCoun
 |------|------|------|
 | 快速前景/背景切換（<3s） | 每次重建 encoder + video processor → 推流閃斷 | 不重建，推流完全不中斷 |
 | 長時間暫停（≥3s，可能被 suspend） | 重建（正常） | 保留 encoder 重建保險 + processor 失效才重建 |
+
+
+---
+
+## AHealth（音訊管線健康 telemetry，2026-09）
+
+### 動機
+
+VHealth 只能看視訊。分析 `log-39`（2026-09-11）後發現：useOriginal 原音路徑在整個 session 幀數完美（85.93 幀/秒、PTS 20 分鐘只漂 10ms、零 frame loss、零 stall），但使用者仍聽到斷音。這證明**斷音是 content-level**（1024-sample 封包內部的樣本被丟掉或補靜音），現有 log 完全看不到。AHealth 把下游 mixer 的丟樣本計數也送上圖表。
+
+### 資料流
+
+```
+SampleHandler.logAudioHealthIfNeeded()  (每幀，ReplayKit queue)
+    ├── 上游：per-track frameCount / 幀間 PTS gap
+    └── 每秒：Task → await mediaMixer.audioPipelineDiagnostics()   (HaishinKit)
+              → finalizeAudioHealthSample()  (com.replykit.ahealth serial queue)
+                  ├── 累計計數 → delta（align drop / skip / overflow / underrun）
+                  ├── 累積 5s 窗口 → min/avg/max 彙總
+                  ├── SocketClient.sendAudioHealth(...)  → liveAPP AudioHealthModel
+                  └── sendlog(title: "[AHealth]", ...)
+```
+
+### 指標
+
+| 層 | 指標 | 來源 |
+|----|------|------|
+| 上游 | app/mic inputFPS（min/avg/max） | `SampleHandler` per-track 幀計數 |
+| 上游 | 幀間 PTS gap max (ms) | per-track PTS delta |
+| 上游 | RMS | `SocketClient.latestAppVolume/latestMicVolume` |
+| 下游 | `alignDroppedPerSec` | `AudioRingBuffer.align()` 丟棄樣本 |
+| 下游 | `alignInsertedPerSec` | `align()` 補靜音 |
+| 下游 | `skipInsertedPerSec` | `append()` PTS gap 補靜音 |
+| 下游 | `overflowDroppedPerSec` | ring buffer 溢位丟樣本 |
+| 下游 | `resampleNoDataPerSec` | `resample()` 該次 append 完全無產出 |
+| 下游 | `mixerOutputFPS` | `AudioMixerByMultiTrack.mix()` 成功次數 |
+
+### HaishinKit 依賴
+
+下游計數需要 HaishinKit 提供 `MediaMixer.audioPipelineDiagnostics()`（公開型別 `AudioPipelineDiagnostics`）。變更已套用到 HaishinKit repo `TwhomeGH/HaishinKitFixSwfit`（`HaishinKit/Sources/Mixer/`：新增 `AudioPipelineDiagnostics.swift`，並在 `AudioRingBuffer` / `AudioMixerTrack` / `AudioMixerByMultiTrack` / `AudioCaptureUnit` / `AudioMixer` / `MediaMixer` 加入計數與公開 API）。
+
+### 診斷邏輯
+
+- `align-drop`：`AudioRingBuffer.align()` 丟棄非 main track 樣本。這是目前最可疑的 content-level 斷音來源（雙軌 PTS 基座差被當成 desync）。
+- `source-gap`：PTS 缺口讓 `append()` 用 `skip` 補靜音，或幀間 gap > 100ms。
+- `underrun`：`resample()` 某次 append 完全沒產出，代表 ring buffer 來不及給完整 1024。
+
+
+### HaishinKit 音訊混音設計修正（2026-09-11）
+
+在 HaishinKit repo `TwhomeGH/HaishinKitFixSwfit`（`HaishinKit/Sources/Mixer/`）：
+
+| # | 問題 | 修正 |
+|---|------|------|
+| 1 | ~~`align()` 單位不一致~~ **（誤判，已更正）**：`align` 作用在 `AudioMixerByMultiTrack.buffers[track]`，該緩衝區是以 `outputFormat` 建立的，其 `sampleTime` 與 mixer playhead 同為 output 單位 → **沒有單位不一致** | 已回退，不加換算 |
+| 2 | `align()` 每次全量硬丟/硬補，來源抖動會造成每幀微修正（細碎斷音） | 加 `alignDeadband`（256 samples ≈ 5.8ms）：門檻內視為量測抖動，不修正 |
+| 3 | `mainTrack` 同時決定時鐘、輸出格式、免對齊軌；main=mic 會強制 mono | `AudioMixerSettings` 新增 `outputFormatTrack`（預設 `UInt8.max` = 沿用 `mainTrack`）；ReplyKit `configureAudio()` 改設 `mainTrack=1`（mic 時鐘）+ `outputFormatTrack=0`（app 立體聲格式） |
+| 4 | `append()` 的 PTS gap 用 `skip` 補靜音，且 `skip` 一律在佇列最前面消費，會把已緩衝樣本整體往後推 | 改為 `appendZeros()` 把 gap 的 0 樣本寫進尾端（正確位置） |
+| 5 | `diagnosticsSnapshot()` 用 `queue.sync` 會阻塞 MediaMixer actor | 改為 queue 上維護、鎖保護的快取，讀取端只上鎖不排隊 |
+| 6 | **stereo→mono 只取左聲道**：`AudioMixerTrack.audioConverter` 對輸出 mono 設 `channelMap = [0]`，只取輸入第 0 聲道，右聲道被丟掉（非 L+R 平均） | 輸入聲道 > 輸出聲道時**不設 `channelMap`**，讓 `downmix` 依 channel layout 做 L+R 平均；mono→stereo 仍用 `[0,0]` 複製、stereo→stereo 用 `[0,1]` 直通 |
+
+**AHealth 新增欄位**：`alignFirePerSec`（align 實際動手次數/秒）、`alignDiffMaxSamples`（窗口內最大偏差，input 樣本）。狀態新增 `align-churn`；`[AHealth]` log 也帶上 `alignFire` / `alignDiff`，走 E-Socket 回報以便後續分析。
+
+
+### AHealth 介面
+
+#### `[AHealth]` log（走 E-Socket）
+
+```
+[AHealth] <status> win:5s app:[min avg max] mic:[min avg max] gapMax:<ms>ms alignDrop:<n> alignIns:<n> alignFire:<n> alignDiff:<n> skip:<n> noData:<n> mixOut:<n>/s rms[app:<f> mic:<f>]
+```
+
+- 每秒累積、每 5s 彙總一筆（與 `[VHealth]` 同節奏）。
+- 與 `[VHealth]` 一樣：非 sideload 且不在日誌頁時會被 `sendlog` 跳過。
+
+#### socket payload（`audioHealth`）
+
+| 欄位 | 型別 | 意義 |
+|------|------|------|
+| `status` | String | 見下方狀態表 |
+| `appInputFPSMin/Avg/Max` | Double | app 軌 input FPS 窗口 min/avg/max |
+| `micInputFPSMin/Avg/Max` | Double | mic 軌同上 |
+| `appGapMaxMs` | Double | app/mic 幀間 PTS gap 最大值（ms） |
+| `alignDroppedPerSec` | Double | align 丟棄樣本/秒 |
+| `alignInsertedPerSec` | Double | align 補靜音樣本/秒 |
+| `alignFirePerSec` | Double | align 實際動手次數/秒 |
+| `alignDiffMaxSamples` | Double | 窗口內最大 align 偏差（input 樣本） |
+| `skipInsertedPerSec` | Double | PTS gap 補 0 樣本/秒 |
+| `overflowDroppedPerSec` | Double | ring buffer 溢位丟樣本/秒 |
+| `resampleNoDataPerSec` | Double | resample underrun 次/秒 |
+| `mixerOutputFPS` | Double | 混音輸出區塊/秒 |
+| `appRMS` / `micRMS` | Double | 音量 RMS 平均 |
+| `outChannels` | Int | 混音輸出聲道數（1=mono, 2=stereo） |
+| `outCh0RMS` / `outCh1RMS` | Double | 混音輸出左/右聲道 RMS（判斷是否被 downmix 成 mono、哪一側有聲） |
+
+#### 狀態
+
+| 值 | 意義 |
+|----|------|
+| `healthy` | 一切正常 |
+| `input-idle` | app/mic 都幾乎沒輸入 |
+| `align-churn` | align 幾乎每秒都在動手（content-level 斷音主訊號） |
+| `align-drop` | align 有丟棄樣本 |
+| `buffer-overflow` | ring buffer 溢位 |
+| `underrun` | resample 有 append 無產出 |
+| `source-gap` | PTS gap 補靜音 / gap > 100ms |
+
+#### 圖表（liveAPP「Audio Pipeline」）
+
+- Input FPS：app / mic 兩條折線。
+- 丟樣本：align drop / skip / underrun / align fire 四條。
+- Mixer out：輸出區塊/秒。
+- 文字：狀態、align fire/diff、align inserted/overflow、range、PTS gap、RMS。
+
+#### 資料流（程式碼）
+
+```
+SampleHandler.logAudioHealthIfNeeded()  (每幀)
+  → 每秒 Task → await mediaMixer.audioPipelineDiagnostics()  (HaishinKit)
+    → SampleHandler.finalizeAudioHealthSample()  (com.replykit.ahealth serial queue)
+      → SocketClient.sendAudioHealth(...)  → liveAPP Socket "audioHealth" → AudioHealthModel
+      → sendlog(title: "[AHealth]", ...)
+```

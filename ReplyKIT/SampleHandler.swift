@@ -1415,9 +1415,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         audioSettings.tracks[0] = .default
         audioSettings.tracks[1] = .default
 
+        // 混音時鐘用 mic（持續輸出、最穩），輸出格式用 app 軌（保留立體聲）。
+        // 兩者脫鉤：避免 mainTrack=mic 時整個輸出被壓成 mono（見 outputFormatTrack）。
+        audioSettings.mainTrack = 1
+        audioSettings.outputFormatTrack = 0
+
         if RPConfig.shared.state.enableEchoFix {
 
-            audioSettings.mainTrack = 1            // mic（你 app 的 track 1，會持續輸出）
             audioSettings.isEchoCancellationEnabled = true // 使用原始啟用預設回音消除
             audioSettings.echoCancellationReferenceTrack = 0   // app（track 0）
 
@@ -2189,6 +2193,61 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     private var lastVideoHealthDroppedCount: Int = 0
     private var lastVideoHealthTimeoutCount: UInt64 = 0
 
+    // MARK: - AHealth（音訊管線健康，VHealth 的對應）
+    //
+    // 上游：per-track inputFPS、幀間 PTS gap、RMS。
+    // 下游：HaishinKit `AudioPipelineDiagnostics` 的累計計數 delta（align 丟棄 /
+    // 補靜音、ring buffer 溢位、resample underrun）。這是唯一能看到「幀數正常但
+    // 內容被丟掉」的訊號，用來定位 content-level 斷音。
+    private let audioHealthWindowInterval: Double = 5.0
+    private let audioHealthQueue = DispatchQueue(label: "com.replykit.ahealth")
+
+    private struct AudioHealthSample {
+        var appFPS: Double
+        var micFPS: Double
+        var appGapMs: Double
+        var micGapMs: Double
+        var appAlignDropped: Double
+        var micAlignDropped: Double
+        var appAlignInserted: Double
+        var micAlignInserted: Double
+        var appAlignFire: Double
+        var micAlignFire: Double
+        var appAlignDiff: Double
+        var micAlignDiff: Double
+        var appSkip: Double
+        var micSkip: Double
+        var overflowDropped: Double
+        var resampleNoData: Double
+        var mixerOutputFPS: Double
+        var appRMS: Double
+        var micRMS: Double
+        var outCh0RMS: Double
+        var outCh1RMS: Double
+    }
+
+    private struct AudioDiagCounter {
+        var alignDropped = 0
+        var alignInserted = 0
+        var alignFire = 0
+        var skip = 0
+        var overflow = 0
+        var noData = 0
+    }
+
+    private var audioHealthSamples: [AudioHealthSample] = []
+    private var lastAudioHealthTime: Double = 0
+    private var appAudioFrameCount = 0
+    private var micAudioFrameCount = 0
+    private var lastAppAudioFrameCount = 0
+    private var lastMicAudioFrameCount = 0
+    private var lastAppAudioPTS: Double = 0
+    private var lastMicAudioPTS: Double = 0
+    private var appAudioGapMax: Double = 0
+    private var micAudioGapMax: Double = 0
+    private var lastAudioDiagByTrack: [UInt8: AudioDiagCounter] = [:]
+    private var lastMixerOutputFrames: Int = 0
+
     /// 在 processSampleBuffer 執行緒（每秒一次）累積樣本；窗口滿時搬出樣本並回傳。
     private func accumulateHealthSample(
         inputFPS: Double, processedFPS: Double, droppedFPS: Double,
@@ -2322,6 +2381,209 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     }
 
 
+    private func logAudioHealthIfNeeded(trackType: AudioTrackType, timing: CMSampleTimingInfo) {
+        let pts = timing.presentationTimeStamp.seconds
+        let now = CACurrentMediaTime()
+
+        // 每幀：per-track 幀數 + 幀間 PTS gap（與 audioFrameCount 相同，假設序列呼叫）
+        switch trackType {
+        case .app:
+            appAudioFrameCount += 1
+            if pts.isFinite, lastAppAudioPTS > 0, pts > lastAppAudioPTS {
+                appAudioGapMax = max(appAudioGapMax, (pts - lastAppAudioPTS) * 1000.0)
+            }
+            if pts.isFinite { lastAppAudioPTS = pts }
+        case .mic:
+            micAudioFrameCount += 1
+            if pts.isFinite, lastMicAudioPTS > 0, pts > lastMicAudioPTS {
+                micAudioGapMax = max(micAudioGapMax, (pts - lastMicAudioPTS) * 1000.0)
+            }
+            if pts.isFinite { lastMicAudioPTS = pts }
+        }
+
+        guard now.isFinite, now > 0 else { return }
+        if lastAudioHealthTime <= 0 {
+            lastAudioHealthTime = now
+            lastAppAudioFrameCount = appAudioFrameCount
+            lastMicAudioFrameCount = micAudioFrameCount
+            return
+        }
+        let elapsed = now - lastAudioHealthTime
+        guard elapsed >= 1.0 else { return }
+
+        let appDelta = appAudioFrameCount - lastAppAudioFrameCount
+        let micDelta = micAudioFrameCount - lastMicAudioFrameCount
+        let appGap = appAudioGapMax
+        let micGap = micAudioGapMax
+        lastAudioHealthTime = now
+        lastAppAudioFrameCount = appAudioFrameCount
+        lastMicAudioFrameCount = micAudioFrameCount
+        appAudioGapMax = 0
+        micAudioGapMax = 0
+
+        let appFPS = Double(appDelta) / elapsed
+        let micFPS = Double(micDelta) / elapsed
+        let appRMS = Double(SocketClient.shared.latestAppVolume)
+        let micRMS = Double(SocketClient.shared.latestMicVolume)
+        let mixer = mediaMixer
+
+        Task { [weak self] in
+            guard let self else { return }
+            let diag = await mixer.audioPipelineDiagnostics()
+            self.audioHealthQueue.async {
+                self.finalizeAudioHealthSample(
+                    appFPS: appFPS, micFPS: micFPS,
+                    appGapMs: appGap, micGapMs: micGap,
+                    appRMS: appRMS, micRMS: micRMS,
+                    diag: diag
+                )
+            }
+        }
+    }
+
+    /// 只在 audioHealthQueue 上執行；把累計診斷轉成 delta、累積 5s 窗口後彙總送出。
+    private func finalizeAudioHealthSample(
+        appFPS: Double, micFPS: Double,
+        appGapMs: Double, micGapMs: Double,
+        appRMS: Double, micRMS: Double,
+        diag: AudioPipelineDiagnostics
+    ) {
+        let appTrack = diag.tracks.first { $0.trackId == 0 }
+        let micTrack = diag.tracks.first { $0.trackId == 1 }
+        var appCounter = lastAudioDiagByTrack[0] ?? AudioDiagCounter()
+        var micCounter = lastAudioDiagByTrack[1] ?? AudioDiagCounter()
+
+        let appAlignDropped = Double(max(0, (appTrack?.alignDroppedSamples ?? 0) - appCounter.alignDropped))
+        let micAlignDropped = Double(max(0, (micTrack?.alignDroppedSamples ?? 0) - micCounter.alignDropped))
+        let appAlignInserted = Double(max(0, (appTrack?.alignInsertedSamples ?? 0) - appCounter.alignInserted))
+        let micAlignInserted = Double(max(0, (micTrack?.alignInsertedSamples ?? 0) - micCounter.alignInserted))
+        let appAlignFire = Double(max(0, (appTrack?.alignFireCount ?? 0) - appCounter.alignFire))
+        let micAlignFire = Double(max(0, (micTrack?.alignFireCount ?? 0) - micCounter.alignFire))
+        let appAlignDiff = Double(abs(appTrack?.lastAlignDiff ?? 0))
+        let micAlignDiff = Double(abs(micTrack?.lastAlignDiff ?? 0))
+        let appSkip = Double(max(0, (appTrack?.skipInsertedSamples ?? 0) - appCounter.skip))
+        let micSkip = Double(max(0, (micTrack?.skipInsertedSamples ?? 0) - micCounter.skip))
+        let overflowDropped = Double(
+            max(0, (appTrack?.overflowDroppedSamples ?? 0) - appCounter.overflow)
+                + max(0, (micTrack?.overflowDroppedSamples ?? 0) - micCounter.overflow)
+        )
+        let resampleNoData = Double(
+            max(0, (appTrack?.resampleNoDataCount ?? 0) - appCounter.noData)
+                + max(0, (micTrack?.resampleNoDataCount ?? 0) - micCounter.noData)
+        )
+        let mixerOutputDelta = max(0, diag.mixerOutputFrames - lastMixerOutputFrames)
+        let outCh0RMS = Double(diag.outputChannelRMS.first ?? 0)
+        let outCh1RMS = Double(diag.outputChannelRMS.count > 1 ? diag.outputChannelRMS[1] : 0)
+
+        appCounter.alignDropped = appTrack?.alignDroppedSamples ?? appCounter.alignDropped
+        appCounter.alignInserted = appTrack?.alignInsertedSamples ?? appCounter.alignInserted
+        appCounter.alignFire = appTrack?.alignFireCount ?? appCounter.alignFire
+        appCounter.skip = appTrack?.skipInsertedSamples ?? appCounter.skip
+        appCounter.overflow = appTrack?.overflowDroppedSamples ?? appCounter.overflow
+        appCounter.noData = appTrack?.resampleNoDataCount ?? appCounter.noData
+        micCounter.alignDropped = micTrack?.alignDroppedSamples ?? micCounter.alignDropped
+        micCounter.alignInserted = micTrack?.alignInsertedSamples ?? micCounter.alignInserted
+        micCounter.alignFire = micTrack?.alignFireCount ?? micCounter.alignFire
+        micCounter.skip = micTrack?.skipInsertedSamples ?? micCounter.skip
+        micCounter.overflow = micTrack?.overflowDroppedSamples ?? micCounter.overflow
+        micCounter.noData = micTrack?.resampleNoDataCount ?? micCounter.noData
+        lastAudioDiagByTrack[0] = appCounter
+        lastAudioDiagByTrack[1] = micCounter
+        lastMixerOutputFrames = diag.mixerOutputFrames
+
+        audioHealthSamples.append(
+            AudioHealthSample(
+                appFPS: appFPS, micFPS: micFPS,
+                appGapMs: appGapMs, micGapMs: micGapMs,
+                appAlignDropped: appAlignDropped, micAlignDropped: micAlignDropped,
+                appAlignInserted: appAlignInserted, micAlignInserted: micAlignInserted,
+                appAlignFire: appAlignFire, micAlignFire: micAlignFire,
+                appAlignDiff: appAlignDiff, micAlignDiff: micAlignDiff,
+                appSkip: appSkip, micSkip: micSkip,
+                overflowDropped: overflowDropped, resampleNoData: resampleNoData,
+                mixerOutputFPS: Double(mixerOutputDelta),
+                appRMS: appRMS, micRMS: micRMS,
+                outCh0RMS: outCh0RMS, outCh1RMS: outCh1RMS
+            )
+        )
+
+        guard audioHealthSamples.count >= Int(audioHealthWindowInterval) else { return }
+        let window = audioHealthSamples
+        audioHealthSamples.removeAll()
+
+        func stat(_ keyPath: (AudioHealthSample) -> Double) -> (min: Double, avg: Double, max: Double) {
+            let values = window.map(keyPath)
+            let avg = values.reduce(0, +) / Double(max(1, values.count))
+            return (values.min() ?? 0, avg, values.max() ?? 0)
+        }
+
+        let appStat = stat { $0.appFPS }
+        let micStat = stat { $0.micFPS }
+        let alignDropped = window.reduce(0) { $0 + $1.appAlignDropped + $1.micAlignDropped }
+        let alignInserted = window.reduce(0) { $0 + $1.appAlignInserted + $1.micAlignInserted }
+        let alignFire = window.reduce(0) { $0 + $1.appAlignFire + $1.micAlignFire }
+        let alignDiffMax = window.map { max($0.appAlignDiff, $0.micAlignDiff) }.max() ?? 0
+        let skip = window.reduce(0) { $0 + $1.appSkip + $1.micSkip }
+        let noData = window.reduce(0) { $0 + $1.resampleNoData }
+        let overflow = window.reduce(0) { $0 + $1.overflowDropped }
+        let gapMax = window.map { max($0.appGapMs, $0.micGapMs) }.max() ?? 0
+        let mixerOutFPS = window.reduce(0) { $0 + $1.mixerOutputFPS } / Double(max(1, window.count))
+        let appRMSAvg = window.reduce(0) { $0 + $1.appRMS } / Double(max(1, window.count))
+        let micRMSAvg = window.reduce(0) { $0 + $1.micRMS } / Double(max(1, window.count))
+        let outCh0Avg = window.reduce(0) { $0 + $1.outCh0RMS } / Double(max(1, window.count))
+        let outCh1Avg = window.reduce(0) { $0 + $1.outCh1RMS } / Double(max(1, window.count))
+
+        let status: String
+        if appStat.avg < 20, micStat.avg < 20 {
+            status = "input-idle"
+        } else if alignFire >= audioHealthWindowInterval {
+            status = "align-churn"
+        } else if alignDropped > 0 {
+            status = "align-drop"
+        } else if overflow > 0 {
+            status = "buffer-overflow"
+        } else if noData > 0 {
+            status = "underrun"
+        } else if skip > 0 || gapMax > 100 {
+            status = "source-gap"
+        } else {
+            status = "healthy"
+        }
+
+        SocketClient.shared.sendAudioHealth(
+            status: status,
+            appInputFPSMin: appStat.min, appInputFPSAvg: appStat.avg, appInputFPSMax: appStat.max,
+            micInputFPSMin: micStat.min, micInputFPSAvg: micStat.avg, micInputFPSMax: micStat.max,
+            appGapMaxMs: gapMax,
+            alignDroppedPerSec: alignDropped / audioHealthWindowInterval,
+            alignInsertedPerSec: alignInserted / audioHealthWindowInterval,
+            alignFirePerSec: alignFire / audioHealthWindowInterval,
+            alignDiffMaxSamples: alignDiffMax,
+            skipInsertedPerSec: skip / audioHealthWindowInterval,
+            overflowDroppedPerSec: overflow / audioHealthWindowInterval,
+            resampleNoDataPerSec: noData / audioHealthWindowInterval,
+            mixerOutputFPS: mixerOutFPS,
+            appRMS: appRMSAvg,
+            micRMS: micRMSAvg,
+            outChannels: diag.outputChannels,
+            outCh0RMS: outCh0Avg,
+            outCh1RMS: outCh1Avg
+        )
+        sendlog(
+            title: "[AHealth]",
+            message: String(
+                format: "%@ win:%.0fs app:[%.1f %.1f %.1f] mic:[%.1f %.1f %.1f] gapMax:%.0fms alignDrop:%.0f alignIns:%.0f alignFire:%.0f alignDiff:%.0f skip:%.0f noData:%.0f mixOut:%.1f/s rms[app:%.3f mic:%.3f] out[ch:%ld L:%.3f R:%.3f]",
+                status,
+                audioHealthWindowInterval,
+                appStat.min, appStat.avg, appStat.max,
+                micStat.min, micStat.avg, micStat.max,
+                gapMax, alignDropped, alignInserted, alignFire, alignDiffMax, skip, noData, mixerOutFPS,
+                appRMSAvg, micRMSAvg,
+                diag.outputChannels, outCh0Avg, outCh1Avg
+            )
+        )
+    }
+
     override func processSampleBuffer(_ sampleBuffer: CMSampleBuffer, with sampleBufferType: RPSampleBufferType) {
 
 
@@ -2443,6 +2705,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 let trackType: AudioTrackType = (sampleBufferType == .audioApp) ? .app : .mic
 
                 audioFrameCount += 1
+                logAudioHealthIfNeeded(trackType: trackType, timing: timing)
 
                 //安全日誌：每 1500 幀或首幀輸出，不依賴 enablePipelineLog
                 if audioFrameCount % 1500 == 0 {

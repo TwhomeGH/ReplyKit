@@ -1245,3 +1245,47 @@ else → healthy
 
 - 六個檔案（GPUVideoRotator / VideoProcess / SampleHandler / Socket ×2 / OtherView）均通過 `swiftc -frontend -parse`。
 - 需 Xcode build + 真機：確認 VHealth 5s 一筆、liveAPP latency 曲線顯示、舊 build payload 相容。
+
+
+---
+
+## 21. 音訊斷音根因分析與 AHealth telemetry（2026-09-11）
+
+### log-39 分析結論
+
+分析 `E:\Video5\crash-symbols\log-39.txt`（03:11–03:31）：
+
+| 觀察 | 數據 |
+|------|------|
+| Extension 音訊幀率 | 103,200 幀 / 1201.04s = **85.93 幀/秒**（app+mic） |
+| PTS 漂移 | PTS 推進 1201.052s vs wall 1201.042s → **20 分鐘僅 10ms** |
+| Encoder | `audioInputFrames == audioSentFrames`（43–44/s），**零 stall、零 frame loss、零 resync** |
+| 視訊 | 3 次約 1s process stall（`publish status gap interval=2.01` + frame loss，03:12:43 / 03:18:37 / 03:20:49）；03:30 附近 fps 掉到 21 |
+
+**結論：useOriginal 原音路徑在 extension 端是幀完美的。斷音不是幀丟失，而是 content-level（1024-sample 封包內樣本被丟/補靜音）。** 這推翻了「上游 Task 優先級 / 背壓」兩點作為本次斷音主因，問題落點在下游 mixer。
+
+### 主因假設：`AudioRingBuffer.align()` 修剪非 main track
+
+`AudioMixerByMultiTrack.render()` 對非 main track 呼叫 `align(to:)`，丟棄落後樣本 / 補靜音。`configureAudio()` 只在 `enableEchoFix` 為真時設 `mainTrack = 1`（mic）；預設（echoFix 關）`mainTrack = 0`（app），於是 **mic 成為非 main track、每幀被 align 修剪**。若 app 與 mic 來源 PTS 有固定基座差，mic 就被持續剪掉 → 正好是幀數不變的 content-level 斷音。
+
+⚠️ 注意：直接把 mainTrack 改成 mic 只是把修剪轉移到 app，且 `channels` 未設時 output 聲道數跟隨 main track → main=mic 會變 mono。真正的治本在 HaishinKit 的 `align()`（不該在兩軌本就對齊時持續修剪），因此先做 AHealth 量測確認。
+
+### 根因再確認（2026-09-11，含一次誤判更正）
+
+第一版判斷 `align()` 有「output 單位 vs input 單位」不一致，**後來對碼推翻**：`align` 作用在 `AudioMixerByMultiTrack.buffers[track]`，該緩衝區是用 `outputFormat` 建立的（`AudioMixerByMultiTrack.swift:70/328`），其 `sampleTime` 與 mixer playhead 同為 output 單位 → **沒有單位不一致**。此項改動已回退。
+
+因此**斷音根因尚未確認**，改由 AHealth 量測（`alignFirePerSec` / `alignDiffMaxSamples` / `alignDroppedPerSec` / `alignInsertedPerSec`）判斷 align 是否真的持續動手。其餘 4 項設計修正保留：
+
+1. `align` 加死區 `alignDeadband`（256 samples），門檻內視為抖動不修正。
+2. `AudioMixerSettings.outputFormatTrack`：輸出格式與 `mainTrack`（時鐘）脫鉤；ReplyKit `configureAudio()` 改設 `mainTrack=1`（mic 時鐘）+ `outputFormatTrack=0`（app 立體聲格式）。
+3. `append()` 的 PTS gap 改用 `appendZeros()` 寫進尾端（正確位置）。
+4. `diagnosticsSnapshot()` 改鎖保護快取，不再 `queue.sync` 阻塞 MediaMixer actor。
+5. **立體聲修正**：`AudioMixerTrack.audioConverter` 對「輸入聲道 > 輸出聲道」不再設 `channelMap=[0]`（只取左聲道），改為不設 map、讓 `downmix` 做 L+R 平均。
+
+詳見 `Docs/av-pipeline.md`「HaishinKit 音訊混音設計修正」。
+
+### AHealth
+
+新增與 VHealth 對應的音訊管線 telemetry（`[AHealth]` log + liveAPP「Audio Pipeline」圖表）。上游指標由 `SampleHandler` 採集，下游丟樣本計數由 HaishinKit `MediaMixer.audioPipelineDiagnostics()` 提供。詳見 `Docs/av-pipeline.md` 與 `Docs/socket-wire-protocol.md`。
+
+HaishinKit 端變更已套用到 repo `TwhomeGH/HaishinKitFixSwfit`：新增 `AudioPipelineDiagnostics`（`HaishinKit/Sources/Mixer/AudioPipelineDiagnostics.swift`）、`AudioRingBuffer`/`AudioMixerTrack` 計數、`MediaMixer.audioPipelineDiagnostics()` 公開 API。

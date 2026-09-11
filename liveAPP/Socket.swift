@@ -546,6 +546,30 @@ class SocketServer:ObservableObject {
         let droppedFPS: Double?
     }
 
+    struct AudioHealthPayload: Codable {
+        let status: String
+        let appInputFPSMin: Double?
+        let appInputFPSAvg: Double?
+        let appInputFPSMax: Double?
+        let micInputFPSMin: Double?
+        let micInputFPSAvg: Double?
+        let micInputFPSMax: Double?
+        let appGapMaxMs: Double?
+        let alignDroppedPerSec: Double?
+        let alignInsertedPerSec: Double?
+        let alignFirePerSec: Double?
+        let alignDiffMaxSamples: Double?
+        let skipInsertedPerSec: Double?
+        let overflowDroppedPerSec: Double?
+        let resampleNoDataPerSec: Double?
+        let mixerOutputFPS: Double?
+        let appRMS: Double?
+        let micRMS: Double?
+        let outChannels: Int?
+        let outCh0RMS: Double?
+        let outCh1RMS: Double?
+    }
+
     struct AudiencePayload: Codable {
         let userNum: Int?
         let userList: [String]?
@@ -1105,6 +1129,32 @@ class SocketServer:ObservableObject {
                     droppedFPSAvg: droppedAvg,
                     latencyAvg: latencyAvg, latencyMax: latencyMax, latencyP95: latencyP95,
                     timeoutDelta: Double(dict.timeoutDelta)
+                )
+
+            case "audioHealth":
+                let dict = try decoder.decode(AudioHealthPayload.self, from: data)
+                AudioHealthModel.shared.record(
+                    status: dict.status,
+                    appInputFPSMin: dict.appInputFPSMin ?? 0,
+                    appInputFPSAvg: dict.appInputFPSAvg ?? 0,
+                    appInputFPSMax: dict.appInputFPSMax ?? 0,
+                    micInputFPSMin: dict.micInputFPSMin ?? 0,
+                    micInputFPSAvg: dict.micInputFPSAvg ?? 0,
+                    micInputFPSMax: dict.micInputFPSMax ?? 0,
+                    appGapMaxMs: dict.appGapMaxMs ?? 0,
+                    alignDroppedPerSec: dict.alignDroppedPerSec ?? 0,
+                    alignInsertedPerSec: dict.alignInsertedPerSec ?? 0,
+                    alignFirePerSec: dict.alignFirePerSec ?? 0,
+                    alignDiffMaxSamples: dict.alignDiffMaxSamples ?? 0,
+                    skipInsertedPerSec: dict.skipInsertedPerSec ?? 0,
+                    overflowDroppedPerSec: dict.overflowDroppedPerSec ?? 0,
+                    resampleNoDataPerSec: dict.resampleNoDataPerSec ?? 0,
+                    mixerOutputFPS: dict.mixerOutputFPS ?? 0,
+                    appRMS: dict.appRMS ?? 0,
+                    micRMS: dict.micRMS ?? 0,
+                    outChannels: dict.outChannels ?? 0,
+                    outCh0RMS: dict.outCh0RMS ?? 0,
+                    outCh1RMS: dict.outCh1RMS ?? 0
                 )
 
             case "settings":

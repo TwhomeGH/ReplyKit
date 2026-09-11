@@ -104,6 +104,82 @@ private struct VideoHealthPayload: Encodable {
     }
 }
 
+private struct AudioHealthPayload: Encodable {
+    var type: String { "audioHealth" }
+    let status: String
+    let appInputFPSMin: Double
+    let appInputFPSAvg: Double
+    let appInputFPSMax: Double
+    let micInputFPSMin: Double
+    let micInputFPSAvg: Double
+    let micInputFPSMax: Double
+    let appGapMaxMs: Double
+    let alignDroppedPerSec: Double
+    let alignInsertedPerSec: Double
+    let alignFirePerSec: Double
+    let alignDiffMaxSamples: Double
+    let skipInsertedPerSec: Double
+    let overflowDroppedPerSec: Double
+    let resampleNoDataPerSec: Double
+    let mixerOutputFPS: Double
+    let appRMS: Double
+    let micRMS: Double
+    let outChannels: Int
+    let outCh0RMS: Double
+    let outCh1RMS: Double
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case status
+        case appInputFPSMin
+        case appInputFPSAvg
+        case appInputFPSMax
+        case micInputFPSMin
+        case micInputFPSAvg
+        case micInputFPSMax
+        case appGapMaxMs
+        case alignDroppedPerSec
+        case alignInsertedPerSec
+        case alignFirePerSec
+        case alignDiffMaxSamples
+        case skipInsertedPerSec
+        case overflowDroppedPerSec
+        case resampleNoDataPerSec
+        case mixerOutputFPS
+        case appRMS
+        case micRMS
+        case outChannels
+        case outCh0RMS
+        case outCh1RMS
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(type, forKey: .type)
+        try container.encode(status, forKey: .status)
+        try container.encode(appInputFPSMin, forKey: .appInputFPSMin)
+        try container.encode(appInputFPSAvg, forKey: .appInputFPSAvg)
+        try container.encode(appInputFPSMax, forKey: .appInputFPSMax)
+        try container.encode(micInputFPSMin, forKey: .micInputFPSMin)
+        try container.encode(micInputFPSAvg, forKey: .micInputFPSAvg)
+        try container.encode(micInputFPSMax, forKey: .micInputFPSMax)
+        try container.encode(appGapMaxMs, forKey: .appGapMaxMs)
+        try container.encode(alignDroppedPerSec, forKey: .alignDroppedPerSec)
+        try container.encode(alignInsertedPerSec, forKey: .alignInsertedPerSec)
+        try container.encode(alignFirePerSec, forKey: .alignFirePerSec)
+        try container.encode(alignDiffMaxSamples, forKey: .alignDiffMaxSamples)
+        try container.encode(skipInsertedPerSec, forKey: .skipInsertedPerSec)
+        try container.encode(overflowDroppedPerSec, forKey: .overflowDroppedPerSec)
+        try container.encode(resampleNoDataPerSec, forKey: .resampleNoDataPerSec)
+        try container.encode(mixerOutputFPS, forKey: .mixerOutputFPS)
+        try container.encode(appRMS, forKey: .appRMS)
+        try container.encode(micRMS, forKey: .micRMS)
+        try container.encode(outChannels, forKey: .outChannels)
+        try container.encode(outCh0RMS, forKey: .outCh0RMS)
+        try container.encode(outCh1RMS, forKey: .outCh1RMS)
+    }
+}
+
 func withTimeout<T>(
     _ seconds: TimeInterval,
     operation: @escaping () async throws -> T
@@ -690,6 +766,58 @@ class SocketClient : @unchecked Sendable {
                 latencyMax: latencyMax,
                 latencyP95: latencyP95,
                 timeoutDelta: Int(timeoutDelta)
+            )
+            guard let dictionary = self.dictionary(from: payload) else { return }
+            self.sendPayload(dictionary)
+        }
+    }
+
+    func sendAudioHealth(status: String,
+                         appInputFPSMin: Double,
+                         appInputFPSAvg: Double,
+                         appInputFPSMax: Double,
+                         micInputFPSMin: Double,
+                         micInputFPSAvg: Double,
+                         micInputFPSMax: Double,
+                         appGapMaxMs: Double,
+                         alignDroppedPerSec: Double,
+                         alignInsertedPerSec: Double,
+                         alignFirePerSec: Double,
+                         alignDiffMaxSamples: Double,
+                         skipInsertedPerSec: Double,
+                         overflowDroppedPerSec: Double,
+                         resampleNoDataPerSec: Double,
+                         mixerOutputFPS: Double,
+                         appRMS: Double,
+                         micRMS: Double,
+                         outChannels: Int,
+                         outCh0RMS: Double,
+                         outCh1RMS: Double) {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            guard self.connection?.state == .ready else { return }
+            let payload = AudioHealthPayload(
+                status: status,
+                appInputFPSMin: appInputFPSMin,
+                appInputFPSAvg: appInputFPSAvg,
+                appInputFPSMax: appInputFPSMax,
+                micInputFPSMin: micInputFPSMin,
+                micInputFPSAvg: micInputFPSAvg,
+                micInputFPSMax: micInputFPSMax,
+                appGapMaxMs: appGapMaxMs,
+                alignDroppedPerSec: alignDroppedPerSec,
+                alignInsertedPerSec: alignInsertedPerSec,
+                alignFirePerSec: alignFirePerSec,
+                alignDiffMaxSamples: alignDiffMaxSamples,
+                skipInsertedPerSec: skipInsertedPerSec,
+                overflowDroppedPerSec: overflowDroppedPerSec,
+                resampleNoDataPerSec: resampleNoDataPerSec,
+                mixerOutputFPS: mixerOutputFPS,
+                appRMS: appRMS,
+                micRMS: micRMS,
+                outChannels: outChannels,
+                outCh0RMS: outCh0RMS,
+                outCh1RMS: outCh1RMS
             )
             guard let dictionary = self.dictionary(from: payload) else { return }
             self.sendPayload(dictionary)

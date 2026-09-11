@@ -203,6 +203,31 @@
 
 ---
 
+### `audioHealth` — 音訊管線健康樣本
+
+| 方向 | → Server |
+|------|----------|
+| Payload | `{"type":"audioHealth","status":String,"appInputFPSMin/Avg/Max":Double,"micInputFPSMin/Avg/Max":Double,"appGapMaxMs":Double,"alignDroppedPerSec":Double,"alignInsertedPerSec":Double,"alignFirePerSec":Double,"alignDiffMaxSamples":Double,"skipInsertedPerSec":Double,"overflowDroppedPerSec":Double,"resampleNoDataPerSec":Double,"mixerOutputFPS":Double,"appRMS":Double,"micRMS":Double,"outChannels":Int,"outCh0RMS":Double,"outCh1RMS":Double}` |
+| 觸發 | ReplayKit extension 每秒累積、每 5s 彙總送出（與 `videoHealth` 同節奏） |
+| Server 行為 | 更新 `AudioHealthModel`，供設備信息頁「Audio Pipeline」圖表顯示 |
+| 實作 | Extension 端 `SampleHandler.logAudioHealthIfNeeded` → `SocketClient.sendAudioHealth`；下游計數來自 HaishinKit `MediaMixer.audioPipelineDiagnostics()`（repo `TwhomeGH/HaishinKitFixSwfit`） |
+
+`audioHealth` 是目前唯一能看到 **content-level 斷音** 的 telemetry：幀數（inputFPS）正常但 `alignDroppedPerSec` / `skipInsertedPerSec` / `resampleNoDataPerSec` 大於 0，代表 1024-sample 封包內部被丟樣本或補靜音。
+
+`status` 目前可能值：
+
+| 值 | 含義 |
+|----|------|
+| `healthy` | app/mic inputFPS 正常，無 align drop / underrun / 大 gap |
+| `input-idle` | app 與 mic 都幾乎沒有輸入幀 |
+| `align-churn` | `align()` 幾乎每秒都在動手（alignFirePerSec 高）— 代表持續對非 main track 做硬丟/硬補，是 content-level 斷音的典型訊號 |
+| `align-drop` | `AudioRingBuffer.align()` 丟棄了非 main track 的樣本（雙軌 PTS 未對齊） |
+| `buffer-overflow` | ring buffer 溢位丟樣本（producer 超出 consumer） |
+| `underrun` | `resample()` 有 append 完全沒產出（ring buffer 來不及給完整塊） |
+| `source-gap` | PTS 缺口導致 `skip` 補靜音，或幀間 PTS gap > 100ms |
+
+---
+
 ### `settings` — 設定同步
 
 | 方向 | → Server |
