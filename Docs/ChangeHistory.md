@@ -14,6 +14,16 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.09.17 連線診斷強化：connect/handshake 逾時、keepalive ping、onLog always 通道
+
+**類型**: 修復
+
+**修改**:
+- OutgoingStream 執行緒安全 + keepalive 純型別化與測試
+**相關文件**: [連線診斷強化：connect/handshake 逾時、keepalive ping、onLog always 通道](https://github.com/TwhomeGH/HaishinKitFixSwfit/blob/main/CHANGES.md#56-%E9%80%A3%E7%B7%9A%E8%A8%BA%E6%96%B7%E5%BC%B7%E5%8C%96connecthandshake-%E9%80%BE%E6%99%82keepalive-pingonlog-always-%E9%80%9A%E9%81%93)
+
+---
+
 ## 2026.09.17 修復 liveAPP 背景執行緒寫 @Published 造成的 SwiftUI 死鎖
 
 **類型**: 修復 · **檔案**: `liveAPP/ContentView.swift`, `liveAPP/Socket.swift`
