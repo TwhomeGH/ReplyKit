@@ -119,3 +119,45 @@ App 回前景 → cancelAll() + endSocketBackgroundWindow()
 ```
 
 **2026-08 補充**：正式接上 `beginSocketBackgroundWindow()`（此前 `.background` 只排程、未啟動短窗口）；Info.plist 補上 `fetch` background mode（BGAppRefreshTask 所需，`processing` 為舊型別殘留）；`scheduleSocketRefresh()` 於 PiP 活躍時跳過排程、`stopPiP()` 在背景狀態下補排程；handler 改在背景佇列執行。詳見 pip-performance-improvements.md Section 41。
+
+
+---
+
+## 8. 背景執行緒改 @Published → SwiftUI/AttributeGraph 死鎖（0x8BADF00D）
+
+**檔案**:
+- `liveAPP/Socket.swift`（`handleDecodedPayload` 在背景佇列上呼叫）
+- `liveAPP/ContentView.swift`（`LiveVolumeModel` 在背景被寫入）
+
+**問題**: `SocketServer.handleDecodedPayload` 跑在背景的 `SocketServerQueue`（`Socket.swift`），卻直接呼叫
+`LiveVolumeModel.shared.updateVolumes(...)`（`ContentView.swift`），在**背景執行緒寫入 ObservableObject 的 `@Published`**。
+
+SwiftUI 於是就在**背景執行緒**啟動 AttributeGraph 更新，並取得全域的 movable lock；更新途中要動到
+TabView（`UIKitAdaptableTabView` → `UITab.setImage:` → diffable data source `applySnapshot`），而 UIKit 這段
+**必須在 main**，便以 `_dispatch_sync_f_slow` **同步**跳回 main 而卡住（鎖仍握著）。同一時間主執行緒在 runloop
+observer（`NSRunLoop.flushObservers` → `UpdateGroup.begin()`）要拿**同一把** movable lock。兩者互等：
+
+```
+thread #7(背景): 握著 movable lock ──等──> main (applySnapshot 同步)
+main           : 等 movable lock   ──等──> thread #7
+                    ↑ 循環等待 = 死鎖 → scene-update watchdog 0x8BADF00D 砍掉 App
+```
+
+**為什麼難以察覺**:
+- 死鎖的兩半在**不同執行緒**：main 的 stack 只看到 `_MovableLockLock` 在等，真正的持有者（背景那條）**完全不出現在 main 的 stack**。
+- 需要時序剛好對上才會爆（背景更新進行中、且 main 同時進入 runloop flush），因此是**偶發**。
+- 改 `@Published` 本身不會當；是「SwiftUI 只有一把更新鎖」與「UIKit 必須回 main」互撞。
+- `bug_type 309` 常被誤讀成 stack overflow；真正的死因要看 `termination` 的 `0x8BADF00D`（watchdog deadlock）。
+
+**影響**: 主執行緒永久卡死，App 被 watchdog SIGKILL（使用者看到閃退）。
+
+**修復**: 所有 UI 狀態（ObservableObject `@Published`）必須在主執行緒改。
+`LiveVolumeModel` 標為 `@MainActor`；`Socket.swift` 的 `audioLive` / `logbatch` 呼叫點包 `Task { @MainActor in ... }`；
+CFNotification observer 亦同。`VideoHealthModel` / `AudioHealthModel` 原本就已在 `record()` 內用 `DispatchQueue.main.async`。
+
+**通則（避免再犯）**:
+1. 從 socket / 網路 / log / **任何背景佇列**回來的資料，只要會寫 `@Published`（或任何 SwiftUI 狀態），一律先 hop 回 main：
+   `Task { @MainActor in ... }`（與本專案既有 `StreamActivityManager` 用法一致），不要在背景直接寫。
+2. 新增 ObservableObject 時，**優先整個 class 標 `@MainActor`**，讓編譯器擋掉背景寫入，而不是靠自律。
+3. 同一個背景 callback 會改多個 model 時，要逐一檢查：只要有一個漏 hop main 就會中。
+4. 診斷這類偶發閃退：用 `crash_trace.py -s <UUID 相符的 dSYM>`，看 `[死因]` 與「死鎖分析」的跨執行緒堆疊（詳見 `crash-tracing.md`）。

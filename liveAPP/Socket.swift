@@ -1106,7 +1106,9 @@ class SocketServer:ObservableObject {
 
             case "audioLive":
                 let dict = try decoder.decode(AudioLive.self, from: data)
-                LiveVolumeModel.shared.updateVolumes(mic: dict.micVol, app: dict.appVol, persist: dict.persist)
+                Task { @MainActor in
+                    LiveVolumeModel.shared.updateVolumes(mic: dict.micVol, app: dict.appVol, persist: dict.persist)
+                }
                 logTo("Updated UserVol APP:\(formatLinearVolumeForLog(dict.appVol)) Mic:\(formatLinearVolumeForLog(dict.micVol)) Persist:\(dict.persist)")
 
             case "videoHealth":
@@ -1190,7 +1192,9 @@ class SocketServer:ObservableObject {
                 if let appVol = batch.appVol, let micVol = batch.micVol {
                     if appVol > 0.0 || micVol > 0.0 {
                         logTo("[Volume] recv app=\(formatLinearVolumeForLog(appVol)) mic=\(formatLinearVolumeForLog(micVol))")
-                        LiveVolumeModel.shared.updateVolumes(mic: micVol, app: appVol)
+                        Task { @MainActor in
+                            LiveVolumeModel.shared.updateVolumes(mic: micVol, app: appVol)
+                        }
                     }
                 }
                 guard LPConfig.shared.enableLog || LPConfig.shared.SocketLog else { break }

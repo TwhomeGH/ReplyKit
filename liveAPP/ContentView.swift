@@ -263,6 +263,7 @@ struct BroadcastButton: UIViewRepresentable {
 
 
 // MARK: 全局實時音訊模塊
+@MainActor
 final class LiveVolumeModel: ObservableObject {
     static let shared = LiveVolumeModel()   // 全局共用單例
 
@@ -279,8 +280,10 @@ final class LiveVolumeModel: ObservableObject {
             guard let observer = observer else { return }
             let model = Unmanaged<LiveVolumeModel>.fromOpaque(observer).takeUnretainedValue()
 
-            model.micVolumeLive  = getUserDefault(forKey: "micVolumeLive") ?? 0.0
-            model.appVolumeLive  = getUserDefault(forKey: "appVolumeLive") ?? 0.0
+            Task { @MainActor in
+                model.micVolumeLive  = getUserDefault(forKey: "micVolumeLive") ?? 0.0
+                model.appVolumeLive  = getUserDefault(forKey: "appVolumeLive") ?? 0.0
+            }
         },
                                         "LiveVolumeUpdated" as CFString,
                                         nil,
@@ -297,7 +300,7 @@ final class LiveVolumeModel: ObservableObject {
                 queue: .main
             ) { [weak self] _ in
                 guard let self = self else { return }
-                DispatchQueue.main.async {
+                Task { @MainActor in
                     self.micVolumeLive = getUserDefault(forKey: "micVolumeLive") ?? 0.0
                     self.appVolumeLive = getUserDefault(forKey: "appVolumeLive") ?? 0.0
                 }

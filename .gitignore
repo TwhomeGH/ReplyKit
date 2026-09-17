@@ -1,3 +1,10 @@
 #排除swift build文件夹
 
 .build/
+
+# Python
+__pycache__/
+*.pyc
+
+# Playwright MCP 產物
+.playwright-mcp/
