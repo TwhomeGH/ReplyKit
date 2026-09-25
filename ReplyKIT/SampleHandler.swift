@@ -2203,6 +2203,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     private let audioHealthQueue = DispatchQueue(label: "com.replykit.ahealth")
 
     private struct AudioHealthSample {
+        var inputElapsed: Double
+        var diagnosticsElapsed: Double
         var appFPS: Double
         var micFPS: Double
         var appGapMs: Double
@@ -2219,7 +2221,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         var micSkip: Double
         var overflowDropped: Double
         var resampleNoData: Double
-        var mixerOutputFPS: Double
+        var mixerOutputCount: Double
         var appRMS: Double
         var micRMS: Double
         var outCh0RMS: Double
@@ -2247,6 +2249,39 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     private var micAudioGapMax: Double = 0
     private var lastAudioDiagByTrack: [UInt8: AudioDiagCounter] = [:]
     private var lastMixerOutputFrames: Int = 0
+    private var lastAudioDiagnosticsTime: Double?
+    private var lastAudioFormats: [String: (format: AudioStreamBasicDescription, samples: Int)] = [:]
+    private var lastAudioFormatLogTimes: [String: Double] = [:]
+
+    /// ReplayKit 輸入格式；與串流編碼器的 AAC LC 設定分開記錄。
+    private func logAudioFormatIfNeeded(_ buffer: CMSampleBuffer, trackType: AudioTrackType) {
+        guard let description = CMSampleBufferGetFormatDescription(buffer),
+              let pointer = CMAudioFormatDescriptionGetStreamBasicDescription(description) else { return }
+        let format = pointer.pointee
+        let samples = CMSampleBufferGetNumSamples(buffer)
+        let track = trackType == .app ? "app" : "mic"
+        if let previous = lastAudioFormats[track], previous.samples == samples {
+            let old = previous.format
+            if old.mFormatID == format.mFormatID, old.mFormatFlags == format.mFormatFlags,
+               old.mSampleRate == format.mSampleRate, old.mChannelsPerFrame == format.mChannelsPerFrame,
+               old.mBitsPerChannel == format.mBitsPerChannel, old.mBytesPerFrame == format.mBytesPerFrame,
+               old.mBytesPerPacket == format.mBytesPerPacket, old.mFramesPerPacket == format.mFramesPerPacket {
+                return
+            }
+        }
+        let now = CACurrentMediaTime()
+        guard now - (lastAudioFormatLogTimes[track] ?? -Double.infinity) >= 5 else { return }
+        lastAudioFormats[track] = (format, samples)
+        lastAudioFormatLogTimes[track] = now
+        let signature = "id:\(format.mFormatID) flags:\(format.mFormatFlags) rate:\(format.mSampleRate) ch:\(format.mChannelsPerFrame) bits:\(format.mBitsPerChannel) bytes/frame:\(format.mBytesPerFrame) bytes/packet:\(format.mBytesPerPacket) frames/packet:\(format.mFramesPerPacket) samples/buffer:\(samples)"
+        let bytes = [24, 16, 8, 0].map { UInt8(truncatingIfNeeded: format.mFormatID >> $0) }
+        let codec = String(bytes: bytes, encoding: .ascii) ?? String(format.mFormatID)
+        var detail = "input track:\(track) format:\(codec) \(signature)"
+        if format.mFormatID == kAudioFormatLinearPCM, format.mSampleRate > 0, samples > 0 {
+            detail += String(format: " duration:%.3fms expected:%.3f buffers/s", Double(samples) / format.mSampleRate * 1000, format.mSampleRate / Double(samples))
+        }
+        sendlog(title: "[AudioFormat]", message: detail)
+    }
 
     /// 在 processSampleBuffer 執行緒（每秒一次）累積樣本；窗口滿時搬出樣本並回傳。
     private func accumulateHealthSample(
@@ -2430,8 +2465,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         Task { [weak self] in
             guard let self else { return }
             let diag = await mixer.audioPipelineDiagnostics()
+            let diagnosticsTime = CACurrentMediaTime()
             self.audioHealthQueue.async {
                 self.finalizeAudioHealthSample(
+                    inputElapsed: elapsed, diagnosticsTime: diagnosticsTime,
                     appFPS: appFPS, micFPS: micFPS,
                     appGapMs: appGap, micGapMs: micGap,
                     appRMS: appRMS, micRMS: micRMS,
@@ -2443,11 +2480,16 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     /// 只在 audioHealthQueue 上執行；把累計診斷轉成 delta、累積 5s 窗口後彙總送出。
     private func finalizeAudioHealthSample(
+        inputElapsed: Double, diagnosticsTime: Double,
         appFPS: Double, micFPS: Double,
         appGapMs: Double, micGapMs: Double,
         appRMS: Double, micRMS: Double,
         diag: AudioPipelineDiagnostics
     ) {
+        // 首次快照只建立基準，避免把啟動累計值當成一秒增量。
+        if let previous = lastAudioDiagnosticsTime, diagnosticsTime <= previous { return }
+        let diagnosticsElapsed = lastAudioDiagnosticsTime.map { diagnosticsTime - $0 }
+        lastAudioDiagnosticsTime = diagnosticsTime
         let appTrack = diag.tracks.first { $0.trackId == 0 }
         let micTrack = diag.tracks.first { $0.trackId == 1 }
         var appCounter = lastAudioDiagByTrack[0] ?? AudioDiagCounter()
@@ -2491,8 +2533,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         lastAudioDiagByTrack[1] = micCounter
         lastMixerOutputFrames = diag.mixerOutputFrames
 
+        guard let diagnosticsElapsed, diagnosticsElapsed > 0 else { return }
+
         audioHealthSamples.append(
             AudioHealthSample(
+                inputElapsed: inputElapsed, diagnosticsElapsed: diagnosticsElapsed,
                 appFPS: appFPS, micFPS: micFPS,
                 appGapMs: appGapMs, micGapMs: micGapMs,
                 appAlignDropped: appAlignDropped, micAlignDropped: micAlignDropped,
@@ -2501,19 +2546,21 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 appAlignDiff: appAlignDiff, micAlignDiff: micAlignDiff,
                 appSkip: appSkip, micSkip: micSkip,
                 overflowDropped: overflowDropped, resampleNoData: resampleNoData,
-                mixerOutputFPS: Double(mixerOutputDelta),
+                mixerOutputCount: Double(mixerOutputDelta),
                 appRMS: appRMS, micRMS: micRMS,
                 outCh0RMS: outCh0RMS, outCh1RMS: outCh1RMS
             )
         )
 
-        guard audioHealthSamples.count >= Int(audioHealthWindowInterval) else { return }
+        guard audioHealthSamples.reduce(0, { $0 + $1.diagnosticsElapsed }) >= audioHealthWindowInterval else { return }
         let window = audioHealthSamples
         audioHealthSamples.removeAll()
+        let inputDuration = window.reduce(0) { $0 + $1.inputElapsed }
+        let diagnosticsDuration = window.reduce(0) { $0 + $1.diagnosticsElapsed }
 
         func stat(_ keyPath: (AudioHealthSample) -> Double) -> (min: Double, avg: Double, max: Double) {
             let values = window.map(keyPath)
-            let avg = values.reduce(0, +) / Double(max(1, values.count))
+            let avg = window.reduce(0) { $0 + keyPath($1) * $1.inputElapsed } / inputDuration
             return (values.min() ?? 0, avg, values.max() ?? 0)
         }
 
@@ -2527,7 +2574,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         let noData = window.reduce(0) { $0 + $1.resampleNoData }
         let overflow = window.reduce(0) { $0 + $1.overflowDropped }
         let gapMax = window.map { max($0.appGapMs, $0.micGapMs) }.max() ?? 0
-        let mixerOutFPS = window.reduce(0) { $0 + $1.mixerOutputFPS } / Double(max(1, window.count))
+        let mixerOutFPS = window.reduce(0) { $0 + $1.mixerOutputCount } / diagnosticsDuration
         let appRMSAvg = window.reduce(0) { $0 + $1.appRMS } / Double(max(1, window.count))
         let micRMSAvg = window.reduce(0) { $0 + $1.micRMS } / Double(max(1, window.count))
         let outCh0Avg = window.reduce(0) { $0 + $1.outCh0RMS } / Double(max(1, window.count))
@@ -2536,7 +2583,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         let status: String
         if appStat.avg < 20, micStat.avg < 20 {
             status = "input-idle"
-        } else if alignFire >= audioHealthWindowInterval {
+        } else if alignFire / diagnosticsDuration >= 1 {
             status = "align-churn"
         } else if alignDropped > 0 {
             status = "align-drop"
@@ -2555,13 +2602,13 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             appInputFPSMin: appStat.min, appInputFPSAvg: appStat.avg, appInputFPSMax: appStat.max,
             micInputFPSMin: micStat.min, micInputFPSAvg: micStat.avg, micInputFPSMax: micStat.max,
             appGapMaxMs: gapMax,
-            alignDroppedPerSec: alignDropped / audioHealthWindowInterval,
-            alignInsertedPerSec: alignInserted / audioHealthWindowInterval,
-            alignFirePerSec: alignFire / audioHealthWindowInterval,
+            alignDroppedPerSec: alignDropped / diagnosticsDuration,
+            alignInsertedPerSec: alignInserted / diagnosticsDuration,
+            alignFirePerSec: alignFire / diagnosticsDuration,
             alignDiffMaxSamples: alignDiffMax,
-            skipInsertedPerSec: skip / audioHealthWindowInterval,
-            overflowDroppedPerSec: overflow / audioHealthWindowInterval,
-            resampleNoDataPerSec: noData / audioHealthWindowInterval,
+            skipInsertedPerSec: skip / diagnosticsDuration,
+            overflowDroppedPerSec: overflow / diagnosticsDuration,
+            resampleNoDataPerSec: noData / diagnosticsDuration,
             mixerOutputFPS: mixerOutFPS,
             appRMS: appRMSAvg,
             micRMS: micRMSAvg,
@@ -2572,9 +2619,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         sendlog(
             title: "[AHealth]",
             message: String(
-                format: "%@ win:%.0fs app:[%.1f %.1f %.1f] mic:[%.1f %.1f %.1f] gapMax:%.0fms alignDrop:%.0f alignIns:%.0f alignFire:%.0f alignDiff:%.0f skip:%.0f noData:%.0f mixOut:%.1f/s rms[app:%.3f mic:%.3f] out[ch:%ld L:%.3f R:%.3f]",
+                format: "%@ win:%.3fs unit:buffers/s app:[%.1f %.1f %.1f] mic:[%.1f %.1f %.1f] gapMax:%.0fms alignDrop:%.0f alignIns:%.0f alignFire:%.0f alignDiff:%.0f skip:%.0f noData:%.0f mixOut:%.1f buffers/s rms[app:%.3f mic:%.3f] out[ch:%ld L:%.3f R:%.3f]",
                 status,
-                audioHealthWindowInterval,
+                diagnosticsDuration,
                 appStat.min, appStat.avg, appStat.max,
                 micStat.min, micStat.avg, micStat.max,
                 gapMax, alignDropped, alignInserted, alignFire, alignDiffMax, skip, noData, mixerOutFPS,
@@ -2705,6 +2752,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 let trackType: AudioTrackType = (sampleBufferType == .audioApp) ? .app : .mic
 
                 audioFrameCount += 1
+                logAudioFormatIfNeeded(sampleBuffer, trackType: trackType)
                 logAudioHealthIfNeeded(trackType: trackType, timing: timing)
 
                 //安全日誌：每 1500 幀或首幀輸出，不依賴 enablePipelineLog

@@ -711,11 +711,15 @@ struct DeviceView: View {
                 Text("狀態: \(audioHealth.latestStatus)")
                     .foregroundColor(audioHealth.latestStatus == "healthy" ? .green : .orange)
 
+                Text("每秒音訊 buffer 數；每個 buffer 包含多個取樣。")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
                 Chart {
                     ForEach(audioHealth.appFPSHistory) { pt in
                         LineMark(
                             x: .value("Time", pt.time),
-                            y: .value("FPS", pt.value),
+                            y: .value("buffers/s", pt.value),
                             series: .value("Series", "App")
                         )
                         .foregroundStyle(.blue)
@@ -723,14 +727,13 @@ struct DeviceView: View {
                     ForEach(audioHealth.micFPSHistory) { pt in
                         LineMark(
                             x: .value("Time", pt.time),
-                            y: .value("FPS", pt.value),
+                            y: .value("buffers/s", pt.value),
                             series: .value("Series", "Mic")
                         )
                         .foregroundStyle(.green)
                     }
                 }
-                .chartYAxisLabel("Input FPS")
-                .chartYScale(domain: 0...60)
+                .chartYAxisLabel("Input buffers/s")
                 .frame(height: 140)
 
                 Chart {
@@ -774,13 +777,13 @@ struct DeviceView: View {
                     ForEach(audioHealth.mixerOutHistory) { pt in
                         LineMark(
                             x: .value("Time", pt.time),
-                            y: .value("FPS", pt.value),
+                            y: .value("buffers/s", pt.value),
                             series: .value("Series", "Mixer out")
                         )
                         .foregroundStyle(.teal)
                     }
                 }
-                .chartYAxisLabel("mixer out/s")
+                .chartYAxisLabel("Mixer buffers/s")
                 .frame(height: 90)
 
                 Chart {
@@ -811,12 +814,12 @@ struct DeviceView: View {
                 let alignFire = audioHealth.alignFireHistory.last?.value ?? 0
                 let skip = audioHealth.skipHistory.last?.value ?? 0
                 let noData = audioHealth.noDataHistory.last?.value ?? 0
-                Text("App: \(appFPS, specifier: "%.1f") fps  Mic: \(micFPS, specifier: "%.1f") fps")
+                Text("App: \(appFPS, specifier: "%.1f") buffers/s  Mic: \(micFPS, specifier: "%.1f") buffers/s")
                     .font(.caption)
                 Text("align drop: \(alignDrop, specifier: "%.0f")/s  skip: \(skip, specifier: "%.0f")/s  underrun: \(noData, specifier: "%.0f")/s")
                     .font(.caption)
                     .foregroundColor(alignDrop > 0 || noData > 0 ? .orange : .secondary)
-                Text("App range: \(audioHealth.lastAppRange)  Mic range: \(audioHealth.lastMicRange)")
+                Text("Range (buffers/s) App: \(audioHealth.lastAppRange)  Mic range: \(audioHealth.lastMicRange)")
                     .font(.caption2)
                     .foregroundColor(.secondary)
                 Text("PTS gap max: \(audioHealth.lastGapText)  RMS: \(audioHealth.lastRMSText)")

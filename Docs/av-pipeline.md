@@ -673,6 +673,14 @@ SampleHandler.logAudioHealthIfNeeded()  (每幀，ReplayKit queue)
 | 下游 | `resampleNoDataPerSec` | `resample()` 該次 append 完全無產出 |
 | 下游 | `mixerOutputFPS` | `AudioMixerByMultiTrack.mix()` 成功次數 |
 
+### 統計單位與輸入格式（2026-09-26）
+
+- UI 與 AHealth 日誌使用 `buffers/s`，表示每秒輸入／混音輸出的音訊 buffer 數；不是影片 FPS，也不是音訊取樣率。Socket 的 `appInputFPS*`、`micInputFPS*`、`mixerOutputFPS` 欄位保留以相容舊版。
+- App／Mic 平均值依實際輸入統計時長加權。混音與下游事件速率除以診斷快照之間的實際單調時鐘時間；首次快照只建立累計基準。窗口累積至少 5 秒，`win` 顯示實際診斷時長。
+- `[AudioFormat] input` 分 App／Mic 記錄 ReplayKit 輸入的 FourCC、格式旗標、取樣率、聲道數、位元深度、frame／packet 大小及 samples/buffer。首次與格式／buffer 大小改變時記錄，每軌最多每 5 秒一筆；節流期間的短暫格式可能不會被記錄。
+- PCM 額外記錄 buffer 時長與預期 buffers/s：例如 44,100 Hz、1,024 samples/buffer 對應 23.220 ms、43.066 buffers/s。這是根據當次 buffer 大小推算，大小可變時不代表固定目標。
+- AAC LC 屬於編碼器輸出設定；輸入 PCM 格式與 AAC 編碼格式分開解讀。音訊輸入圖表不再固定上限 60。
+
 ### HaishinKit 依賴
 
 下游計數需要 HaishinKit 提供 `MediaMixer.audioPipelineDiagnostics()`（公開型別 `AudioPipelineDiagnostics`）。變更已套用到 HaishinKit repo `TwhomeGH/HaishinKitFixSwfit`（`HaishinKit/Sources/Mixer/`：新增 `AudioPipelineDiagnostics.swift`，並在 `AudioRingBuffer` / `AudioMixerTrack` / `AudioMixerByMultiTrack` / `AudioCaptureUnit` / `AudioMixer` / `MediaMixer` 加入計數與公開 API）。
