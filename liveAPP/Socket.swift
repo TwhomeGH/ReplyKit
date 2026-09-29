@@ -301,6 +301,12 @@ class SocketServer:ObservableObject {
     }
 
     // MARK: - Handle New Connection
+    // 識別實際收到訊息的連線；遠端端點不代表已驗證的使用者或裝置身分。
+    // ObjectIdentifier 僅在物件存活期間唯一，搭配端點及建立／移除日誌追蹤。
+    private func connectionLogContext(_ connection: NWConnection) -> String {
+        return "連線=\(ObjectIdentifier(connection))｜遠端=\(connection.endpoint)"
+    }
+
     private func handleNewConnection(_ connection: NWConnection) {
         let id = ObjectIdentifier(connection)
 
@@ -317,7 +323,7 @@ class SocketServer:ObservableObject {
             startKeepaliveTimer()
         }
         
-        logTo("New connection added. Total connections: \(self.connections.count)")
+        logTo("New connection added. \(connectionLogContext(connection))｜Total connections: \(self.connections.count)")
 
         connection.stateUpdateHandler = { [weak self] state in
             guard let self = self else { return }
@@ -326,7 +332,7 @@ class SocketServer:ObservableObject {
             case .ready:
 
                 if self.connections[ObjectIdentifier(connection)] != nil {
-                    self.logTo("Connection ready: \(connection)")
+                    self.logTo("Connection ready: \(self.connectionLogContext(connection))")
                     self.replayFailedPayloads(for: connection)
 
                 }
@@ -334,7 +340,7 @@ class SocketServer:ObservableObject {
 
       
             case .failed(let error):
-                self.logTo("Connection failed: \(error.localizedDescription)")
+                self.logTo("Connection failed: \(error.localizedDescription)｜\(self.connectionLogContext(connection))")
                 self.removeConnection(connection)
 
                 if self.connections.isEmpty {
@@ -343,7 +349,7 @@ class SocketServer:ObservableObject {
                 }
 
             case .cancelled:
-                self.logTo("Connection cancelled")
+                self.logTo("Connection cancelled｜\(self.connectionLogContext(connection))")
                 self.removeConnection(connection)
             default:
                 break
@@ -973,7 +979,7 @@ class SocketServer:ObservableObject {
 
 
             case "heartbeat":
-                sendlog(message: "收到Socket心跳維持連線")
+                sendlog(message: "收到 Socket 心跳｜\(connectionLogContext(connection))")
 
             case "StreamStarting":
                 sendlog(message: "直播開始")
@@ -1444,7 +1450,7 @@ class SocketServer:ObservableObject {
             stopKeepaliveTimer()
         }
 
-        logTo("Connection removed. Remaining: \(self.connections.count)")
+        logTo("Connection removed. \(connectionLogContext(connection))｜Remaining: \(self.connections.count)")
     }
 
     private func replayFailedPayloads(for connection: NWConnection) {

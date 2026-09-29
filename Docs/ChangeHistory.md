@@ -19,6 +19,26 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.09.29 改進 Socket 心跳與連線日誌顯示
+
+**類型**: 優化 · **檔案**: `liveAPP/Socket.swift`
+
+### 問題 - 心跳日誌只顯示「收到Socket心跳維持連線」，看不出來自哪一組連線
+
+同一則心跳訊息在不同連線都長得一樣，翻日誌時會誤以為服務端重複對同一個客戶端續命，實際上續的是不同連線者。
+
+### 根因 - 主 App 每約 30 秒對所有連線廣播 `keepalive`，各用戶端分別回傳 `heartbeat`
+
+每條連線都會回 `heartbeat` 並各自寫一筆日誌，但訊息不含連線識別，無法分辨是哪一條連線回覆。
+
+### 修改 - 連線相關日誌統一帶上連線識別與遠端端點
+
+- 新增 `connectionLogContext(_:)` 產生 `連線=ObjectIdentifier(...)｜遠端=位址:連接埠`
+- 心跳日誌改為：`收到 Socket 心跳｜連線=…｜遠端=…`
+- 新連線／ready／failed／cancelled／removed 等日誌也帶上同一組識別，便於對照同一條連線的生命週期
+
+---
+
 ## 2026.09.17 連線診斷強化：connect/handshake 逾時、keepalive ping、onLog always 通道
 
 **類型**: 修復
