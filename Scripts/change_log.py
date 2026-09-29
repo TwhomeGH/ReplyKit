@@ -229,40 +229,55 @@ PAGE = r"""<!doctype html>
 <title>變更歷史</title>
 <script>(function(){try{var t=localStorage.getItem('theme');if(t!=='dark'&&t!=='light')t=matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';document.documentElement.dataset.theme=t;}catch(e){}})();</script>
 <style>
-:root{--bg:#f7f7f8;--fg:#1c1c1e;--mut:#6b7280;--card:#fff;--line:#e5e7eb;--accent:#2563eb;--code:#f3f4f6}
-:root[data-theme="dark"]{--bg:#1c1c1e;--fg:#e5e5e7;--mut:#9ca3af;--card:#2c2c2e;--line:#3a3a3c;--accent:#4f8cff;--code:#3a3a3c}
-*{box-sizing:border-box}body{margin:0;font:15px/1.6 -apple-system,"Segoe UI","Microsoft JhengHei",sans-serif;background:var(--bg);color:var(--fg)}
-header{display:flex;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
-header h1{font-size:16px;margin:0 12px 0 0;white-space:nowrap}
-input,select,button{font:inherit;padding:6px 9px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)}
-input#q{flex:1;min-width:120px}
-button{cursor:pointer}button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
-main{display:flex;height:calc(100vh - 57px)}
+:root{color-scheme:light;--bg:#f4f5f7;--fg:#111827;--mut:#6b7280;--card:#fff;--field:#fff;--line:#e5e7eb;--line2:#eef0f3;--accent:#2563eb;--accent-fg:#fff;--code:#f3f4f6;--ring:rgba(37,99,235,.22);--hdr:rgba(244,245,247,.85);--shadow:0 12px 36px rgba(17,24,39,.13)}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#0e1013;--fg:#e6e8ec;--mut:#98a1ad;--card:#191c22;--field:#14171c;--line:#2b313a;--line2:#232830;--accent:#4f8cff;--accent-fg:#fff;--code:#20242c;--ring:rgba(79,140,255,.30);--hdr:rgba(14,16,19,.85);--shadow:0 18px 52px rgba(0,0,0,.6)}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.65 -apple-system,"Segoe UI","Microsoft JhengHei",sans-serif;background:var(--bg);color:var(--fg);display:flex;flex-direction:column;height:100vh;overflow:hidden;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:var(--line);border-radius:9px;border:2px solid var(--bg)}::-webkit-scrollbar-thumb:hover{background:var(--mut)}
+header{display:flex;gap:8px;align-items:center;flex-wrap:wrap;row-gap:8px;padding:12px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--hdr);backdrop-filter:blur(10px);z-index:5}
+header h1{font-size:16px;font-weight:700;margin:0 10px 0 0;white-space:nowrap}
+input,select,textarea,button{font:inherit;color:var(--fg)}
+input,select,textarea{padding:9px 11px;border:1px solid var(--line);border-radius:10px;background:var(--field);width:100%;transition:border-color .15s,box-shadow .15s}
+input:hover,select:hover,textarea:hover{border-color:var(--mut)}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--ring)}
+::placeholder{color:var(--mut);opacity:.8}
+header input,header select{width:auto}
+input#q{flex:1;min-width:160px}
+button{cursor:pointer;padding:9px 13px;border:1px solid var(--line);border-radius:10px;background:var(--card);transition:background .15s,border-color .15s,transform .05s}
+button:hover{background:var(--line2)}
+button:active{transform:translateY(1px)}
+button.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+button.primary:hover{filter:brightness(1.07);background:var(--accent)}
+main{display:flex;flex:1;min-height:0}
 aside{width:340px;min-width:220px;overflow:auto;border-right:1px solid var(--line)}
-.item{padding:9px 14px;border-bottom:1px solid var(--line);cursor:pointer}
+.item{padding:11px 16px;border-bottom:1px solid var(--line2);cursor:pointer;transition:background .12s}
 .item:hover{background:var(--card)}.item.sel{background:var(--card);box-shadow:inset 3px 0 0 var(--accent)}
-.item .d{font-size:12px;color:var(--mut)}.item .t{font-weight:600}
-section{flex:1;overflow:auto;padding:18px 24px}
-section h1,section h2,section h3{margin:.6em 0 .4em}section h2{font-size:20px;border-bottom:1px solid var(--line);padding-bottom:.3em}
-pre.code{background:var(--code);padding:10px 12px;border-radius:8px;overflow:auto}
-code{background:var(--code);padding:1px 5px;border-radius:5px}
-table{border-collapse:collapse;margin:.6em 0}th,td{border:1px solid var(--line);padding:5px 9px;text-align:left}
-blockquote{margin:.6em 0;padding:.2em .9em;border-left:3px solid var(--line);color:var(--mut)}
-a{color:var(--accent)}hr{border:none;border-top:1px solid var(--line);margin:1em 0}
-.toolbar{margin-bottom:10px;display:flex;gap:8px}
-#modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:10}
+.item .d{font-size:12px;color:var(--mut);font-variant-numeric:tabular-nums}.item .t{font-weight:600;margin-top:2px}
+section{flex:1;overflow:auto;padding:22px 28px}
+section h1,section h2,section h3{margin:.6em 0 .4em;line-height:1.35}section h2{font-size:20px;border-bottom:1px solid var(--line);padding-bottom:.3em}
+pre.code{background:var(--code);padding:12px 14px;border-radius:10px;overflow:auto;border:1px solid var(--line)}
+code{background:var(--code);padding:1px 6px;border-radius:6px;font-size:.92em}
+table{border-collapse:collapse;margin:.6em 0}th,td{border:1px solid var(--line);padding:7px 11px;text-align:left}
+blockquote{margin:.6em 0;padding:.3em 1em;border-left:3px solid var(--line);color:var(--mut)}
+a{color:var(--accent);text-underline-offset:2px}hr{border:none;border-top:1px solid var(--line);margin:1em 0}
+.toolbar{margin-bottom:12px;display:flex;gap:8px}
+#modal{position:fixed;inset:0;background:rgba(8,10,14,.55);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:10}
 #modal[hidden]{display:none}
-.dialog{background:var(--card);border-radius:14px;padding:18px;width:min(680px,92vw);max-height:90vh;overflow:auto}
-.dialog h2{margin-top:0}.dialog label{display:block;font-size:13px;color:var(--mut);margin:10px 0 3px}
-.dialog input,.dialog textarea,.dialog select{width:100%}.dialog textarea{min-height:64px;resize:vertical;font:inherit}
-.row{display:flex;gap:10px}.row>div{flex:1}
-.right{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.dialog{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:20px 20px 0;width:min(680px,92vw);max-height:90vh;overflow:auto}
+.dialog h2{margin:0 0 6px;font-size:18px}
+.dialog label{display:block;font-size:13px;font-weight:600;color:var(--mut);margin:14px 0 5px}
+.dialog textarea{min-height:70px;resize:vertical;line-height:1.55}
+.row{display:flex;gap:12px}.row>div{flex:1}
+.foot{position:sticky;bottom:0;background:var(--card);border-top:1px solid var(--line);margin-top:18px;padding:12px 0 18px}
+.right{display:flex;justify-content:flex-end;gap:8px}
 .empty{color:var(--mut);padding:30px;text-align:center}
-.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:5px}
-.chip{font-size:12px;padding:2px 8px;border:1px solid var(--line);border-radius:20px;cursor:pointer;background:var(--card)}
-#raw{width:100%;min-height:320px;font:13px/1.6 ui-monospace,Consolas,"Courier New",monospace;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg);resize:vertical;white-space:pre;overflow:auto;tab-size:2}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{font-size:12px;padding:3px 10px;border:1px solid var(--line);border-radius:20px;cursor:pointer;background:var(--bg);color:var(--mut);transition:border-color .15s,color .15s}
+.chip:hover{border-color:var(--accent);color:var(--accent)}
+#raw{width:100%;min-height:320px;font:13px/1.6 ui-monospace,Consolas,"Courier New",monospace;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--code);color:var(--fg);resize:vertical;white-space:pre;overflow:auto;tab-size:2}
+#raw:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--ring)}
 button.danger{background:#dc2626;color:#fff;border-color:#dc2626}
-.err{color:#dc2626;font-size:13px;min-height:1.1em;margin-top:6px}
+.err{color:#ef4444;font-size:13px;min-height:1.2em;margin-top:8px}
 .alert{border:1px solid;border-left-width:4px;border-radius:10px;padding:10px 14px;margin:.9em 0}
 .alert-title{font-weight:700;font-size:13px;margin-bottom:5px;letter-spacing:.02em}
 .alert :last-child{margin-bottom:0}
@@ -271,14 +286,16 @@ button.danger{background:#dc2626;color:#fff;border-color:#dc2626}
 .alert-important{border-color:#a855f7;background:rgba(168,85,247,.10)}.alert-important .alert-title{color:#9333ea}
 .alert-warning{border-color:#f59e0b;background:rgba(245,158,11,.13)}.alert-warning .alert-title{color:#d97706}
 .alert-caution{border-color:#ef4444;background:rgba(239,68,68,.10)}.alert-caution .alert-title{color:#dc2626}
+#content{max-width:900px}
+@media (max-width:640px){main{flex-direction:column}aside{width:auto;max-width:100%;max-height:42vh;border-right:none;border-bottom:1px solid var(--line)}section{padding:14px 16px}.row{flex-direction:column;gap:0}}
 </style></head>
 <body>
 <header>
   <h1>變更歷史</h1>
-  <input id="q" placeholder="搜尋標題 / 內容…">
-  <select id="type"><option value="">全部類型</option><option>修復</option><option>新增</option><option>優化</option><option>重構</option><option>測試</option></select>
-  <button id="reload">↻</button>
-  <button id="theme" title="切換深/淺色">🌙</button>
+  <input id="q" aria-label="搜尋標題或內容" placeholder="搜尋標題 / 內容…">
+  <select id="type" aria-label="依類型篩選"><option value="">全部類型</option><option>修復</option><option>新增</option><option>優化</option><option>重構</option><option>測試</option></select>
+  <button id="reload" aria-label="重新載入" title="重新載入">↻</button>
+  <button id="theme" aria-label="切換深淺色" title="切換深/淺色">🌙</button>
   <button id="add" class="primary">＋ 新增紀錄</button>
 </header>
 <main>
@@ -288,22 +305,24 @@ button.danger{background:#dc2626;color:#fff;border-color:#dc2626}
 
 <div id="modal" hidden><div class="dialog">
   <h2>新增紀錄</h2>
-  <label>標題</label><input id="f-title" placeholder="修復 PiP 閃退">
+  <label for="f-title">標題</label><input id="f-title" placeholder="修復 PiP 閃退">
   <div class="row">
-    <div><label>日期</label><input id="f-date"></div>
-    <div><label>類型</label>
+    <div><label for="f-date">日期</label><input id="f-date" placeholder="YYYY.MM.DD"></div>
+    <div><label for="f-type">類型</label>
       <select id="f-type"><option>修復</option><option>新增</option><option>優化</option><option>重構</option><option>測試</option></select>
     </div>
   </div>
-  <label>檔案</label><input id="f-file" placeholder="liveAPP/Socket.swift" list="gitfiles">
+  <label for="f-file">檔案</label><input id="f-file" placeholder="liveAPP/Socket.swift" list="gitfiles">
   <datalist id="gitfiles"></datalist>
   <div class="chips" id="chips"></div>
-  <label>問題（第一行 = 標題摘要）</label><textarea id="f-problem" placeholder="症狀摘要&#10;（其後可換行寫詳述）"></textarea>
-  <label>根因（可選，第一行 = 標題摘要）</label><textarea id="f-cause" placeholder="根因摘要&#10;（其後可換行寫詳述）"></textarea>
-  <label>修改（第一行 = 標題摘要，其後每行一項）</label><textarea id="f-changes" placeholder="核心手法摘要&#10;其他改動（每行一項）"></textarea>
-  <label>相關文件（可選）</label><input id="f-refs" placeholder="[crash-tracing.md](crash-tracing.md)">
-  <div id="form-err" class="err"></div>
-  <div class="right"><button id="cancel">取消</button><button id="submit" class="primary">插入</button></div>
+  <label for="f-problem">問題（第一行 = 標題摘要）</label><textarea id="f-problem" placeholder="症狀摘要&#10;（其後可換行寫詳述）"></textarea>
+  <label for="f-cause">根因（可選，第一行 = 標題摘要）</label><textarea id="f-cause" placeholder="根因摘要&#10;（其後可換行寫詳述）"></textarea>
+  <label for="f-changes">修改（第一行 = 標題摘要，其後每行一項）</label><textarea id="f-changes" placeholder="核心手法摘要&#10;其他改動（每行一項）"></textarea>
+  <label for="f-refs">相關文件（可選）</label><input id="f-refs" placeholder="[crash-tracing.md](crash-tracing.md)">
+  <div class="foot">
+    <div id="form-err" class="err"></div>
+    <div class="right"><button id="cancel">取消</button><button id="submit" class="primary">插入</button></div>
+  </div>
 </div></div>
 
 <script>
@@ -378,13 +397,13 @@ function renderView(e){
 }
 function renderEdit(e){
   $('#detail').innerHTML=
-    `<div class="toolbar"><button id="save" class="primary">儲存</button><button id="cancel">取消</button></div>`+
+    `<div class="toolbar"><button id="save" class="primary">儲存</button><button id="cancel-edit">取消</button></div>`+
     `<textarea id="raw" spellcheck="false"></textarea>`;
   const ta=$('#raw');ta.value=e.raw;
   const autosize=()=>{ta.style.height='auto';ta.style.height=Math.max(320,ta.scrollHeight+6)+'px';};
   ta.addEventListener('input',autosize);autosize();ta.focus();
   ta.addEventListener('keydown',ev=>{if((ev.ctrlKey||ev.metaKey)&&ev.key==='s'){ev.preventDefault();$('#save').click();}});
-  $('#cancel').onclick=()=>renderView(e);
+  $('#cancel-edit').onclick=()=>renderView(e);
   $('#save').onclick=async()=>{
     await fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({i:e.i,raw:ta.value})});
     const ne=await(await fetch('/api/entry?i='+e.i)).json();ne.i=e.i;
@@ -444,6 +463,8 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         if u.path == "/":
             return self._send(200, PAGE, "text/html; charset=utf-8")
+        if u.path == "/favicon.ico":
+            return self._send(204, b"")
         if u.path == "/api/entries":
             qs = parse_qs(u.query)
             q = qs.get("q", [""])[0].lower()
