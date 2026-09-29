@@ -63,6 +63,7 @@
 | [workflow.md](workflow.md) | 本地建置工作流程 |
 | [version.md](version.md) | 版本標記說明 |
 | [sponsor.md](sponsor.md) | 贊助支持說明 |
+| [../TODO.md](../TODO.md) | 全專案待辦與未完成事項（集中管理） |
 | [apple-feedback-template.md](apple-feedback-template.md) | Apple Feedback Assistant 回報模板 |
 
 ## 工具
