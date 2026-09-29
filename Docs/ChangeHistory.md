@@ -19,6 +19,31 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.09.29 RTMP／H.264 解碼邊界恢復（更新 HaishinKitFixSwfit 依賴）
+
+**類型**: 修復 · **檔案**: `Package.resolved`, `liveAPP.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`
+
+### 問題 - 已編碼封包丟失後仍繼續輸出、舊發布工作跨重連、未確認真正輸出的關鍵幀
+
+已編碼資料遺失後串流仍持續輸出，舊的 publish 工作跨重連仍可能寫入新連線，且「要求關鍵幀」不代表 VT 已真正輸出；回放切回直播時非 IDR 影格先於直播 SPS/PPS 出現，造成大量語法解碼錯誤。
+
+### 根因 - 輸出佇列與發布工作缺少世代隔離，關鍵幀未以實際輸出確認
+
+有界輸出佇列滿載或 consumer 結束時只丟單一訊息而非整批作廢，失去連續性後仍續送；publish task／stream／connection 輸出之間沒有世代檢查，跨 actor hop 後未再驗證；VT session 未區分「已要求」與「已確認輸出」，非同步失敗被忽略。
+
+### 修改 - 更新 HaishinKitFixSwfit 至含解碼邊界恢復的修訂
+
+- 依賴修訂 `872d6fe` → `e842cbd`（`Package.resolved` 與 Xcode workspace 版本同步更新）
+- 輸出順序不變式：先參數集、再關鍵幀、再依賴影格；新發布／編碼器重啟／格式改變時等待 sync sample，未等到不送 P 幀；每個 sync sample 前重送 sequence header（週期性重送用 type-1／零 delta，不改媒體時間軸）
+- 丟失已編碼資料即失去連續性：stream／connection 有界輸出佇列遇滿載或 consumer 結束整批作廢，socket 容量保護改為關閉傳輸，改由既有斷線重連恢復
+- 舊工作不得進新連線／新編碼器：publish task、stream 輸出與 connection 輸出加世代檢查，跨 actor hop 後於 connection 再次驗證
+- VT 輸出改用獨立、有鎖的狀態：只有合法、ready、sync 的 callback 被 continuation 接受才算成功；丟幀或拒收繼續要求關鍵幀，非同步錯誤擋住後續輸出
+- 正常停止與故障分開：正常拆除等待已接受尾幀排空，故障直接取消／作廢佇列；排空後再驗證世代，避免舊 teardown 清掉新 consumer
+
+**相關文件**: [RTMP／H.264 解碼邊界恢復](https://github.com/TwhomeGH/HaishinKitFixSwfit/blob/main/Docs/RTMP_H264_RECOVERY.md#rtmph264-%E8%A7%A3%E7%A2%BC%E9%82%8A%E7%95%8C%E6%81%A2%E5%BE%A9)
+
+---
+
 ## 2026.09.29 改進 Socket 心跳與連線日誌顯示
 
 **類型**: 優化 · **檔案**: `liveAPP/Socket.swift`
