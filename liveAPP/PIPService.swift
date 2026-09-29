@@ -82,11 +82,6 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         max(1, LPConfig.shared.PIPAdOverlayDuration)
     }
 
-    private let renderQueue = DispatchQueue(
-        label: "com.pip.render",
-        qos: .default
-    )
-
     private func setupPixelBufferPool(size: CGSize) {
         let attrs: [String: Any] = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
@@ -152,7 +147,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
         if let overridePTS {
             pts = overridePTS
-            duration = CMTime(seconds: 1.0 / max(currentFPS, 1), preferredTimescale: 600)
+            duration = CMTime(seconds: PIPRenderPolicy.interval(for: currentFPS), preferredTimescale: 600)
         } else {
             if basePTS == nil { basePTS = now }
 
@@ -193,14 +188,22 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
     private let pipStartThreshold: Int64 = 1
 
-    private var renderCancelled = false
+    private var renderCancelled = true
+    private var renderGeneration = PIPRenderGeneration()
+    private var pipSession = PIPRenderGeneration()
+    private var scheduledRender: DispatchWorkItem?
+    private var scheduledRenderDeadline: CFTimeInterval?
+    private var renderStatsStarted = CACurrentMediaTime()
+    private var renderAttempts = 0
+    private var drawnFrames = 0
+    private var statsInitialFrameCount: Int64 = 0
 
     // MARK: - 保活模式
     private(set) var isKeepaliveMode = false
-    private let animationFPS: Double = 16
-    private let activeFPS: Double = 6
-    private let idleFPS: Double = 2
-    private let keepaliveFPS: Double = 0.2
+    private let animationFPS = PIPRenderPolicy.animationFPS
+    private let activeFPS = PIPRenderPolicy.activeFPS
+    private let idleFPS = PIPRenderPolicy.idleFPS
+    private let keepaliveFPS = PIPRenderPolicy.keepaliveFPS
 
     private var currentFPS: Double = 2
     private var lastDrawnKeepaliveTime: String?
@@ -212,6 +215,12 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     private var lastRenderedGeneration = -1
 
     func requestAnimationFPS() {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { self.requestAnimationFPS() }
+            return
+        }
+        guard !isKeepaliveMode || adOverlayActive else { return }
+        lastActiveRenderTime = CACurrentMediaTime()
         let newFPS = messagesLayer?.isAnimating == true ? animationFPS : activeFPS
         guard abs(currentFPS - newFPS) > 0.1 else { return }
         currentFPS = newFPS
@@ -222,36 +231,25 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     }
 
     func markOverlayDirty() {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { self.markOverlayDirty() }
+            return
+        }
+        guard !isKeepaliveMode || adOverlayActive else { return }
+        lastActiveRenderTime = CACurrentMediaTime()
         currentFPS = max(currentFPS, activeFPS)
         rescheduleRenderTimer(fps: currentFPS)
         setNeedsRedraw()
     }
 
     func decayFPSIfNeeded() {
-        guard !isKeepaliveMode else {
-            if abs(currentFPS - keepaliveFPS) > 0.01 {
-                currentFPS = keepaliveFPS
-            }
-            return
-        }
-
         let now = CACurrentMediaTime()
-
-        guard let messagesLayer = messagesLayer else {
-            if currentFPS != idleFPS {
-                currentFPS = idleFPS
-            }
-            return
-        }
-
-        let targetFPS: Double
-        if messagesLayer.isAnimating {
-            targetFPS = animationFPS
-        } else if !messagesLayer.pendingSegments.isEmpty || (now - lastActiveRenderTime) < decayCooldown {
-            targetFPS = activeFPS
-        } else {
-            targetFPS = idleFPS
-        }
+        let targetFPS = PIPRenderPolicy.targetFPS(
+            keepalive: isKeepaliveMode, overlay: adOverlayActive,
+            animating: messagesLayer?.isAnimating == true,
+            pendingMessages: messagesLayer.map { !$0.pendingSegments.isEmpty } ?? false,
+            recentlyActive: (now - lastActiveRenderTime) < decayCooldown
+        )
 
         if abs(currentFPS - targetFPS) > 0.1 {
             currentFPS = targetFPS
@@ -268,8 +266,6 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     func scrollTime(_ time:Double){
         messagesLayer?.scrollSpeed = time
     }
-
-    private var renderTimer: DispatchSourceTimer?
 
     var messagesContainerView: UIView?
 
@@ -302,15 +298,22 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     }
 
     func setNeedsRedraw() {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { self.setNeedsRedraw() }
+            return
+        }
         needsRedraw = true
         contentGeneration &+= 1
     }
 
     func forceRender() {
-        setNeedsRedraw()
-        Task { @MainActor in
-            await self.renderIncremental()
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { self.forceRender() }
+            return
         }
+        guard !renderCancelled else { return }
+        setNeedsRedraw()
+        scheduleNextRender(after: 0)
     }
 
     func addMessage(
@@ -320,6 +323,13 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         giftURL: String? = nil,
         isMain: Bool = true
     ) {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async {
+                self.addMessage(user: user, msg: msg, imgURL: imgURL, giftURL: giftURL, isMain: isMain)
+            }
+            return
+        }
+        guard !isKeepaliveMode else { return }
         messagesLayer?
             .addMessage(
                 user: user,
@@ -918,6 +928,8 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     ) {
         stopPiP()
         setupAudioSession()
+        currentFPS = idleFPS
+        lastActiveRenderTime = -.infinity
 
         self.frameSize = size
 
@@ -952,9 +964,11 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
         self.pipController?.delegate = self
 
+        let session = pipSession.value
         self.attachToForegroundWindow {
             PIPLogTo("OK Frame?")
             Task { @MainActor in
+                guard self.pipSession.accepts(session) else { return }
                 self.startRenderTimer()
             }
         }
@@ -990,19 +1004,20 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         self.pipController?.setValue(1, forKey: "controlsStyle")
         self.pipController?.delegate = self
 
+        let session = pipSession.value
         self.attachToForegroundWindow {
             PIPLogTo("Keepalive PiP started")
             Task { @MainActor in
+                guard self.pipSession.accepts(session) else { return }
                 self.startRenderTimer()
-                self.forceRender()
             }
         }
     }
     // MARK: - Attach displayLayer
     private func attachToForegroundWindow(completion: @escaping () -> Void) {
-
+        let session = pipSession.value
         DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
+            guard let self = self, self.pipSession.accepts(session) else { return }
 
             guard let layer = self.displayLayer else {
                 completion()
@@ -1042,6 +1057,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             } else {
                 PIPLogTo("沒有可用的 windowScene，延後重試")
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    guard self.pipSession.accepts(session) else { return }
                     self.attachToForegroundWindow(completion: completion)
                 }
             }
@@ -1060,7 +1076,9 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     @Published var isPiPActive = false
     private func safeTryStartPiP() {
         guard !isPiPActive else { return }
+        let session = pipSession.value
         DispatchQueue.main.async {
+            guard self.pipSession.accepts(session), !self.isPiPActive else { return }
             guard let pip = self.pipController, pip.isPictureInPicturePossible else { return }
             pip.startPictureInPicture()
             self.isPiPActive = true
@@ -1070,32 +1088,51 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
     // MARK: - Render Timer
     private func startRenderTimer() {
+        cancelRenderTimer()
         renderCancelled = false
-        scheduleNextRender()
+        renderStatsStarted = CACurrentMediaTime()
+        renderAttempts = 0
+        drawnFrames = 0
+        statsInitialFrameCount = frameCount
+        scheduleNextRender(after: 0)
     }
 
-    private func scheduleNextRender() {
+    private func scheduleNextRender(after delay: TimeInterval? = nil) {
         guard !renderCancelled else { return }
-        let interval = 1.0 / max(currentFPS, 1)
-        renderQueue.asyncAfter(deadline: .now() + interval) { [weak self] in
-            guard let self = self, !self.renderCancelled else { return }
+        let interval = delay ?? PIPRenderPolicy.interval(for: currentFPS)
+        scheduledRender?.cancel()
+        let token = renderGeneration.invalidate()
+        scheduledRenderDeadline = CACurrentMediaTime() + interval
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
             Task { @MainActor in
-                let didWork = await self.renderIncremental()
-                if didWork {
-                    self.lastActiveRenderTime = CACurrentMediaTime()
-                }
+                guard !self.renderCancelled, self.renderGeneration.accepts(token) else { return }
+                self.scheduledRender = nil
+                self.scheduledRenderDeadline = nil
+                _ = self.renderIncremental()
+                guard !self.renderCancelled, self.renderGeneration.accepts(token) else { return }
                 self.scheduleNextRender()
             }
         }
+        scheduledRender = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + interval, execute: work)
     }
 
     private func rescheduleRenderTimer(fps: Double) {
+        guard !renderCancelled else { return }
+        let interval = PIPRenderPolicy.interval(for: fps)
+        // Incoming updates may bring a frame forward, but must not keep postponing it.
+        guard let deadline = scheduledRenderDeadline,
+              deadline > CACurrentMediaTime() + interval else { return }
+        scheduleNextRender(after: interval)
     }
 
     private func cancelRenderTimer() {
         renderCancelled = true
-        renderTimer?.cancel()
-        renderTimer = nil
+        renderGeneration.invalidate()
+        scheduledRender?.cancel()
+        scheduledRender = nil
+        scheduledRenderDeadline = nil
     }
 
     func cleanupMessageslayer() {
@@ -1105,6 +1142,11 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
     // MARK: - Stop PiP
     func stopPiP() {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { self.stopPiP() }
+            return
+        }
+        pipSession.invalidate()
         cancelRenderTimer()
         isKeepaliveMode = false
         clearAdOverlay()
@@ -1127,6 +1169,12 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         pixelBufferPool = nil
         cachedFormatDescription = nil
         cachedFormatSize = .zero
+        cachedPixelBuffer = nil
+        cachedTimeString = nil
+        cachedElapsedString = nil
+        lastDrawnKeepaliveTime = nil
+        needsRedraw = true
+        lastPeriodicRedraw = CACurrentMediaTime()
 
         cleanupMessageslayer()
 
@@ -1146,7 +1194,20 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
     // MARK: - Incremental Render
     @MainActor
-    func renderIncremental() async -> Bool {
+    private func renderIncremental() -> Bool {
+
+        renderAttempts += 1
+        defer {
+            let elapsed = CACurrentMediaTime() - renderStatsStarted
+            if elapsed >= 60 {
+                let mode = isKeepaliveMode ? "保活" : "聊天"
+                PIPLogTo("渲染統計 模式=\(mode) 目標FPS=\(currentFPS) 區間=\(Int(elapsed))秒 排程次數=\(renderAttempts) 重繪=\(drawnFrames) 送幀=\(frameCount - statsInitialFrameCount)")
+                renderStatsStarted = CACurrentMediaTime()
+                renderAttempts = 0
+                drawnFrames = 0
+                statsInitialFrameCount = frameCount
+            }
+        }
 
         guard let displayLayer = displayLayer else {
             ensureDisplayLayerAttached()
@@ -1162,6 +1223,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         if wasAnimating {
             requestAnimationFPS()
         }
+        if adOverlayActive { needsRedraw = true }
 
         let now = CACurrentMediaTime()
         var periodicRedraw = false
@@ -1178,21 +1240,24 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             if let cached = cachedPixelBuffer, let sb = createSampleBuffer(from: cached) {
                 displayLayer.enqueue(sb)
                 frameCount += 1
+                lastRenderTime = CACurrentMediaTime()
+                if !isPiPActive { safeTryStartPiP() }
             }
             decayFPSIfNeeded()
             return false
         }
-        needsRedraw = false
         if periodicRedraw { lastPeriodicRedraw = now }
 
         var pixelBuffer: CVPixelBuffer?
 
+        let hadAdOverlay = adOverlayActive
         pixelBuffer = renderIfNeeded()
 
         guard let pixelBuffer = pixelBuffer else {
             decayFPSIfNeeded()
             return false
         }
+        drawnFrames += 1
 
         if self.basePTS == nil { self.basePTS = CACurrentMediaTime() }
 
@@ -1202,7 +1267,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             decayFPSIfNeeded()
             return false
         }
-
+        needsRedraw = false
         displayLayer.enqueue(sampleBuffer)
         self.frameCount += 1
 
@@ -1214,6 +1279,11 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         if isKeepaliveMode { lastDrawnKeepaliveTime = currentTimeString() }
 
         decayFPSIfNeeded()
+
+        if hadAdOverlay && !adOverlayActive {
+            // Replace the final overlay frame before returning to the five-second cadence.
+            forceRender()
+        }
 
         return true
     }
@@ -1240,11 +1310,16 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     }
 
     func releaseNonCriticalMemory() {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { self.releaseNonCriticalMemory() }
+            return
+        }
         guard !isPiPActive else { return }
         cancelRenderTimer()
         pixelBufferPool = nil
         cachedFormatDescription = nil
         cachedFormatSize = .zero
+        cachedPixelBuffer = nil
         messagesLayer?.canncel()
         messagesLayer = nil
         cleanupMessageslayer()
@@ -1277,11 +1352,13 @@ extension PIPService: AVPictureInPictureControllerDelegate {
     internal func pictureInPictureControllerDidStartPictureInPicture(
         _ pictureInPictureController: AVPictureInPictureController
     ) {
+        guard pictureInPictureController === pipController else { return }
         logTo("PIP Open")
     }
     internal func pictureInPictureControllerDidStopPictureInPicture(
         _ pictureInPictureController: AVPictureInPictureController
     ) {
+        guard pictureInPictureController === pipController else { return }
         logTo("PIP Stop")
         PIPService.shared.stopPiP()
     }
