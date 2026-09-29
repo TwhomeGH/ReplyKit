@@ -90,10 +90,25 @@ def _summary_body(text):
     return parts[0].strip(), "\n".join(parts[1:]).strip()
 
 
+def _norm_refs(refs):
+    """把多筆相關文件正規化為以 ` · ` 串接的單行字串。
+
+    接受 list（網頁 GUI）或字串（每行一筆，CLI 用），保留每筆的
+    markdown 連結寫法（如 `[說明](Docs/x.md)`）。
+    """
+    if not refs:
+        return ""
+    if isinstance(refs, str):
+        refs = refs.splitlines()
+    items = [str(r).strip() for r in refs if str(r).strip()]
+    return " · ".join(items)
+
+
 def build_block(date_str, title, type_, file_, problem="", root_cause="", changes=None, refs=""):
     if isinstance(changes, str):
         changes = changes.splitlines()
     changes = [c.strip() for c in (changes or []) if c and c.strip()]
+    refs = _norm_refs(refs)
     lines = ["## %s %s" % (date_str, title), ""]
     meta = "**類型**: %s" % (type_ or "修復")
     if file_:
@@ -179,7 +194,7 @@ def git_changed_files():
 
 def cmd_add(args):
     date_str = args.date or date.today().strftime("%Y.%m.%d")
-    insert_block(build_block(date_str, args.title, args.type, args.file))
+    insert_block(build_block(date_str, args.title, args.type, args.file, refs=getattr(args, "ref", [])))
     print("已插入: %s %s" % (date_str, args.title))
 
 
@@ -268,6 +283,8 @@ a{color:var(--accent);text-underline-offset:2px}hr{border:none;border-top:1px so
 .dialog label{display:block;font-size:13px;font-weight:600;color:var(--mut);margin:14px 0 5px}
 .dialog textarea{min-height:70px;resize:vertical;line-height:1.55}
 .row{display:flex;gap:12px}.row>div{flex:1}
+.ref-row{display:flex;gap:8px;margin-top:6px}.ref-row .ref-del{flex:none;padding:9px 12px}
+#add-ref{margin-top:8px}
 .foot{position:sticky;bottom:0;background:var(--card);border-top:1px solid var(--line);margin-top:18px;padding:12px 0 18px}
 .right{display:flex;justify-content:flex-end;gap:8px}
 .empty{color:var(--mut);padding:30px;text-align:center}
@@ -318,7 +335,9 @@ button.danger{background:#dc2626;color:#fff;border-color:#dc2626}
   <label for="f-problem">問題（第一行 = 標題摘要）</label><textarea id="f-problem" placeholder="症狀摘要&#10;（其後可換行寫詳述）"></textarea>
   <label for="f-cause">根因（可選，第一行 = 標題摘要）</label><textarea id="f-cause" placeholder="根因摘要&#10;（其後可換行寫詳述）"></textarea>
   <label for="f-changes">修改（第一行 = 標題摘要，其後每行一項）</label><textarea id="f-changes" placeholder="核心手法摘要&#10;其他改動（每行一項）"></textarea>
-  <label for="f-refs">相關文件（可選）</label><input id="f-refs" placeholder="[crash-tracing.md](crash-tracing.md)">
+  <label>相關文件（可選，可多筆）</label>
+  <div id="refs"></div>
+  <button type="button" id="add-ref">＋ 新增文件</button>
   <div class="foot">
     <div id="form-err" class="err"></div>
     <div class="right"><button id="cancel">取消</button><button id="submit" class="primary">插入</button></div>
@@ -419,9 +438,28 @@ async function show(i){
 $('#q').oninput=()=>load();
 $('#type').onchange=()=>load();
 $('#reload').onclick=()=>load();
+function makeRefRow(label,url){
+  const d=document.createElement('div');d.className='ref-row';
+  d.innerHTML='<input class="ref-label" placeholder="顯示文字（可留空）"><input class="ref-url" placeholder="連結或路徑，Docs/… 或 https://…"><button type="button" class="ref-del" title="移除">✕</button>';
+  d.querySelector('.ref-label').value=label||'';
+  d.querySelector('.ref-url').value=url||'';
+  d.querySelector('.ref-del').onclick=()=>d.remove();
+  return d;
+}
+function clearRefs(){const c=$('#refs');c.innerHTML='';c.appendChild(makeRefRow());}
+function collectRefs(){
+  return [...$('#refs').querySelectorAll('.ref-row')].map(r=>{
+    const label=r.querySelector('.ref-label').value.trim();
+    const url=r.querySelector('.ref-url').value.trim();
+    if(!url) return label;
+    return `[${label||url}](${url})`;
+  }).filter(Boolean);
+}
+$('#add-ref').onclick=()=>$('#refs').appendChild(makeRefRow());
 $('#add').onclick=async()=>{
   $('#f-date').value=new Date().toISOString().slice(0,10).replace(/-/g,'.');
-  ['f-title','f-file','f-problem','f-cause','f-changes','f-refs'].forEach(id=>$('#'+id).value='');
+  ['f-title','f-file','f-problem','f-cause','f-changes'].forEach(id=>$('#'+id).value='');
+  clearRefs();
   const files=await (await fetch('/api/gitdiff')).json();
   $('#gitfiles').innerHTML=files.map(f=>`<option value="${f}">`).join('');
   $('#chips').innerHTML=files.slice(0,12).map(f=>`<span class="chip">${f}</span>`).join('');
@@ -429,7 +467,6 @@ $('#add').onclick=async()=>{
   $('#form-err').textContent='';$('#modal').hidden=false;$('#f-title').focus();
 };
 $('#cancel').onclick=()=>$('#modal').hidden=true;
-$('#modal').onclick=e=>{if(e.target.id==='modal')$('#modal').hidden=true;};
 $('#submit').onclick=async()=>{
   const title=$('#f-title').value.trim();
   if(!title){$('#form-err').textContent='請填標題';$('#f-title').focus();return;}
@@ -437,7 +474,7 @@ $('#submit').onclick=async()=>{
   const body={title,date:$('#f-date').value.trim(),type:$('#f-type').value,file:$('#f-file').value.trim(),
     problem:$('#f-problem').value.trim(),root_cause:$('#f-cause').value.trim(),
     changes:$('#f-changes').value.split('\n').map(s=>s.replace(/^\s*[-*]\s*/,'').trim()).filter(Boolean),
-    refs:$('#f-refs').value.trim()};
+    refs:collectRefs()};
   await fetch('/api/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   $('#modal').hidden=true;await load();show(0);
 };
@@ -550,6 +587,7 @@ def main():
     a.add_argument("--type", default="修復")
     a.add_argument("--file", default="")
     a.add_argument("--date", default="")
+    a.add_argument("--ref", action="append", default=[], help="相關文件（可重複，格式 [說明](路徑)）")
 
     l = sub.add_parser("list", help="檢索紀錄（CLI）")
     l.add_argument("--grep", default="")
