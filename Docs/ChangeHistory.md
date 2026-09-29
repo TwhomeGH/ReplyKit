@@ -20,6 +20,40 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.09.29 23:56 修正 RTMP video composition time 在 A/V 補償下變成負值（無畫面）
+
+**類型**: 修復 · **檔案**: `Package.resolved`
+
+### 問題 - H.264 以 IPPP（has_b_frames == 0）輸出，CTS 本應為 0 實際是負數
+
+串流在 wire 上每個 video frame 的 FLV composition time（CTS）都是 −134/−135ms， 但 H.264 以 IPPP（has_b_frames == 0）輸出，CTS 本應為 0
+
+VLC/ffmpeg 持續噴 Invalid timestamps stream=1, pts=..., dts=...
+
+在 mpegts.js 低延遲設定 （isLive + liveBufferLatencyChasing + enableStashBuffer:false）下
+
+pts < dts 的 視訊樣本被全部丟棄 → MSE 無 buffer、readyState 卡在 HAVE_METADATA，連線活著卻 完全沒有畫面。
+
+### 根因 - RTMPStream.append(_:)：#57 附近的 A/V 偏移自動補償只把 avOffsetCompensation 加進 DTS 時間軸
+
+但 CTS 的「無 decodeTimeStamp」分支用未補償的 presentationTimeStamp
+
+去減已補償的 videoTimestamp.updatedAt，得 CTS = PTS − (PTS + comp) = −comp
+
+且補償在此公式下自我抵銷 （wire PTS = (PTS+comp) + (−comp) = PTS），呈現時間沒有真正位移
+
+### 修改 - 把 CTS 的計算抽成純函式 RTMPVideoCompositionTime.offset(hasValidDecodeTimeStamp:presentationTime:decodeTime:ctsOffset:)
+
+RTMPStream.append 與 CMSampleBuffer.getCompositionTime 都改用它。
+
+契約是保證 ≥ 0： 無重排（無 decodeTimeStamp）一律回 0；有重排才回 PTS − DTS + ctsOffset（clamp 0）。
+
+A/V 補償只作用在 wire DTS/PTS，不再混入 CTS。修正後補償也才真正讓 wire PTS = sourcePTS + comp 生效。
+
+**相關文件**: [修正 RTMP video composition time 在 A/V 補償下變成負值（無畫面）](https://github.com/TwhomeGH/HaishinKitFixSwfit/blob/main/CHANGES.md#60-%E6%9B%B4%E6%96%B0%E9%81%8E%E6%99%82%E7%9A%84-outgoingstream-buffer-count-%E6%B8%AC%E8%A9%A6--srt-%E9%82%8A%E7%95%8C%E5%A4%BE%E9%99%90--ci-%E6%97%A5%E8%AA%8C-ansi)
+
+---
+
 ## 2026.09.29 22:25 變更歷史紀錄支援時間欄位
 
 **類型**: 優化 · **檔案**: `Scripts/change_log.py`
