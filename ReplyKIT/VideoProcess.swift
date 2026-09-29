@@ -29,9 +29,10 @@ struct VideoProcessorDiagnostics: Sendable {
     let gpuLatency: GPUCompletionLatencyStats
     let srcDims: String
     let dstDims: String
+    var handoffSummary: String = ""
 
     var summary: String {
-        "active:\(isActive) proc:\(processedCount) drop:\(droppedCount) rotateDrop:\(consecutiveDropCount) gpu:\(hasGpuRotator ? "Y" : "N") gpuDead:\(gpuPermanentFailure) \(commandStats.summary) \(gpuLatency.summary) src:\(srcDims) dst:\(dstDims)"
+        "active:\(isActive) proc:\(processedCount) drop:\(droppedCount) rotateDrop:\(consecutiveDropCount) gpu:\(hasGpuRotator ? "Y" : "N") gpuDead:\(gpuPermanentFailure) \(commandStats.summary) \(gpuLatency.summary) src:\(srcDims) dst:\(dstDims) \(handoffSummary)"
     }
 }
 
@@ -422,6 +423,11 @@ final class VideoFrameProcessor {
     private var isActiveState = true
     private var processedCountState = 0
     private var droppedCountState = 0
+    private var mixerSubmitted = 0
+    private var mixerReturned = 0
+    private var mixerNotRunning = 0
+    private var mixerPending: [Int: CFTimeInterval] = [:]
+    private var mixerMaxWaitMs: Double = 0
 
     var isActive: Bool { stateSnapshot().isActive }
     var processedCount: Int { stateSnapshot().processedCount }
@@ -468,13 +474,17 @@ final class VideoFrameProcessor {
                 return
             }
             let processedCount = markProcessed()
+            let handoffID = beginMixerHandoff()
+            defer { endMixerHandoff(handoffID) }
             guard await mediaMixer.isRunning else {
+                recordMixerNotRunning()
                 if processedCount % 300 == 0 {
                     sendlog("[VProc] ⚠️ MediaMixer 未運行，丟棄 processed video")
                 }
                 return
             }
             await mediaMixer.append(rotated)
+            recordMixerReturned()
         }
     }
 
@@ -502,11 +512,48 @@ final class VideoFrameProcessor {
 
     func diagnostics() async -> VideoProcessorDiagnostics {
         let snapshot = stateSnapshot()
-        return await actor.diagnostics(
+        var result = await actor.diagnostics(
             isActive: snapshot.isActive,
             processedCount: snapshot.processedCount,
             droppedCount: snapshot.droppedCount
         )
+        result.handoffSummary = mixerHandoffSummary()
+        return result
+    }
+
+    private func beginMixerHandoff() -> Int {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        mixerSubmitted += 1
+        mixerPending[mixerSubmitted] = CACurrentMediaTime()
+        return mixerSubmitted
+    }
+
+    private func endMixerHandoff(_ id: Int) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        if let start = mixerPending.removeValue(forKey: id) {
+            mixerMaxWaitMs = max(mixerMaxWaitMs, (CACurrentMediaTime() - start) * 1000)
+        }
+    }
+
+    private func recordMixerReturned() {
+        stateLock.lock()
+        mixerReturned += 1
+        stateLock.unlock()
+    }
+
+    private func recordMixerNotRunning() {
+        stateLock.lock()
+        mixerNotRunning += 1
+        stateLock.unlock()
+    }
+
+    private func mixerHandoffSummary() -> String {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        let oldestMs = mixerPending.values.min().map { (CACurrentMediaTime() - $0) * 1000 } ?? 0
+        return "mixerSubmitted:\(mixerSubmitted) mixerReturned:\(mixerReturned) mixerNotRunning:\(mixerNotRunning) mixerPending:\(mixerPending.count) mixerOldestMs:\(Int(oldestMs)) mixerMaxWaitMs:\(Int(mixerMaxWaitMs))"
     }
 
     func stateSnapshot() -> (isActive: Bool, processedCount: Int, droppedCount: Int) {
