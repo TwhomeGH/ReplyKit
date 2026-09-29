@@ -6,7 +6,7 @@
 
 ### 觸發路徑
 
-```
+```swift
 processSampleBuffer (ReplayKit 每幀呼叫, 30-60 fps)
   └─ VideoFrameProcessor.process()
        └─ Task { … }                        ← 每幀建立一個 unstructured Task
@@ -32,7 +32,7 @@ processSampleBuffer (ReplayKit 每幀呼叫, 30-60 fps)
 ### 與其他遞迴問題的差異
 
 | 類型 | 原因 | 深度 | 觸發時機 |
-|------|------|------|----------|
+| ------ | ------ | ------ | ---------- |
 | NWConnection 遞迴 | callback 內同步呼叫 `receive()` | ~11,162 | Socket 大量資料交換 |
 | 泛型特化遞迴 | `withUnsafeBytes<UInt32>` 編譯器特化 | ~11,162 | ByteArray 讀取整數 |
 | **協程幀遞迴** | **`__swift_coroFrameAllocStub` + `Task { }` 過多** | **~11,162** | **GPU pipeline 初次建立** |
@@ -101,7 +101,7 @@ private actor ProcessorActor {
 ### 關鍵差異
 
 | 項目 | 修正前 | 修正後 |
-|------|--------|--------|
+| ------ | -------- | -------- |
 | 並行控制 | `NSLock` + 8 inflight slots | `actor` + `isProcessing` guard |
 | 最大 inflight frames | 8 | 1 |
 | Task 建立量 | 每幀 1 個 (30-60/s) | 每幀 1 個，但 actor 立即 drop |
@@ -113,5 +113,5 @@ private actor ProcessorActor {
 ## 受影響檔案
 
 | 檔案 | 修改內容 |
-|------|----------|
+| ------ | ---------- |
 | `ReplyKIT/VideoProcess.swift` | `RotatorManager` actor → `ProcessorActor`，加入 `processFrame()` 與 `isProcessing` guard，移除 `NSLock` 與 inflight slot 邏輯 |

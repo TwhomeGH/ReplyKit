@@ -4,7 +4,7 @@
 
 ReplayKit extension（`ReplyKIT`）在 iOS 27 beta 上反覆出現 `bug_type: 309` crash：
 
-```
+```log
 "bug_type":"309",
 "exception":{"type":"EXC_BAD_ACCESS","signal":"SIGBUS","subtype":"KERN_PROTECTION_FAILURE"},
 "faultingThread":4,
@@ -31,7 +31,7 @@ ReplayKit extension（`ReplyKIT`）在 iOS 27 beta 上反覆出現 `bug_type: 30
 
 `processSampleBuffer` 以 30fps 影片 + ~100Hz 音訊高頻率觸發，每個 Task 進入 `MediaMixer.append()` 後，在**同一個 cooperative thread** 上觸發多層 yield：
 
-```
+```swift
 processSampleBuffer  →  Task  (cooperative thread)
   └─ await mixer.append(sampleBuffer)
        └─ MediaMixer.append()                          ← actor, await 進入
@@ -124,14 +124,14 @@ override func processSampleBuffer(_ sampleBuffer: CMSampleBuffer, with sampleBuf
 ### HaishinKit（底層修復 — 打斷 yield 鏈）
 
 | 檔案 | 修改 |
-|------|------|
+| ------ | ------ |
 | `RTMPStream.swift` | `mixer(_:didOutput:)` video/audio 兩方法：yield 包入 `Task { }` |
 | `SRTStream.swift` | 同上 |
 
 ### ReplyKIT（上層輔助 — 節流）
 
 | 檔案 | 修改 |
-|------|------|
+| ------ | ------ |
 | `SampleHandler.swift` | 新增 boolean gate 節流；video config + append 合併成單一 Task |
 
 ## 診斷方法

@@ -27,7 +27,7 @@ macOS / Linux 也可用 wrapper：`./crash_trace.sh crash.ips -s <dSYMs>`
 ## 四種模式
 
 | 模式 | 條件 | 輸出粒度 |
-|------|------|----------|
+| ------ | ------ | ---------- |
 | `dSYM(UUID ✓)` | 提供 dSYM，且 `LC_UUID == crash.slice_uuid` | `funcName +0x…`（跨平台原生解析 nlist） |
 | `atos(UUID ✓)` | 同上且在 macOS 且有 `atos` | `funcName (File.swift:行號)` |
 | `symbols` | 提供 `.txt`，且模組名相符 | `ClassName.methodName` |
@@ -54,7 +54,7 @@ macOS / Linux 也可用 wrapper：`./crash_trace.sh crash.ips -s <dSYMs>`
 `bug_type` 只描述訊號種類，**不代表死因**。工具改讀 `termination`：
 
 | termination | 標示 | 意義 |
-|-------------|------|------|
+| ------------- | ------ | ------ |
 | `0x8BADF00D` | Watchdog Deadlock | 主執行緒卡住（死鎖），被 scene-update watchdog 砍掉 |
 | `0xDEAD10CC` | Watchdog File Lock | 持有檔案鎖被砍 |
 | `0xC00010FF` | CPU Limit | 背景超時 |
@@ -70,7 +70,7 @@ macOS / Linux 也可用 wrapper：`./crash_trace.sh crash.ips -s <dSYMs>`
 找出「在 SwiftUI/AttributeGraph 更新中、又同步等 main queue（`_dispatch_sync_f_slow`）」的持有者，
 並印出該執行緒的 App 端堆疊（最內層通常就是觸發者）：
 
-```
+```swift
 --- 死鎖分析 ---
 偵測到跨執行緒死鎖：
   持有 SwiftUI/AttributeGraph lock 的 thread #7 (com.apple.uikit.datasource.diffing)
@@ -88,7 +88,7 @@ Swift 符號會優先用 `swift-demangle` 還原（未安裝才退回內建啟�
 
 除了死鎖，工具仍會標記同一函數在 stack 上重複出現的狀況：
 
-```
+```swift
   #      offset  function
   1    +0xc8890  RTMPConnection.supportedProtocols.getter (RTMPConnection.swift:32) (x6) [!] RECUR
   8    +0xbd618  AMF3Serializer.deserialize() (AMF3Serializer.swift:78) +0xdc
@@ -102,6 +102,7 @@ Swift 符號會優先用 `swift-demangle` 還原（未安裝才退回內建啟�
 ## 符號表來源
 
 ### 直接使用 dSYM（建議，跨平台）
+
 從 Xcode Archive 取：
 
 ```bash
@@ -138,7 +139,7 @@ python crash_trace.py crash.ips -s symbols.txt
 ## 工具檔案
 
 | 檔案 | 說明 |
-|------|------|
+| ------ | ------ |
 | `crash_trace.py` | 主工具 (Python 3) |
 | `crash_trace.sh` | macOS/Linux wrapper |
 | `crashlog_analyzer.py` | 日誌/IPS 分析工具（跨平台，支援多種 bug_type） |
@@ -153,12 +154,12 @@ python crash_trace.py crash.ips -s symbols.txt
 ### 支援格式
 
 | 格式 | bug_type | 內容 |
-|------|----------|------|
+| ------ | ---------- | ------ |
 | Apple Crash Report (`.ips`) | 309 | Crash 例外終止、執行緒堆疊、記憶體分布、模組列表 |
 | GPU Hang Event (`.ips`) | 284 | GPU Hang、IOFence 阻塞 surface 分析 |
 | Resource Exception (`.ips`) | 145 | 磁碟寫入等資源異常、持續時間 |
 | Analytics (`.ips.ca.synced.txt`) | 211 | 系統統計事件計數、bundleId 分布 |
-| ReplyKit log (`.txt`, `.log`)| - | 時間範圍、事件統計、閒置超時、FPS、背景任務 |
+| ReplyKit log (`.txt`, `.log`) | - | 時間範圍、事件統計、閒置超時、FPS、背景任務 |
 
 ### 用法
 
@@ -175,7 +176,8 @@ python crashlog_analyzer.py E:\Video5\crash-symbols
 ### 輸出範例
 
 **Crash Report (bug_type 309):**
-```
+
+```log
 [DEV] Device: iPad13,18
 [ID] Bundle: nuclear.liveAPP.ReplyKIT
 [APP] App: ReplyKIT (v2.3)
@@ -187,7 +189,8 @@ python crashlog_analyzer.py E:\Video5\crash-symbols
 ```
 
 **GPU Hang (bug_type 284):**
-```
+
+```log
 [GPU] GPU Analysis
   Restart Reason: blocked by IOFence
   Signature: 627
@@ -197,12 +200,14 @@ python crashlog_analyzer.py E:\Video5\crash-symbols
 ```
 
 **Resource Exception (bug_type 145):**
-```
+
+```log
 [DUR] duration: 19m 37s (1177534.0 ms)
 ```
 
 **ReplyKit Log:**
-```
+
+```log
 [TIME] Time: 2026-07-13 11:44:03
 [STAT] VFrame: 57840
 [STAT] PIP: 24

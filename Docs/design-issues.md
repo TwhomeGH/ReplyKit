@@ -7,6 +7,7 @@
 **問題**: `initProcessors()` 放在 `broadcastStarted()` 中 `await startRTMP()` 之後。由於 `startRTMP()` 內部的 `rtmpConnection?.connect()` 是非同步網路呼叫，若 RTMP 伺服器無法連線，整個 `startRTMP()` 會卡住永不返回，導致 `initProcessors()` 永遠不會執行。
 
 **影響**:
+
 - `audioProcessor` / `videoProcessor` 為 nil
 - `processorsInitialized` 永遠為 false
 - 所有音視頻幀在 `processSampleBuffer` 中被丟棄
@@ -23,6 +24,7 @@
 **問題**: `mediaMixer.startRunning()` 被放在 `startRTMP()` 的 `do` 區塊中，在 `connect()` 與 `publish()` 成功後才執行。若連線失敗（catch 區塊），`startRunning()` 永遠不會被呼叫。
 
 **影響**:
+
 - `mediaMixer.isRunning` 永遠為 false
 - `AudioProcessor.enqueue()` 中 `guard await mediaMixer.isRunning else { return }` 丟棄所有音訊
 - `VideoFrameProcessor.process()` 中 `guard await self.mediaMixer.isRunning else { return }` 丟棄所有視訊
@@ -39,6 +41,7 @@
 **問題**: `RTMPConnection` 的 reconnect state machine 在**初始連線**時也會發射 `.started` 事件。原本的程式碼在 `.started` 中無條件呼叫 `mediaMixer.stopRunning()`，導致初始連線嘗試期間 MediaMixer 被停止。
 
 **影響**:
+
 - 初始連線時（甚至還沒成功過），MediaMixer 就被 `stopRunning()`
 - 如果首次連線失敗（`.failed`），MediaMixer 不會被重新啟動
 - 整個串流期間 MediaMixer 都處於停止狀態
@@ -88,6 +91,7 @@
 ## 7. 背景 Socket 保活語意修正
 
 **檔案**:
+
 - `liveAPP/liveAPPApp.swift`（背景時啟動短 background window + 排程 socket refresh）
 - `liveAPP/PIPService.swift`（移除舊 background task chain）
 - `liveAPP/BackgroundTaskManager.swift`（封裝短 background window 與 BGTaskScheduler refresh）
@@ -101,6 +105,7 @@
 此外，`BGTaskScheduler` 不是 socket 常駐保活機制。系統不保證 5 秒後執行，也不保證固定週期；它只能作為機會型 refresh。PiP 場景仍主要依靠 `AVAudioSession.Category.playback` + `audio` background mode。
 
 **修復**:
+
 1. **保留短 background window**：進背景時呼叫 `beginSocketBackgroundWindow()`，只期待系統允許的短時間收尾窗口，不做 chain。
 2. **BGTaskScheduler 改為 refresh**：以 `BGAppRefreshTask`（identifier: `com.nuclear.liveAPP.socket.keepalive`）排程下一次機會型喚醒；handler 執行 `SocketServer.shared.start()` + `sendKeepalive()`，10 秒後完成。
 3. **新增 `BackgroundTaskManager` 單例**：統一管理註冊、排程、短背景窗口、取消與 handler 完成。
@@ -126,6 +131,7 @@ App 回前景 → cancelAll() + endSocketBackgroundWindow()
 ## 8. 背景執行緒改 @Published → SwiftUI/AttributeGraph 死鎖（0x8BADF00D）
 
 **檔案**:
+
 - `liveAPP/Socket.swift`（`handleDecodedPayload` 在背景佇列上呼叫）
 - `liveAPP/ContentView.swift`（`LiveVolumeModel` 在背景被寫入）
 
@@ -144,6 +150,7 @@ main           : 等 movable lock   ──等──> thread #7
 ```
 
 **為什麼難以察覺**:
+
 - 死鎖的兩半在**不同執行緒**：main 的 stack 只看到 `_MovableLockLock` 在等，真正的持有者（背景那條）**完全不出現在 main 的 stack**。
 - 需要時序剛好對上才會爆（背景更新進行中、且 main 同時進入 runloop flush），因此是**偶發**。
 - 改 `@Published` 本身不會當；是「SwiftUI 只有一把更新鎖」與「UIKit 必須回 main」互撞。
@@ -156,6 +163,7 @@ main           : 等 movable lock   ──等──> thread #7
 CFNotification observer 亦同。`VideoHealthModel` / `AudioHealthModel` 原本就已在 `record()` 內用 `DispatchQueue.main.async`。
 
 **通則（避免再犯）**:
+
 1. 從 socket / 網路 / log / **任何背景佇列**回來的資料，只要會寫 `@Published`（或任何 SwiftUI 狀態），一律先 hop 回 main：
    `Task { @MainActor in ... }`（與本專案既有 `StreamActivityManager` 用法一致），不要在背景直接寫。
 2. 新增 ObservableObject 時，**優先整個 class 標 `@MainActor`**，讓編譯器擋掉背景寫入，而不是靠自律。
