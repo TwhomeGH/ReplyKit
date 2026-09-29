@@ -3,7 +3,7 @@
 ## 模式一覽
 
 | 模式 | 值 | HaishinKit | 特性 | 適合 |
-|------|----|------------|------|------|
+| ------ | ---- | ------------ | ------ | ------ |
 | ABR | 0 | `.average` | 長期貼近目標 bitrate，允許短期波動 | **推薦** — 直播首選，穩定與畫質的平衡 |
 | CBR | 1 | `.constant` | 嚴格維持固定 bitrate，波動最小 | 上傳頻寬極度受限或不穩定的環境 |
 | VBR | 2 | `.variable` | 依場景複雜度自由分配 bitrate，畫質最佳 | 錄製/本地存檔，不適合即時串流 |
@@ -12,7 +12,7 @@
 ## 實測數據（目標 6000 Kbps）
 
 | 模式 | Avg | Max | 倍率 |
-|------|-----|-----|------|
+| ------ | ----- | ----- | ------ |
 | ABR | ~6000 | ~8500 | ~1.4x |
 | CBR | ~6000 | ~6500 | ~1.08x |
 | VBR | ~6000 | ~17000+ | ~2.8x+ |
@@ -65,7 +65,7 @@ let BitRateOptions = [
 ### 移除內容（2026-08）
 
 | 項目 | 理由 |
-|------|------|
+| ------ | ------ |
 | 動態升降碼率邏輯（`stepUp` / `minBitrate` / ring buffer / warmup / `minBitrateHoldDuration`） | 調整由 fork 內建策略或 SocketBackpressure 取代 |
 | `.publishInsufficientBWOccured` 降速 | 原實作的 `smoothBps` 平滑計算是空操作（`measuredBps == avgOutBps`），且無冷卻會連續降速 |
 | 斷線監控（`checkDisconnect` / `setOnDisconnect` / `disconnectMonitorTask` / `startDisconnectMonitor`） | callback 只 log、無實質動作，RTMPConnection 已有完整重連狀態機 |
@@ -80,8 +80,7 @@ let BitRateOptions = [
 
 `ReplyKIT/BitRateStrategy.swift` — `adjustBitrate` 僅處理 `.status`，其他事件直接忽略。
 
-
-# 建議位元率設定（VBR 模式）
+## 建議位元率設定（VBR 模式）
 
 在使用 VBR（Variable Bitrate，可變位元率）時
 不能直接套用與 CBR（Constant Bitrate，固定位元率） 或 ABR（Average Bitrate，平均位元率） 相同的數值。
@@ -92,4 +91,4 @@ let BitRateOptions = [
 
 - 這樣實際輸出會落在 3000 ~ 6000 kbps 的合理範圍。
 
-- 若直接設定成 6000 kbps，VBR 在高複雜度場景可能會飆升到 10000 kbps 以上，導致檔案過大或超出預期。
+- 若直接設定成 6000 kbps，VBR 在高複雜度場景可能會飆升到 10000 kbps 以上，導致檔案過大或超出預期

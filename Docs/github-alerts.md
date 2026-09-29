@@ -42,7 +42,7 @@ GitHub Flavored Markdown 的 **alert** 語法，用 `> [!類型]` 開頭，內�
 ## 渲染支援
 
 | 環境 | 行為 |
-|------|------|
+| ------ | ------ |
 | GitHub（README、Docs） | 原生渲染成對應顏色 |
 | 本專案變更歷史 GUI（`Scripts/change_log.py`） | 支援相同五種 alert 樣式 |
 | 其他純 Markdown 檢視器 | 多數會當成普通引用區塊（仍可讀） |

@@ -13,7 +13,7 @@
 
 **`RTMPChunk.swift` — `chunkSize.didSet` 使用 `Data(count:)` 抹除 buffer**
 
-```
+```swift
 RTMPChunkBuffer.chunkSize 從 128 → 8192（收到伺服器 Set Chunk Size）時：
   didSet {
     data = Data(count: newCount)    ← 整個 buffer 被零填充取代
@@ -24,7 +24,7 @@ RTMPChunkBuffer.chunkSize 從 128 → 8192（收到伺服器 Set Chunk Size）�
 
 ### 修正
 
-```
+```swift
 RTMPChunk.swift:138
 
 - data = Data(count: newCount)
@@ -39,19 +39,19 @@ RTMPChunk.swift:138
 
 ## 問題二：中串流斷線後自動重連未觸發，5 秒後斷線
 
-### 現象
+### 現象 - 連線成功後約 5 秒 Twitch 關閉連線
 
 - RTMP 連線成功後約 5 秒 Twitch 關閉連線
 - `totalBytesOut` 極低（僅 7KB），音影數據停留在 MediaMixer 未送出
 - `斷線監控觸發` 每秒無限噴發，主 App 被 iOS 後台殺死
 
-### 根因
+### 根因 - `recv()` 掉線錯誤從未觸發 `startReconnection()`**
 
 **`RTMPConnection.swift:444-450` — `recv()` 掉線錯誤從未觸發 `startReconnection()`**
 
 `performConnect` 內部的背景 `recv()` Task 負責持續接收伺服器數據。當 `endOfStream` 發生時，`AsyncStream` 正常結束（非拋錯），`for await` 迴圈離開後直接呼叫 `close()`。**中串流斷線的錯誤路徑與 `startReconnection()` 完全隔離**，底層已有的 `resumePublishing()` 機制（`performConnect` line 458-461）從未有機會執行。
 
-```
+```text
                  初始連線失敗                         中串流斷線
   connect() ──→ 拋錯 ──→ startReconnection()      recv() 結束 ──→ close() only
                            │                                            │
@@ -60,9 +60,9 @@ RTMPChunk.swift:138
                       resumePublishing() ✓
 ```
 
-### 修正
+### 修正 - 先斷開（state 轉 .disconnected）
 
-```
+```swift
 RTMPConnection.swift:447-458
 
   // recv() 串流正常結束（無資料）或 listen() 拋錯時：
@@ -84,7 +84,7 @@ RTMPConnection.swift:447-458
 
 ## 附帶：`RTMPStream.swift` Task 包裝恢復
 
-```
+```swift
 RTMPStream.swift:772
 
 - let length = await conn.doOutput(...)
@@ -106,7 +106,7 @@ HaishinKit 內多處使用 `memcpy` 與 raw pointer arithmetic 時缺少 bounds 
 ### `AudioRingBuffer.swift` — 音訊環形緩衝區
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `head`/`tail` 無鎖，多執行緒同時讀寫 | AudioUnit render callback + CMSampleBuffer append 在不同佇列上操作同一組 count | 加入 `os_unfair_lock` 保護所有 `head`/`tail`/`skip`/`sampleTime` 讀寫 |
 | `append(_:offset:)` 遞迴時 `offset` 可能讀取 source 緩衝區之外 | 遞迴 `offset` 遞增但 `frameLength` 不變，`advanced(by: offset * channelCount)` 可能超過 allocation | 檢查 `offset < frameLength`，超出直接 return；限制 `numSamples` 不超過剩餘空間 |
 | `render()` 的 `memcpy` 使用 `outputBuffer.frameLength`（永久等於 capacity）計算剩餘空間 | `outputBuffer.frameLength` 設為 `frameCapacity` 後永不更新，`capacity - tail` 計算正確但有誤導性 | 改用 `outputBuffer.frameCapacity` 作為容量基準 |
@@ -133,7 +133,7 @@ unlock()
 ### `CVPixelBuffer+Extension.swift` — 像素緩衝區複製
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | Non-planar 路徑 `bytesPerRowDst = bytesPerRowSrc`（永遠相等，永遠走 bulk path） | 沒有讀取 destination 的真實 bytesPerRow，bulk `memcpy` 若兩者實際 row stride 不同則寫出界 | `bytesPerRowDst = self.bytesPerRow`，只在 `bytesPerRowSrc == bytesPerRowDst` 時使用 bulk path |
 | Bulk path 全量 `height * bytesPerRowSrc` 無限制 | 假設來源與目標尺寸一致 | 加入 `copyHeight = min(pixelBuffer.height, self.height)`、`copyWidth = min(bytesPerRowSrc, bytesPerRowDst)` |
 | Planar 路徑相同問題 | 同上，且 `height` 變數遮罩了 destination plane height | `bytesPerRowDst = self.bytesPerRawOfPlane(plane)`、加入 `copyHeight`/`copyWidth` 限制 |
@@ -157,7 +157,7 @@ if bytesPerRowSrc == bytesPerRowDst {
 ### `AVAudioPCMBuffer+Extension.swift` — 音訊緩衝區複製
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `copy()` 只檢查 `frameLength == audioBuffer.frameLength`，沒檢查 `frameCapacity` | 若 `frameLength > frameCapacity`，`memcpy` 或 `update(repeating:)` 寫出界 | `numSamples = min(frameLength, audioBuffer.frameLength, frameCapacity, audioBuffer.frameCapacity)` |
 | `muted()` 使用 `Int(frameLength)` 作為 `update(repeating:count:)` 的 count | 同上 | 改為 `min(Int(frameLength), Int(frameCapacity))` |
 
@@ -175,7 +175,7 @@ guard numSamples > 0 else { return false }
 ### 受影響檔案
 
 | 檔案 | 行數變化 |
-|------|----------|
+| ------ | ---------- |
 | `HaishinKit/Sources/Mixer/AudioRingBuffer.swift` | +150 (lock, bounds check, zeroBuffer helper, appendInternal rename) |
 | `HaishinKit/Sources/Extension/CVPixelBuffer+Extension.swift` | +8 (bytesPerRowDst, copyHeight/copyWidth) |
 | `HaishinKit/Sources/Extension/AVAudioPCMBuffer+Extension.swift` | +6 (frameCapacity guard) |
