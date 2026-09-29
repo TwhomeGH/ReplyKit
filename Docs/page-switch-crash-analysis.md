@@ -9,7 +9,7 @@
 
 ### Crash Stack（outer → inner）
 
-```
+```text
 completeTaskWithClosure                                   root
   → ??? (nearest symbol: LogMessage.encode +0x47)         data
   → ??? (nearest symbol: LogMessage.encode +0x43)         data
@@ -24,7 +24,7 @@ completeTaskWithClosure                                   root
 
 ### 連鎖觸發路徑
 
-```
+```text
 使用者在音量/日誌頁來回切換
   → liveApp 透過 E-Socket 發送 onAudioPage/onlogPage / VideoReconfig
   → Extension 收到後呼叫 setVideoSettings / setAudioMixerSettings
@@ -40,7 +40,7 @@ Swift 的 `String` 是 CoW（Copy-on-Write）型別，其 buffer 儲存在 heap 
 
 ### 時間窗口
 
-```
+```text
 sendlog("...")                  ← 字串建立，加入 localLogBuffer
   │   [等待 flush 定時器，最多 1 秒]
   v
@@ -149,7 +149,7 @@ private func writeEarlyLogToFile(_ text: String) {
 ## 相關檔案
 
 | 檔案 | 行數 | 說明 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `ReplyKIT/Socket.swift` | 575-584 | `sendLogBatch` 新增 `force` 參數 |
 | `ReplyKIT/Event.swift` | 391-398 | `flushLocalLogs` 傳入 `force: true` |
 | `ReplyKIT/Event.swift` | 437 | `writeEarlyLogToFile` 側載 guard |

@@ -14,7 +14,7 @@ App 原本監聽 `UIApplication.didReceiveMemoryWarningNotification`，收到系
 此設計對推流穩定性有害：
 
 | 影響 | 說明 |
-|------|------|
+| ------ | ------ |
 | **PiP buffer pool 中途重建** | 推流中清掉 pixelBufferPool，Metal 渲染管線需重新配置，造成畫面跳動/卡頓 |
 | **Socket buffer 全清** | `releaseMemory()` 把 sendQueues / pendingFailedPayloads 全部 `removeAll()`，在途的 log 直接遺失，且可能與正在進行的 socket I/O 競爭 |
 | **推流中斷** | 兩者合併造成整個 AV 管線不穩，嚴重時推流中斷 |
@@ -22,7 +22,7 @@ App 原本監聽 `UIApplication.didReceiveMemoryWarningNotification`，收到系
 ## 變更
 
 | 檔案 | 移除內容 |
-|------|---------|
+| ------ | --------- |
 | `liveAPP/liveAPPApp.swift` | `didReceiveMemoryWarningNotification` 監聽 block |
 | `liveAPP/PIPService.swift` | `handleMemoryWarning()`（清 buffer pool + cached format） |
 | `liveAPP/Socket.swift` | `releaseMemory()`（清空 socket buffers） |

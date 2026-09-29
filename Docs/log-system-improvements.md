@@ -3,6 +3,7 @@
 ## 概述
 
 修復 LogManager 的多項設計問題，重點在於：
+
 - 消除日誌丟失（data race、reentrancy drop、單封包過大）
 - 將重負載移出 barrier queue，提升整體效
 - 側載無 App Group 時自動強制走 Socket 轉送
@@ -15,7 +16,7 @@
 ### `ReplyKIT/Socket.swift`
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `pendingLogs` data race | `sendLog()` 直接操作 `pendingLogs`，與 `flushPendingLogs()` 跨 queue 競爭 | `sendLog()` 改派發到 `SocketClient.queue` (serial queue) |
 | 單一封包 100KB+ | `flushLocalLogs` 將整批 buffer 一次 joined 送出 | 新增 `_sendLogPayload()`，超過 8KB 按 `\n` 邊界分塊 |
 | `sendLog` 繞過序列佇列 | 直接呼叫 `sendPayload()`，與其他控制訊息交錯 | 統一經由 `SocketClient.queue` 序列化 |
@@ -23,7 +24,7 @@
 ### `liveAPP/liveAPPApp.swift`
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `receiveSocketLog` 丟失訊息 | 全域 `isProcessingSocketLog` Boolean 做 reentrancy guard，重入直接丟棄 | 移除 guard（Socket Server receive loop 已是 per-connection serial） |
 
 ---
@@ -33,7 +34,7 @@
 ### `ReplyKIT/Event.swift`
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | barrier queue 被阻塞 | `flushLocalLogs()` 在 `logQueue.async(flags:.barrier)` 內做 `.joined()` + JSON 序列化 | buffer swap 留在 barrier（僅 array reference swap），`.joined()` + `sendLog` 移至 `DispatchQueue.global(qos:.utility)` |
 | 三倍記憶體 | buffer array + joined String + JSON Data 同時存在 | 分割為 swap → (off barrier) joined → send |
 
@@ -66,11 +67,11 @@
 
 ## 3.1 主 App 寫檔改進 — 批次化 + 持久 handle + 就地截斷 (2026-08)
 
-### 背景問題
+### 背景問題 - 每筆 log 一次完整檔案 I/O
 
 `AppLogPersister` 原實作對**每一筆 log** 都做一次完整檔案 I/O：
 
-```
+```swift
 sendlog() / receiveSocketLog() / Socket logbatch / [PIP_Chat] 每一條
     → append(line:/lines:) → queue.async { write(data) }
     → fileExists 檢查 → FileHandle(forWritingTo:) 開啟 → seekToEndOfFile
@@ -78,7 +79,7 @@ sendlog() / receiveSocketLog() / Socket logbatch / [PIP_Chat] 每一條
 ```
 
 | 寫入來源 | 觸發 | 頻率 |
-|----------|------|------|
+| ---------- | ------ | ------ |
 | `sendlog()` (liveAPPApp.swift:658) | 主 App 自身事件（心跳、頁面切換、RTMP 狀態、BGTask） | 低〜中 |
 | `[PIP_Chat]` (PIPContent.swift:1897) | **每一條聊天訊息** | 高（聊天多時每秒數筆） |
 | E-Socket `log`/`logbatch` (Socket.swift:1039-1052) | extension 每 ~250ms~1s flush 一次 | 中 |
@@ -89,16 +90,16 @@ sendlog() / receiveSocketLog() / Socket logbatch / [PIP_Chat] 每一條
 ### 修正（`liveAPP/liveAPPApp.swift`）
 
 | 層面 | 改前 | 改後 |
-|------|------|------|
+| ------ | ------ | ------ |
 | **寫入粒度** | 每筆 log 一次 FileHandle open/seek/write/close | 記憶體 `pendingLines` 累積，滿 **50 筆** 或 **0.5 秒**（先到先 flush）一次整批寫入 |
 | **handle 生命週期** | 每次 append 開檔再關 | 首次寫入時 `openWriteHandle()` 開啟並保存 `writeHandle`，後續重複使用，`clear()` 才 truncate |
 | **trim** | 讀整檔 + `atomically` 原子重寫 | `truncate(atOffset:0)` + `seek(toOffset:0)` 就地覆寫後截斷，省一次整檔寫入 |
 | **背景落盤** | 無（被 kill 遺失 pending） | 新增 `flushNow()`，`.background` 場景呼叫，進入背景前強制落盤 |
 
-### 行為差異
+### 行為差異 - 批次化後的寫入頻率與落盤
 
 | 情境 | 改前 | 改後 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 正常日誌量（每秒 <50 筆） | 每筆一次檔案寫入 | 每 0.5 秒一批（約 1-2 次/s 檔案寫入） |
 | 高頻聊天（每秒 >50 筆） | 每筆一次，頻繁 open/close | 每 50 筆一批 flush |
 | UI 即時顯示 | 依賴 `LogBuffer`（0.05s debounce） | **不變**——`LogBuffer` 與 `AppLogPersister` 獨立，UI 仍即時 |
@@ -125,7 +126,7 @@ Documents/log.txt
 它不是 UI log buffer，也不是 extension 的早期兜底檔。三者分工如下：
 
 | 元件 | 位置 | 用途 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `LogBuffer` | 主 App 記憶體 | UI 即時顯示，0.05s debounce |
 | `AppLogPersister` | 主 App `Documents/log.txt` | 檔案 App 可讀、設備資訊頁 App Write 指標 |
 | `early-log.txt` | App Group / extension | 主 App 被殺或 socket 不可用時的兜底，主 App 啟動時合併 |
@@ -144,7 +145,7 @@ Documents/log.txt
 ### 本次補強
 
 | 問題 | 修正 |
-|------|------|
+| ------ | ------ |
 | `openWriteHandle()` 在 `log.txt` 不存在時回 nil | 先建立空檔，再開啟持久 handle |
 | fallback 使用 `data.write(..., .atomic)` | 改為一次性 `FileHandle` append，避免 open 失敗時覆寫既有 log |
 | singleton 沒有明確 close 收尾 | 新增 `deinit`：取消 pending flush、落盤、關閉 `writeHandle` |
@@ -155,7 +156,7 @@ Documents/log.txt
 
 ## 3.2 early-log.txt 接線 + 消除每筆 open/close (2026-08)
 
-### 背景問題
+### 背景問題 - early-log.txt 死設計 + 每筆 open/close
 
 `early-log.txt` 是 extension 側的「force-quit 兜底」日誌：`writeEarlyLogToFile()` 對**每一筆 log 即時寫入**（不經 flush timer 批次），確保主 App 被強制關閉/殺掉時最後一批 log 已落盤。但原先存在兩個缺陷：
 
@@ -169,15 +170,15 @@ Documents/log.txt
 ### 修正 2：extension 持久寫入 handle（`ReplyKIT/Event.swift`）
 
 | 層面 | 改前 | 改後 |
-|------|------|------|
+| ------ | ------ | ------ |
 | **handle 生命週期** | 每筆 log：`fileExists` 檢查 → `FileHandle(forWritingTo:)` 開啟 → `seekToEndOfFile` → `write` → `closeFile`（5 syscall） | 首次寫入時開啟並保存 `earlyLogHandle`，後續重用，只做 `seekToEndOfFile + write`（2 syscall） |
 | **並發安全** | 無保護（concurrent queue 下可能並發寫同一檔） | `earlyLogLock`（NSLock）保護單一 handle |
 | **trim** | 原子重寫讓持久 handle 指向舊 inode/offset | trim 前先關閉 handle，trim 後下次寫入重新開啟 |
 
-### 行為差異
+### 行為差異 - 合併 early-log 與持久 handle 的 syscall 節省
 
 | 情境 | 改前 | 改後 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 高頻管道 log（~103 筆/s） | 每筆 open/close（~515 syscall/s） | 每筆 seek+write（~206 syscall/s），省 60% syscall |
 | force-quit 兜底 | write 即時落盤 | **不變**——仍即時寫入，最後資料不丟 |
 | 側載（無 App Group） | early-log 不寫（`guard !isSideload`） | **不變**——側載只走 socket + 主 App Documents/log.txt |
@@ -211,7 +212,7 @@ var isSideload: Bool {
 ### Extension 端 (`ReplyKIT/Event.swift`, `ReplyKIT/Socket.swift`)
 
 | 行為 | 說明 |
-|------|------|
+| ------ | ------ |
 | `RPConfig.init()` | 側載下強制 `enableSocketLog = true` |
 | `writeLogToFile()` | 側載下 `guard return`，不寫入看不見的 extension 私目錄 |
 | `setupFlushTimer()` | 側載下 bypass `onLogPage` 閘門，永遠 flush |
@@ -220,14 +221,14 @@ var isSideload: Bool {
 ### 主 App 端 (`liveAPP/liveConfig.swift`, `liveAPP/Setting.swift`)
 
 | 行為 | 說明 |
-|------|------|
+| ------ | ------ |
 | `LPConfig.init()` | 側載下強制 `SocketLog = true` |
 | 設定頁 UI | 側載：顯示 🔒 鎖頭 +「側載模式：Socket 日誌強制啟用」，Toggle 隱藏 |
 | | 非側載：完全維持原有行為，用戶自由開關 |
 
 ### 流程
 
-```
+```text
 有 App Group:
   Extension ──┤ enableSocketLog 可開關
                ├── onLogPage 控制是否 flush
@@ -249,7 +250,7 @@ var isSideload: Bool {
 ## 受影響檔案
 
 | 檔案 | 異動摘要 |
-|------|----------|
+| ------ | ---------- |
 | `ReplyKIT/Event.swift` | isSideload, flushLocalLogs async, setupFlushTimer bypass, writeLogToFile guard |
 | `ReplyKIT/Socket.swift` | sendLog queue dispatch, 8KB chunking, logConfig sideload override |
 | `liveAPP/Info.plist` | UIFileSharingEnabled + LSSupportsOpeningDocumentsInPlace |

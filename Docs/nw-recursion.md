@@ -28,7 +28,7 @@ private func receive() {
 
 另一個相關的遞迴問題發生在 Swift compiler 對 `ExpressibleByIntegerLiteral.init(data:)` 的泛型特化：
 
-```
+```text
 readUInt32()
   → UInt32(data: Data[...]) 
     → ExpressibleByIntegerLiteral.init(data: Data)  ← 泛型
@@ -83,7 +83,7 @@ let result = UInt32(data[pos]) << 24
 ## 受影響檔案
 
 | 檔案 | 修改內容 |
-|------|----------|
+| ------ | ---------- |
 | `ReplyKIT/Socket.swift` | `runReceiveLoop()` async loop → `startReceiveLoop()` 遞迴 callback（`queue.async` re-arm） |
 | `liveAPP/Socket.swift` | `runReceiveLoop()` async loop → `startReceiveLoop(for:)` 遞迴 callback（`queue.async` re-arm） |
 | `F:/HaishinKit.swift/MoQTHaishinKit/Sources/MoQTSocket.swift` | `receive(on:continuation:)` → `startReceiveLoop()` async loop |

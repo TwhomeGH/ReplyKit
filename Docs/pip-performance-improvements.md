@@ -12,19 +12,19 @@
 
 ## 1. 移除 PIPRenderPipeline actor
 
-### `liveAPP/PIPService.swift`
+### `liveAPP/PIPService.swift` - 移除 PIPRenderPipeline actor
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 每幀 3 次 async hop | timer → `Task { await actor.requestRender() }` → `actor.loop()` → `MainActor.renderIncremental()` | 直接 `Task { @MainActor in renderIncremental() }`，減少非同步切換開銷 |
 | actor 無實際保護效果 | actor 不持有 mutable state，且 render 已由 `renderQueue` (serial) + `@MainActor` 保證序列化 | 移除 actor，render timer handler 直接呼叫 `renderIncremental()` |
 
 ## 2. Self-scheduling 取代固定間隔 timer
 
-### `liveAPP/PIPService.swift`
+### `liveAPP/PIPService.swift` - 固定間隔 DispatchSourceTimer 無視前一幀是否完成
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | render task 堆積造成 frame burst | 固定間隔 DispatchSourceTimer 無視前一幀是否完成，Timer fired → Task { @MainActor } 在 main thread 忙碌時大量排隊 | 改為 self-scheduling：`renderIncremental()` 結束後才呼叫 `scheduleNextRender()`，永遠只有一個待處理 render task |
 | render 結束後無法停止 loop | 改用 asyncAfter 後沒有可 cancel 的 timer handle | 加入 `renderCancelled` flag，`cancelRenderTimer()` 設為 true 即可中斷迴圈 |
 | FPS 快速震盪（1↔8↔1↔8） | `decayFPSIfNeeded()` 每次 render 結束立即降到 idleFPS，稀疏訊息導致頻繁切換 | 加入 2 秒 cooldown：`lastActiveRenderTime` 記錄最後一次有效 render，cooldown 內維持 activeFPS |
@@ -33,7 +33,7 @@
 
 ### 資料流對比
 
-```
+```text
 改善前（固定間隔 timer）：
   timer(1Hz) → Task { @MainActor in renderIncremental() }
   → timer(1Hz) → timer(1Hz) → ...（排隊堆積）
@@ -45,19 +45,19 @@
 
 ## 3. 時間疊加層繪製
 
-### `liveAPP/PIPService.swift`
+### `liveAPP/PIPService.swift` - `drawTimeOverlay()` 每次都建立 NSAttributedString、計算 text size、繪製 badge
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | overlay 每幀重新計算 Core Text | `drawTimeOverlay()` 每次都建立 NSAttributedString、計算 text size、繪製 badge | 快取 timeString / elapsedString / streamEnded / viewerCount / isReconnecting 用於參考，不再依此跳過繪製 |
 | overlay 同一秒內閃爍消失 | 快取命中時疊加層整個不繪製，同一秒內多則訊息讓時間消失 | 移除 cache early-return，每幀均繪製疊加層；文字與 badge 繪製成本在 4 FPS idle 下可忽略 |
 
 ## 5. Memory Warning 分級釋放
 
-### `liveAPP/PIPService.swift`
+### `liveAPP/PIPService.swift` - `handleMemoryWarning()` 每次全量釋放
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 短暫 memory pressure 就清空所有快取 | `handleMemoryWarning()` 每次全量釋放 | 分三級：L1=image cache + 降 FPS，L2=丟 pixelBufferPool，L3=清訊息；10 秒內連續觸發才升級 |
 | 同一個 warning 觸發兩次 | `liveAPPApp` 和 `PIPService` 各自註冊 observer | 移除 `PIPService.init()` 的 observer，由 `liveAPPApp` 統一呼叫 `handleMemoryWarning()` |
 
@@ -66,53 +66,54 @@
 ### `liveAPP/liveAPPApp.swift` — LogModel
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `removeFirst` O(1000) memmove 每批 log 都發生 | 超過 `maxMessages` 就立刻 trim | 改為 `maxMessages * 2` 才 trim，降低 main thread 阻塞頻率 |
 
 ### `liveAPP/ContentView.swift` — Coordinator
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `trimTextStorageIfNeeded` 5-pass 全量文字重建 | `components(separatedBy:)` + filter + suffix + concat + `tv.text=` | 改用 `textStorage.replaceCharacters(in:)` 範圍刪除，跳過全部 copy |
 | 每批 append 兩次 `layoutIfNeeded` | CATransaction block 內外各一次 | 移除 CATransaction wrapper，只保留一次 `layoutIfNeeded`，scroll 直接呼叫 |
 
 ## 7. PiP 活躍時跳過 bgTask
 
-### `liveAPP/BackgroundTaskManager.swift`
+### `liveAPP/BackgroundTaskManager.swift` - PiP 活躍時跳過 bgTask
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | PiP 使用時仍啟動 `beginBackgroundTask` + `BGTaskScheduler` | 不檢查 PiP 狀態 | `scheduleSocketRefresh()` / `beginSocketBackgroundWindow()` 開頭檢查 `PIPService.shared.isPiPActive`，跳過多餘背景任務 |
 
 ## 8. 前景重建 + 強制重繪
 
-### `liveAPP/PIPService.swift`
+### `liveAPP/PIPService.swift` - 前景重建與強制重繪
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 通知欄/控制中心關閉後 PiP 黑畫面 | `appWillEnterForeground()` 非同步 re-attach 與 render timer 有 window | 結束前呼叫 `forceRender()`（setNeedsRedraw + 立即 `Task { @MainActor in renderIncremental() }`） |
 
 ---
 
-## 檔案變更
+## 檔案變更 - relayoutTargetsOnly 重複呼叫
 
-### `liveAPP/PIPContent.swift`
+### `liveAPP/PIPContent.swift` - relayoutTargetsOnly 重複呼叫
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `relayoutTargetsOnly()` 在 `addMessage` 流程被呼叫兩次 | `populateVisibleMessagesIfNeeded()` + `layoutTargetsAndStartAnimation()` 各自呼叫一次 | 移除 `populateVisibleMessagesIfNeeded()` 內的呼叫（由後者統一計算）；`reloadPending()` 補上自己的呼叫 |
 
 受惠路徑：
+
 - `addMessage()` → `populateVisibleMessagesIfNeeded()` + `layoutTargetsAndStartAnimation()`
 - `removeMessage()` → `populateVisibleMessagesIfNeeded()` + `layoutTargetsAndStartAnimation()`
 - `onMoveFinished()` → `populateVisibleMessagesIfNeeded()` + `layoutTargetsAndStartAnimation()`
 
 ## 9. SocketServer 保持常駐 + 移除 per-connection idle timer
 
-### `liveAPP/Socket.swift`
+### `liveAPP/Socket.swift` - 保持常駐與移除 idle timer
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 1 小時無連線後 server 自殺 | `startActivityIdleTimer(3600)` 在 `start()` 和 `removeConnection()` 最後連線移除時啟動 | 改為 no-op，`NWListener` 持續監聽，永不自動關閉 |
 | Per-connection 60s idle timer 在多頁快速切換時造成連線被誤關 | `resetIdleTimer()` 每條連線獨立 60s timer，audioPage↔logPage 頻繁切換產生大量連線，部分被 idle timeout 錯誤關閉 | 完全移除 per-connection idle timer (`idleTimers` dictionary、`resetIdleTimer()`、所有 call site)；改用 NWConnection state 監控 + `maxConnections` 限制做 cleanup |
 | `stopInternal()` 無謂操作 `idleTimerActivity` | activity timer 已廢除但仍嘗試 cancel | 移除相關代碼 |
@@ -122,16 +123,16 @@
 ### `liveAPP/PIPContent.swift` / `liveAPP/PIPService.swift`
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | Memory Warning 時 `PiPImageCache.shared.clear()` 清空 NSCache | 但 NSCache 在 memory pressure 下已自動 evict，手動清空浪費已緩存的圖片 | 移除所有 `PiPImageCache.shared.clear()` 呼叫，完全信賴 NSCache.countLimit / totalCostLimit 自動回收 |
 | `releaseNonCriticalMemory()` 進入背景時也清 cache | 背景一段時間後回 foreground 所有圖片需重新下載 | 移除 cache clear，保留 PiP 非活躍時的 render 資源釋放 |
 
 ## 11. Pixel buffer 移除 UIScreen.main.scale
 
-### `liveAPP/PIPService.swift`
+### `liveAPP/PIPService.swift` - pixel buffer 移除 UIScreen.main.scale
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | pixel buffer 多出 4x~9x 無謂像素 | `OframeSize = frameSize * scale` 導致 300x200 pt → 600x400 (2x) / 900x600 (3x) | 直接設 `OframeSize = size`，CPU Core Graphics 繪製解析度獨立，300x200 已清晰 |
 | memset / CALayer.render 浪費 4x~9x 頻寬 | 每幀 `memset(bytesPerRow * height)` 作用於 4x~9x 大小的 buffer | 每幀 memset 量降至 1/4~1/9，CALayer.render 同上比例縮減 |
 | render pipeline 中多餘 scale transform | `context.scaleBy(x: scale, y: scale)` 縮放後 overlay/caLayer 再繪製 | 移除所有 scaleBy 呼叫，直接在 1x 座標空間繪製 |
@@ -141,7 +142,7 @@
 ### `liveAPP/PIPService.swift` / `liveAPP/PIPContent.swift`
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 用戶關閉 PiP 系統按鈕後 UI 仍顯示啟用 | `PIPView` 用 `@State isChatPiPActive` 自行管理狀態，不跟 `PIPService.didStartPiP` 同步 | `didStartPiP` → `@Published var isPiPActive`，`PIPService` 遵從 `ObservableObject` |
 | `PIPView` 按鈕 disabled 狀態不同步 | 按鈕綁定 `@State` 而非實際 `isPiPActive` | `PIPView` 使用 `@ObservedObject var pipService = PIPService.shared`，按鈕直接讀取 `pipService.isPiPActive` |
 
@@ -150,7 +151,7 @@
 ### `ReplyKIT/AudioProcess.swift` / `ReplyKIT/GPUVideoRotator.swift`
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | Audio PTS 無 monotonic 保護 | `retimeAudioBuffer()` 複製原始 timing 但不做任何校正，若 ReplayKit 送來倒退的 PTS 會直接餵給 MediaMixer | 追蹤 `lastAudioPTS`，新 PTS 倒退時 clamp 到上一次值；倒退 >0.5s 時 log 警告 |
 | `currentPTS` 死碼 | 宣告 `.zero` 後從未被賦值 | 移除 |
 | `GPUVideoRotator.lastPTS` 死碼 | 宣告 `nil` 後從未被賦值或讀取 | 移除 |
@@ -162,22 +163,22 @@
 ### `liveAPP/ContentView.swift`
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | audioPage 與 logPage 快速切換造成大量連線建立與取消 | 每次 `onChange(of: currentPage)` 立即發送 Darwin notification，extension 收到後建立 E-Socket 連線請求 config | 加入 300ms debounce：`DispatchWorkItem` + `asyncAfter`，快速切換只處理最後一次 |
 
 ---
 
 ## 14. 子母窗口行內表情支援（Inline Emoji）
 
-### `liveAPP/PIPContent.swift`
+### `liveAPP/PIPContent.swift` - 行內表情支援
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | Socket stream 訊息的 `message` 欄位包含圖片網址（`https://example.com/3.png 哈哈哈`），但 PiP 將其整個視為純文字渲染 | 無圖片網址解析機制，所有文字直接餵給 `CATextLayer` | 新增 `extractImageURL()` 正則解析，擷取結尾為 `.png/.jpg/.gif/.webp` 的網址，分別以 `CALayer` 顯示圖片、`CATextLayer` 顯示剩餘文字 |
 
 ### 資料流
 
-```
+```swift
 Socket message: "https://example.com/3.png 哈哈哈"
   → extractImageURL()
     → cleaned: "哈哈哈"
@@ -192,7 +193,7 @@ Socket message: "https://example.com/3.png 哈哈哈"
 ### 模型變更
 
 | 型別 | 新增欄位 | 用途 |
-|------|----------|------|
+| ------ | ---------- | ------ |
 | `MessageSegmentData` | `inlineEmojiURLs: [String]` | 存放從訊息文字解析出的所有圖片網址（支援多個） |
 | `MessageLayerTuple` | `inlineEmojis: [CALayer]` | 表情圖片的 Core Animation 圖層陣列 |
 | `MessageLayerTuple` | `inlineEmojiSizes: [CGSize]` | 表情圖層大小快取陣列 |
@@ -213,7 +214,7 @@ Socket message: "https://example.com/3.png 哈哈哈"
 ### 最終決策
 
 | 方案 | 測試結果 | 結論 |
-|------|----------|------|
+| ------ | ---------- | ------ |
 | 1x pixel buffer（300x200） | 效能佳但 Retina 螢幕模糊 | ❌ 捨棄 |
 | scale pixel buffer + CPU 繪製（目前方案） | 穩定、清晰、效能足夠 | ✅ 採用 |
 | Metal GPU 全管線（textured quad + 文字 bitmap） | 複雜度高、premultiplied alpha 與文字渲染品質難調 | ❌ 暫緩 |
@@ -222,7 +223,7 @@ Socket message: "https://example.com/3.png 哈哈哈"
 
 ### 現行 CPU 路徑設計
 
-```
+```swift
 pool → CVPixelBuffer(IOSurface) → LockBaseAddress
   → CGContextFillRect（取代 memset）
   → CALayer.render(in:) (scale transform 2x/3x)
@@ -237,7 +238,7 @@ pool → CVPixelBuffer(IOSurface) → LockBaseAddress
 ### 最終參數
 
 | 項目 | 值 |
-|------|-----|
+| ------ | ----- |
 | pixel buffer 尺寸 | `frameSize × UIScreen.main.scale`（300×200 → 600×400 或 900×600） |
 | idle FPS | 4 |
 | active FPS | 10 |
@@ -247,14 +248,10 @@ pool → CVPixelBuffer(IOSurface) → LockBaseAddress
 | clear | `CGContextFillRect(.black)` |
 | 文字繪製 | CPU Core Graphics |
 
-## 檔案變更
-
-## 檔案變更
-
-## 檔案變更
+## 檔案變更 - PiP 渲染優化（CPU 路徑）行數變化
 
 | 檔案 | 行數變化 |
-|------|----------|
+| ------ | ---------- |
 | `liveAPP/PIPService.swift` | -46 (actor) +80 (dirty flag, overlay cache, periodic redraw) +22 (tiered memory, forceRender, isPiPActive) ~40 (self-scheduling, renderCancelled, cooldown, FPS tune) -2 (移除 PiPImageCache.clear) +3 (ObservableObject, @Published) |
 | `liveAPP/PIPContent.swift` | -1 (redundant layout) +1 (reloadPending guard) -3 (~PIPView @State 改 @ObservedObject) |
 | `liveAPP/PIPMetalRenderer.swift` | +66 (新檔，僅 GPU clear, 未啟用) |
@@ -265,10 +262,10 @@ pool → CVPixelBuffer(IOSurface) → LockBaseAddress
 
 ## 16. 行內表情圖改進（2026-07）
 
-### `liveAPP/PIPContent.swift`
+### `liveAPP/PIPContent.swift` - 行內表情圖改進
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | Discord CDN 圖片網址（`...jpg?ex=...&hm=...`）因 query parameters 不被 regex 匹配，整個 URL 當純文字顯示 | `extractAllImageURLs` 的 regex `[^\s]+\.(ext)` 只匹配到副檔名，query string 殘留在 clean text | 加上 `(\?[^\s]*)?` 讓 query string 成為 URL 一部分（:1023） |
 | URL 全部抽出後 clean text 為空，無 message segment 導致 emoji 無處附著不顯示 | `splitLongMessage` 在 message 空字串時不產生 message segment，`inlineEmojiURLs` 遺失 | `addMessage` 判斷 clean text 為空但有 emoji URLs 時以 `" "` 代替（:1091） |
 | 下載後 inline emoji 以原始解析度顯示（如 400×400），遠大於字體大小 | `inlineEmojiSizes[idx] = imgSize` 直接取用實際圖片尺寸 | 改為 `min(maxSize/width, maxSize/height)` 等比縮放至字體大小（:1281-1286） |
@@ -278,10 +275,10 @@ pool → CVPixelBuffer(IOSurface) → LockBaseAddress
 
 ## 17. Memory Warning 分級釋放廢除（2026-07）
 
-### `liveAPP/PIPService.swift`
+### `liveAPP/PIPService.swift` - 廢除 Memory Warning 分級釋放
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `memoryWarningLevel` 循環升級（L1=L2=L3）：10 秒內連續觸發才逐步加重，但 warning 已結束仍遺留高級別 | cooldown timer + level counter 設計使同一次 memory pressure 週期中 level 只增不減，容易卡在高級別狀態 | 移除 `memoryWarningLevel` / `lastMemoryWarningTime` / `memoryWarningCooldown` 全部變數，收到 warning 直接一次釋放所有可回收資源 |
 | L1（降 FPS）沒有實際釋放記憶體 | `currentFPS = idleFPS` 僅降低渲染頻率，不釋放 pixel buffer | 不再操作 FPS，FPS 由 animation/decay 機制獨立管理 |
 | `PiPImageCache` 未在 memory warning 時清空 | 舊設計僅 L3（level>=3）才清訊息，image cache 完全沒被觸及 | `handleMemoryWarning` 最後加上 `Task { await PiPImageCache.shared.clear() }` |
@@ -315,7 +312,7 @@ func handleMemoryWarning() {
 ### `liveAPP/TTSService.swift`
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | PIP `stopPiP()` 在 TTS disabled 時 `setActive(false)` deactivate 了 audio session，但 TTS 的 `isConfigured` flag 維持在 `true`，後續每次 `start()` 都跳過重新配置 | `configureSessionOnly()` 開頭 `guard !isConfigured` 阻斷重入 | 移除 `isConfigured` guard，每次 TTS 啟動都重新呼叫 `setCategory`/`setActive(true)`（冪等呼叫，已配置時無副作用） |
 
 ```swift
@@ -337,16 +334,16 @@ func configureSessionOnly() {
 
 ## 19. Socket BGTask 與 Keepalive 改進（2026-07）
 
-### `liveAPP/BackgroundTaskManager.swift`
+### `liveAPP/BackgroundTaskManager.swift` - PIP 活躍時仍排程 BGTask
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | PIP 活躍時 `scheduleSocketRefresh()` 直接 return，不排程下一次 BGTask。PIP 長時間運作後停止時無 pending task 可喚醒 App | `guard !PIPService.shared.isPiPActive` 導致 PiP active 時跳過排程 | 移除 PIP guard，永遠排程下次 refresh（15 分鐘後） |
 
-### `liveAPP/Socket.swift`
+### `liveAPP/Socket.swift` - 新增 server keepalive timer
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | NWConnection 60 秒無資料後自動 idle timeout 關閉連線，extension 不會自動重連 | 無 server 端 keepalive 機制 | 新增定時器：首條連線建立後每 30 秒對所有連線廣播 `{"type":"keepalive"}`，最後一條連線移除時停止 |
 | `stopInternal()` 與 `removeConnection()` 未清理 keepalive timer | timer 無對應的生命週期管理 | `stopInternal()` + `removeConnection`(last) 時呼叫 `stopKeepaliveTimer()` |
 
@@ -377,7 +374,7 @@ private func sendKeepalive() {
 ### `liveAPP/PIPContent.swift` — PiPImageCache
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 相同網址重複出現時，第二個請求因 `inFlightTasks[url] != nil` 直接 `return`，不呼叫 completion，第二個表情圖層永遠空白 | 僅防止重複下載但未保存待通知的 callback | 新增 `pendingCallbacks: [String: [(UIImage?) -> Void]]`，在飛中的 URL 後續請求排入佇列，下載完成後遍歷所有 callback 通知 |
 
 ```swift
@@ -396,13 +393,13 @@ if inFlightTasks[urlString] != nil {
 ### `liveAPP/PIPContent.swift` — extractAllImageURLs
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `maxURLs` 預設值 5 過低，一次實況貼圖包可能超出 | 限制太嚴格，用戶體驗不佳 | 放寬至 20，配合 PiPImageCache callback 佇列，重複 URL 只下載一次、其餘從快取取用 |
 
 ### `liveAPP/liveAPPApp.swift` — postSystemNotification
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 通知僅附帶使用者頭像，訊息內的圖片網址被當純文字顯示 | `postSystemNotification` 只收 `imageURL` 參數 | 新增 `inlineImages: [String]`，`DispatchGroup` 平行下載所有圖片，全部完成後一次發送通知 |
 
 ```swift
@@ -424,7 +421,7 @@ func postSystemNotification(title: String, body: String, imageURL: String? = nil
 ### `liveAPP/Socket.swift` — renderChatMessage
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 通知 body 為原始 `msg`（含未解析的圖片網址），且未傳遞 inline 圖片 | 未對 `msg` 做 URL 抽取 | 呼叫 `PIPServiceMessages.extractAllImageURLs(from: msg)` 取出圖片網址，與頭像一併傳入 `postSystemNotification` |
 
 ```swift
@@ -435,7 +432,7 @@ postSystemNotification(title: user, body: msg, imageURL: img, inlineImages: inli
 ### `ReplyKIT/Socket.swift` — keepalive 回應
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | Server 每 30s 發 `{"type":"keepalive"}`，但用戶端無對應 handler，打 `default` 記錄 Unknown type | 用戶端缺少 `case "keepalive"` | 新增 `case "keepalive": sendPayload(["type": "heartbeat"])`，形成雙向 keepalive 防止任一端 idle timeout |
 
 ---
@@ -447,7 +444,7 @@ postSystemNotification(title: user, body: msg, imageURL: img, inlineImages: inli
 ### `ReplyKIT/SampleHandler.swift`
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 每次切換日誌頁/音訊頁時，extension 先讀 `SharedDefaults`，再發 `requestSet` (UPSet) 透過 socket 向 liveAPP 重新索取同一值 | 兩邊已共用 `group.nuclear.liveAPP` App Group UserDefaults，main app 寫入後 post Darwin notification，extension handler 讀取時值已就緒，UPSet 完全多餘 | 移除 `requestSet` 呼叫，handler 直接使用 `SharedDefaults.group?.bool(forKey:)` |
 
 ```swift
@@ -469,7 +466,7 @@ RPConfig.shared.onLogPage = logPage
 ### `liveAPP/Socket.swift` — 伺服器端 UPSet 改進
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `bool(forKey:)`/`integer(forKey:)` 對不存在的 key 回傳 `false`/`0`，無法區分「不存在」與「值為 false/0」 | Apple API 設計：UserDefaults 的 primitive 讀取方法對缺失 key 回傳型別預設值 | 改用 `object(forKey:) as? Bool/Double/Int/Float`，key 不存在時回傳 `NSNull()` |
 | 客戶端 UPSet handler 收到回應後立刻 `_closeConnection()` | on-demand 設計，每次 UPSet 連線用完即關 | 移除 `_closeConnection()`，連線保留供後續 UPSet 重複使用，由 idle timeout 或下一次 `_connect()` 清理舊連線時自然關閉 |
 
@@ -483,14 +480,14 @@ res = userDefaults?.object(forKey: key) as? Bool  // 不存在 → nil → NSNul
 ### `ReplyKIT/SampleHandler.swift` — 頁面切換 handler
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `onlogPage`/`onAudioPage` handler 每次都透過 UPSet 向伺服器索取已存在 SharedDefaults 的值 | 多餘的 socket 連線造成連線數暴增與 close/reconnect 開銷 | 非側載時直接讀 SharedDefaults（同一 App Group，值已就緒）；側載時才用 UPSet 取得 |
 | `requestSet` 16 個 handler（音量、旋轉等）各自獨立連線 | 每個 handler 在 CFNotification 觸發時建立獨立連線 | UPSet 連線不再主動關閉，後續 requestSet 可重複使用同一連線 |
 
 ### `ReplyKIT/SampleHandler.swift` — 頁面切換重構
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `onlogPage` handler 中 inline 邏輯與 `applyOnLogPage` 方法不存在造成編譯錯誤 | 先前 patch 殘留未定義的方法呼叫 | 拆為 `updateLogPageState()`（負責獲取值，區分側載/UPSet）與 `applyLogPage(_:)`（負責套用狀態） |
 | `forceFlush()` 在頁面切換時被呼叫，但 `forceFlush()` 會 cancel timer + 設 `isActive = false`，與後續 `setupFlushTimer()` 原子性不足，中間 window 的 log 會被丟棄 | `forceFlush()` 設計為「關閉 logging pipeline」，不適合僅切換頁面狀態 | 完全移除頁面 handler 中的 `forceFlush()`：切 ON 只 `setupFlushTimer()`，切 OFF 只 `discardBuffer()` |
 
@@ -512,7 +509,7 @@ if logPage {
 ```
 
 | 新增方法 | 所屬類別 | 用途 |
-|----------|----------|------|
+| ---------- | ---------- | ------ |
 | `updateLogPageState()` | `SampleHandler` | 閱讀頁面狀態（SharedDefaults / UPSet），非同步取得後呼叫 `applyLogPage` |
 | `applyLogPage(_:)` | `SampleHandler` | 套用頁面狀態：ON → 啟動 timer，OFF → 丟棄 buffer |
 | `discardBuffer()` | `LogManager` | 清空 ring buffer（`localLogBuffer.removeAll()`），在 logQueue barrier 中安全執行 |
@@ -520,7 +517,7 @@ if logPage {
 ### `ReplyKIT/Socket.swift` — 刪除 forceFlushBatch
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `forceFlushBatch()` 使用 `queue.sync {}` 阻塞呼叫端，在 HaishinKit 媒體操作路徑上造成同步 I/O，加劇 C++ buffer overflow 對 string buffer 的破壞 | 強制立即發送日誌的設計在瓶頸路徑上增加了阻塞與記憶體壓力 | 移除整個 `forceFlushBatch()` 方法 |
 
 ```swift
@@ -536,13 +533,13 @@ func forceFlushBatch() {
 ### `ReplyKIT/Event.swift` — forceFlush call site 改為非同步
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `forceLogFlush` 和 `flushLocalLogs` 在送出 batch 後立即呼叫 `forceFlushBatch()`，阻塞直到日誌送達 server | 設計假設日誌必須在繼續前送達，但 log pipeline 不需要即時性 | 改為 `sendLogBatch(entries:, force: true)`，內部 `flushBatch()` 在 serial queue 上非同步處理 |
 
 ### 設計變更總結
 
 | 面向 | 改前 | 改後 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 日誌傳送 | `forceFlushBatch()` 阻塞直到連線+發送完成 | `flushBatch()` 非同步排入 serial queue |
 | sendLog 呼叫時機 | 必須在 HaishinKit 操作「之前」，否則可能觸發已破壞的 string buffer | 無順序要求 — log 僅 append 到 ring buffer（固定 1000 條 O(1)），不碰媒體管線 |
 | 丟棄策略 | force flush 會繞過 `maxInflightBatches` 限制，造成堆積 | 依賴 `maxInflightBatches=3` 硬限制，逾限自動 drop 最舊 batch |
@@ -555,7 +552,7 @@ func forceFlushBatch() {
 ### `liveAPP/PIPContent.swift` — PiPImageCache.loadImage
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 相同網址快取命中時 completion 在 actor context（非主執行緒）執行，設定 `CALayer.contents` 有執行緒風險 | 原 code 直接 `completion(img)` 未 dispatch 到 MainActor | 快取命中時以 `await MainActor.run { completion(img) }` 派發至主執行緒 |
 | `UIImage(data:)` 回傳 nil（伺服器回傳非圖片資料，如 GitHub blob HTML）時，第一個 caller 的 completion 完全未被呼叫，對應 emoji 圖層永遠空白 | `if let img = UIImage(data: data)` 的 else 分支直接跳過，未呼叫 `completion` 也無 pending callbacks 通知 | 加入 else 分支，以 `await MainActor.run { completion(nil); for cb in callbacks { cb(nil) } }` 確保所有 callback 都收到 nil |
 | 無效 URL 時僅呼叫 `finishDownload`，不通知 caller | `guard let url = URL(...)` 的 else 分支遺漏 callback 處理 | 加入 pendingCallbacks 取出 + MainActor.run 通知所有 callback nil |
@@ -563,14 +560,14 @@ func forceFlushBatch() {
 ### `liveAPP/PIPContent.swift` — populateVisibleMessagesIfNeeded 表情非同步載入
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 表情圖片非同步載入完成後更新了 `inlineEmojiSizes[idx]`，但 emoji 的 `CALayer.frame` 已在 `layout(msg:)` 中以初始 `giftSize` 設定，不會重新計算 | `layout(msg:)` 只在訊息移動動畫期間被呼叫，動畫結束後不再重新排版；emoji frame 停留在初始大小 | 在載入 callback 中直接用 `CTLineGetOffsetForStringIndex` 計算 X 座標、`messageFrame.midY` 計算 Y 座標，立即設定 `emoji.frame = CGRect(x:baseX, y:emojiY, width:newSize.width, height:newSize.height)` |
 | Task 未使用 capture list，closure 強捕獲 `msg` 與 `idx`，即使訊息已移除仍有 retain | 一般 closure 會強捕獲所有使用到的區域變數 | `Task { [idx, msg] in` 明確 capture；completion handler 使用 `[weak msg]` 避免延長訊息生命週期 |
 
 ### `liveAPP/PIPContent.swift` — layout(msg:) & 非同步 callback CTLine 文字取用
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 所有 emoji 全部疊在同一 X 位置（`messageFrame.origin.x`） | `CATextLayer.string` 實際型別是 `NSAttributedString`（`buildMessageTuple` 以 `NSAttributedString(string:message, attributes:)` 設定），但 `layout(msg:)` 用 `as? NSString` 解讀 → 永遠回傳 `nil` → `text = ""` → `CTLine` 空的 → `CTLineGetOffsetForStringIndex` 對任何 index 都回傳 0 | 改為優先 `as? NSAttributedString` 取 `.string`，fallback `as? String` |
 
 ### 相關記憶體更新
@@ -584,14 +581,14 @@ func forceFlushBatch() {
 ### `liveAPP/ContentView.swift` — BroadcastButton.resolveExtension()
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | PlugIns 中有三個 extension（`ReplyKIT.appex`、`ReplyKITSetupUI.appex`、`ReplyKITNotification.appex`），`resolveExtension()` 直接回傳第一個找到的 `.appex`，可能選到 setup UI 或 notification extension | `FileManager.contentsOfDirectory` 不保證順序，回圈未過濾 extension type | 載入每個 `.appex` 的 `Info.plist`，檢查 `NSExtension.NSExtensionPointIdentifier` 是否為 `com.apple.broadcast-services-upload`，只回傳符合的 bundle ID |
 | 無 PlugIns 目錄或無法讀取時無任何提示 | `try?` 吃掉所有錯誤 | 加入 `sendlog` 記錄失敗原因 |
 
 ### 日誌增強
 
 | 位置 | 新增日誌 |
-|------|----------|
+| ------ | ---------- |
 | `resolveExtension()` | PlugIns 中 `appex` 總數；每個 extension 的檔名、bundle ID、類型（broadcast-upload/other）；最終選擇的 extension 及選取原因（PlugIns / user setting / constructed） |
 | `makeUIView()` | `preferredExtension` 最終值、`Bundle.main.bundleIdentifier` |
 | `updateUIView()` | 每次更新時記錄 extension |
@@ -603,10 +600,10 @@ func forceFlushBatch() {
 
 ## 25. BGTaskScheduler 改用 BGAppRefreshTask（2026-07）
 
-### `liveAPP/BackgroundTaskManager.swift`
+### `liveAPP/BackgroundTaskManager.swift` - 改用 BGAppRefreshTask
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `BGProcessingTask` 設計給長時間任務（資料庫清理、備份），系統優先級低，socket refresh 這類快速檢查常被延遲或跳過 | 選錯 task type，`BGProcessingTask` 的 ~5 分鐘預算對 2 秒工作而言過重 | 改為 `BGAppRefreshTaskRequest` + `BGAppRefreshTask`，系統優先級較高、適合短暫網路檢查 |
 | 僅呼叫 `SocketServer.shared.start()` 不確認連線狀態 | handler 只管 listener 是否在跑，不驗證已建立的連線是否可用 | 加入 `server.sendKeepalive()`，同時對所有已連線 client 發送 keepalive 並清理 60 秒無資料的停滯連線 |
 | 工作預算僅 2 秒，網路延遲時容易到期失敗 | `asyncAfter(deadline: .now() + 2)` 預留時間不足 | 延長至 10 秒，配合 `BGAppRefreshTask` 的 ~30 秒預算 |
@@ -614,7 +611,7 @@ func forceFlushBatch() {
 ### `liveAPP/Socket.swift` — sendKeepalive 可見度
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `sendKeepalive()` 為 `private`，`BackgroundTaskManager` 無法呼叫 | 方法只在 keepalive timer 內部使用，未考慮外部觸發場景 | 改為 `internal`（移除 `private`），讓 `BackgroundTaskManager` 可在 BGTask handler 中主動調用 |
 
 ---
@@ -624,7 +621,7 @@ func forceFlushBatch() {
 ### `liveAPP/LiveActivityAttributes.swift` — 新檔
 
 | 元件 | 用途 |
-|------|------|
+| ------ | ------ |
 | `StreamActivityAttributes` | ActivityKit 屬性定義：靜態（stream title）+ 動態狀態（碼率、時間、觀看人數） |
 | `StreamActivityLiveView` | 鎖定畫面 UI：直播標題、時間、碼率、觀看人數 |
 | `StreamActivityDynamicIsland` | 動態島：展開態顯示時間、碼率、人數；緊湊態顯示碼率 |
@@ -633,13 +630,13 @@ func forceFlushBatch() {
 ### `liveAPP/liveConfig.swift` — 新增欄位
 
 | 欄位 | 型別 | 用途 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `streamBitrate` | `String` | 格式化碼率文字（如 `"2.4 Mbps"`），供 Live Activity 讀取 |
 
 ### `liveAPP/ContentView.swift` — BitrateManager
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 碼率變更不會更新 Live Activity | `updateStreamBitrate()` 只存 UserDefaults + 發 Darwin notification | 加入 `LPConfig.shared.streamBitrate` 更新，Live Activity 自動定時讀取 |
 
 ### 待辦事項
@@ -654,33 +651,33 @@ func forceFlushBatch() {
 ### `ReplyKIT/VideoProcess.swift` — VideoFrameProcessor 原子性
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `FrameProcessorActor` 在 `await rotateAsync()` 等 Metal completion 時可重入，下一幀可能進來並提交新的 GPU command | Swift actor 只序列化同步片段，不會在 await 期間鎖住整個 async chain | 記錄為 FLV DTS 倒退的疑點；暫不在 video hot path 加 `NSLock` gate |
 | 外層 lock/gate 會把潛在 completion 亂序轉成確定掉幀 | 若底層 MediaMixer/encoder/RTMP 已按 PTS 排序，這層保護多餘且增加同步成本 | 優先驗證底層 PTS 排序/單調化；若要修，放在最靠近 timestamp 輸出邊界的位置 |
 
 ### `ReplyKIT/AudioNoiseMetal.swift` — DispatchSemaphore 設計取捨
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `DispatchSemaphore.wait()` 在 Swift Concurrency `Task.detached` 中阻塞協同執行緒，可能導致執行緒饑荒 | Metal 的 `addCompletedHandler` + `semaphore.wait()` 是經典 GPU 等待模式，但在 async context 中不理想 | 保留 `DispatchSemaphore` 模式（實際 GPU timeout 僅 16ms，不足以造成饑荒），加入設計註解說明。完整修復需將 Metal 處理移出協同執行緒到專用 serial queue |
 
 ### `ReplyKIT/VideoProcess.swift` — NSLock 改 OSAllocatedUnfairLock
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
-| `NSLock.lock()` 在 Swift 6 的 async context 中不可用（defer 區塊內的 Task.detached）| NSLock 未標記為 async-safe，Swift 6 嚴格模式拒絕編譯 | 改用 `OSAllocatedUnfairLock`（iOS 16+ 原生支援 Swift Concurrency），加入 `import os` |
+| ------ | ------ | ------ |
+| `NSLock.lock()` 在 Swift 6 的 async context 中不可用（defer 區塊內的 Task.detached） | NSLock 未標記為 async-safe，Swift 6 嚴格模式拒絕編譯 | 改用 `OSAllocatedUnfairLock`（iOS 16+ 原生支援 Swift Concurrency），加入 `import os` |
 
 ### `ReplyKIT/SampleHandler.swift` — broadcastResumed() 與 RTMP 重連競爭
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `broadcastResumed()` 呼叫 `setVideoSettings()` 可能與 HaishinKit 內部 RTMP 重連週期衝突 | 無重連進行中標記，resume 與 reconnect handler 同時操作 encoder | 新增 `isReconnecting` flag，重連期間跳過 `setVideoSettings()` 與 `rebuildVideo()` |
 | 重連成功後 resume 可能重複建立 encoder session | resume handler 未檢查 `isReconnecting` | 同上 flag，`broadcastResumed()` 開頭也檢查 `isReconnecting` 提前返回 |
 
 ### `ReplyKIT/Event.swift` — RPConfig.shared.state 執行緒安全
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `RPConfig.shared.state` struct 從 6+ 個併發 context 無同步存取，可能讀取損壞的解析度/碼率/編碼設定 | 無任何鎖保護，struct 寫入非原子 | 加入 `stateLock`（NSLock）以及 `readState`/`withState` 輔助方法，供後續逐步遷移安全存取 |
 
 ---
@@ -690,7 +687,7 @@ func forceFlushBatch() {
 ### `liveAPP/Setting.swift` / `liveAPP/Socket.swift` / `ReplyKIT/SampleHandler.swift`
 
 | 項目 | 改前 | 改後 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 預設值 | `10`（固定幀數） | `-1`（自動模式，由 `maxVideoBufferBytes` + 解析度計算） |
 | Stepper 範圍 | `1...100` | `-1...100`（-1 顯示「自動」） |
 | 越界修正 | `< 1` 時強制設為 `3` | `< 1 && ≠ -1` 時設為 `-1`（自動） |
@@ -704,19 +701,19 @@ func forceFlushBatch() {
 ### `ReplyKITSetupUI/BroadcastSetupViewController.swift`
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | SetupUI 完全跳過設定畫面，沒傳遞任何有用資訊給 extension | 使用硬編碼 `"https://apple.com/broadcast/streamID"` 與空的 setupInfo | 從 `UserDefaults` 讀取當前 RTMP URL/Key，透過 setupInfo 傳遞 `rtmpURL` 與 `rtmpKey` |
 | 側載下無 App Group，UserDefaults 無法共享 | SetupUI 單獨使用 `UserDefaults.standard` | 先嘗試 App Group UserDefaults（`userDefaults ?? UserDefaults.standard`） |
 
 ### `ReplyKIT/SampleHandler.swift` — setupInfo 備用
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | Socket config 失敗時完全無法取得推流設定 | 無備用來源 | 在 `broadcastStarted()` 中讀取 `setupInfo["rtmpURL"]` / `["rtmpKey"]`；socket 請求失敗時直接用 setupInfo 的值呼叫 `updateState()` |
 
 ### 設定優先順序
 
-```
+```text
 1. Socket batch response（主要）  → requestRTMPKEYAndLog()
 2. SetupUI setupInfo（備用）      → socket 失敗時從 setupInfo 讀取
 3. 硬編碼 fallback（最後防線）   → self.rtmpURL ?? "rtmp://192.168.0.242/live"
@@ -729,7 +726,7 @@ func forceFlushBatch() {
 ### `liveAPP/OtherView.swift` — DeviceView
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | CPU 圖表 Y 軸不斷縮放，視覺上一直抖動 | `Chart` 預設 Y 軸範圍隨資料自動調整 | 固定 `chartYScale(domain: 0...100)` |
 | CPU 數值每次 sample 間跳動劇烈（例如 1% → 50% → 3%） | `DeviceInfo.cpuUsagePercent` 為即時採樣，單點波動大 | 加入 3 筆滾動平均：`smoothedCPU = (raw + last2[0] + last2[1]) / 3` |
 
@@ -739,17 +736,17 @@ func forceFlushBatch() {
 
 **目標：** 改善 `rotateNV12.metal` 和 `NoiseSuppress.metal` 的 GPU 計算效率
 
-### 修改文件
+### 修改文件 - Metal shader 旋轉/降噪
 
 | 文件 | 變更 |
-|------|------|
+| ------ | ------ |
 | `ReplyKIT/rotateNV12.metal` | Params 結構、mapDstToSrc 邏輯、Bicubic Y 採樣器、Bilinear UV 常數 |
 | `ReplyKIT/NoiseSuppress.metal` | 分支消除 |
 | `ReplyKIT/GPUVideoRotator.swift` | Params Swift 端同步、預計算常數 |
 
-### 變更摘要
+### 變更摘要 - Metal shader 旋轉/降噪
 
-**1. Params 結構：預計算旋轉矩陣與縮放參數**
+#### 1. Params 結構：預計算旋轉矩陣與縮放參數
 
 原 `Params` 包含 `angle`，每 thread 在 `mapDstToSrc` 中用 `switch(angle)` 重算旋轉矩陣、縮放、置中。改為在 Swift 端一次性計算所有常數：
 
@@ -770,36 +767,39 @@ var params = Params(
 
 Metal 端 `mapDstToSrc` 簡化為純矩陣運算，無分支、無重算。
 
-**2. UV 取樣正規化常數化**
+#### 2. UV 取樣正規化常數化
 
 原 bilinear kernel 每 thread 重算：
+
 ```metal
 float2 uvNorm = (clamp(uvSrc, 0.0f, float2(float(W) * 0.5f - 1.0f, ...)) + 0.5f) / float2(float(W) * 0.5f, ...);
 ```
 
 改為使用 `params.halfW / params.halfH`：
+
 ```metal
 float2 uvClamped = clamp(uvSrc, 0.0f, float2(params.halfW - 1.0f, params.halfH - 1.0f));
 float2 uvNorm = (uvClamped + 0.5f) / float2(params.halfW, params.halfH);
 ```
 
-**3. Bicubic Y 取樣：16-tap → 4-tap texture bicubic（已回退）**
+#### 3. Bicubic Y 取樣：16-tap → 4-tap texture bicubic（已回退）
 
 > 2026-09 追修：此 4-tap 版本存在座標系錯誤，helper 以 normalized UV 設計，但 `rotateNV12_bicubic` 傳入的是 pixel coordinate，會造成 bicubic 採樣錯位。現已先回退為 pixel-coordinate 16-tap Catmull-Rom，確保 quality 模式畫面正確；4-tap 優化需重新以同一座標系設計後再啟用。
 
 | 項目 | 改前 | 改後 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 採樣方式 | 16× Catmull-Rom | 4× `linear`（已回退） |
 | texture reads/frame | Y: 1920×1080 × 16 = 33M reads | 4-tap 目標為 8.3M reads，但目前不啟用 |
 | 視覺品質 | 正確 | 舊 4-tap 版本座標錯誤，不能視為相同 |
 
 4-tap 原理：
+
 - 計算 Catmull-Rom 加權係數 w0~w3
 - 合併為 2 組 bilinear 權重：`w12 = w1 + w2`、`offset12 = w2 / w12`
 - 4 次 bilinear 採樣（硬體內建 2×2 混合）
 - 跨行線性混合（`(1-f.y) × h0 + f.y × h1`）
 
-**4. NoiseSuppress：消除 thread divergence**
+#### 4. NoiseSuppress：消除 thread divergence
 
 ```metal
 // before (50% thread divergence)
@@ -814,7 +814,7 @@ g *= speechScale;
 ### 效能提升估算
 
 | 場景 | 改善 | 說明 |
-|------|------|------|
+| ------ | ------ | ------ |
 | Bilinear 路徑 | ~10-15% ALU 減少 | 旋轉矩陣預算、UV 常數化 |
 | Bicubic 路徑 | 正確性優先，暫無讀取數減少 | 舊 4-tap 座標錯誤，已回退 16-tap |
 | NoiseSuppress | 消除 ~50% thread warp divergence | select() 無分支 |
@@ -825,19 +825,19 @@ g *= speechScale;
 
 **目標：** 減少 `sendlog` 在 `logQueue` 上的 dispatch 與 file I/O 開銷
 
-### 修改文件
+### 修改文件 - sendlog 管線
 
 | 文件 | 變更 |
-|------|------|
+| ------ | ------ |
 | `ReplyKIT/Event.swift` | 新增 LogBatcher、sendlog 高頻 log 累計合併、writeEarlyLogToFile dispatch 提前檢查 |
 
-### 變更摘要
+### 變更摘要 - sendlog 管線
 
-**1. LogBatcher 高頻 frame log 累計合併**
+### **LogBatcher 高頻 frame log 累計合併**
 
 新增 `LogManager.LogBatcher` 類別，使用獨立 concurrent queue + barrier 執行緒安全累計高頻 log：
 
-```
+```log
 v1 每幀獨立: [VFrame] #1, [VFrame] #2, ..., [VFrame] #60 → 60 次 dispatch
 v2 累計合計: [VFrame] 60 frames [PTS:511.8s]               → 1 次 dispatch / 0.5s
 ```
@@ -858,7 +858,7 @@ final class LogBatcher {
 `flushLocalLogs()` 和 `forceFlush()` 在送出 buffer 前先呼叫 `batcher.flush()`，
 將累計的 summary 字串合併到 entries 中一起送出。
 
-**2. sendlog 高頻 log 過濾（非側載 + 非日誌頁）**
+### **sendlog 高頻 log 過濾（非側載 + 非日誌頁）**
 
 直接 return，不經過 batcher 也不經過 LogManager。
 
@@ -881,14 +881,14 @@ func sendlog(...) {
 }
 ```
 
-**3. writeEarlyLogToFile 提前 guard**
+### **writeEarlyLogToFile 提前 guard**
 
 sideload 時不再 dispatch 到 `logQueue` 後才檢查。
 
 ### 現行管線對比
 
 | 階段 | 改前 (180 logs/s) | 改後 |
-|------|-------------------|------|
+| ------ | ------------------- | ------ |
 | `sendlog` → `logQueue` dispatch | 180/s（全部） | ~20/s（batcher 使用 concurrent queue/barrier，不阻塞 logQueue） |
 | `logQueue` async file I/O | 180/s | 0（sideload 提前 guard） |
 | Flush timer → socket send | 1~2 batches/0.5s | 1~2 batches/0.5s + batched summaries 前綴 |
@@ -897,7 +897,7 @@ sideload 時不再 dispatch 到 `logQueue` 後才檢查。
 ### 側載改善重點
 
 | 項目 | 改前 | 改後 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `[VFrame]` 60fps 處理 | 60 dispatch/s 到 logQueue | 60 barrier 到 batcher（獨立 concurrent queue，不阻塞 logQueue） |
 | `[AudioFRAME]` ~50/s | 50 dispatch/s 到 logQueue | 50 barrier 到 batcher |
 | `[VProc]` 60/s | 60 dispatch/s 到 logQueue | 60 barrier 到 batcher |
@@ -912,17 +912,17 @@ sideload 時不再 dispatch 到 `logQueue` 後才檢查。
 
 **目標：** 當 Metal GPU 旋轉失敗時，使用 Accelerate vImage 的 CPU 旋轉器作為自動降級路徑，避免串流中斷。
 
-### 修改文件
+### 修改文件 - CPU 旋轉降級
 
 | 文件 | 變更 |
-|------|------|
+| ------ | ------ |
 | `ReplyKIT/CPURotator.swift` | 重寫：vImage Y 平面旋轉、移除死碼 VTEncoder、修正 semaphore、新增 async API |
 | `ReplyKIT/VideoProcess.swift` | 新增 `tryCPUFallback()` + `wrapAsSampleBuffer()`，GPU 失敗時自動降級 |
 
 ### CPURotator 重寫摘要
 
 | 項目 | 改前 | 改後 |
-|------|------|------|
+| ------ | ------ | ------ |
 | Y 平面旋轉 | 手動逐 pixel memcpy（O(n²) 逐 row × col） | `vImageRotate_Planar8`（NEON/AMX 最佳化） |
 | UV 平面旋轉 | 手動逐 pixel memcpy | 保留手動（UV 尺寸僅 Y 的 1/4，影響小） |
 | 縮放支援 | 無（直接旋轉後用原始尺寸） | 支援（`vImageScale_Planar8` + 手動 UV 縮放） |
@@ -932,7 +932,7 @@ sideload 時不再 dispatch 到 `logQueue` 後才檢查。
 
 ### VideoProcess 降級流程
 
-```
+```swift
 GPU rotate → nil → tryCPUFallback() → CPU rotate → success → MediaMixer
                                                 → nil → lastGoodFrame freeze (重打目前 PTS)
 ```
@@ -957,10 +957,10 @@ func rotateAsync(sampleBuffer: CMSampleBuffer,
 
 **目標：** 修復 VT encoder frame throttle 的鏈式衰退與永不恢復問題，保持 60fps 串流穩定。
 
-### 修改文件
+### 修改文件 - adaptiveFrameThrottle
 
 | 文件 | 變更 |
-|------|------|
+| ------ | ------ |
 | `HaishinKit/Sources/Codec/VideoCodec.swift` | cooldown 邏輯、recovery 條件修正 |
 | `ReplyKIT/SampleHandler.swift` | 恢復 `adaptiveFrameThrottle = true` |
 
@@ -968,7 +968,7 @@ func rotateAsync(sampleBuffer: CMSampleBuffer,
 
 日誌顯示 `videoInputFrames=60 >> videoFrames=20`（60fps 輸入僅 20fps 輸出），原因：
 
-```
+```swift
 checkFrameRate() 觸發 (encode fps < 25)
   → setProportionalThrottle(0.5) → frameInterval = 1/30 (30fps)
   → pending > threshold 再次觸發 (VT 仍積壓)
@@ -1009,14 +1009,13 @@ throttleCooldownUntil = Date().addingTimeInterval(10)
 guard frameInterval == VideoCodec.frameInterval else { return }
 ```
 
-### 行為對比
+### 行為對比 - adaptiveFrameThrottle
 
 | 場景 | 改前 | 改後 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 60fps 編碼跟不上 | 30→15→... 永不恢復，最終卡 20fps | 降為 30fps，10s 後嘗試恢復 |
 | 短暫場景複雜 | 降速後無法恢復 | 10s 後 pending ≤ 10 時自動恢復 |
 | 持續高負載 | 一路降到 15fps 以下 | 穩定在 30fps，pending 仍高時保持 throttle 不疊加 |
-
 
 ---
 
@@ -1024,20 +1023,20 @@ guard frameInterval == VideoCodec.frameInterval else { return }
 
 **目標：** 提升 Metal GPU 旋轉器穩定性，減少 CPU 降級觸發次數
 
-### 修改文件
+### 修改文件 - GPU rotator 可靠性
 
 | 文件 | 變更 |
-|------|------|
+| ------ | ------ |
 | `ReplyKIT/GPUVideoRotator.swift` | 預先分配 pool、command buffer depth limit、自動降品質 |
 
-### 變更摘要
+### 變更摘要 - GPU rotator 可靠性
 
-**0. Timeout 統一為 1s + Pipeline 永不停止**
+### **Timeout 統一為 1s + Pipeline 永不停止**
 
 SRS 轉發伺服器在串流中斷 10s 後自動 kill forwarder，因此 Recovery 必須在 10s 內完成：
 
 | 項目 | 改前 | 改後 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `commandBufferTimeout` (GPUVideoRotator) | 1.8s | **1.0s** |
 | `processingTimeout` (VideoProcess watchdog) | 2.0s | **1.0s** |
 | `maxConsecutiveDrops` | 60（60s 後 `isActive = false`） | **10**（不再 `isActive = false`，改為 reset 管線後繼續嘗試） |
@@ -1054,11 +1053,11 @@ if self.consecutiveDropCount >= self.maxConsecutiveDrops {
 }
 ```
 
-**1. 預先分配 output buffer pool（prewarmPool）**
+### **預先分配 output buffer pool（prewarmPool）**
 
 `ensureMetalResources()` 成功後立即呼叫 `prewarmPool()`，預先建立 3 組 Metal-compatible CVPixelBuffer + MTLTexture，避免 runtime `getReusableOutput` 因 CVPixelBufferCreate 忙碌而回傳 nil。
 
-**2. Command buffer queue depth limit**
+### **Command buffer queue depth limit**
 
 使用 `DispatchSemaphore(value: 2)` 限制 in-flight command buffer 最多 2 個。超過時 `inflightSemaphore.wait()` 阻塞呼叫端，產生 back-pressure → VideoProcess actor 的 `isProcessing` 自然阻止新 frame 進入。
 
@@ -1073,7 +1072,7 @@ inflightSemaphore.signal()
 
 **逾時保護**：timeout handler 與 completion handler 透過 `CommandCompletionState` 協調唯一的 `signal()` 呼叫，避免計數偏移。
 
-**3. 自動品質降級**
+### **自動品質降級**
 
 首次 `handleMetalFailure` 發生時，自動從 `quality` (bicubic) 降級到 `live` (bilinear)，降低 GPU 負載：
 
@@ -1093,10 +1092,10 @@ if let original = originalQualityMode {
 }
 ```
 
-### 行為對比
+### 行為對比 - GPU rotator 可靠性
 
 | 場景 | 改前 | 改後 |
-|------|------|------|
+| ------ | ------ | ------ |
 | Output buffer 耗盡 | `getReusableOutput` 回傳 nil → CPU fallback | init 時預先分配 3 組 buffer，減少 runtime 分配 |
 | GPU 負載過高 | 無限制 → command buffer 排隊 + timeout | 最多 2 個 in-flight，back-pressure 自然調節 |
 | Bicubic 太重 | 連續失敗直到 cleanup 重建管線 | 自動降級 bilinear，恢復後自動還原 |
@@ -1107,15 +1106,15 @@ if let original = originalQualityMode {
 
 **目標：** 減少 PiP 贊助橫幅疊層在 60fps 渲染熱路徑上的重複計算與日誌開銷。
 
-### 修改文件
+### 修改文件 - adOverlay 繪製
 
 | 文件 | 變更 |
-|------|------|
+| ------ | ------ |
 | `liveAPP/PIPService.swift` | CTFrame 重用、icon 定位改用實際渲染行數、emoji lookup O(n)→O(1)、日誌降頻 |
 
-### 變更摘要
+### 變更摘要 - adOverlay 繪製
 
-**1. CTFrame 重用 — icon 定位改用實際文字渲染行數**
+### **CTFrame 重用 — icon 定位改用實際文字渲染行數**
 
 原本 icon 垂直定位用固定公式 `(bannerY + 6) + (labelFont.lineHeight + overlaySpacing + msgH) / 2`，對齊整個 banner 區塊的幾何中心，而非實際文字區塊。
 
@@ -1123,16 +1122,16 @@ if let original = originalQualityMode {
 
 同時將 CTFrame 建立移到 icon 定位前，文字繪製時直接重用同一 frame，避免舊版重複建立。
 
-**2. Emoji 位置查表 O(n) → O(1)**
+### **Emoji 位置查表 O(n) → O(1)**
 
 | 查詢 | 原本 (`[Int]`) | 改後 (`[Int: Int]`) |
-|------|----------------|---------------------|
+| ------ | ---------------- | --------------------- |
 | `firstIndex(of:)` → emoji image index | O(n) 線性掃描 | O(1) hash lookup |
 | `contains()` → segment 邊界檢查 | O(n) | O(1) |
 
 `adOverlayEmojiPositions: [Int]` 保留供其他用途，新增 `adOverlayEmojiPositionMap: [Int: Int]` 在 `addAdOverlay` 時從 `emojiPositions` 建立（position → imageIndex），兩個查詢點改用 dict 操作。
 
-**3. 渲染熱路徑日誌降頻**
+### **渲染熱路徑日誌降頻**
 
 `drawAdOverlay` 內 4 個 `PIPLogTo` 原本每幀輸出，包含 per-character 日誌（每字元都記錄 globalPos、posMatch、imgCount）。
 
@@ -1141,7 +1140,7 @@ if let original = originalQualityMode {
 ### 效能估算
 
 | 項目 | 改善 |
-|------|------|
+| ------ | ------ |
 | CTFrame 建立 | 減少 1 次重複建立（舊版 icon 區域與文字區域各自算一次） |
 | Emoji lookup (per char) | O(n) → O(1)，假設 10 emoji × 40 chars = 400 次比較/frame 省去 |
 | 日誌輸出 (粗估) | 60 fps × 4 行 = 240 行/s → 2 行/s（↓99%） |
@@ -1152,17 +1151,18 @@ if let original = originalQualityMode {
 
 **目標：** 解決 `onAudioPage` 切換時音量指標無反應的問題，用可靠 TCP 推送取代不可靠的跨程序 Darwin 通知。
 
-### 問題
+### 問題 - onAudioPage 依賴 CFNotification
 
 用戶切到音量頁面時，兩個音量進度條（mic / app）完全沒有動靜。原因：
+
 1. `liveAPP` 透過 `CFNotificationCenterPostNotification` (Darwin) 通知 extension 頁面切換
 2. Darwin 通知可能延遲、合併或丟失，extension 收不到時永遠不會開始計算 RMS
 3. `logConfig` 路徑雖有更新 `RPConfig.shared.onAudioPage` 但未傳播到 `AudioProcessor`
 
-### 修改
+### 修改 - onAudioPage 改 E-Socket 推送
 
 | 檔案 | 變更 |
-|------|------|
+| ------ | ------ |
 | `liveAPP/Socket.swift` | 新增 `broadcastPushState(key:value:)` — 遍歷所有 socket 連線推送 `{"type":"pushState","key":"onAudioPage","value":true/false}` |
 | `liveAPP/ContentView.swift` | 4 處 `CFNotification` 全部改為 `SocketServer.shared.broadcastPushState`；移除 4 處 `userDefaults?.synchronize()` |
 | `ReplyKIT/Socket.swift` | 新增 `onPageStateChanged` closure 屬性 + `case "pushState"` handler |
@@ -1170,7 +1170,7 @@ if let original = originalQualityMode {
 
 ### 新資料流
 
-```
+```swift
 liveAPP 頁面切換/背景/前景
   → SocketServer.broadcastPushState("onAudioPage", true/false)
     → [E-Socket TCP {"type":"pushState","key":"onAudioPage","value":true}]
@@ -1185,7 +1185,7 @@ liveAPP 頁面切換/背景/前景
 ### 效果
 
 | 面向 | 改前 | 改後 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 通訊方式 | CFNotification Darwin（不可靠、可能合併） | E-Socket TCP localhost（可靠、有序送達） |
 | AudioProcessor 同步 | 僅 CFNotification handler 會呼叫 `updatePage` | socket pushState handler + callback 確保同步 |
 | 頁面切離/背景 | CFNotification `onAudioPage=false` | 同上，透過 socket 推送 |
@@ -1203,7 +1203,7 @@ V1 的 `broadcastPushState` 在主線程直接迭代 `connections`，但 `connec
 
 **目標：** 修復 `RPSystemBroadcastPickerView` 因 `frame: .zero` 導致內部 `UIButton` 不被建立，`trigger()` 無法觸發系統廣播選擇器。
 
-### 問題
+### 問題 - StreamBtn 零 frame 無法建立
 
 `BroadcastButton` 使用 `RPSystemBroadcastPickerView(frame: .zero)` 建立 picker，並在 SwiftUI body 中設 `StreamBtn.frame(width: 0, height: 0)`。當 picker frame 為零時：
 
@@ -1211,10 +1211,10 @@ V1 的 `broadcastPushState` 在主線程直接迭代 `connections`，但 `connec
 2. `trigger()` 中的 `picker.subviews.first(where: { $0 is UIButton })` 永遠找不到 button
 3. 重試 3 次後放棄，廣播無法啟動
 
-### 修改
+### 修改 - StreamBtn 尺寸保護
 
 | 位置 | 改前 | 改後 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `makeUIView` | `RPSystemBroadcastPickerView(frame: .zero)` | `RPSystemBroadcastPickerView(frame: CGRect(x:0, y:0, width:1, height:1))` |
 | `ensurePicker` | 同上 | 同上 |
 | SwiftUI body | `StreamBtn.frame(width:0, height:0)` | `StreamBtn.frame(width:1, height:1).opacity(0.001)` |
@@ -1227,10 +1227,10 @@ V1 的 `broadcastPushState` 在主線程直接迭代 `connections`，但 `connec
 
 **目標：** iOS 記憶體壓縮機制已在不活躍頁面觸發時自動 in-place 壓縮，handleMemoryWarning 只需釋放 kernel 無法壓缩的 GPU/CoreVideo 資源，避免多餘清理造成後續 CPU/IO spike。
 
-### `liveAPP/PIPService.swift`
+### `liveAPP/PIPService.swift` - memory warning 只釋放不可壓縮資源
 
 | 移除項目 | 原因 |
-|----------|------|
+| ---------- | ------ |
 | ~~`messagesLayer?.clearAllMessages()`~~ | 純資料壓縮後可被 kernel 回收，清除後需重新 fetch/render，造成 memory pressure 下的 CPU/IO spike |
 | ~~`clearAdOverlay()`~~ | 同上，ad overlay 文字/URL 均為可壓缩資料 |
 | ~~`Task { await PiPImageCache.shared.clear() }`~~ | NSCache 在 memory pressure 下已 auto-evict，手動清空 + cancel in-flight 下載導致恢復時全部重載 |
@@ -1267,10 +1267,10 @@ func handleMemoryWarning() {
 
 **目標：** 保活 PiP 長時間背景運行，進一步降低渲染資源消耗。原設計每 2 秒整張 900×600（3x scale）重繪，只為更新一秒鐘的時鐘文字；本次將幀率降到 0.2 fps、解析度降到 1x，並加入「秒變門檻」只在顯示秒數改變時重繪。
 
-### `liveAPP/PIPService.swift`
+### `liveAPP/PIPService.swift` - 保活模式渲染優化
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 保活模式仍每 2 秒整張重繪 900×600 | `periodicRedrawInterval`(1s) < 渲染間隔(2s)，每次 tick 都判定需重繪，`cachedPixelBuffer` 免重繪路徑永不命中 | 秒變門檻：`renderIncremental()` 在保活模式只當 `currentTimeString() != lastDrawnKeepaliveTime` 才 `needsRedraw`，重繪後記錄已繪時間 |
 | 保活僅靜態文字卻用 3x scale（900×600） | `startKeepalivePiP()` 沿用 `startPiP()` 的 `× UIScreen.main.scale` | 保活模式 `OframeSize` 直接用 `size`（300×200），像素工作量減少 9 倍 |
 | 1x buffer 下 overlay 文字被放大裁切 | `renderUIViewToPixelBuffer()` 固定以 `scale`(3) 縮放 overlay | 新增 `overlayScale = isKeepaliveMode ? 1.0 : scale`，保活模式以 1:1 繪製時間/狀態 |
@@ -1281,7 +1281,7 @@ func handleMemoryWarning() {
 ### 快取設計（既有，本輪啟用）
 
 | 快取 | 說明 |
-|------|------|
+| ------ | ------ |
 | `CVPixelBufferPool`（3 張） | buffer 重用，不重複分配 |
 | `cachedFormatDescription` | CMVideoFormatDescription 重用 |
 | `cachedPixelBuffer` | 無重繪時直接重 enqueue 免重新渲染 |
@@ -1290,7 +1290,7 @@ func handleMemoryWarning() {
 ### 行為對照
 
 | 面向 | 改進前（0.5 fps） | 改進後（0.2 fps） |
-|------|-------------------|-------------------|
+| ------ | ------------------- | ------------------- |
 | 渲染間隔 | 2 秒 | 5 秒 |
 | 解析度 | 900×600（3x） | 300×200（1x） |
 | 每幀像素工作量 | 2.16 MB buffer | 0.24 MB buffer（/9） |
@@ -1304,7 +1304,7 @@ func handleMemoryWarning() {
 **目標：** 依 Apple 官方文件審查 BGTaskScheduler 用法，修正配置與接線錯誤。官方關鍵依據（`Using background tasks to update your app`）：BGAppRefreshTask 需在 `UIBackgroundModes` 勾選 "Background fetch"（`fetch`）；BGProcessingTask 需 "Background processing"；`register` 必須在 app 啟動完成前；**resubmit 會取代前次 submission**（不需先 cancel）；BGTaskScheduler 是機會型喚醒、只能跑短期工作，**無法保活 socket**。
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `UIBackgroundModes` 沒有 `fetch`、只有 `processing` | Section 25 改 BGAppRefreshTask 時未同步更新 Info.plist（`processing` 是舊 BGProcessingTask 殘留） | `processing` → `fetch`，BGAppRefreshTask 才會被系統排程執行 |
 | `beginSocketBackgroundWindow()` 是死碼、從未被呼叫 | design-issues §7 明訂進背景要先取得短窗口，但 `.background` 只排程 BGTask | `.background` 補上 `beginSocketBackgroundWindow()`，socket 未送出的 log 有收尾窗口 |
 | PiP 活躍時仍每 15 分鐘空跑消耗每日背景任務預算 | Section 19 移除 PiP guard 的後遺症 | `scheduleSocketRefresh()` 重新加入 PiP 活躍 guard（PiP 已保活不需 BGTask）；PiP 停止且 App 在背景時由 `stopPiP()` 補排程 |
@@ -1316,13 +1316,13 @@ func handleMemoryWarning() {
 ```xml
 <key>UIBackgroundModes</key>
 <array>
-	<string>fetch</string>
-	<string>remote-notification</string>
-	<string>audio</string>
+<string>fetch</string>
+<string>remote-notification</string>
+<string>audio</string>
 </array>
 ```
 
-### `liveAPP/BackgroundTaskManager.swift`
+### `liveAPP/BackgroundTaskManager.swift` - BGTask 設計審查
 
 ```swift
 private static let refreshQueue = DispatchQueue(label: "com.nuclear.liveAPP.bgtask.refresh", qos: .utility)
@@ -1353,7 +1353,7 @@ PiP 停止後若 `applicationState == .background` 則 `scheduleSocketRefresh()`
 ### 官方用法對照（全項符合）
 
 | 官方要求 | 專案狀態 |
-|----------|----------|
+| ---------- | ---------- |
 | register 在 app 啟動完成前 | ✓（liveAPPApp.init） |
 | `BGTaskSchedulerPermittedIdentifiers` | ✓ |
 | `UIBackgroundModes`：BGAppRefreshTask → `fetch` | ✓（本次修正） |
@@ -1368,7 +1368,7 @@ PiP 停止後若 `applicationState == .background` 則 `scheduleSocketRefresh()`
 **目標：** 修正頭像／禮物／行內 emoji 圖片下載失敗無法診斷、以及下載佇列 busy-wait 與缺 timeout 造成的「網路塞住」。
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 下載失敗看不出原因 | `URLSession.shared.data(from:)` 對非 2xx **不 throw**，把 error body 當 data 回傳，`UIImage(data:)` decode 失敗回傳 nil——403 被拒看起來像 decode 失敗 | 改用 `URLSession.data(for:)` + **檢查 `HTTPURLResponse.statusCode`**，非 2xx 以 `PIPLogTo` 記錄 status（403/404/decode 失敗可區分） |
 | 卡住的 URL 佔住 slot 60 秒 | `URLSession.shared` 預設 `timeoutIntervalForRequest = 60`；5 個 slot 全被卡住 → 後續圖片全部排隊等一分鐘 | 自訂 session：`timeoutIntervalForRequest: 10`、`timeoutIntervalForResource: 30`、`waitsForConnectivity: true` |
 | 請求只有預設 headers | `URLSession.shared` 不帶自訂 UA/Accept | `httpAdditionalHeaders`：真實 Safari UA + `Accept: image/*` |
@@ -1400,7 +1400,7 @@ private static let session: URLSession = {
 
 不整串自創，取真實 Safari UA 當樣板、只替換會變動的段：
 
-```
+```log
 Mozilla/5.0 (iPad; CPU OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.7 Mobile/15E148 Safari/604.1
         └──────── 替換：裝置 + CPU token + OS 版本 ────────┘   └─ 跟隨 OS ─┘  └ 凍結不動 ┘
 ```
@@ -1416,7 +1416,7 @@ Mozilla/5.0 (iPad; CPU OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like 
 **目標：** 通知附件圖片原本每次用 `URLSession.shared.dataTask` 重新下載，與 PiP 疊層完全脫鉤——同一張頭像/emoji 被重複下載，且通知路徑無限並行 `dataTask` 跟 PiP 下載搶網路。
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 同一張圖重複下載 | `postSystemNotification` 直接 `URLSession.shared.dataTask`，不經 PiPImageCache | 改走 `PiPImageCache.shared.loadImage`，與 PiP 疊層共用 NSCache + FIFO 下載佇列 |
 | 通知路徑無限並行 dataTask | 聊天訊息爆量時每則通知各自下載，繞過 5 連線並行上限 | 透過 PiPImageCache 的 `waitingQueue` FIFO（Section 42），統一收斂並行量 |
 | 附件格式依 MIME 判斷（jpg/gif/webp/png） | 舊 `dataTask` 依 `response.mimeType` 決定副檔名 | 統一轉 PNG（`image?.pngData()`），程式碼簡化；GIF 動畫通知附件少見，PiP 疊層本就顯示靜態 |
