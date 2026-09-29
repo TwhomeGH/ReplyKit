@@ -948,6 +948,10 @@ struct LogSettingsView: View {
                 
                 LogSettingView()
 
+                NavigationLink("Socket 連線") {
+                    SocketConnectionSettingsView()
+                }
+
                 Section(header: Text("appLanguage.section")) {
                     Picker("appLanguage.picker", selection: $appLanguageRawValue) {
                         ForEach(AppLanguage.allCases) { language in

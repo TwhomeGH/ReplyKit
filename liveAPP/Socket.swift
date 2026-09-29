@@ -1,6 +1,7 @@
 import Foundation
 import Network
 import os
+import UIKit
 
 
 //let logger = Logger(subsystem: "nuclear.liveAPP", category: "SocketServer")
@@ -69,6 +70,136 @@ class SocketServer:ObservableObject {
     private var receiveOffsets: [ObjectIdentifier: Int] = [:]
 
     private var listener: NWListener?
+    private var pendingListener: NWListener?
+    @Published private(set) var listeningPort: UInt16?
+    @Published private(set) var listenerStatus = "尚未啟動"
+    @Published private(set) var portError: String?
+    @Published private(set) var isApplyingPort = false
+
+    private func publishListenerState(_ status: String, port: UInt16? = nil) {
+        DispatchQueue.main.async {
+            self.listenerStatus = status
+            self.listeningPort = port
+        }
+    }
+
+    private func listenerErrorMessage(_ error: Error, port: UInt16) -> String {
+        if let networkError = error as? NWError,
+           case .posix(.EADDRINUSE) = networkError {
+            return "端口 \(port) 已被占用，請選擇其他端口。"
+        }
+        return "端口 \(port) 無法監聽：\(error.localizedDescription)"
+    }
+
+    private func configureListener(_ target: NWListener, port: UInt16) {
+        target.newConnectionHandler = { [weak self] connection in
+            self?.handleNewConnection(connection)
+        }
+        target.stateUpdateHandler = { [weak self, weak target] state in
+            guard let self, let target, self.listener === target else { return }
+            switch state {
+            case .ready:
+                self.isStopping = false
+                self.publishListenerState("監聽中", port: port)
+                self.logTo("SocketServer ready on port \(port)")
+            case .failed(let error):
+                let message = self.listenerErrorMessage(error, port: port)
+                self.logTo(message)
+                target.stateUpdateHandler = nil
+                target.cancel()
+                self.listener = nil
+                self.publishListenerState(message)
+                if case .posix(.EADDRINUSE) = error { return }
+                self.scheduleRestart()
+            case .waiting(let error):
+                self.publishListenerState("等待網路：\(error.localizedDescription)")
+            case .cancelled:
+                self.listener = nil
+                self.publishListenerState("已停止")
+            default:
+                break
+            }
+        }
+    }
+
+    // Candidate listener must be ready before replacing the working service.
+    @MainActor
+    func applyPort(_ port: UInt16) {
+        guard !isApplyingPort else { return }
+        guard SocketPortSettings.canCustomize else {
+            portError = "此安裝模式暫不支援自訂端口。"
+            return
+        }
+        guard port >= 1024 else {
+            portError = "請輸入 1024–65535 的端口。"
+            return
+        }
+        guard !UIScreen.main.isCaptured else {
+            portError = "請先停止直播或螢幕錄製再變更端口。"
+            return
+        }
+        isApplyingPort = true
+        portError = nil
+        queue.async {
+            if self.listener?.state == .ready, self.listener?.port?.rawValue == port {
+                DispatchQueue.main.async { self.isApplyingPort = false }
+                return
+            }
+            do {
+                let candidate = try NWListener(using: .tcp, on: NWEndpoint.Port(rawValue: port)!)
+                self.pendingListener = candidate
+                candidate.newConnectionHandler = { $0.cancel() }
+                candidate.stateUpdateHandler = { [weak self, weak candidate] state in
+                    guard let self, let candidate, self.pendingListener === candidate else { return }
+                    switch state {
+                    case .ready:
+                        // Check capture again because binding is asynchronous.
+                        DispatchQueue.main.async {
+                            let canSwitch = !UIScreen.main.isCaptured
+                            self.queue.async {
+                                guard self.pendingListener === candidate else { return }
+                                guard canSwitch else {
+                                    self.finishPortAttempt("請先停止直播或螢幕錄製再變更端口。")
+                                    return
+                                }
+                                self.pendingListener = nil
+                                self.currentRestartKey = nil
+                                self.stopInternal()
+                                SocketPortSettings.save(port)
+                                self.listener = candidate
+                                self.configureListener(candidate, port: port)
+                                self.isStopping = false
+                                self.publishListenerState("監聽中", port: port)
+                                self.logTo("SocketServer switched to port \(port)")
+                                DispatchQueue.main.async { self.isApplyingPort = false }
+                            }
+                        }
+                    case .failed(let error):
+                        self.finishPortAttempt(self.listenerErrorMessage(error, port: port))
+                    default:
+                        break
+                    }
+                }
+                candidate.start(queue: self.queue)
+                self.queue.asyncAfter(deadline: .now() + 5) { [weak self, weak candidate] in
+                    guard let self, let candidate, self.pendingListener === candidate else { return }
+                    self.finishPortAttempt("端口 \(port) 啟動逾時，請重試。")
+                }
+            } catch {
+                self.finishPortAttempt(self.listenerErrorMessage(error, port: port))
+            }
+        }
+    }
+
+    private func finishPortAttempt(_ message: String) {
+        pendingListener?.stateUpdateHandler = nil
+        pendingListener?.cancel()
+        pendingListener = nil
+        DispatchQueue.main.async {
+            self.portError = message
+            self.isApplyingPort = false
+        }
+    }
     private var connections: [ObjectIdentifier: NWConnection] = [:]
     private var lastReceiveTimes: [ObjectIdentifier: Date] = [:]
     private var keepaliveTimer: DispatchSourceTimer?
@@ -221,7 +352,7 @@ class SocketServer:ObservableObject {
 
     
     // MARK: - start
-    func start(port: UInt16 = 9322) {
+    func start(port: UInt16 = SocketPortSettings.port) {
         if DispatchQueue.getSpecific(key: queueKey) == nil {
             queue.async { [weak self] in
                 self?.start(port: port)
@@ -237,41 +368,20 @@ class SocketServer:ObservableObject {
         }
 
         do {
-            listener = try NWListener(using: .tcp, on: NWEndpoint.Port(rawValue: port)!)
+            let newListener = try NWListener(using: .tcp, on: NWEndpoint.Port(rawValue: port)!)
+            listener = newListener
             isStopping = false
-            listener?.newConnectionHandler = { [weak self] connection in
-                self?.handleNewConnection(connection)
-            }
-
-            listener?.stateUpdateHandler = { [weak self] state in
-                guard let self else { return }
-
-                switch state {
-                case .ready:
-                    self.logTo("Listener ready")
-                    self.isStopping = false
-
-                case .failed(let error):
-                    self.logTo("Listener failed: \(error)")
-                    self.listener?.cancel()
-                    self.listener = nil
-                    self.scheduleRestart()
-
-                case .cancelled:
-                    self.logTo("Listener cancelled")
-                    self.listener = nil
-
-                default:
-                    break
-                }
-            }
-
+            configureListener(newListener, port: port)
+            publishListenerState("啟動中")
             listener?.start(queue: queue)
 
             logTo("SocketServer started on port \(port)")
 
         } catch {
             logTo("SocketServer start failed: \(error)")
+            publishListenerState(listenerErrorMessage(error, port: port))
+            if let networkError = error as? NWError,
+               case .posix(.EADDRINUSE) = networkError { return }
             scheduleRestart()
         }
 
@@ -1524,6 +1634,11 @@ class SocketServer:ObservableObject {
 
                 // 只清理非 ready 的殘留連線，保留仍健康的連線，
                 // 避免取消 extension 正在使用的連線導致連不上擴展。
+                guard self.pendingListener == nil else {
+                    self.logTo("Socket port change in progress, retry broadcast after completion")
+                    continuation.resume(returning: false)
+                    return
+                }
                 self.clearStaleBroadcastConnections()
                 if self.listener?.state != .ready {
                     self.logTo("Listener not ready before broadcast (state: \(self.listener?.state.stateString ?? "nil")), restarting")
@@ -1602,6 +1717,11 @@ class SocketServer:ObservableObject {
     }
 
     func stopInternal() {
+        currentRestartKey = nil
+        if pendingListener != nil {
+            finishPortAttempt("服務已停止，請重新套用端口。")
+        }
+        publishListenerState("已停止")
         for (_, conn) in connections {
             conn.stateUpdateHandler = nil
             conn.cancel()

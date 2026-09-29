@@ -1,9 +1,31 @@
 # E-Socket Wire Protocol
 
-**Transport:** TCP, port 9322  
+**Transport:** TCP, default port 9322 (configurable in the main app's Socket settings when App Group sharing is available)
 **Format:** JSON, each message delimited by `0x0A` (newline)  
 **Server:** `liveAPP/Socket.swift` — `SocketServer`  
 **Client:** `ReplyKIT/Socket.swift` — `SocketClient`
+
+---
+
+## 連線設定
+
+主 App「設定 → Socket 連線」顯示目前監聽狀態、實際端口及 Wi-Fi／有線網路 IPv4，並提供複製位址。
+位址在頁面開啟、回到前景及網路變更時更新，也可手動重新整理。
+
+自訂端口範圍為 1024–65535，預設 9322。新端口監聽就緒後才儲存設定並替換舊服務；占用或逾時會保留原有服務。
+切換成功會中斷既有 Socket 連線，外部用戶端須改用新端口。ReplyKIT 的首次連線及重連會讀取 App Group 中的 `socketListenPort`。
+直播或螢幕錄製期間不允許修改端口；恢復預設值會先填入 9322，按「套用」後才生效。
+無 App Group 的安裝模式暫不開放自訂端口，主 App 與 ReplyKIT 都使用 9322。
+端口被占用時停止自動重試，可在設定頁修改端口或按「重試啟動」。
+
+### 裝置驗證
+
+- 連接 Wi-Fi，確認列出的 IPv4 與系統設定一致，複製值含實際端口；切換網路及返回前景後確認更新。
+- 輸入空白、0、1023、65536 或非數字時不可套用；1024 與 65535 可提交。
+- 使用外部 TCP 用戶端連線，再切換至空閒端口，確認舊連線關閉、新端口可連線，重新啟動 App 後設定保留。
+- 占用候選端口後套用，確認顯示占用錯誤、原端口仍可連線且儲存值未變。
+- 重新啟動 ReplyKIT，確認首次連線、斷線重連及設定請求都使用新端口。
+- 開始螢幕直播後確認端口控制項停用；停止後可套用。側載且無 App Group 時確認雙方仍使用 9322。
 
 ---
 

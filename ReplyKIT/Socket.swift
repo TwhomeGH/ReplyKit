@@ -305,7 +305,7 @@ class SocketClient : @unchecked Sendable {
 
     
     // MARK: - 連線初始化
-    func connect(host: String = "localhost" , port: UInt16 = 9322) {
+    func connect(host: String = "localhost" , port: UInt16 = SocketPortSettings.port) {
         queue.async { [weak self] in
             guard let self = self else { return }
             self._connect(host: host, port: port)
@@ -704,7 +704,7 @@ class SocketClient : @unchecked Sendable {
         queue.async { [weak self] in
             guard let self = self else { return }
 
-            self._connect(host: "localhost", port: 9322)
+            self._connect(host: "localhost", port: SocketPortSettings.port)
 
             let group = DispatchGroup()
             group.enter()
@@ -724,7 +724,7 @@ class SocketClient : @unchecked Sendable {
         queue.async { [weak self] in
             guard let self = self else { return }
             if self.connection?.state != .ready {
-                self._connect(host: "localhost", port: 9322)
+                self._connect(host: "localhost", port: SocketPortSettings.port)
                 // 每次呼叫時如果沒有連線時 自動嘗試1次連線
             }
             guard self.connection?.state == .ready else { return }
@@ -828,7 +828,7 @@ class SocketClient : @unchecked Sendable {
         queue.async { [weak self] in
             guard let self = self else { return }
             if self.connection?.state != .ready {
-                self._connect(host: "localhost", port: 9322)
+                self._connect(host: "localhost", port: SocketPortSettings.port)
             }
             let payload: [String: Any] = [
                 "type": "settings",
@@ -869,7 +869,7 @@ class SocketClient : @unchecked Sendable {
             guard let self = self else { return }
             guard self.inFlightBatches < self.maxInflightBatches else { return }
             if self.connection?.state != .ready {
-                self._connect(host: "localhost", port: 9322)
+                self._connect(host: "localhost", port: SocketPortSettings.port)
                 return
             }
             self._sendBatch([])
@@ -900,12 +900,12 @@ class SocketClient : @unchecked Sendable {
         guard !pendingBatchEntries.isEmpty else { return }
         // 不限 inflight — 讓佇列自然成長，記憶體由 trimToMemoryCap 保護
         if connection?.state != .ready {
-            _connect(host: "localhost", port: 9322)
+            _connect(host: "localhost", port: SocketPortSettings.port)
             return
         }
 
         if connection?.state != .ready {
-            _connect(host: "localhost", port: 9322)
+            _connect(host: "localhost", port: SocketPortSettings.port)
             return
         }
 
