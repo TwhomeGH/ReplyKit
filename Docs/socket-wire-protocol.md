@@ -12,17 +12,22 @@
 ### `heartbeat` — 用戶端心跳
 
 | 方向 | → Server |
-|------|----------|
+| ------ | ---------- |
 | Payload | `{"type":"heartbeat"}` |
 | 觸發 | 僅被動回應 server 發送的 `keepalive`，用戶端不主動發送 |
-| Server 行為 | 僅記錄「收到Socket心跳維持連線」，同時更新該連線的 `lastReceiveTime` |
+| Server 行為 | 記錄「收到 Socket 心跳」及實際來源連線的物件 ID、遠端端點；接收資料時照常更新該連線的 `lastReceiveTime` |
+
+心跳日誌格式：`收到 Socket 心跳｜連線=ObjectIdentifier(...)｜遠端=<位址>:<連接埠>`。
+連線建立、就緒、失敗、取消及移除日誌使用相同識別格式，方便交叉追蹤。
+識別資訊取自接收訊息的 `NWConnection`，不需修改 heartbeat payload。
+物件 ID 僅在該物件存活期間唯一，歷史紀錄需搭配遠端端點及建立／移除時間判讀；遠端端點不是已驗證的使用者或裝置身分。
 
 ---
 
 ### `keepalive` — 伺服器保活
 
 | 方向 | Server → |
-|------|----------|
+| ------ | ---------- |
 | Payload | `{"type":"keepalive"}` |
 | 觸發 | 10 秒定時器，向所有連線廣播 |
 | Server 行為 | 發送前檢查 `lastReceiveTime`，若該連線 >60 秒無任何資料視為 dead 並移除；防止 NWConnection 閒置超時自動斷線 |
@@ -33,7 +38,7 @@
 ### `StreamStarting` — 直播開始
 
 | 方向 | → Server |
-|------|----------|
+| ------ | ---------- |
 | Payload | `{"type":"StreamStarting"}` |
 | Server 行為 | 記錄開始時間、重設觀眾人數與列表、標記 isLive |
 
@@ -42,7 +47,7 @@
 ### `Ended` — 直播結束
 
 | 方向 | → Server |
-|------|----------|
+| ------ | ---------- |
 | Payload | `{"type":"Ended","Message":"StreamEnded"}` |
 | Server 行為 | 呼叫 `StreamStatusChanged(isLive:false)` |
 
@@ -51,7 +56,7 @@
 ### `audience` — 純觀眾資訊更新
 
 | 方向 | → Server |
-|------|----------|
+| ------ | ---------- |
 | Payload | `{"type":"audience","userNum":Int?,"userList":[String]?}` |
 | Server 行為 | 僅更新觀眾數量與列表，不渲染任何聊天訊息 |
 | 用途 | 與 `StreamMessage` 分離，避免為了更新人數而傳送空字串聊天訊息 |
@@ -61,13 +66,13 @@
 ### `StreamMessage` — 聊天室訊息
 
 | 方向 | → Server |
-|------|----------|
+| ------ | ---------- |
 | Payload | `{"type":"StreamMessage","user":String,"message":String,"img":String?,"giftImg":String?,"isMain":Bool?,"userNum":Int?,"userList":[String]?}` |
 | Server 行為 | 更新觀眾資訊、PiP 疊加層渲染聊天訊息、TTS 朗讀 |
 
 **PiP 行內 emoji 渲染** — `message` 中的圖片 URL（`https://...png|jpg|gif|webp`）會自動提取並在聊天文字中行內顯示：
 
-```
+```text
 ┌──────────────────────────────┐
 │  user: 你好 🖼️ 謝謝          │   ← emoji 顯示在 URL 原本位置
 │  user: 另一則訊息 🖼️ 🖼️     │       換行時正確跟隨所屬行
@@ -83,7 +88,7 @@
 ### `AdOverlay` — 廣告贊助訊息
 
 | 方向 | → Server |
-|------|----------|
+| ------ | ---------- |
 | Payload | `{"type":"AdOverlay","user":String?,"text":String,"iconURL":String?,"useTTS":Bool}` |
 | Server 行為 | 系統通知（可選）+ TTS 朗讀（可選）+ **PiP 贊助橫幅疊層** |
 
@@ -99,7 +104,7 @@
 
 **PiP 贊助橫幅疊層**（`liveAPP/PIPService.swift` — `addAdOverlay`）：
 
-```
+```log
 ┌──────────────────────┐
 │ ┌──────────────────┐ │
 │ │ ⭐ 贊助者名稱    │ │ ← 金底圓角橫幅，y=4, h=52
@@ -121,8 +126,8 @@
 ### `UPSet` — 讀取 UserDefaults
 
 | 方向 | ↔ |
-|------|---|
-| Request | `{"type":"UPSet","key":String,"ValueType":"String"|"Bool"|"Double"|"Int"|"Float"}` |
+| ------ | --- |
+| Request | `{"type":"UPSet","key":String,"ValueType":"String"\|"Bool"\|"Double"\|"Int"\|"Float"}` |
 | Response | `{"type":"UPSet","key":String,"value":<typed-value>}` |
 | Server 行為 | 讀取指定 key 的值並回應，connection 用完即關 |
 
@@ -131,7 +136,7 @@
 ### `batch` — 批次請求
 
 | 方向 | → Server |
-|------|----------|
+| ------ | ---------- |
 | Request | `{"type":"batch","requests":["requestRTMP","logConfig"]}` |
 | Server 行為 | 依序處理 `requestRTMP` → `logConfig` → `{"type":"BatchEnded"}`，逐筆回應 |
 
@@ -140,7 +145,7 @@
 ### `BatchEnded` — 批次結束
 
 | 方向 | Server → |
-|------|----------|
+| ------ | ---------- |
 | Payload | `{"type":"BatchEnded"}` |
 | Server 行為 | 批次處理完成後附加的最後一筆回應 |
 | 用戶端行為 | 收到後關閉連線 |
@@ -150,7 +155,7 @@
 ### `requestRTMP` / `RTMP` — 推流設定
 
 | 方向 | ↔ |
-|------|---|
+| ------ | --- |
 | Request | `{"type":"requestRTMP"}` |
 | Response | `{"type":"RTMP","rtmpURL":String,"rtmpKey":String,"BitRate":Int,"dstW":Int,"dstH":Int,"odstW":Int,"odstH":Int,"Rotate":Int,"videoBuffer":Int,"useEnhancedRTMP":Bool?, ...}` |
 | Server 行為 | 從 UserDefaults 讀取 RTMP 設定後回應 |
@@ -163,7 +168,7 @@
 ### `logConfig` — 日誌設定
 
 | 方向 | ↔ |
-|------|---|
+| ------ | --- |
 | Request | `{"type":"logConfig"}` |
 | Response | `{"type":"logConfig","logMode":Int,"logURL":String,"onlogPage":Bool,"onAudioPage":Bool,"enableLog":Bool,"enableSocketLog":Bool,"enableTimeDebug":Bool,"enablePipelineLog":Bool}` |
 | Server 行為 | 從 UserDefaults 讀取日誌設定後回應 |
@@ -174,7 +179,7 @@
 ### `audioLive` — 音量即時更新
 
 | 方向 | → Server |
-|------|----------|
+| ------ | ---------- |
 | Payload | `{"type":"audioLive","appVol":Float,"micVol":Float,"persist":Bool}` |
 | Server 行為 | 更新 `LiveVolumeModel` 中的麥克風與應用程式音量 |
 
@@ -183,7 +188,7 @@
 ### `videoHealth` — 視訊管線健康樣本
 
 | 方向 | → Server |
-|------|----------|
+| ------ | ---------- |
 | Payload | `{"type":"videoHealth","status":String,"inputFPS":Double,"processedFPS":Double,"droppedFPS":Double,"timeoutDelta":Int}` |
 | 觸發 | ReplayKit extension 每秒從 `SampleHandler` 彙整一次 |
 | Server 行為 | 更新 `VideoHealthModel`，供設備信息頁圖表化顯示 |
@@ -194,7 +199,7 @@
 `status` 目前可能值：
 
 | 值 | 含義 |
-|----|------|
+| ---- | ------ |
 | `healthy` | 輸入與處理 FPS 接近，沒有 Metal timeout |
 | `upstream-throttle` | ReplayKit 上游擷取 FPS 偏低，通常是前景遊戲/GPU 排程壓制 |
 | `metal-pressure` | Metal command buffer timeout 或 in-flight 壓力升高 |
@@ -206,7 +211,7 @@
 ### `audioHealth` — 音訊管線健康樣本
 
 | 方向 | → Server |
-|------|----------|
+| ------ | ---------- |
 | Payload | `{"type":"audioHealth","status":String,"appInputFPSMin/Avg/Max":Double,"micInputFPSMin/Avg/Max":Double,"appGapMaxMs":Double,"alignDroppedPerSec":Double,"alignInsertedPerSec":Double,"alignFirePerSec":Double,"alignDiffMaxSamples":Double,"skipInsertedPerSec":Double,"overflowDroppedPerSec":Double,"resampleNoDataPerSec":Double,"mixerOutputFPS":Double,"appRMS":Double,"micRMS":Double,"outChannels":Int,"outCh0RMS":Double,"outCh1RMS":Double}` |
 | 觸發 | ReplayKit extension 每秒累積、每 5s 彙總送出（與 `videoHealth` 同節奏） |
 | Server 行為 | 更新 `AudioHealthModel`，供設備信息頁「Audio Pipeline」圖表顯示 |
@@ -217,7 +222,7 @@
 `status` 目前可能值：
 
 | 值 | 含義 |
-|----|------|
+| ---- | ------ |
 | `healthy` | app/mic inputFPS 正常，無 align drop / underrun / 大 gap |
 | `input-idle` | app 與 mic 都幾乎沒有輸入幀 |
 | `align-churn` | `align()` 幾乎每秒都在動手（alignFirePerSec 高）— 代表持續對非 main track 做硬丟/硬補，是 content-level 斷音的典型訊號 |
@@ -231,7 +236,7 @@
 ### `settings` — 設定同步
 
 | 方向 | → Server |
-|------|----------|
+| ------ | ---------- |
 | Payload | `{"type":"settings","key":String,"value":<JSON-value>}` |
 | Server 行為 | 寫入 `UserDefaults.standard`，音量相關 key 發送 Darwin notification |
 | 備註 | Server 也可廣播給用戶端，但用戶端無對應 handler (silently dropped) |
@@ -241,7 +246,7 @@
 ### `log` — 單條日誌
 
 | 方向 | ↔ |
-|------|---|
+| ------ | --- |
 | → Server | `{"type":"log","title":String,"message":String}` |
 | → Client | `{"type":"log","message":String}` |
 | Server 行為 | 寫入 LogBuffer 與 AppLogPersister |
@@ -252,7 +257,7 @@
 ### `logbatch` — 批量日誌
 
 | 方向 | → Server |
-|------|----------|
+| ------ | ---------- |
 | Payload | `{"type":"logbatch","entries":[String]}` |
 | Server 行為 | 每條 entry 前綴 `UseESocket:` 後寫入 LogBuffer |
 | 觸發 | 用戶端累積 ≥50 條或 ≥4KB 時打包送出，250ms 定時器確保殘餘 flush |
@@ -262,8 +267,8 @@
 ### `reconnectStatus` — RTMP 重連狀態
 
 | 方向 | → Server |
-|------|----------|
-| Payload | `{"type":"reconnectStatus","status":"attempting"|"success"|"failed"|"exhausted","attempt":Int}` |
+| ------ | ---------- |
+| Payload | `{"type":"reconnectStatus","status":"attempting"\|"success"\|"failed"\|"exhausted","attempt":Int}` |
 | Server 行為 | 只有 `attempt > 0` 的 `attempting` / `failed` 會更新 PiP overlay 的 reconnecting 狀態顯示；`attempt = 0`、`success`、`exhausted` 會清空重連狀態 |
 
 #### `attempt = 0` 防殘留規則
@@ -277,7 +282,7 @@ Broadcast Extension 端也不應在初始 `publish` 失敗時直接送出 `faile
 ### `testRTMP` — 偵錯廣播
 
 | 方向 | Server → |
-|------|----------|
+| ------ | ---------- |
 | Payload | `{"type":"testRTMP","key":"test3","value":"OK"}` |
 | 用途 | 從 Setting.swift 廣播給用戶端，用戶端收到後觸發 requestRTMP + logConfig 測試 |
 
@@ -285,7 +290,7 @@ Broadcast Extension 端也不應在初始 `publish` 失敗時直接送出 `faile
 
 ## 資料流向總覽
 
-```
+```text
 ReplyKIT (Extension)                          liveAPP (Main App)
 ────────────────────                          ──────────────────
   heartbeat ──────────────►                   更新 lastReceiveTime (10s 定時)
@@ -312,7 +317,7 @@ ReplyKIT (Extension)                          liveAPP (Main App)
 ## 結構定義
 
 | 結構體 | 所在檔案 | 用途 |
-|--------|----------|------|
+| -------- | ---------- | ------ |
 | `TypePayload` | `liveAPP/Socket.swift` | 每則訊息的 type 欄位 |
 | `StreamEnded` | 同上 | Ended payload |
 | `ChatMessage` | 同上 | StreamMessage payload |
@@ -354,7 +359,7 @@ ReplyKIT (Extension)                          liveAPP (Main App)
 ### 上限與觸發條件
 
 | 常量 | 值 | 位置 |
-|------|-----|------|
+| ------ | ----- | ------ |
 | `SocketClient.maxBufferSize` | 1,048,576 (1MB) | `ReplyKIT/Socket.swift` |
 | `SocketServer.maxBufferSize` | 1,048,576 (1MB) | `liveAPP/Socket.swift` |
 

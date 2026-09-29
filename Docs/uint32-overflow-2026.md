@@ -12,7 +12,7 @@ var ct = UInt32(Date().timeIntervalSince1970 * 1000).bigEndian
 ### 計算
 
 | 項目 | 數值 |
-|------|------|
+| ------ | ------ |
 | `timeIntervalSince1970` (2026 年 6 月) | ≈ 1,782,000,000 秒 |
 | × 1000（轉毫秒） | ≈ 1,782,000,000,000 ms |
 | `UInt32.max` | 4,294,967,295 |
@@ -36,7 +36,7 @@ RTMP handshake 的 `UInt32` 毫秒時間戳從 1970 年開始計算，在 **2026
 這個崩潰和 `VideoProcess` 的 `Task { }` 遞迴沒有直接關係，但兩者都經過 `completeTaskWithClosure`：
 
 | 崩潰 | 原因 | `completeTaskWithClosure` 角色 |
-|------|------|-------------------------------|
+| ------ | ------ | ------------------------------- |
 | Stack Overflow × 7 | `__swift_coroFrameAllocStub` 遞迴 | 執行 task completion 時觸發遞迴 |
 | **UInt32 溢位** | **`UInt32(1.78e12)` 溢位 trap** | **在 async RTMP 連線 task 中被呼叫** |
 

@@ -41,9 +41,11 @@ if self.localLogBuffer.count > self.maxRingBufferEntries {
 
 - `sendLogBatch(entries:)` 累積 entries 到 `pendingBatchEntries`
 - 滿 50 條或 4KB 時打包送出，wire format：
-  ```json
-  {"type":"logbatch","entries":["line1","line2",...]}
-  ```
+
+    ```json
+    {"type":"logbatch","entries":["line1","line2",...]}
+    ```
+
 - **Bounded send window**：最多 3 個 in-flight batches，超過時直接 drop 最舊的 batch（drop 數量 = min(pending, 50)）
 - 250ms 定時器確保殘餘的 entries 不會永遠 pending
 - 連線中斷時 entries 保留在 `pendingBatchEntries`，reconnect 後主動 flush
@@ -74,10 +76,10 @@ case "logbatch":
     }
 ```
 
-## 行為對照
+## 行為對照 - 日誌分批與 ring buffer
 
 | 場景 | 改前 | 改後 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 大量 log 產生 | buffer 衝到 100KB → 一整包 joined 送出 → socket timeout → 連線炸掉 → reconnect | ring buffer 自動 drop 最舊，batch 每包 ≤4KB，window 滿就 drop 舊 batch，連線穩定 |
 | 繁忙時 socket 跟不上 | serial queue 無限堆積，越等越久 timeout | `maxInflightBatches=3` 硬限制，超過就 drop，保證 freshness |
 | 控制訊息 | 被大型 log send 卡在 queue 後面 | log 走獨立 batch path，不影響 `sendPayload` 的其他 callers |
@@ -88,7 +90,7 @@ case "logbatch":
 ## 效能參數
 
 | 參數 | 值 | 說明 |
-|------|-----|------|
+| ------ | ----- | ------ |
 | `maxRingBufferEntries` | 1000 | 記憶體中最多保留 1000 條 log |
 | `maxBatchEntries` | 50 | 每批最多打包 50 條 |
 | `maxBatchBytes` | 4096 | 每批最大 4KB（避免觸發 send watchdog） |
@@ -97,23 +99,23 @@ case "logbatch":
 
 ## 4. 按需連線（On-Demand Socket）— 取代永久連線 + 自動重連
 
-### 問題
+### 問題 - 主 App 被殺後 Extension 無限重連
 
 主 App 被 iOS 殺後台後，SocketServer（port 9322）停止運行，但 Extension 端的 `SocketClient` 仍在背景不斷執行重連迴圈：
 
-```
+```swift
 failed → retry() → backoff 2s → failed → retry() → backoff 4s → ...
 → circuitBreaker 5次後 60s cooldown → 再試 → 永遠失敗
 ```
 
 每次重連耗費 CPU、DispatchQueue 資源、以及 Mach port 配額，卻永遠不會成功（伺服器不在運行）。即使主 App 事後重啟，Extension 也無法察覺，因為自動重連的指數退避已經卡在 30s 間隔，斷路器可能仍處於開啟狀態。
 
-### 修正
+### 修正 - 移除自動重連，改按需連線
 
 移除所有自動重連基礎設施，改為**按需連線（on-demand connection）**：
 
 | 被移除的元件 | 原因 |
-|-------------|------|
+| ------------- | ------ |
 | `retry()` + 指數退避（2s → 30s） | 伺服器不在時，重連永遠不會成功 |
 | 斷路器（circuit breaker, 5次→60s cooldown） | 不需要 — 沒有重連就不需要斷路器 |
 | 狀態機（SocketState: disconnected/connecting/connected/reconnecting/circuitBreakerOpen） | 連線生命周期簡化為「有 / 沒有」 |
@@ -126,7 +128,7 @@ failed → retry() → backoff 2s → failed → retry() → backoff 4s → ...
 
 每種「需要 socket」的場景各自管理自己的連線：
 
-```
+```swift
 broadcastStarted() → connect() → requestRTMPKEYAndLog()
   → RTMP + LogConfig 回應抵達 → closeConnection()
 
@@ -143,7 +145,7 @@ flushBatch() (onLogPage=true 時) → connect() (若無連線) → 發送 logbat
 ### 性能與行為差異
 
 | 面向 | 改前（永久連線 + 自動重連） | 改後（按需連線） |
-|------|---------------------------|----------------|
+| ------ | --------------------------- | ---------------- |
 | **背景被殺後台** | 永無止盡的重連迴圈（退避 + 斷路器），浪費 CPU 與 Mach port | 連線無聲斷開，Zero 背景活動 |
 | **連線建立次數** | 1 次（broadcastStarted）+ N 次重連嘗試 | 每次操作建立一次（broadcastStart、broadcastEnd、每次 requestSet） |
 | **log 串流延遲** | 連線已就緒，log batch 即時送達 | 首次 flushBatch 需等待連線建立（TCP localhost ~1-2ms），後續批次立即送達 |
@@ -171,7 +173,7 @@ flushBatch() (onLogPage=true 時) → connect() (若無連線) → 發送 logbat
 
 ## 5. 分屏／台前調度 Socket 連線修復（2026-07）
 
-### 問題
+### 問題 - 分屏／台前調度啟動直播 Extension 無反應
 
 在 iPadOS 的分屏（Split Screen）或台前調度（Stage Manager）模式下啟動直播時，Broadcast Extension 完全無反應。使用者回報「主 socket 又死了」。
 
@@ -182,18 +184,20 @@ flushBatch() (onLogPage=true 時) → connect() (若無連線) → 發送 logbat
 1. 主 App 的 SocketServer（NWListener）在分屏模式下可能因系統資源調度暫時不可用
 2. Extension 的 `_connect()` 建立 NWConnection，但 server 不在監聽 → 連線進入 `.waiting`
 3. `_connect()` 看到 `.waiting` 直接 `return`，**永遠不會重建連線**：
+
    ```swift
    // 改前：.waiting 也直接 return
    case .ready, .preparing, .waiting:
        return
    ```
+
 4. `waitForReady()` 輪詢 10 秒 → 超時 → `requestRTMPKEYAndLog()` 失敗
 5. 3 次重試共 ~45 秒後 → `stopBroadcastWithError()`
 6. 使用者看到「完全沒反應」
 
 **次要問題**：`cleanupStaleListener()` 會取消 `.preparing` 狀態的 listener，造成短暫的無監聽窗口。
 
-### 修正
+### 修正 - SocketClient .waiting 逾 2s 關閉重建
 
 #### 5a. SocketClient：.waiting 逾時重建（`ReplyKIT/Socket.swift`）
 
@@ -241,10 +245,10 @@ if self.listener == nil {
 }
 ```
 
-### 行為對照
+### 行為對照 - 分屏 listener 狀態處理
 
 | 場景 | 改前 | 改後 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 分屏啟動直播，server 忙碌 | NWConnection 卡 `.waiting` 直到 `waitForReady` 10s 超時，重試 2 次後放棄 | `.waiting` 逾 2s 自動重建連線，任一週期成功即繼續流程 |
 | scene `.active` 時 listener 仍在 `.preparing` | `cleanupStaleListener()` 取消 listener 並重建，造成窗口損失 | listener 保留，等待自然就緒 |
 | listener 進入 `.failed` 但未即時回收 | `ensureRunning()` 無反應（只檢查 nil） | 主動偵測 `.failed` 並觸發 restart |
@@ -253,13 +257,13 @@ if self.listener == nil {
 
 ## 6. Keepalive 強化與死連線檢測（2026-07）
 
-### 問題
+### 問題 - keepalive 30s 過長與心跳碰撞
 
 1. **Keepalive 30s 間隔過長**：iOS 可能在 30s 內 suspend extension，server 無法及時發現連線死亡。連線死後 keepalive 繼續往 dead socket 寫入，30s send timeout 才清理。
 2. **用戶端心跳與 server keepalive 碰撞**：原先加入了用戶端主動每 10s 發送 heartbeat 的機制，但用戶端同時也會被動回應 server 的 `keepalive`。兩者每 10s 撞車導致 server 收到重複的心跳包，浪費頻寬且增加 send timeout 誤判風險。（已移除用戶端主動心跳，改為純被動回應）
 3. **聊天訊息與觀眾人數更新耦合**：extension 僅需更新人數時被迫發送一整個 `StreamMessage`（含空 user/msg），增加解析成本與頻寬浪費。
 
-### 修正
+### 修正 - keepalive 縮至 10s 與死連線檢測
 
 #### 6a. Keepalive 間隔縮短至 10s（`liveAPP/Socket.swift`）
 
@@ -314,10 +318,10 @@ case "audience":
     updateAudienceInfo(userNum: dict.userNum, userList: dict.userList)
 ```
 
-### 行為對照
+### 行為對照 - keepalive 與死連線檢測
 
 | 場景 | 改前 | 改後 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 連線死亡但 NWConnection 未偵測 | 30s keepalive 繼續往死連線寫，30s send timeout 才清理 | 10s keepalive + 60s 無資料閾值，最多 70s 檢測到 dead 連線並移除 |
 | extension 被 iOS suspend 後恢復 | 無主動心跳，server 空等 30s 才發現連線可能死亡 | server 10s keepalive 觸發 extension 回應 heartbeat，立即更新 lastReceiveTime |
 | 僅更新觀眾人數 | 發送完整 `StreamMessage`（含空 user/msg），server 解析 ChatMessage 全部欄位 | 發送輕量 `audience`（僅 userNum/userList），server 輕量解析 |
@@ -327,9 +331,10 @@ case "audience":
 
 ## 7. Send 基礎設施 Codable 遷移（2026-07）
 
-### 動機
+### 動機 - socket payload 導入 Codable 型別安全
 
 原本所有 socket payload 都用 `[String: Any]` + `JSONSerialization`：
+
 - 編譯器無法檢查 key 名稱或型別正確性
 - payload 建構與解析不一致（server 發送用 dictionary、接收用 Codable struct）
 - `JSONSerialization` 對 `Any` 的處理拋棄型別安全
@@ -398,10 +403,10 @@ var data = queue.removeFirst()
 data.append(0x0A)
 ```
 
-### 影響
+### 影響 - payload 型別與編譯器檢查
 
 | 面向 | 改前 | 改後 |
-|------|------|------|
+| ------ | ------ | ------ |
 | Payload 建構 | `["type": "keepalive"]` (untyped) | `KeepaliveMessage()` (typed struct) |
 | 序列化 | `JSONSerialization.data(withJSONObject:)` | `JSONEncoder().encode(_:)` |
 | 發送 queue 型別 | `[[String: Any]]` | `[Data]` |
@@ -412,24 +417,24 @@ data.append(0x0A)
 
 ## 8. 停用 Quality 位元率模式（2026-07）
 
-### 問題
+### 問題 - BitRateMode 選項 3（Quality）會啟用 `videoSettings.bitRateMode = .quality`，在 HaishinKit 中此模式無視設定位元率、改以畫面品質為目標，導致直播位元率暴衝或異常偏低
 
 BitRateMode 選項 3（Quality）會啟用 `videoSettings.bitRateMode = .quality`，在 HaishinKit 中此模式無視設定位元率、改以畫面品質為目標，導致直播位元率暴衝或異常偏低。使用 HEVC 編碼時即使選擇 ABR/CBR 也會被強制轉為 VBR（見 `SampleHandler.swift:1336-1339`），但 Quality 模式不受此保護。
 
-### 修正
+### 修正 - 陣列從 4 項減為 3 項，移除「Quality 品質模式」
 
 | 檔案 | 改動 |
-|------|------|
+| ------ | ------ |
 | `liveAPP/Setting.swift` | `BitRateOptions` 陣列從 4 項減為 3 項，移除「Quality 品質模式」 |
 | `ReplyKIT/SampleHandler.swift` | switch 前 `min(BitRateMode, 2)`，值 3 自動降級為 2 (VBR) |
 | `liveAPP/Socket.swift` | `GetRTMPConfig()` 輸出時 clamp `BitRateMode` 到 0-2 |
 | `ReplyKIT/Socket.swift` | `applyRTMP()` 套用時 clamp `c.BitRateMode` |
 | `ReplyKIT/Event.swift` | `updateState()` 儲存時 clamp |
 
-### 行為對照
+### 行為對照 - 自動降級為 VBR (2)
 
 | 情境 | 改前 | 改後 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 使用者先前選了 Quality（UserDefaults 存 3） | 啟用 `.quality`，位元率失控 | 自動降級為 VBR (2) |
 | HEVC + ABR/CBR | 強制轉 VBR，但 Quality 維持不變 | 已無 Quality 選項，HEVC 統一走 VBR |
 | Picker 顯示 | 4 個 segment | 3 個 segment（Quality 移除） |
@@ -438,13 +443,13 @@ BitRateMode 選項 3（Quality）會啟用 `videoSettings.bitRateMode = .quality
 
 ## 9. 移除 Send Timeout 主動斷線機制（2026-07）
 
-### 問題
+### 問題 - 在 iOS 高負載或 app 狀態切換時可能遺失 timer
 
 `sendNextPayload()` 中有一個 30s 計時器：若 `conn.send` 的 `.contentProcessed` callback 在 30s 內未觸發，server 會主動呼叫 `removeConnection()` 砍掉連線。
 
 但 NWConnection callback 在 iOS 高負載或 app 狀態切換時可能遺失（見 #244 分析）。此時連線**接收端完全正常**（heartbeat 仍可送達），僅因 send callback 未觸發就被 server 主動斷線，反而破壞穩定性。
 
-### 修正
+### 修正 - 移除 send timeout 計時器與 `sendTimeoutFlags`
 
 移除 send timeout 計時器與 `sendTimeoutFlags`，完全交由 NWConnection 自己管理連線生命週期：
 
@@ -475,10 +480,10 @@ conn.send(content: data, completion: .contentProcessed { [weak self] error in
 })
 ```
 
-### 影響
+### 影響 - send callback 遺失與連線穩定
 
 | 面向 | 改前 | 改後 |
-|------|------|------|
+| ------ | ------ | ------ |
 | Send callback 遺失 | 30s 後 server 主動砍連線 | 連線保留，下一筆 keepalive/send 會觸發新 callback |
 | 連線穩定性 | 健康連線被誤殺 → Node.js bot 需 15s 重連 | 健康連線不受影響，僅 NWConnection 回報 error 才斷 |
 | 死連線偵測 | 30s send timeout（過度積極） | 60s stale connection timeout（keepalive 時檢查 lastReceiveTime） |
@@ -487,7 +492,7 @@ conn.send(content: data, completion: .contentProcessed { [weak self] error in
 
 ## 10. PiP 保活模式（2026-07）
 
-### 動機
+### 動機 - 標準 PiP 耗電，新增保活模式
 
 PiP（子母畫面）能讓 iOS 在背景保持 app 存活，但標準 PiP 以 4-24 fps 持續渲染畫面，耗電且對長時間純監控場景無必要。新增一個「保活模式」：極低幀率、無聊天訊息渲染、僅顯示時間與狀態，用最少資源維持 PiP 活躍。
 
@@ -522,7 +527,7 @@ if !isKeepaliveMode {
 
 **`drawTimeOverlay()`** 在保活模式顯示兩行：
 
-```
+```log
 ┌──────────────────────────┐
 │   2026/07/15 下午05:10:30  │  ← 白色 monospacedDigit 16
 │   保活用子母工作中          │  ← 綠色 bold 18
@@ -533,7 +538,7 @@ if !isKeepaliveMode {
 
 **UI 按鈕**（`liveAPP/PIPContent.swift`）：
 
-```
+```log
 [聊天組]啟動 PiP    [保活組]啟動 PiP 保活    [聊天室]停止 PiP
 ```
 
@@ -542,7 +547,7 @@ if !isKeepaliveMode {
 `startKeepalivePiP()` 的資源消耗進一步降低：
 
 | 項目 | 改進前 | 改進後 |
-|------|--------|--------|
+| ------ | -------- | -------- |
 | 幀率 | 0.5 fps（每 2 秒 1 幀） | 0.2 fps（每 5 秒 1 幀） |
 | 像素解析度 | 300×200 × 3x scale（900×600） | 300×200（1x，保活不需高解析） |
 | 每幀像素工作量 | 900×600 | 300×200（減少 9 倍） |
@@ -557,10 +562,10 @@ if !isKeepaliveMode {
 
 整體渲染成本約降 **20–25 倍**（像素 /9 × 喚醒 /2.5）。時鐘改為每 5 秒跳動一次，長時間純監控場景可接受。
 
-### 行為對照
+### 行為對照 - 標準 PiP vs 保活 PiP
 
 | 面向 | 標準 PiP | 保活 PiP |
-|------|----------|----------|
+| ------ | ---------- | ---------- |
 | 幀率 | 4-24 fps（動態調整） | 0.2 fps（固定，每 5 秒 1 幀） |
 | 聊天訊息 | 渲染 + 動畫 | 不渲染 |
 | 畫面內容 | 時間 + 狀態 + 聊天訊息 | 時間 + 「保活用子母工作中」 |
@@ -572,20 +577,21 @@ if !isKeepaliveMode {
 
 ## 11. Audio/Video 管線優先級修正（2026-07）
 
-### 問題
+### 問題 - .utility 優先級造成音訊斷續
 
 Audio/Video 處理管線的 `Task.detached(priority: .utility)` 是音訊斷斷續續的**唯一原因**。
 
 iOS 的 GCD / Swift Concurrency 優先級系統中，`.utility` 是**背景級別**——系統在有更高優先級工作（UI、網路、使用者互動）時，會大幅延遲 `.utility` task。Audio 每 ~20ms 就需要處理一個 buffer，若被延遲 50-100ms 就會造成可感知的斷音。
 
 原本的架構設計是正確的：
+
 - 每幀獨立 `Task.detached`（不互相等待，不會整條鏈卡死）
 - `isProcessing` guard 在忙碌時自動丟棄重疊幀（對視訊正確，對音訊偶爾丟一幀也無感）
 - Actor 內部 `isProcessing` 防止 GPU 旋轉重疊
 
 唯一需要改的只有優先級。
 
-### 修正
+### 修正 - 管線優先級改 .high
 
 ```swift
 // 改前
@@ -600,7 +606,7 @@ Task.detached(priority: .high) { ... }
 ### 為什麼不是其他設計
 
 | 嘗試過的方案 | 問題 |
-|------------|------|
+| ------------ | ------ |
 | `Task chain`（prev?.value） | 一個 task 卡死即整條鏈停擺 |
 | `cancel + restart` | 永遠沒 task 能完成（新 task 取消前一個，前一個永遠送不到 MediaMixer） |
 | `DispatchQueue + semaphore` | blocking serial queue thread，造成 thread 耗盡 |
@@ -608,10 +614,10 @@ Task.detached(priority: .high) { ... }
 
 `Task.detached(priority: .high)` + `isProcessing` guard 是最穩定的方案——每個 task 獨立執行不互相阻塞，忙碌時自然丟幀，不引入任何新的 deadlock 風險。
 
-### 行為對照
+### 行為對照 - 使用者級，即時處理
 
 | 面向 | 改前 (.utility) | 改後 (.high) |
-|------|-----------------|--------------|
+| ------ | ----------------- | -------------- |
 | 優先級 | 背景級，可被大幅延遲 | 使用者級，即時處理 |
 | task 互相影響 | 獨立，不互相等待 | 同左（不變） |
 | 忙碌時 | `isProcessing` guard 丟棄多餘幀 | 同左（不變） |
@@ -619,12 +625,11 @@ Task.detached(priority: .high) { ... }
 | 程式碼變動量 | — | 2 字串（`.utility` → `.high`） |
 | 已處理總行數變動 | Audio: -88 行，Video: -136 行 | — |
 
-
 ---
 
 ## 12. 設定頁面來回切換卡死（2026-07）
 
-### 問題
+### 問題 - NavigationLink 頁面快速來回切換時，應用卡死
 
 使用者在「主設定」sheet 內，於音訊處理 / PIP 設置 / GPU 旋轉設置等 NavigationLink 頁面快速來回切換時，應用卡死。
 
@@ -646,31 +651,30 @@ Tab 切換時透過 DispatchWorkItem 延遲 0.3s 才更新 @AppStorage，但 Pag
 
 每個 PIP 設定的 TextField 和 Stepper 各自掛載 .onChange(of:) 處理器，修改一次值觸發兩次 logTo() + LPConfig.shared.* = newVal。
 
-### 修正
+### 修正 - 移除延遲，切換頁時同步更新 @AppStorage + pageState.@Published + CFNotification
 
 | # | 問題 | 修正 |
-|---|------|------|
+| --- | ------ | ------ |
 | 12a | 0.3s 延遲 DispatchWorkItem | 移除延遲，切換頁時同步更新 @AppStorage + pageState.@Published + CFNotification |
 | 12b | Combine.sink 重複 | 移除 .sink——.onChange handler 直接設定 pageState.onAudioPage/onlogPage |
 | 12c | @StateObject gpuSettings | 改為 static let shared singleton + @ObservedObject，init 只跑一次 |
 | 12d | TextField + Stepper 雙重 onChange | 每項只保留一個 .onChange，移除 TextField 端的重複 handler |
 
-### 行為對照
+### 行為對照 - 即時更新
 
 | 面向 | 改前 | 改後 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 頁面切換延遲 | 0.3s (asyncAfter) | 即時 |
 | @AppStorage vs @Published 同步 | 可能不一致 0.3s | 同步更新 |
 | 每項設定 onChange 觸發次數 | 2 次 (TextField + Stepper 各 1) | 1 次 |
 | gpuSettings 建立次數 | 每次 sheet 打開 | 1 次 (singleton) |
 | 來回切頁卡死 | 會 | 不會 |
 
-
 ---
 
 ## 13. 廣播擴展 Bundle ID 側載相容性（2026-07）
 
-### 問題
+### 問題 - 側載（sideload）環境下，廣播擴展（ReplyKIT）的 Bundle ID 與主 App 可能不符
 
 側載（sideload）環境下，廣播擴展（ReplyKIT）的 Bundle ID 與主 App 可能不符 `mainApp.ReplyKIT` 模式，造成 `RPSystemBroadcastPickerView` 找不到擴展，按鈕失效。
 
@@ -686,7 +690,7 @@ picker.preferredExtension = actualExtension
 
 忽略使用者在設定頁面輸入的 `broadcastExtension` 值。
 
-### 修正
+### 修正 - **動態發現**
 
 引入三層遞迴解析：
 
@@ -694,82 +698,42 @@ picker.preferredExtension = actualExtension
 2. **使用者設定**（第二優先）——使用 `preferredExtension` 參數（來自 `@AppStorage("broadcastExtension")`）
 3. **主 App 推測**（最終備用）——`Bundle.main.bundleIdentifier + ".ReplyKIT"`
 
-### 行為對照
+### 行為對照 - PlugIns 目錄 → 使用者設定 → 推測
 
 | 面向 | 改前 | 改後 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 擴展 ID 來源 | 主 App bundle ID + ".ReplyKIT"（硬編碼） | PlugIns 目錄 → 使用者設定 → 推測 |
 | 側載相容性 | ❌ 可能找不到 | ✅ 動態發現 |
 | 使用者自訂值 | ❌ 忽略 | ✅ 優先於推測 |
 | 開發環境 | ✅ 正常（id 符合模式） | ✅ 正常 |
-
-
----
-
-## 13. 廣播擴展 Bundle ID 側載相容性（2026-07）
-
-### 問題
-
-側載（sideload）環境下，廣播擴展（ReplyKIT）的 Bundle ID 與主 App 可能不符 `mainApp.ReplyKIT` 模式，造成 `RPSystemBroadcastPickerView` 找不到擴展，按鈕失效。
-
-### 根因
-
-`BroadcastButton.makeUIView()` 硬編碼擴展 ID：
-
-```swift
-// 改前
-let actualExtension = (Bundle.main.bundleIdentifier ?? "") + ".ReplyKIT"
-picker.preferredExtension = actualExtension
-```
-
-忽略使用者在設定頁面輸入的 `broadcastExtension` 值。
-
-### 修正
-
-引入三層遞迴解析：
-
-1. **動態發現**（第一優先）——掃描 `Bundle.main.builtInPlugInsURL/PlugIns` 目錄，找到第一個 `.appex` bundle，取其 `bundleIdentifier`
-2. **使用者設定**（第二優先）——使用 `preferredExtension` 參數（來自 `@AppStorage("broadcastExtension")`）
-3. **主 App 推測**（最終備用）——`Bundle.main.bundleIdentifier + ".ReplyKIT"`
-
-### 行為對照
-
-| 面向 | 改前 | 改後 |
-|------|------|------|
-| 擴展 ID 來源 | 主 App bundle ID + ".ReplyKIT"（硬編碼） | PlugIns 目錄 → 使用者設定 → 推測 |
-| 側載相容性 | ❌ 可能找不到 | ✅ 動態發現 |
-| 使用者自訂值 | ❌ 忽略 | ✅ 優先於推測 |
-| 開發環境 | ✅ 正常（id 符合模式） | ✅ 正常 |
-
 
 ---
 
 ## 14. SocketServer 虛假運行檢測（2026-07）
 
-### 問題
+### 問題 - NWListener 可能卡在 .setup、.waiting 或 .cancelled 但仍非 nil
 
 長時間未主動打開 socket 時，ensureRunning() 只檢查 listener == nil 或 .failed 狀態。
 
 但 NWListener 可能卡在 .setup、.waiting 或 .cancelled 但仍非 nil，造成「socket already running」但實際已死。
 
-### 修正
+### 修正 - 非 .ready 一律視為失效並重啟
 
-`swift
+```swift
 // 改前
 if self.listener == nil { ... }
 else if case .failed = self.listener?.state { ... }
 
 // 改後
 guard let lis = self.listener, lis.state == .ready else { ... }
-`
+```
 
-同時修正 
-esume() 方法相同的問題。
+同時修正 `resume()` 方法相同的問題。
 
-### 行為對照
+### 行為對照 - listener 非 .ready 重啟
 
 | 面向 | 改前 | 改後 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 偵測範圍 | nil 或 .failed | 所有非 .ready 狀態 |
 | .setup 卡住 | ❌ 不重啟 | ✅ 重啟 |
 | .waiting 卡住 | ❌ 不重啟 | ✅ 重啟 |
