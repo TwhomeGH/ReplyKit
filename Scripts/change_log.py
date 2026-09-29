@@ -77,22 +77,49 @@ def _heading_indices(lines):
     return out
 
 
+def _summary_body(text):
+    """把多行文字拆成 (摘要, 其餘內文)；摘要取第一個非空行。
+
+    摘要會成為 `### 問題 - <摘要>` / `### 根因 - <摘要>` 標題的一部分，
+    因此必須是能區分各筆紀錄的短句，避免 markdownlint MD024（重複標題）。
+    """
+    text = (text or "").strip()
+    if not text:
+        return "", ""
+    parts = text.splitlines()
+    return parts[0].strip(), "\n".join(parts[1:]).strip()
+
+
 def build_block(date_str, title, type_, file_, problem="", root_cause="", changes=None, refs=""):
+    if isinstance(changes, str):
+        changes = changes.splitlines()
     changes = [c.strip() for c in (changes or []) if c and c.strip()]
     lines = ["## %s %s" % (date_str, title), ""]
     meta = "**類型**: %s" % (type_ or "修復")
     if file_:
         meta += " · **檔案**: `%s`" % file_
     lines += [meta, ""]
-    if problem:
-        lines.append("**問題**: %s" % problem)
-    if root_cause:
-        lines.append("**根因**: %s" % root_cause)
+    # 問題 / 根因：第一行當標題摘要，其後為詳述
+    for label, text in (("問題", problem), ("根因", root_cause)):
+        summary, body = _summary_body(text)
+        if not summary:
+            continue
+        lines.append("### %s - %s" % (label, summary))
+        if body:
+            lines += ["", body]
+        lines.append("")
+    # 修改：第一項當標題摘要，其餘為條列
     if changes:
-        lines.append("**修改**:")
-        lines += ["- %s" % c for c in changes]
+        summary, rest = changes[0], changes[1:]
+        lines.append("### 修改 - %s" % summary)
+        if rest:
+            lines.append("")
+            lines += ["- %s" % c for c in rest]
+        lines.append("")
     if refs:
         lines.append("**相關文件**: %s" % refs)
+    while lines and lines[-1] == "":
+        lines.pop()
     lines += ["", "---", ""]
     return "\n".join(lines)
 
@@ -271,9 +298,9 @@ button.danger{background:#dc2626;color:#fff;border-color:#dc2626}
   <label>檔案</label><input id="f-file" placeholder="liveAPP/Socket.swift" list="gitfiles">
   <datalist id="gitfiles"></datalist>
   <div class="chips" id="chips"></div>
-  <label>問題</label><textarea id="f-problem" placeholder="一句話描述症狀"></textarea>
-  <label>根因（可選）</label><textarea id="f-cause"></textarea>
-  <label>修改（一行一項）</label><textarea id="f-changes" placeholder="- 把 X 改成 Y"></textarea>
+  <label>問題（第一行 = 標題摘要）</label><textarea id="f-problem" placeholder="症狀摘要&#10;（其後可換行寫詳述）"></textarea>
+  <label>根因（可選，第一行 = 標題摘要）</label><textarea id="f-cause" placeholder="根因摘要&#10;（其後可換行寫詳述）"></textarea>
+  <label>修改（第一行 = 標題摘要，其後每行一項）</label><textarea id="f-changes" placeholder="核心手法摘要&#10;其他改動（每行一項）"></textarea>
   <label>相關文件（可選）</label><input id="f-refs" placeholder="[crash-tracing.md](crash-tracing.md)">
   <div id="form-err" class="err"></div>
   <div class="right"><button id="cancel">取消</button><button id="submit" class="primary">插入</button></div>
