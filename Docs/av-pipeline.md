@@ -2,7 +2,7 @@
 
 ## 總入口：`SampleHandler.processSampleBuffer`
 
-```
+```text
 ReplayKit samples
     │  CMSampleBuffer
     ▼
@@ -24,7 +24,7 @@ SampleHandler.processSampleBuffer(_:with:)
 
 ### 資料流
 
-```
+```text
 SampleHandler
     │
     │  vp.isActive? ──NO──► rebuildVideo() (新 FrameProcessorActor + GPU rotator)
@@ -63,7 +63,7 @@ MediaMixer.append(rotated) → VideoToolbox encode → RTMP
 
 ### 回退鏈
 
-```
+```text
 GPU rotator 正常 ──────────────────────────► Metal compute rotation
     │
     ├── 首次失敗 → 自動降品質 bicubic → bilinear
@@ -92,7 +92,7 @@ GPU rotator 正常 ────────────────────�
 ### 背壓
 
 | 機制 | 閥值 | 行為 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `commandBufferTimeout` | 1.0s | GPU command buffer 逾時 → 回 nil + `handleMetalFailure` |
 | `CommandCompletionState` | NSLock | 保證 completion vs watchdog 恰好一次 resume |
 | `outputPool` maxPoolSize | 10 | CVPixelBuffer 重用池上限，溢位 evict 最舊 |
@@ -123,7 +123,7 @@ Swift actor 只保證同步片段互斥，不保證整個 `async` 方法從頭�
 
 統一由 `ensureVideoProcessor(_:timing:)` / `ensureAudioProcessor(_:trackType:timing:)` 負責「確保處理器存在且可用」：
 
-```
+```text
 SampleHandler 診斷 (每 1500 幀)
     │  vp:Y / vp:INACTIVE / vp:N
     ▼
@@ -147,7 +147,7 @@ audio 端 `ensureAudioProcessor` 邏輯相同，但**沒有 inactive 分支** �
 先前的兩段 if/else（video 與 audio 各一份）有三個問題，本次一併修正：
 
 | 問題 | 舊行為 | 新行為 |
-|------|--------|--------|
+| ------ | -------- | -------- |
 | rebuild 風暴 | video 的「存在但 inactive」分支**每幀**呼叫 `rebuildVideo()`（GPU 持續逾時時 60fps → 每秒 60 次 new + cleanup） | 所有 recovery 路徑統一 rate-limit **每秒至多一次**，首次偵測仍立即重建 |
 | 行為不一致 | video：inactive 無 rate-limit；nil 有 1s rate-limit，兩條路徑不對稱 | 兩條路徑共用同一 rate-limit |
 | audio 死碼 | `AudioProcessor.isActive` 恆 `true`，`else if !isStopping` 分支永遠不可達 | 移除死碼分支，audio 只剩「nil → rate-limited rebuild」一條 recovery 路徑 |
@@ -156,9 +156,9 @@ audio 端 `ensureAudioProcessor` 邏輯相同，但**沒有 inactive 分支** �
 
 ## 音訊管線
 
-### 資料流
+資料流
 
-```
+```text
 SampleHandler
     │
     ▼
@@ -191,7 +191,7 @@ MediaMixer.append(processed, track:)
 
 ### DSP 管線（非原音 `useOriginal == false`）
 
-```
+```text
 AudioEngine.process(sampleBuffer, track:, originalTime:)
     │
     ▼
@@ -218,7 +218,7 @@ return to AudioProcessorActor.enqueue()
 
 ### AudioEngine 直送 MediaMixer
 
-```
+```text
 AudioProcessorActor.enqueue()
     │
     ├── audioEngine.process(sampleBuffer, track:)   ← 同步原地 DSP
@@ -235,7 +235,7 @@ AudioEngine 現在是純 DSP wrapper，不再建立 `AsyncStream<ProcessedAudio>
 #### 歷史根因（五層疊加）
 
 | # | 問題 | 位置 |
-|---|------|------|
+| --- | ------ | ------ |
 | ① | **producer 與 consumer 共用同一 actor executor**：`enqueue`（含同步 DSP）與舊 `streamTask` 同在 `AudioProcessorActor` 上，DSP 慢時 consumer 被凍結、反之亦然 → 節奏耦合 | `AudioProcess.swift` |
 | ② | **AsyncStream unbounded**：consumer 落後時 producer 無限 yield → 延遲無限堆積，MediaMixer 一空就一次消化大量 → 節奏暴衝 | `AudioNoiseFix.swift` |
 | ③ | **MediaMixer 是共用 actor**：video/audio append 全串列排隊，video 慢時 audio 被卡 | `MediaMixer.swift` |
@@ -259,7 +259,7 @@ AudioEngine 現在是純 DSP wrapper，不再建立 `AsyncStream<ProcessedAudio>
 
 過渡期曾嘗試：
 
-```
+```text
 AudioEngine.startStream() → AsyncStream<ProcessedAudio>
     │
     ▼
@@ -277,14 +277,14 @@ streamTask = Task.detached { [weak self] in        ← detached，脫離 actor e
 #### 效能參數調整（2026-08）
 
 | 檔案 | 常數 | 原值 | 新值 | 理由 |
-|------|------|------|------|------|
+| ------ | ------ | ------ | ------ | ------ |
 | `AudioMixerTrack.swift` | `kAudioMixerTrack_frameCapacity` | 1024 | **1024（維持）** | ⚠️ **不可調大**（見下） |
 | `AudioNode.swift` | `OutputNode.buffer` frameCapacity | 1024 | 1024 | 與 mixer frameCapacity 同步引用（internal 常數） |
 | `AudioCodecSettings.swift` | AAC `inputBufferCounts` | 6 | **12** | 6×1024≈139ms 偏小，抖動大時 converter 來不及消化而丟幀；12≈278ms 給 encoder 呼吸空間 |
 | `AudioCodecSettings.swift` | AAC `outputBufferCounts` | 1 | **2** | 避免 convert 迴圈 removeFirst/release 頻繁重分配 |
 | `AudioRingBuffer.swift` | `bufferCounts` | 16 | **24** | 371ms→557ms 緩衝，吸收 producer 節奏抖動，減少 skip 補 silence |
-| `AudioMixerTrack.swift` | resample 渲染上限 | 無界 →（曾加 4/16）→ **無界** | 實測 audioInputFrames=audioFrames=43-45/s 完全吃得動，上限是不必要限制 |
-| `AudioCodec.swift` | convert 上限 | 無界 →（曾加 8）→ **無界** | 同上，encoder 端也跟得上 |
+| `AudioMixerTrack.swift` | resample 渲染上限 | 無界 | **無界**（曾加 4/16 後移除） | 實測 audioInputFrames=audioFrames=43-45/s 完全吃得動，上限是不必要限制 |
+| `AudioCodec.swift` | convert 上限 | 無界 | **無界**（曾加 8 後移除） | 同上，encoder 端也跟得上 |
 
 **注意**：`audioTime.advanced(outputBuffer.frameLength)` 依實際輸出幀數推進（原硬編碼 1024），`AudioCodec` 端維持 `mFramesPerPacket`（AAC=1024）推進 — 兩者各自對應正確。`frameCapacity` 是 AVAudioConverter 的 framesPerPacket，非固定常數。
 
@@ -299,10 +299,12 @@ streamTask = Task.detached { [weak self] in        ← detached，脫離 actor e
 #### ✅ 自動配置修正（2026-08-13 二次修復）
 
 官方文檔兩處關鍵約束：
+
 - `convert(to:from:)`（一次性）：output.frameCapacity ≥ input.frameLength
 - `convert(to:error:withInputFrom:)`（block 驅動）：converter "attempts to fill the buffer to its capacity"，但 **AVAudioConverterInputBlock 允許回傳少於請求的幀數**（設定 frameLength = 實際幀數），converter 消費後視需要再請求。
 
 **修正**：inputBlock 改為動態提供 ring buffer 現有全部幀數（`min(inNumberFrames, ringBuffer.counts)`），不再「不足請求量就 `.noDataNow` 停擺」。這樣：
+
 - `outputBuffer.frameCapacity` 不需對齊上游單幀大小 — 任何輸入幀數都能自動消化
 - `audioTime` 依實際輸出幀數（`outputBuffer.frameLength`）推進，而非硬編碼 1024
 - `AudioMixerByMultiTrack.mix()` 與 `OutputNode.render` 都用 `frameLength` 自動適應
@@ -314,6 +316,7 @@ streamTask = Task.detached { [weak self] in        ← detached，脫離 actor e
 **問題**：即便修正 frameCapacity 與 inputBlock，`AudioMixerByMultiTrack` 的整條音訊處理鏈（append→convert→mix→AudioUnitRender）仍在 **MediaMixer actor** 上執行。convert 迴圈與 AudioUnitRender 同步霸佔 actor，video/audio append 互搶，audio 積壓 → 斷續。
 
 **修正**（`AudioMixerByMultiTrack.swift`）：
+
 - 新增專用 serial queue（`com.haishinkit.HaishinKit.AudioMixerByMultiTrack`）
 - 兩個 `append` 改 `queue.async`：MediaMixer actor 的 append **立即返回**，convert/AudioUnitRender 在專用 queue 執行，不再佔用 actor
 - `settings` 改 `NSLock` 保護：getter/setter 用 lock，setter 排 `queue.async` 執行 `applySettings`（重建 outputFormat）；內部統一走 `_settings`（queue 上無鎖）
@@ -321,6 +324,7 @@ streamTask = Task.detached { [weak self] in        ← detached，脫離 actor e
 - `track(for:)`/delegate 用 `_settings`，queue 內一致存取
 
 **thread-safety**：
+
 - `inputRenderCallback`（AudioUnit 實時執行緒）讀 `buffers` 字典 — 既有並行行為，方案 C 不新增
 - `delegate` 的 `continutation?.yield` 從 queue 呼叫 — AsyncStream yield thread-safe
 - `mix()` 的 `settings.isMuted` 走 lock getter — setter 的 lock 不等待 queue，無死鎖
@@ -339,7 +343,7 @@ streamTask = Task.detached { [weak self] in        ← detached，脫離 actor e
 
 **機制**：`AVAudioConverterInputBlock` 雖允許回傳少於請求的幀數，但**下游 AudioUnit render 與 AAC 編碼都要求固定 1024 對齊**：
 
-```
+```text
 AudioMixerTrack 產出 frameLength=512（非對齊，因部分幀餵入）
   → AudioMixerByMultiTrack.track(didOutput:) → mix(numberOfFrames: 512)
     → AudioUnitRender(512) → inputRenderCallback → AudioRingBuffer.render
@@ -360,7 +364,7 @@ AAC 端同理：AAC 需要固定 1024 幀 PCM 才產出一個 packet，部分幀
 #### 修正後行為
 
 | 情境 | 修正前 | 修正後 |
-|------|--------|--------|
+| ------ | -------- | -------- |
 | DSP 慢（producer 卡） | consumer 被凍結，buffer 無限堆積 | consumer 獨立 executor（`Task.detached`），持續消化；積壓時 `.bufferingNewest(8)` 丟最舊 |
 | MediaMixer 被 video 佔用 | audio append 排隊 → PTS gap → silence | audio 處理在專用 queue，MediaMixer actor 只排隊立即返回，video/audio 互不阻塞 |
 | ring buffer 積壓 | resample 霸佔 MediaMixer actor，一次轉完所有幀 | 專用 queue 上無界消化，一次追上積壓，不影響 actor |
@@ -372,7 +376,7 @@ AAC 端同理：AAC 需要固定 1024 幀 PCM 才產出一個 packet，部分幀
 **目標：** useOriginal 模式（`isOringinAudio`）應盡量接近 passthrough。只有使用者明確設定 boost，且來源格式確認安全時，才允許改動原始音訊資料。
 
 | 問題 | 原因 | 修正 |
-|------|------|------|
+| ------ | ------ | ------ |
 | **use-after-free（斷序主因，增益 >1.0 時）** | `applyGain` → `pcmBufferToCMSampleBuffer` 用 `kCFAllocatorNull` 包住區域變數 `AVAudioPCMBuffer` 的記憶體建 CMBlockBuffer；函式返回後記憶體釋放，append 非同步讀到已釋放資料 | `applyGain` 改**原地增益**：直接對原始 block buffer 做 int16→float→增益→寫回，不重建 CMSampleBuffer（AudioProcess.swift:346-369） |
 | 增益誤套到其他 PCM 格式 | `applyGain` 直接把 block buffer bind 成 `Int16`，若 ReplayKit 給 Float32 或其他 PCM 格式，gain >1 時會用錯格式改壞原始音訊 | `applyGain` 先檢查 ASBD：signed Int16 走 Int16→Float→gain→clip→Int16；Float32 走原地 gain→clip；其他格式 passthrough 並節流 log |
 | 預設配置斷序 | useOriginal 路徑 producer（enqueue）與 consumer（`mediaMixer.append`）未解耦 | 初期嘗試 AsyncStream + detached consumer 解耦，後續判定為**過度設計而移除**——見下方「上層 AsyncStream 移除」 |
@@ -386,7 +390,7 @@ AAC 端同理：AAC 需要固定 1024 幀 PCM 才產出一個 packet，部分幀
 
 **問題：** AudioEngine（DSP 路徑）與 useOriginal 各自包了一層 AsyncStream + `Task.detached` consumer，疊在 HaishinKit 已有的非同步機制之上：
 
-```
+```text
 我們的 AsyncStream ─→ MediaMixer actor ─→ AudioMixerByMultiTrack queue ─→ resample
     ─→ HaishinKit 自己的 audioIO.output AsyncStream ─→ encoder
 ```
@@ -420,7 +424,7 @@ func enqueue(_ sampleBuffer: CMSampleBuffer, trackType: AudioTrackType, original
 **行為對照：**
 
 | 情境 | 改前 | 改後 |
-|------|------|------|
+| ------ | ------ | ------ |
 | useOriginal + 增益 >1.0 | 每幀 CMSampleBuffer 重建 + use-after-free → 音訊毀損 | 原地 vDSP（µs 級），無分配無釋放問題 |
 | 音訊上層 | 2 個 AsyncStream（AudioEngine + useOriginal）+ HaishinKit 的 1 個 | 移除我們兩個，只剩 HaishinKit 原生那層 |
 | DSP 設定直播中變更 | 死碼，不生效 | `onAudioConfigChanged` 接線，即時生效 |
@@ -435,7 +439,7 @@ func enqueue(_ sampleBuffer: CMSampleBuffer, trackType: AudioTrackType, original
 `RTMPTimestamp.update`（RTMPHaishinKit）只處理「倒退」（`value.seconds <= updatedAt`），**不處理向前大跳**。基準跳變時：
 
 | 情境 | 改前行為 | 後果 |
-|------|----------|------|
+| ------ | ---------- | ------ |
 | 倒退（15000→13000） | 回傳 0 + **重置基準** | wire timestamp 跳回 0，後續從新基準累積 → Non-monotonous DTS |
 | 向前大跳（13000→15000） | **2,000,000ms 巨大 delta 上 wire** | 下游 ffmpeg 誤判 gap/seek → 畫面凍結、音訊中斷、AV 自動修正 → **突然斷流** |
 
@@ -465,7 +469,7 @@ if timedelta < 0 || timedelta > Self.maxDelta {
 
 ## `isActive` 失效鏈
 
-```
+```text
 GPU rotator 連續 5 次 Metal 失敗
     │
     ▼
@@ -480,7 +484,7 @@ rotator.isPermanentlyDead → FrameProcessorActor.processFrame() 偵測到
 
 另一條失效鏈：`settle()` 中 `consecutiveDropCount >= 60`（GPU 與 CPU fallback 皆連續失敗）→ 同樣呼叫 `onPermanentFailure?()` 標記重建。
 
-```
+```text
 SampleHandler 診斷日誌: "[VFrame] ... vp:INACTIVE ..."
     │
     │  ensureVideoProcessor() 偵測到 vp 非 active
@@ -502,9 +506,9 @@ AudioProcessor 的 `isActive` 固定為 `true`（audio pipe 無永久失敗路�
 
 `VolumeNotifier` 是 audio pipeline 的輸出端，將即時 RMS 音量送往主 App。
 
-### 資料流
+### Audio資料流
 
-```
+```swift
 AudioProcessorActor.processRMS()  (1s 一次 per-track，actor executor)
     │
     │  rmsSIMD(from: buffer) → vDSP_measqv
@@ -526,7 +530,7 @@ liveAPP SocketServer → LiveVolumeModel.updateVolumes(mic:micVol, app:appVol)
     → @Published UI（不持久化，避免 socket 延遲覆蓋正確值）
 ```
 
-### 設計要點
+### Audio 設計要點
 
 - **無內部狀態**：actor 負責維護 `lastAppRMS`/`lastMicRMS`，`VolumeNotifier` 僅為 relay
 - **無重複 throttle**：依賴 actor 的 `rmsInterval=1.0`，移除 VolumNotifier 自身的 `minInterval`
@@ -539,7 +543,7 @@ liveAPP SocketServer → LiveVolumeModel.updateVolumes(mic:micVol, app:appVol)
 ### 修改歷程
 
 | 改前 | 改後 | 理由 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `pendingAppVolume`/`pendingMicVolume` + `lastSendTime` + `minInterval=0.1` | 無狀態 | actor 的 1s throttle 已足夠，雙軌共享 pending 值造成另一軌值最多舊 1s |
 | sideload→socket；其他→Darwin Notification | 一律 socket `logbatch` | Darwin Notification fire-and-forget，背景易掉；`audioLive` 從未使用 |
 | `updateVolume(volume:track:)` 帶 track | `updateVolume(app:mic:)` 帶兩軌值 | actor 保管 lastRMS，發送時兩軌最新值同步 |
@@ -553,7 +557,7 @@ liveAPP SocketServer → LiveVolumeModel.updateVolumes(mic:micVol, app:appVol)
 ## 同步/非同步邊界
 
 | 編號 | 位置 | 類型 | 方向 |
-|------|------|------|------|
+| ------ | ------ | ------ | ------ |
 | V1 | `SampleHandler` → `Task { }` | `Task {}` | sync → async |
 | V2 | `VideoFrameProcessor` → `actor.processFrame()` | actor boundary | Task → actor executor |
 | V3 | `FrameProcessorActor` → `rotator.rotateAsync()` | `async` function | actor → async |
@@ -570,7 +574,7 @@ liveAPP SocketServer → LiveVolumeModel.updateVolumes(mic:micVol, app:appVol)
 ## 關鍵檔案對照
 
 | 檔案 | 角色 |
-|------|------|
+| ------ | ------ |
 | `SampleHandler.swift` | ReplayKit 入口，分派 video/audio 到對應 processor |
 | `VideoProcess.swift` | `VideoFrameProcessor`（外層非 actor）+ `FrameProcessorActor`（actor） |
 | `GPUVideoRotator.swift` | Metal 旋轉 pipeline、output pool、`inflightSemaphore`、watchdog |
@@ -614,7 +618,7 @@ if interval > 3.0, readyState == .publishing, videoInputFrames == 0 || frameCoun
 ### 預期改善
 
 | 場景 | 改前 | 改後 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 玩遊戲時 extension 被暫停 → 恢復 | encoder session 失效，需等 3 次 monitor 觸發（永遠等不到） | gap > 3s 立即重建 encoder |
 | 短暫卡頓 (< 3s) | 正常 stall 累積 3 次後重啟 | 不影響（3s 閾值不觸發） |
 | 前景暫停後恢復 | 等待累積，約 3s | gap 偵測到 >3s 立即跳過累積流程 |
@@ -633,10 +637,9 @@ if interval > 3.0, readyState == .publishing, videoInputFrames == 0 || frameCoun
 **行為對照：**
 
 | 場景 | 改前 | 改後 |
-|------|------|------|
+| ------ | ------ | ------ |
 | 快速前景/背景切換（<3s） | 每次重建 encoder + video processor → 推流閃斷 | 不重建，推流完全不中斷 |
 | 長時間暫停（≥3s，可能被 suspend） | 重建（正常） | 保留 encoder 重建保險 + processor 失效才重建 |
-
 
 ---
 
@@ -646,9 +649,9 @@ if interval > 3.0, readyState == .publishing, videoInputFrames == 0 || frameCoun
 
 VHealth 只能看視訊。分析 `log-39`（2026-09-11）後發現：useOriginal 原音路徑在整個 session 幀數完美（85.93 幀/秒、PTS 20 分鐘只漂 10ms、零 frame loss、零 stall），但使用者仍聽到斷音。這證明**斷音是 content-level**（1024-sample 封包內部的樣本被丟掉或補靜音），現有 log 完全看不到。AHealth 把下游 mixer 的丟樣本計數也送上圖表。
 
-### 資料流
+### AHealth 資料流
 
-```
+```swift
 SampleHandler.logAudioHealthIfNeeded()  (每幀，ReplayKit queue)
     ├── 上游：per-track frameCount / 幀間 PTS gap
     └── 每秒：Task → await mediaMixer.audioPipelineDiagnostics()   (HaishinKit)
@@ -662,7 +665,7 @@ SampleHandler.logAudioHealthIfNeeded()  (每幀，ReplayKit queue)
 ### 指標
 
 | 層 | 指標 | 來源 |
-|----|------|------|
+| ---- | ------ | ------ |
 | 上游 | app/mic inputFPS（min/avg/max） | `SampleHandler` per-track 幀計數 |
 | 上游 | 幀間 PTS gap max (ms) | per-track PTS delta |
 | 上游 | RMS | `SocketClient.latestAppVolume/latestMicVolume` |
@@ -691,13 +694,12 @@ SampleHandler.logAudioHealthIfNeeded()  (每幀，ReplayKit queue)
 - `source-gap`：PTS 缺口讓 `append()` 用 `skip` 補靜音，或幀間 gap > 100ms。
 - `underrun`：`resample()` 某次 append 完全沒產出，代表 ring buffer 來不及給完整 1024。
 
-
 ### HaishinKit 音訊混音設計修正（2026-09-11）
 
 在 HaishinKit repo `TwhomeGH/HaishinKitFixSwfit`（`HaishinKit/Sources/Mixer/`）：
 
 | # | 問題 | 修正 |
-|---|------|------|
+| --- | ------ | ------ |
 | 1 | ~~`align()` 單位不一致~~ **（誤判，已更正）**：`align` 作用在 `AudioMixerByMultiTrack.buffers[track]`，該緩衝區是以 `outputFormat` 建立的，其 `sampleTime` 與 mixer playhead 同為 output 單位 → **沒有單位不一致** | 已回退，不加換算 |
 | 2 | `align()` 每次全量硬丟/硬補，來源抖動會造成每幀微修正（細碎斷音） | 加 `alignDeadband`（256 samples ≈ 5.8ms）：門檻內視為量測抖動，不修正 |
 | 3 | `mainTrack` 同時決定時鐘、輸出格式、免對齊軌；main=mic 會強制 mono | `AudioMixerSettings` 新增 `outputFormatTrack`（預設 `UInt8.max` = 沿用 `mainTrack`）；ReplyKit `configureAudio()` 改設 `mainTrack=1`（mic 時鐘）+ `outputFormatTrack=0`（app 立體聲格式） |
@@ -707,12 +709,11 @@ SampleHandler.logAudioHealthIfNeeded()  (每幀，ReplayKit queue)
 
 **AHealth 新增欄位**：`alignFirePerSec`（align 實際動手次數/秒）、`alignDiffMaxSamples`（窗口內最大偏差，input 樣本）。狀態新增 `align-churn`；`[AHealth]` log 也帶上 `alignFire` / `alignDiff`，走 E-Socket 回報以便後續分析。
 
-
 ### AHealth 介面
 
 #### `[AHealth]` log（走 E-Socket）
 
-```
+```log
 [AHealth] <status> win:5s app:[min avg max] mic:[min avg max] gapMax:<ms>ms alignDrop:<n> alignIns:<n> alignFire:<n> alignDiff:<n> skip:<n> noData:<n> mixOut:<n>/s rms[app:<f> mic:<f>]
 ```
 
@@ -722,7 +723,7 @@ SampleHandler.logAudioHealthIfNeeded()  (每幀，ReplayKit queue)
 #### socket payload（`audioHealth`）
 
 | 欄位 | 型別 | 意義 |
-|------|------|------|
+| ------ | ------ | ------ |
 | `status` | String | 見下方狀態表 |
 | `appInputFPSMin/Avg/Max` | Double | app 軌 input FPS 窗口 min/avg/max |
 | `micInputFPSMin/Avg/Max` | Double | mic 軌同上 |
@@ -742,7 +743,7 @@ SampleHandler.logAudioHealthIfNeeded()  (每幀，ReplayKit queue)
 #### 狀態
 
 | 值 | 意義 |
-|----|------|
+| ---- | ------ |
 | `healthy` | 一切正常 |
 | `input-idle` | app/mic 都幾乎沒輸入 |
 | `align-churn` | align 幾乎每秒都在動手（content-level 斷音主訊號） |
@@ -760,7 +761,7 @@ SampleHandler.logAudioHealthIfNeeded()  (每幀，ReplayKit queue)
 
 #### 資料流（程式碼）
 
-```
+```swift
 SampleHandler.logAudioHealthIfNeeded()  (每幀)
   → 每秒 Task → await mediaMixer.audioPipelineDiagnostics()  (HaishinKit)
     → SampleHandler.finalizeAudioHealthSample()  (com.replykit.ahealth serial queue)

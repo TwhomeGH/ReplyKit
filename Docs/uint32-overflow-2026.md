@@ -86,6 +86,6 @@ let c1Timestamp = UInt32(truncatingIfNeeded: Int64(timestamp)).bigEndian
 ## 受影響檔案
 
 | 檔案 | 修改內容 |
-|------|----------|
+| ------ | ---------- |
 | `RTMPHaishinKit/Sources/RTMP/RTMPHandshake.swift` (Fork) | `UInt32(Date()...)` → `UInt32(truncatingIfNeeded: Int64(Date()...))` |
 | `F:/HaishinKit.swift/RTMPHaishinKit/Sources/RTMP/RTMPHandshake.swift` (Original) | 同上 |
