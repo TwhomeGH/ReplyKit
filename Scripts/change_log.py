@@ -6,7 +6,7 @@
   python Scripts/change_log.py serve --port 8765 --no-browser
 
 CLI:
-  python Scripts/change_log.py add "修復 xxx" [--type 修復] [--file path] [--date YYYY.MM.DD]
+  python Scripts/change_log.py add "修復 xxx" [--type 修復] [--file path] [--date YYYY.MM.DD] [--time HH:MM] [--ref '[說明](路徑)']
   python Scripts/change_log.py list [--grep 關鍵字] [--since 2026.06.01] [--type 修復] [--file Socket]
   python Scripts/change_log.py show <編號|關鍵字>
 
@@ -19,7 +19,7 @@ import argparse
 import subprocess
 import threading
 import webbrowser
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
@@ -29,7 +29,7 @@ if sys.platform == "win32":
 
 ROOT = Path(__file__).resolve().parents[1]
 HISTORY = ROOT / "Docs" / "ChangeHistory.md"
-DATE_RE = re.compile(r"^##\s+(\d{4})\.(\d{2})\.(\d{2})\s+(.*)$")
+DATE_RE = re.compile(r"^##\s+(\d{4})\.(\d{2})\.(\d{2})(?:\s+(\d{1,2}:\d{2}))?\s+(.*)$")
 
 
 # ─────────────────────────── 核心：解析 / 讀寫 ───────────────────────────
@@ -50,9 +50,10 @@ def parse_entries(text=None):
         m = DATE_RE.match(lines[start].rstrip())
         if m:
             entries.append({"date": "%s.%s.%s" % (m.group(1), m.group(2), m.group(3)),
-                            "title": m.group(4).strip(), "raw": raw})
+                            "time": m.group(4) or "",
+                            "title": m.group(5).strip(), "raw": raw})
         else:
-            entries.append({"date": None, "title": lines[start][3:].strip(), "raw": raw})
+            entries.append({"date": None, "time": "", "title": lines[start][3:].strip(), "raw": raw})
     return entries
 
 
@@ -104,12 +105,15 @@ def _norm_refs(refs):
     return " · ".join(items)
 
 
-def build_block(date_str, title, type_, file_, problem="", root_cause="", changes=None, refs=""):
+def build_block(date_str, title, type_, file_, problem="", root_cause="", changes=None, refs="", time_str=""):
     if isinstance(changes, str):
         changes = changes.splitlines()
     changes = [c.strip() for c in (changes or []) if c and c.strip()]
     refs = _norm_refs(refs)
-    lines = ["## %s %s" % (date_str, title), ""]
+    head = "## %s %s" % (date_str, title)
+    if time_str:
+        head = "## %s %s %s" % (date_str, time_str, title)
+    lines = [head, ""]
     meta = "**類型**: %s" % (type_ or "修復")
     if file_:
         meta += " · **檔案**: `%s`" % file_
@@ -193,9 +197,12 @@ def git_changed_files():
 # ─────────────────────────────── CLI ───────────────────────────────
 
 def cmd_add(args):
-    date_str = args.date or date.today().strftime("%Y.%m.%d")
-    insert_block(build_block(date_str, args.title, args.type, args.file, refs=getattr(args, "ref", [])))
-    print("已插入: %s %s" % (date_str, args.title))
+    now = datetime.now()
+    date_str = args.date or now.strftime("%Y.%m.%d")
+    time_str = args.time or now.strftime("%H:%M")
+    insert_block(build_block(date_str, args.title, args.type, args.file,
+                             refs=getattr(args, "ref", []), time_str=time_str))
+    print("已插入: %s %s %s" % (date_str, time_str, args.title))
 
 
 def _matches(e, args):
@@ -218,7 +225,10 @@ def cmd_list(args):
         hits = hits[: args.limit]
     print("符合 %d / 共 %d 筆\n" % (len(hits), len(entries)))
     for i, e in enumerate(hits, 1):
-        print("%3d  %-10s  %s" % (i, e["date"] or "----------", e["title"]))
+        when = e["date"] or "----------"
+        if e["date"] and e["time"]:
+            when += " " + e["time"]
+        print("%3d  %-16s  %s" % (i, when, e["title"]))
 
 
 def cmd_show(args):
@@ -325,6 +335,7 @@ button.danger{background:#dc2626;color:#fff;border-color:#dc2626}
   <label for="f-title">標題</label><input id="f-title" placeholder="修復 PiP 閃退">
   <div class="row">
     <div><label for="f-date">日期</label><input id="f-date" placeholder="YYYY.MM.DD"></div>
+    <div><label for="f-time">時間（可留空）</label><input id="f-time" placeholder="HH:MM"></div>
     <div><label for="f-type">類型</label>
       <select id="f-type"><option>修復</option><option>新增</option><option>優化</option><option>重構</option><option>測試</option></select>
     </div>
@@ -397,7 +408,7 @@ async function load(){
   const q=encodeURIComponent($('#q').value), t=encodeURIComponent($('#type').value);
   const r=await fetch('/api/entries?q='+q+'&type='+t);const items=await r.json();
   $('#list').innerHTML = items.length? items.map(e=>
-    `<div class="item${e.i===sel?' sel':''}" data-i="${e.i}"><div class="d">${e.date||'未標日期'}</div><div class="t">${esc(e.title)}</div></div>`).join('')
+    `<div class="item${e.i===sel?' sel':''}" data-i="${e.i}"><div class="d">${e.date?esc(e.date+(e.time?' '+e.time:'')):'未標日期'}</div><div class="t">${esc(e.title)}</div></div>`).join('')
     : '<div class="empty">沒有符合的紀錄</div>';
   document.querySelectorAll('.item').forEach(el=>el.onclick=()=>show(+el.dataset.i));
 }
@@ -457,7 +468,9 @@ function collectRefs(){
 }
 $('#add-ref').onclick=()=>$('#refs').appendChild(makeRefRow());
 $('#add').onclick=async()=>{
-  $('#f-date').value=new Date().toISOString().slice(0,10).replace(/-/g,'.');
+  const now=new Date(),p=n=>String(n).padStart(2,'0');
+  $('#f-date').value=`${now.getFullYear()}.${p(now.getMonth()+1)}.${p(now.getDate())}`;
+  $('#f-time').value=`${p(now.getHours())}:${p(now.getMinutes())}`;
   ['f-title','f-file','f-problem','f-cause','f-changes'].forEach(id=>$('#'+id).value='');
   clearRefs();
   const files=await (await fetch('/api/gitdiff')).json();
@@ -471,7 +484,7 @@ $('#submit').onclick=async()=>{
   const title=$('#f-title').value.trim();
   if(!title){$('#form-err').textContent='請填標題';$('#f-title').focus();return;}
   $('#form-err').textContent='';
-  const body={title,date:$('#f-date').value.trim(),type:$('#f-type').value,file:$('#f-file').value.trim(),
+  const body={title,date:$('#f-date').value.trim(),time:$('#f-time').value.trim(),type:$('#f-type').value,file:$('#f-file').value.trim(),
     problem:$('#f-problem').value.trim(),root_cause:$('#f-cause').value.trim(),
     changes:$('#f-changes').value.split('\n').map(s=>s.replace(/^\s*[-*]\s*/,'').trim()).filter(Boolean),
     refs:collectRefs()};
@@ -513,7 +526,7 @@ class Handler(BaseHTTPRequestHandler):
                     continue
                 if ty and ty not in e["raw"].lower():
                     continue
-                out.append({"i": i, "date": e["date"], "title": e["title"]})
+                out.append({"i": i, "date": e["date"], "time": e["time"], "title": e["title"]})
             return self._send(200, json.dumps(out, ensure_ascii=False))
         if u.path == "/api/entry":
             i = int(parse_qs(u.query).get("i", ["0"])[0])
@@ -538,7 +551,8 @@ class Handler(BaseHTTPRequestHandler):
                     body.get("date") or date.today().strftime("%Y.%m.%d"),
                     body.get("title", "(無標題)"), body.get("type", "修復"),
                     body.get("file", ""), body.get("problem", ""),
-                    body.get("root_cause", ""), body.get("changes", []), body.get("refs", "")))
+                    body.get("root_cause", ""), body.get("changes", []), body.get("refs", ""),
+                    time_str=body.get("time", "")))
                 return self._send(200, json.dumps({"ok": True}))
             if u.path == "/api/save":
                 update_entry(int(body["i"]), body["raw"])
@@ -587,6 +601,7 @@ def main():
     a.add_argument("--type", default="修復")
     a.add_argument("--file", default="")
     a.add_argument("--date", default="")
+    a.add_argument("--time", default="", help="時間 HH:MM（預設為現在時刻）")
     a.add_argument("--ref", action="append", default=[], help="相關文件（可重複，格式 [說明](路徑)）")
 
     l = sub.add_parser("list", help="檢索紀錄（CLI）")
