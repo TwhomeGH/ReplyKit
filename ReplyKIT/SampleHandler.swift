@@ -1765,7 +1765,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 self.rtmpStream = RTMPStream(connection: self.rtmpConnection!)
 
                 await self.rtmpConnection?.setOnLog { event in
-                    guard RPConfig.shared.state.enableRTMPLog else { return }
+                    guard event.always || RPConfig.shared.state.enableRTMPLog else { return }
                     sendlog(message: "[RTMP] \(event.level) \(event.message) \(event.detail ?? "")")
                 }
 

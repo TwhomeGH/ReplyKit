@@ -20,6 +20,21 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.09.30 14:38 影像管線診斷 API 使用說明
+
+**類型**: 新增 · **檔案**: `ReplyKIT/SampleHandler.swift`
+
+### 修改 - 調整底層日誌回報 現在會回傳必要日誌
+
+- 主App轉送需要保留 event.always 事件 此為底層必要日誌 重要診斷用日誌事件
+- RTMPStream.videoPipelineSnapshot() -> VideoPipelineSnapshot 是 RTMP 推流的統一唯讀入口，包含原始影像佇列、編碼事件、RTMP 出站事件及背壓計數。此方法為 public nonisolated，不需要 await，不等待 RTMP／Mixer actor；內部仍會短暫取得統計鎖，並非完全無鎖。
+- 僅使用 Mixer 時，可呼叫 MediaMixer.videoPipelineSnapshot() -> VideoMixerSnapshot。
+- 舊的文字方法 videoPipelineDiagnostics() 仍保留，但新介面應使用結構化資料。
+
+**相關文件**: [影像管線診斷 API 使用說明](https://github.com/TwhomeGH/HaishinKitFixSwfit/blob/main/Docs/VIDEO_PIPELINE_API.md)
+
+---
+
 ## 2026.09.29 23:56 修正 RTMP video composition time 在 A/V 補償下變成負值（無畫面）
 
 **類型**: 修復 · **檔案**: `Package.resolved`
