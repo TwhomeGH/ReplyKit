@@ -286,11 +286,35 @@ struct DeviceInfo {
         }
     }
 
-    static var appMemoryMB: Double {
-        Double(memoryUsage()) / 1024 / 1024
+    /// 系統 jetsam 真正採計的記憶體（phys_footprint）：不含可回收的檔案映射頁。
+    /// 判斷記憶體壓力要看這個。
+    static var appFootprintMB: Double {
+        Double(footprintUsage()) / 1024 / 1024
     }
 
-    private static func memoryUsage() -> UInt64 {
+    /// resident_size：含執行檔/框架的可回收檔案映射頁，數字明顯偏高，
+    /// 僅供對照，不可用來判斷實際佔用。
+    static var appMemoryMB: Double {
+        Double(residentUsage()) / 1024 / 1024
+    }
+
+    private static func footprintUsage() -> UInt64 {
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size) / 4
+
+        let kerr: kern_return_t = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_,
+                          task_flavor_t(TASK_VM_INFO),
+                          $0,
+                          &count)
+            }
+        }
+
+        return kerr == KERN_SUCCESS ? info.phys_footprint : 0
+    }
+
+    private static func residentUsage() -> UInt64 {
         var info = mach_task_basic_info()
         var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
 
@@ -459,7 +483,8 @@ struct DeviceView: View {
     @ObservedObject private var videoHealth = VideoHealthModel.shared
     @ObservedObject private var audioHealth = AudioHealthModel.shared
 
-    @State private var appMemoryMB: Double = 0
+    @State private var appFootprintMB: Double = 0
+    @State private var appResidentMB: Double = 0
     @State private var cpuHistory: [DataPoint] = []
     @State private var memoryHistory: [DataPoint] = []
     @State private var pageInHistory: [DataPoint] = []
@@ -526,8 +551,14 @@ struct DeviceView: View {
                     Label("記憶體 RAM", systemImage: "memorychip")
             ) {
                 Text("總 RAM: \(DeviceInfo.ramMB, specifier: "%.0f") MB")
-                Text("App 使用中: \(appMemoryMB, specifier: "%.1f") MB")
-                    .foregroundColor(appMemoryMB > 300 ? .orange : .primary)
+                Text("App 實際佔用: \(appFootprintMB, specifier: "%.1f") MB")
+                    .foregroundColor(appFootprintMB > 300 ? .orange : .primary)
+                Text("resident（含可回收映射）: \(appResidentMB, specifier: "%.1f") MB")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Text("判斷記憶體壓力請看「實際佔用」(phys_footprint)；resident 會把執行檔/框架映射頁算進去而偏高。")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
 
                 Chart {
                     ForEach(memoryHistory) { pt in
@@ -900,7 +931,8 @@ struct DeviceView: View {
     private func sample() {
         dataPointCounter &+= 1
         let id = dataPointCounter
-        appMemoryMB = DeviceInfo.appMemoryMB
+        appFootprintMB = DeviceInfo.appFootprintMB
+        appResidentMB = DeviceInfo.appMemoryMB
         let now = Date()
         // EWMA 指數移動平均，α=0.4，不依賴歷史筆數
         let rawCPU = DeviceInfo.cpuUsagePercent
@@ -912,7 +944,7 @@ struct DeviceView: View {
             smoothedCPU = rawCPU
         }
         cpuHistory.append(DataPoint(id: id, time: now, value: smoothedCPU))
-        memoryHistory.append(DataPoint(id: id, time: now, value: appMemoryMB))
+        memoryHistory.append(DataPoint(id: id, time: now, value: appFootprintMB))
 
         let (inKB, outKB) = diskIO.rates()
         pageInHistory.append(DataPoint(id: id, time: now, value: inKB))

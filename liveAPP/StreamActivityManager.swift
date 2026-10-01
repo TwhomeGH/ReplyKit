@@ -199,11 +199,11 @@ final class StreamActivityManager: ObservableObject {
                     elapsedTime: elapsed,
                     viewerCount: LPConfig.shared.streamViewerCount,
                     cpuUsage: DeviceInfo.cpuUsagePercent,
-                    memoryUsage: DeviceInfo.appMemoryMB
+                    memoryUsage: DeviceInfo.appFootprintMB
                 )
                 if cycle == 1 || cycle % 6 == 0 {
                     let cpu = String(format: "%.1f", DeviceInfo.cpuUsagePercent)
-                    let mem = String(format: "%.1f", DeviceInfo.appMemoryMB)
+                    let mem = String(format: "%.1f", DeviceInfo.appFootprintMB)
                     let viewers = LPConfig.shared.streamViewerCount.map { String($0) } ?? "nil"
                     self?.logLifecycle("週期更新 #\(cycle): status=\(status) elapsed=\(elapsed) bitrate=\(LPConfig.shared.streamBitrate) viewers=\(viewers) cpu=\(cpu)% mem=\(mem)MB")
                 }

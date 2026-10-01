@@ -20,6 +20,28 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.02 07:30 DeviceView 記憶體改以 phys_footprint 判斷
+
+**類型**: 優化 · **檔案**: `liveAPP/OtherView.swift`
+
+### 問題 - 記憶體讀數用 resident_size 導致誤判
+
+DeviceView 顯示的「App 使用中」偏高（83-100MB），容易被當成異常佔用。
+
+### 根因 - resident_size 含可回收映射頁
+
+DeviceInfo 用 MACH_TASK_BASIC_INFO.resident_size，會把執行檔/框架（含靜態連結的媒體庫）可回收檔案映射頁算進去，並非 jetsam 採計值。
+
+### 修改 - 改以 phys_footprint 為主、resident 降為對照
+
+- 新增 DeviceInfo.appFootprintMB（TASK_VM_INFO.phys_footprint），原 appMemoryMB 保留為 resident 對照。
+- DeviceView 主數字改顯示「App 實際佔用」(footprint)，resident 降為次要 caption 並加說明；折線圖改畫 footprint。
+- StreamActivityManager 的 memoryUsage 與 log 也改用 appFootprintMB。
+
+**相關文件**: [OtherView.swift](liveAPP/OtherView.swift)
+
+---
+
 ## 2026.09.30 14:38 影像管線診斷 API 使用說明
 
 **類型**: 新增 · **檔案**: `ReplyKIT/SampleHandler.swift`
