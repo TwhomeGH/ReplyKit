@@ -517,7 +517,8 @@ final class LogManager {
         ioLastError = nil
         ioFailureLock.unlock()
         guard count > 0 else { return }
-        logger.debug("[LogIO] 近 \(Int(ioFailureFlushDelay)) 秒 \(count) 次寫入失敗；最後: \(last)")
+        let windowSec = Int(ioFailureFlushDelay)
+        logger.debug("[LogIO] 近 \(windowSec) 秒 \(count) 次寫入失敗；最後: \(last)")
         SocketClient.shared.sendPayload([
             "type": "diagnostic",
             "subsystem": "logio",

@@ -310,7 +310,8 @@ final class AppLogPersister {
         let last = ioLastError ?? ""
         ioFailureCount = 0
         ioLastError = nil
-        os_log("[AppLogPersister] %{public}@", type: .error, "近 \(Int(ioFailureFlushDelay)) 秒 \(count) 次 log 寫入失敗；最後: \(last)")
+        let windowSec = Int(ioFailureFlushDelay)
+        os_log("[AppLogPersister] %{public}@", type: .error, "近 \(windowSec) 秒 \(count) 次 log 寫入失敗；最後: \(last)")
         SocketServer.shared.broadcastDiagnostic([
             "type": "diagnostic",
             "subsystem": "logio",
