@@ -179,8 +179,8 @@ Documents/log.txt
 
 | 情境 | 改前 | 改後 |
 | ------ | ------ | ------ |
-| 高頻管道 log（~103 筆/s） | 每筆 open/close（~515 syscall/s） | 每筆 seek+write（~206 syscall/s），省 60% syscall |
-| force-quit 兜底 | write 即時落盤 | **不變**——仍即時寫入，最後資料不丟 |
+| 高頻管道 log（~103 筆/s） | 每筆 open/close（~515 syscall/s） | 批次寫入（滿 50 筆或 1 秒一次，見 3.3），syscall 再大幅下降 |
+| force-quit 兜底 | write 即時落盤 | 改為批次（滿 50 筆或 1 秒寫一次，見 3.3），最壞遺失約 1 秒 |
 | 側載（無 App Group） | early-log 不寫（`guard !isSideload`） | **不變**——側載只走 socket + 主 App Documents/log.txt |
 | 正式版主 App 啟動 | early-log 無人讀取（死檔） | 合併進 Documents/log.txt 開頭，按時間排序完整呈現 |
 | 主 App 合併時 extension 併發寫 | — | 截斷而非刪除，兩者並存不衝突 |
@@ -190,6 +190,46 @@ Documents/log.txt
 - `writeEarlyLogToFile()` 的 `guard !isSideload`：側載無 App Group、無可存取目錄，保持跳過
 - 主 App 運行期間不重複合併：early-log 是「啟動時一次性兜底」，運行中 log 走 socket/文件監聽即時進來
 - `log.txt` 的 `writeLogToFile()`（每 1s 批次寫）維持原狀，低頻不需持久 handle
+
+---
+
+## 3.3 log I/O 穩健性與失敗診斷 (2026-10)
+
+### 背景問題
+
+1. **不安全性 API**：log 檔寫入使用 `FileHandle.write(_:)`——它**非 throwing**，失敗時 raise `NSFileHandleOperationException`（Swift 無法 catch → 閃退）。Apple 已於新版 SDK 將其標記**棄用**，指定改用 `write(contentsOf:)`（Swift）/ `writeData:error:`（ObjC）。
+2. **early-log 逐筆寫**：`writeEarlyLogToFile()` 對每一筆 log 即時寫入，高頻 `[VFrame]`/`[AudioFRAME]` 產生大量小 write syscall。
+3. **group log 重複累積**：`copyFromAppGroup()` 合併 group 的 `log.txt` 後**沒有清來源**，每次啟動會把同一份再 append 一次。
+4. **失敗靜默**：`try?` 把寫入失敗吞掉，現場難排查。
+
+### 修正
+
+| 層面 | 改前 | 改後 |
+| ------ | ------ | ------ |
+| 錯誤處理 | `handle.write(data)`：失敗 raise NSException 閃退 | `try handle.write(contentsOf: data)`：可捕捉（一律經 `safeWrite` 包裝） |
+| early-log 寫入 | 每筆即時 write | 累積緩衝，滿 **50 筆**或 **1 秒**一次寫（`enqueueEarlyLog`/`flushEarlyLog`）；`forceFlush()` 收尾補送（`ReplyKIT/Event.swift`） |
+| group log 合併 | 合併後未截斷 → 重複累積 | 合併後 `truncate(atOffset:0)`（比照 early-log，`liveAPPApp.swift` `copyFromAppGroup()`） |
+| trim 失敗 | `try?` 靜默 | do/catch 記錄（見下方診斷） |
+
+> `write(contentsOf:)` 需 iOS 13.4+ / macOS 10.15.4+；本專案部署版本遠高於此。
+
+### 失敗診斷（帶外、有界）
+
+日誌檔寫入失敗（extension `LogManager` 與主 App `AppLogPersister`）不再靜默：
+
+1. 所有寫入經 `safeWrite(...)`；失敗累積 `ioFailureCount` + `ioLastError`。
+2. **每 60 秒最多**送出一則摘要（`recordIOFailure` / `flushIOFailures`）。
+3. 摘要同時走兩條路：
+   - **OSLog**（`logger.debug` / `os_log`）：一定存在的底線記錄；extension 端需靠 sysdiagnose 取得，主 App 可在 Console 看到。
+   - **E-Socket `diagnostic`**：extension 以 `SocketClient.sendPayload` 送出，主 App 以 `SocketServer.shared.broadcastDiagnostic` 發起；Server 收到只群播給其他連線（含外部工具），**不寫入 log 檔**。
+4. 診斷**絕不回流** log 管線，避免「寫入失敗→記診斷→又寫檔」的回饋迴圈。
+
+`diagnostic` 訊息格式見 [socket-wire-protocol.md](socket-wire-protocol.md)。
+
+### 併發
+
+- extension `logQueue` 為 **concurrent**，`earlyLogFlushItem` / `ioFailureCount` 以 `earlyLogLock` / `ioFailureLock` 保護。
+- 主 App `AppLogPersister` 的 `recordIOFailure` / `flushIOFailures` 全在其 serial `queue` 上，無需額外鎖。
 
 ---
 

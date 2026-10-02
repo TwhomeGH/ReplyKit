@@ -286,6 +286,25 @@
 
 ---
 
+### `diagnostic` — 帶外診斷（log I/O 失敗）
+
+| 方向 | ↔（extension → Server → 其他連線；Server 亦可自行發起） |
+| ------ | ---------- |
+| Payload | `{"type":"diagnostic","subsystem":"logio","source":"extension"\|"mainapp","count":Int,"lastError":String}` |
+| 觸發 | 日誌檔寫入失敗時累積計數，**每 60 秒最多送出一則有界摘要** |
+| Server 行為 | `broadcast(dict, excluding: 來源連線)`：群播給**其他**所有連線（含外部工具），**不寫入 log 檔、不寫 AppLogPersister** |
+| 外部工具 | 可接收此類訊息；未知 `type` 應忽略（勿因無法解析而斷線） |
+
+設計要點：
+
+- **帶外**：診斷不進 log 管線（`sendlog` / `early-log` / `append`），避免「寫入失敗→記診斷→又寫檔」的回饋迴圈。
+- **有界**：只送摘要（`count` + `lastError`），不逐筆，防止灌爆 socket 與外部分析工具。
+- **OSLog 兜底**：無論 socket 是否連通，失敗一律以 `os_log` / `logger.debug` 記錄；socket 只是「有連線才有」的即時外部通道（extension 的 OSLog 需靠 sysdiagnose 取得）。
+- Server 自身（主 App `AppLogPersister`）的 `logio` 失敗由 `SocketServer.shared.broadcastDiagnostic([...])` 發起，`source` 為 `mainapp`；extension 則由 `SocketClient.shared.sendPayload([...])` 送出，`source` 為 `extension`。
+- Payload 為一般 `[String: Any]`（非 `Codable` 結構），但必須含頂層 `type` 欄位，否則 `handleReceivedData` 解碼失敗會直接關閉該連線。
+
+---
+
 ### `reconnectStatus` — RTMP 重連狀態
 
 | 方向 | → Server |
@@ -331,9 +350,11 @@ ReplyKIT (Extension)                          liveAPP (Main App)
   settings ──────────────►                   寫 UserDefaults
   log / logbatch ────────►                   寫 LogBuffer
   reconnectStatus ───────►                   更新 PiP 重連 UI
+  diagnostic ────────────►                   群播給其他連線（不寫檔）
 
-                          ◄─── keepalive (10s 定時廣播，含 stale 連線清理)
-                          ◄─── testRTMP (偵錯)
+                           ◄─── keepalive (10s 定時廣播，含 stale 連線清理)
+                           ◄─── testRTMP (偵錯)
+                           ◄─── diagnostic (log I/O 失敗摘要，群播至外部工具)
 ```
 
 ## 結構定義

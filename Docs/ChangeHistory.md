@@ -20,6 +20,50 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.03 00:51 log I/O 失敗新增帶外診斷通道（有界摘要 + Socket 群播）
+
+**類型**: 新增 · **檔案**: `liveAPP/Socket.swift`
+
+### 問題 - 寫入失敗被 try? 吞掉，現場無法排查
+
+log 檔寫入失敗原本靜默，且不能寫回同一 log 管線（會造成回饋迴圈）。
+
+### 根因 - 缺乏帶外且不依賴檔案的診斷通道
+
+失敗訊號沒有可用的輸出：log 檔寫不進去、sendlog 會回流同管線。
+
+### 修改 - 有界摘要以 diagnostic 訊息群播，OSLog 兜底
+
+- 新增 socket type diagnostic（subsystem/source/count/lastError）；Server 收到只群播給其他連線，不寫檔。
+- extension LogManager 與主 App AppLogPersister 寫入失敗時累積計數，每 60 秒最多送一則（SocketClient.sendPayload / SocketServer.broadcastDiagnostic）。
+- 一律以 OSLog 記錄作底線；診斷不回流 log 管線。
+
+**相關文件**: [socket-wire-protocol.md](socket-wire-protocol.md)
+
+---
+
+## 2026.10.03 00:45 log 檔 I/O 強化：write(contentsOf:) + early-log 批次 + 修重複累積
+
+**類型**: 修復 · **檔案**: `ReplyKIT/Event.swift`
+
+### 問題 - 寫入失敗會閃退、early-log 逐筆寫、group log 重複累積
+
+FileHandle.write(_:) 失敗時 raise NSException 直接閃退；early-log 每筆一次 write 產生大量小 syscall；copyFromAppGroup 合併 group log.txt 後未清來源，每次啟動重複累積。
+
+### 根因 - 使用非 throwing 的 write(_:) 且未批次、未清來源
+
+write(_:) 為 ObjC 的 writeData:，錯誤以例外而非 Swift error 呈現；early-log 未進批次；合併後未截斷 group 檔。
+
+### 修改 - 改 throwing API、批次化 early-log、合併後截斷
+
+- 全部 log 檔寫入改 `try handle.write(contentsOf:)` 並經 `safeWrite` 包裝（ReplyKIT/Event.swift、liveAPP/liveAPPApp.swift）。
+- early-log 改累積緩衝，滿 50 筆或 1 秒寫一次；forceFlush 收尾補送。
+- copyFromAppGroup 合併 group log.txt 後 truncate 來源，修重複累積。
+
+**相關文件**: [log-system-improvements.md](log-system-improvements.md)
+
+---
+
 ## 2026.10.02 07:30 DeviceView 記憶體改以 phys_footprint 判斷
 
 **類型**: 優化 · **檔案**: `liveAPP/OtherView.swift`

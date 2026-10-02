@@ -321,7 +321,7 @@ final class LogManager {
             }
 
             guard !RPConfig.isSideload else { return }
-            self.writeEarlyLogToFile(logMessage)
+            self.enqueueEarlyLog(logMessage)
             logger.debug("LogBuffer:\(msg)")
         }
 
@@ -363,6 +363,10 @@ final class LogManager {
         remoteLogger?.flush()
         remoteLogger = nil
         isActive = false
+
+        // 結束前把尚未寫入的 early-log 一併落盤，並送出最後的 IO 失敗摘要
+        logQueue.async { [weak self] in self?.flushEarlyLog() }
+        flushIOFailures()
         
     }
 
@@ -402,7 +406,7 @@ final class LogManager {
 
         logQueue.async { [weak self] in
             guard let self = self, !RPConfig.isSideload else { return }
-            self.writeEarlyLogToFile(logMessage)
+            self.enqueueEarlyLog(logMessage)
         }
     }
 
@@ -466,6 +470,63 @@ final class LogManager {
         }
     }
 
+    /// 檔案寫入失敗累積成有界摘要（OSLog + socket 診斷），
+    /// 不回流 log 管線（sendlog/early-log），避免寫入失敗→再寫 log→再失敗的回饋迴圈。
+    private func safeWrite(_ handle: FileHandle, _ data: Data, context: String) {
+        do {
+            try handle.write(contentsOf: data)
+        } catch {
+            recordIOFailure(context, error)
+        }
+    }
+
+    private func safeWrite(_ data: Data, to url: URL, context: String) {
+        do {
+            try data.write(to: url, options: .atomic)
+        } catch {
+            recordIOFailure(context, error)
+        }
+    }
+
+    // MARK: log 寫入失敗的帶外診斷（有界摘要：每 ioFailureFlushDelay 秒最多一則）
+    // logQueue 為 concurrent，故以 ioFailureLock 保護計數與排程。
+    private let ioFailureLock = NSLock()
+    private var ioFailureCount = 0
+    private var ioLastError: String?
+    private var ioFailureFlushItem: DispatchWorkItem?
+    private let ioFailureFlushDelay: TimeInterval = 60
+
+    private func recordIOFailure(_ context: String, _ error: Error) {
+        ioFailureLock.lock()
+        ioFailureCount += 1
+        ioLastError = "\(context): \(error)"
+        if ioFailureFlushItem == nil {
+            let item = DispatchWorkItem { [weak self] in self?.flushIOFailures() }
+            ioFailureFlushItem = item
+            logQueue.asyncAfter(deadline: .now() + ioFailureFlushDelay, execute: item)
+        }
+        ioFailureLock.unlock()
+    }
+
+    private func flushIOFailures() {
+        ioFailureLock.lock()
+        ioFailureFlushItem = nil
+        let count = ioFailureCount
+        let last = ioLastError ?? ""
+        ioFailureCount = 0
+        ioLastError = nil
+        ioFailureLock.unlock()
+        guard count > 0 else { return }
+        logger.debug("[LogIO] 近 \(Int(ioFailureFlushDelay)) 秒 \(count) 次寫入失敗；最後: \(last)")
+        SocketClient.shared.sendPayload([
+            "type": "diagnostic",
+            "subsystem": "logio",
+            "source": "extension",
+            "count": count,
+            "lastError": last
+        ])
+    }
+
     private func writeLogToFile(_ text: String) {
         guard !RPConfig.isSideload else { return }
         let containerURL: URL
@@ -480,9 +541,9 @@ final class LogManager {
            let fileHandle = try? FileHandle(forWritingTo: fileURL) {
             defer { fileHandle.closeFile() }
             fileHandle.seekToEndOfFile()
-            fileHandle.write(data)
+            safeWrite(fileHandle, data, context: "log append")
         } else {
-            try? data.write(to: fileURL, options: .atomic)
+            safeWrite(data, to: fileURL, context: "log create")
         }
         trimLogFileIfNeeded(fileURL: fileURL)
     }
@@ -498,14 +559,66 @@ final class LogManager {
         let hasSuffixNewline = content.hasSuffix("\n")
         let trimmedLines = lines.suffix(maxLogFileLines)
         let trimmedText = trimmedLines.joined(separator: "\n") + (hasSuffixNewline ? "\n" : "")
-        try? trimmedText.write(to: fileURL, atomically: true, encoding: .utf8)
+        do {
+            try trimmedText.write(to: fileURL, atomically: true, encoding: .utf8)
+        } catch {
+            recordIOFailure("trim log", error)
+        }
     }
 
     // MARK: early-log 持久寫入 handle（消除每筆 open/close）
-    // logQueue 是 concurrent，early-log 寫入可能並發（log() 的 .async 與
-    // addDebugLog 的 .barrier），故用 lock 保護單一 handle。
+    // 逐筆 write 會產生大量小 syscall（高頻 [VFrame]/[AudioFRAME]），故改為
+    // 累積成緩衝，滿 earlyLogFlushThreshold 筆或每 earlyLogFlushDelay 秒寫一次。
+    // early-log 為 force-quit 兜底，最壞情況遺失約一個 flush 週期（與 log.txt 批次一致）。
     private var earlyLogHandle: FileHandle?
     private let earlyLogLock = NSLock()
+    private var earlyLogPending: [String] = []
+    private var earlyLogFlushItem: DispatchWorkItem?
+    private let earlyLogFlushDelay: TimeInterval = 1.0
+    private let earlyLogFlushThreshold = 50
+
+    /// 累積一筆 early-log；滿門檻立即寫入，否則排程延遲寫入。
+    /// 只在 logQueue 上呼叫（enqueue 與 flush 同一條佇列）。
+    private func enqueueEarlyLog(_ text: String) {
+        guard !RPConfig.isSideload else { return }
+        earlyLogLock.lock()
+        earlyLogPending.append(text)
+        let reachedThreshold = earlyLogPending.count >= earlyLogFlushThreshold
+        earlyLogLock.unlock()
+
+        if reachedThreshold {
+            flushEarlyLog()
+        } else {
+            scheduleEarlyLogFlush()
+        }
+    }
+
+    private func scheduleEarlyLogFlush() {
+        earlyLogLock.lock()
+        guard earlyLogFlushItem == nil else {
+            earlyLogLock.unlock()
+            return
+        }
+        let item = DispatchWorkItem { [weak self] in
+            self?.flushEarlyLog()
+        }
+        earlyLogFlushItem = item
+        earlyLogLock.unlock()
+        logQueue.asyncAfter(deadline: .now() + earlyLogFlushDelay, execute: item)
+    }
+
+    /// 把累積的 early-log 一次寫入。logQueue 是 concurrent，故以 earlyLogLock
+    /// 保護 pending 與 flush item。
+    private func flushEarlyLog() {
+        earlyLogLock.lock()
+        earlyLogFlushItem?.cancel()
+        earlyLogFlushItem = nil
+        let lines = earlyLogPending
+        earlyLogPending.removeAll()
+        earlyLogLock.unlock()
+        guard !lines.isEmpty else { return }
+        writeEarlyLogToFile(lines.joined())
+    }
 
     private func writeEarlyLogToFile(_ text: String) {
         guard !RPConfig.isSideload else { return }
@@ -518,19 +631,19 @@ final class LogManager {
             // 重用已開啟的 handle：只做 seek+write，省掉 open/close syscall。
             // seekToEndOfFile 同時涵蓋主 app 啟動時截斷後的位置重建。
             handle.seekToEndOfFile()
-            handle.write(data)
+            safeWrite(handle, data, context: "early-log append")
         } else if FileManager.default.fileExists(atPath: fileURL.path),
                   let handle = try? FileHandle(forWritingTo: fileURL) {
             earlyLogHandle = handle
             handle.seekToEndOfFile()
-            handle.write(data)
+            safeWrite(handle, data, context: "early-log append")
         } else {
             // 檔案不存在：先建立，再開啟並保持
-            try? data.write(to: fileURL, options: .atomic)
+            safeWrite(data, to: fileURL, context: "early-log create")
             if let handle = try? FileHandle(forWritingTo: fileURL) {
                 earlyLogHandle = handle
                 handle.seekToEndOfFile()
-                handle.write(data)
+                safeWrite(handle, data, context: "early-log append")
             }
         }
         earlyLogWriteCount += 1
@@ -561,7 +674,11 @@ final class LogManager {
         let hasSuffixNewline = content.hasSuffix("\n")
         let trimmedLines = lines.suffix(maxEarlyLogLines)
         let trimmedText = trimmedLines.joined(separator: "\n") + (hasSuffixNewline ? "\n" : "")
-        try? trimmedText.write(to: fileURL, atomically: true, encoding: .utf8)
+        do {
+            try trimmedText.write(to: fileURL, atomically: true, encoding: .utf8)
+        } catch {
+            recordIOFailure("trim early-log", error)
+        }
     }
 
     // MARK: - 通知主 App（優化版）

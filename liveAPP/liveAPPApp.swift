@@ -252,6 +252,13 @@ final class AppLogPersister {
                 return
             }
             self.appendRaw(data)
+            // 合併後截斷來源（與 early-log 相同策略），避免下次啟動把同一份
+            // group log 再 append 一次造成重複累積。截斷而非刪除：extension
+            // 可能正在寫入，其 write 前會 seekToEndOfFile，截斷後從 0 續寫。
+            if let handle = try? FileHandle(forWritingTo: source) {
+                try? handle.truncate(atOffset: 0)
+                handle.closeFile()
+            }
             self.trimNow()
         }
     }
@@ -269,20 +276,67 @@ final class AppLogPersister {
 
     private(set) var totalWrittenBytes: UInt64 = 0
 
+    /// 寫入失敗以帶外 OSLog 記錄，並累積成有界摘要經 SocketServer 群播；
+    /// 不經 log 管線（避免回饋迴圈）。
+    private func safeWrite(_ handle: FileHandle, _ data: Data, context: String) {
+        do {
+            try handle.write(contentsOf: data)
+        } catch {
+            recordIOFailure(context: context, lastError: String(describing: error))
+        }
+    }
+
+    // MARK: log 寫入失敗的帶外診斷（有界摘要：每 ioFailureFlushDelay 秒最多一則）
+    private var ioFailureCount = 0
+    private var ioLastError: String?
+    private var ioFailureFlushItem: DispatchWorkItem?
+    private let ioFailureFlushDelay: TimeInterval = 60
+
+    private func recordIOFailure(context: String, lastError: String) {
+        ioFailureCount += 1
+        ioLastError = "\(context): \(lastError)"
+        guard ioFailureFlushItem == nil else { return }
+        let item = DispatchWorkItem { [weak self] in
+            self?.flushIOFailures()
+        }
+        ioFailureFlushItem = item
+        queue.asyncAfter(deadline: .now() + ioFailureFlushDelay, execute: item)
+    }
+
+    private func flushIOFailures() {
+        ioFailureFlushItem = nil
+        guard ioFailureCount > 0 else { return }
+        let count = ioFailureCount
+        let last = ioLastError ?? ""
+        ioFailureCount = 0
+        ioLastError = nil
+        os_log("[AppLogPersister] %{public}@", type: .error, "近 \(Int(ioFailureFlushDelay)) 秒 \(count) 次 log 寫入失敗；最後: \(last)")
+        SocketServer.shared.broadcastDiagnostic([
+            "type": "diagnostic",
+            "subsystem": "logio",
+            "source": "mainapp",
+            "count": count,
+            "lastError": last
+        ])
+    }
+
     private func appendRaw(_ data: Data) {
         totalWrittenBytes += UInt64(data.count)
         let newLines = data.reduce(0) { $0 + ($1 == 0x0A ? 1 : 0) }
         estimatedLineCount += newLines
         if let handle = writeHandle ?? openWriteHandle() {
             handle.seekToEndOfFile()
-            handle.write(data)
+            safeWrite(handle, data, context: "append")
             return
         }
 
-        guard let handle = try? FileHandle(forWritingTo: logURL) else { return }
+        guard let handle = try? FileHandle(forWritingTo: logURL) else {
+            recordIOFailure(context: "open", lastError: logURL.path)
+            return
+        }
         defer { handle.closeFile() }
         handle.seekToEndOfFile()
-        handle.write(data)
+        safeWrite(handle, data, context: "append(fallback)")
     }
 
     private func write(_ data: Data) {
@@ -306,10 +360,18 @@ final class AppLogPersister {
 
     private func truncateFile() {
         if let handle = writeHandle {
-            try? handle.truncate(atOffset: 0)
-            try? handle.seek(toOffset: 0)
+            do {
+                try handle.truncate(atOffset: 0)
+                try handle.seek(toOffset: 0)
+            } catch {
+                recordIOFailure(context: "clear", lastError: String(describing: error))
+            }
         } else {
-            try? "".write(to: logURL, atomically: true, encoding: .utf8)
+            do {
+                try "".write(to: logURL, atomically: true, encoding: .utf8)
+            } catch {
+                recordIOFailure(context: "clear(atomic)", lastError: String(describing: error))
+            }
         }
     }
 
@@ -333,9 +395,13 @@ final class AppLogPersister {
            let trimmedData = trimmedText.data(using: .utf8) {
             try? handle.truncate(atOffset: 0)
             try? handle.seek(toOffset: 0)
-            handle.write(trimmedData)
+            safeWrite(handle, trimmedData, context: "trim")
         } else {
-            try? trimmedText.write(to: logURL, atomically: true, encoding: .utf8)
+            do {
+                try trimmedText.write(to: logURL, atomically: true, encoding: .utf8)
+            } catch {
+                os_log("[AppLogPersister] trim 重寫失敗: %{public}@", type: .error, String(describing: error))
+            }
         }
         estimatedLineCount = maxLogFileLines
     }

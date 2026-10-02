@@ -1318,6 +1318,13 @@ class SocketServer:ObservableObject {
                 LogBuffer.shared.push(prefixed)
                 AppLogPersister.shared.append(lines: prefixed)
 
+            case "diagnostic":
+                // 診斷訊息：只群播給其他連線（含外部工具），**不寫入 log 檔**，
+                // 避免「寫入失敗→記診斷→又寫檔」的回饋迴圈；也不回送原發者。
+                if let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+                    broadcast(dict, excluding: connection)
+                }
+
             case "audience":
                 let dict = try decoder.decode(AudiencePayload.self, from: data)
                 updateAudienceInfo(userNum: dict.userNum, userList: dict.userList)
@@ -1462,6 +1469,25 @@ class SocketServer:ObservableObject {
 
         }
 
+
+    // MARK: - 診斷群播（帶外，不寫檔）
+    /// 診斷訊息專用：群播給所有連線（含外部工具），不寫入 log 檔。
+    func broadcastDiagnostic(_ payload: [String: Any]) {
+        queueSend(dictionary: payload)
+    }
+
+    /// 群播給除 origin 以外的所有連線（避免把診斷回送原發者）。
+    private func broadcast(_ dictionary: [String: Any], excluding origin: NWConnection?) {
+        guard let data = try? JSONSerialization.data(withJSONObject: dictionary, options: []) else { return }
+        let originID = origin.map { ObjectIdentifier($0) }
+        queue.async { [weak self] in
+            guard let self else { return }
+            for (id, conn) in self.connections {
+                if let originID, id == originID { continue }
+                self.enqueue(data, to: conn)
+            }
+        }
+    }
 
     // MARK: 一對一
     private func sendTo(_ connection: NWConnection, payload: some Encodable) {
