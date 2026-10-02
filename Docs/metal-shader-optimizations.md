@@ -121,3 +121,5 @@ kCVMetalTextureUsage as String: NSNumber(value: MTLTextureUsage.shaderWrite.rawV
 ### 5. 記憶體診斷改為 resident memory
 
 `memorySnapshot()` 原本輸出 `ProcessInfo.processInfo.physicalMemory`，那是裝置總 RAM，不是 extension 目前使用量。現在改用 `task_info(MACH_TASK_BASIC_INFO)` 回報 resident memory，Metal failure log 更有診斷價值。
+
+> 補充（2026-10）：`resident_size` 會把執行檔／框架的**可回收檔案映射頁**算進去，數字偏高、**非 Jetsam 採計值**。主 App `DeviceView` 已改以 `TASK_VM_INFO.phys_footprint` 為主，並拆解 internal／compressed／external／reusable／purgeable（`liveAPP/OtherView.swift` `DeviceInfo.memoryBreakdown`，見 [README.md](../README.md) 設備信息 RAM）。Extension 診斷若要對齊 Jetsam，建議比照改用 footprint。

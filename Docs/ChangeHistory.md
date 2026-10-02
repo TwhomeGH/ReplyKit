@@ -20,6 +20,28 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.03 00:59 DeviceView 記憶體明細：footprint 拆解 internal/compressed/external
+
+**類型**: 優化 · **檔案**: `liveAPP/OtherView.swift`
+
+### 問題 - 只看總量無法判斷資源歸屬
+
+設備信息頁只顯示 footprint 總量與 resident，容易把 external（約 53MB 映射）誤當成「可從 App 回收」而與 footprint 相減，得出「只用 2MB」的錯誤結論。
+
+### 根因 - 未區分 footprint 內/外與可回收欄位
+
+external 是檔案映射（框架／靜態庫 code），可被 evict 但不在 footprint 內；真正可回收應看 reusable／purgeable。
+
+### 修改 - 新增 DeviceInfo.memoryBreakdown 與明細列
+
+- 以單次 TASK_VM_INFO 取得 footprint/internal/compressed/external/resident/peak/reusable/purgeable 與 os_proc_available_memory。
+- DeviceView 逐項顯示；external 標註「檔案映射、可 evict、非你的資料」，新增 reusable／purgeable 與「距 jetsam 上限」。
+- 新增 PIPService.estimatedPixelBufferPoolMB（3×W×H×4）。
+
+**相關文件**: [README.md](../README.md)
+
+---
+
 ## 2026.10.03 00:51 log I/O 失敗新增帶外診斷通道（有界摘要 + Socket 群播）
 
 **類型**: 新增 · **檔案**: `liveAPP/Socket.swift`

@@ -260,10 +260,19 @@
 
 ## 運行內存 Ram
 
-可以大致看一下 記憶體使用情況
+以 `task_vm_info` 的 **`phys_footprint`** 為主（Jetsam 真正採計的值），並拆解來源：
 
-- 總RAM量
-- App使用RAM量
+- 總 RAM
+- **App 實際佔用**（footprint = internal + compressed）
+  - **internal**：自身配置（heap / 緩衝）
+  - **compressed**：被記憶體壓縮器壓縮的部分
+- **external**：檔案映射（框架 / 靜態庫 code），可被系統 evict，**不在 footprint 內、不可與 footprint 相減**
+- resident / 峰值（含可回收映射，僅供對照）
+- **可回收 reusable / 可清除 purgeable**：系統能直接從 App 回收的量
+- 距 Jetsam 上限（`os_proc_available_memory()`）
+- PIP 輸出影像池（估，3 × W×H×4）
+
+> 只看 `resident_size` 會偏高（含可回收的檔案映射頁）；判斷記憶體壓力請看「App 實際佔用」(phys_footprint)。external 大只代表靜態連結的媒體庫（libsrt / libdatachannel / HaishinKit）code 被映射，並非 App 資料。
 
 ### 圖表凍結修復 (2026/06)
 

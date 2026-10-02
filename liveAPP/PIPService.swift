@@ -279,6 +279,12 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     var frameSize: CGSize = .zero
     var OframeSize:CGSize = .zero
 
+    /// 僅供顯示：目前 PIP 輸出 pixel buffer pool 的估算佔用（BGRA）。
+    var estimatedPixelBufferPoolMB: Double {
+        guard OframeSize.width > 0, OframeSize.height > 0 else { return 0 }
+        return Double(pixelBufferPoolSize) * Double(OframeSize.width) * Double(OframeSize.height) * 4 / 1024 / 1024
+    }
+
     private var frameCount: Int64 = 0
 
     // MARK: - Audio

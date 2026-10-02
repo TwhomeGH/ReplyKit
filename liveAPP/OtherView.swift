@@ -13,6 +13,7 @@ import MachO
 import Metal
 import UIKit
 import SystemConfiguration
+import os
 
 struct DataPoint: Identifiable {
     let id: Int
@@ -330,6 +331,55 @@ struct DeviceInfo {
         return kerr == KERN_SUCCESS ? info.resident_size : 0
     }
 
+    /// 記憶體分類明細（單次 task_vm_info），用來判斷「誰吃走」。
+    struct MemoryBreakdown {
+        var footprintMB: Double      // 系統 jetsam 採計的實際佔用
+        var internalMB: Double       // 自身配置（heap/stack/緩衝，dirty internal）
+        var compressedMB: Double     // 已被壓縮的部分（含在 footprint）
+        var externalMB: Double       // 檔案映射（框架/靜態庫，多可回收，不計入 footprint）
+        var residentMB: Double       // 實體駐留（含可回收）
+        var residentPeakMB: Double
+        var reusableMB: Double       // 標記為可重用（可被系統直接回收）
+        var purgeableVolatileMB: Double // 可清除（volatile purgeable resident）
+        var availableMB: Double      // 距 jetsam 上限的可用量（os_proc_available_memory）
+    }
+
+    static var memoryBreakdown: MemoryBreakdown {
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size) / 4
+        let kerr: kern_return_t = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_,
+                          task_flavor_t(TASK_VM_INFO),
+                          $0,
+                          &count)
+            }
+        }
+        #if os(iOS)
+        let availableMB = Double(os_proc_available_memory()) / 1024 / 1024
+        #else
+        let availableMB = 0.0
+        #endif
+        guard kerr == KERN_SUCCESS else {
+            return MemoryBreakdown(footprintMB: 0, internalMB: 0, compressedMB: 0,
+                                   externalMB: 0, residentMB: 0, residentPeakMB: 0,
+                                   reusableMB: 0, purgeableVolatileMB: 0,
+                                   availableMB: availableMB)
+        }
+        let mb: (mach_vm_size_t) -> Double = { Double($0) / 1024 / 1024 }
+        return MemoryBreakdown(
+            footprintMB: mb(info.phys_footprint),
+            internalMB: mb(info.internal),
+            compressedMB: mb(info.compressed),
+            externalMB: mb(info.external),
+            residentMB: mb(info.resident_size),
+            residentPeakMB: mb(info.resident_size_peak),
+            reusableMB: mb(info.reusable),
+            purgeableVolatileMB: mb(info.purgeable_volatile_resident),
+            availableMB: availableMB
+        )
+    }
+
     static var totalDiskMB: Double {
         if let attrs = try? FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory()),
            let size = attrs[.systemSize] as? NSNumber {
@@ -485,6 +535,13 @@ struct DeviceView: View {
 
     @State private var appFootprintMB: Double = 0
     @State private var appResidentMB: Double = 0
+    @State private var memInternalMB: Double = 0
+    @State private var memCompressedMB: Double = 0
+    @State private var memExternalMB: Double = 0
+    @State private var memReusableMB: Double = 0
+    @State private var memPurgeableMB: Double = 0
+    @State private var memAvailableMB: Double = 0
+    @State private var memPeakMB: Double = 0
     @State private var cpuHistory: [DataPoint] = []
     @State private var memoryHistory: [DataPoint] = []
     @State private var pageInHistory: [DataPoint] = []
@@ -498,6 +555,12 @@ struct DeviceView: View {
     @AppStorage("ReplyKitHeight",store: userDefaults) var ReplyKitH: Int = 0
 
     private let maxHistory = 60
+
+    private var memAvailableText: String {
+        memAvailableMB > 0
+            ? "距 jetsam 上限: \(String(format: "%.0f", memAvailableMB)) MB"
+            : "距 jetsam 上限: 未知（0 表示無回報）"
+    }
 
     var body: some View {
         List {
@@ -553,10 +616,26 @@ struct DeviceView: View {
                 Text("總 RAM: \(DeviceInfo.ramMB, specifier: "%.0f") MB")
                 Text("App 實際佔用: \(appFootprintMB, specifier: "%.1f") MB")
                     .foregroundColor(appFootprintMB > 300 ? .orange : .primary)
-                Text("resident（含可回收映射）: \(appResidentMB, specifier: "%.1f") MB")
+                Text("其中自身內部 internal: \(memInternalMB, specifier: "%.1f") MB")
+                    .font(.caption)
+                Text("其中壓縮 compressed: \(memCompressedMB, specifier: "%.1f") MB")
+                    .font(.caption)
+                Text("外部映射 external（檔案映射、可 evict、非你的資料）: \(memExternalMB, specifier: "%.1f") MB")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                Text("判斷記憶體壓力請看「實際佔用」(phys_footprint)；resident 會把執行檔/框架映射頁算進去而偏高。")
+                Text("其中可回收 reusable: \(memReusableMB, specifier: "%.1f") MB · 可清除 purgeable: \(memPurgeableMB, specifier: "%.1f") MB")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Text("resident: \(appResidentMB, specifier: "%.1f") MB · 峰值: \(memPeakMB, specifier: "%.1f") MB")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Text(memAvailableText)
+                    .font(.caption)
+                    .foregroundColor(memAvailableMB > 0 && memAvailableMB < 100 ? .orange : .secondary)
+                Text("PIP 輸出影像池（估）: \(PIPService.shared.estimatedPixelBufferPoolMB, specifier: "%.1f") MB")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Text("判斷壓力看「實際佔用」(footprint = internal + compressed)。external 是檔案映射(框架/靜態庫 code)，可被 evict 但「不在 footprint 內」，不可與 footprint 相減。")
                     .font(.caption2)
                     .foregroundColor(.secondary)
 
@@ -931,8 +1010,16 @@ struct DeviceView: View {
     private func sample() {
         dataPointCounter &+= 1
         let id = dataPointCounter
-        appFootprintMB = DeviceInfo.appFootprintMB
-        appResidentMB = DeviceInfo.appMemoryMB
+        let mem = DeviceInfo.memoryBreakdown
+        appFootprintMB = mem.footprintMB
+        appResidentMB = mem.residentMB
+        memInternalMB = mem.internalMB
+        memCompressedMB = mem.compressedMB
+        memExternalMB = mem.externalMB
+        memReusableMB = mem.reusableMB
+        memPurgeableMB = mem.purgeableVolatileMB
+        memAvailableMB = mem.availableMB
+        memPeakMB = mem.residentPeakMB
         let now = Date()
         // EWMA 指數移動平均，α=0.4，不依賴歷史筆數
         let rawCPU = DeviceInfo.cpuUsagePercent
