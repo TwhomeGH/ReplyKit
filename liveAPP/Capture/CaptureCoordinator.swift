@@ -109,8 +109,16 @@ import ScreenCaptureKit
                     .disabled(!capture.screenCaptureSupported)
             }
             .disabled(controlsDisabled)
-            if !capture.screenCaptureSupported, let reason = capture.screenCaptureUnavailableReason {
+            if let reason = capture.screenCaptureUnavailableReason {
                 Label(reason, systemImage: "info.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if anotherCapture {
+                Label("偵測到其他程序正在使用螢幕擷取，請先停止後再切換來源。", systemImage: "lock")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if capture.isBusy {
+                Label("擷取進行中，停止後才能切換來源。", systemImage: "lock")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

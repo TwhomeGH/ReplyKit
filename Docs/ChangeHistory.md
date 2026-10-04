@@ -20,6 +20,27 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.05 03:16 修正側載無 App Group 導致螢幕擷取被鎖住
+
+**類型**: 修復 · **檔案**: `SharedCapture/CaptureLease.swift`, `liveAPP/Capture/CaptureCoordinator.swift`
+
+### 問題 - 側載時擷取來源選單變灰、也看不到原因
+
+側載（無 App Group）時「螢幕擷取方式」整排變灰；即使 ScreenCaptureKit 判斷為不支援，也沒有任何原因。
+
+### 根因 - CaptureLease.acquire() 在無 App Group 時丟錯
+
+`acquire()` 需要 `group.nuclear.liveAPP` 容器，側載沒有 → 丟錯 → `CaptureSelectionView` 的 `anotherCapture` 恆為 true → `controlsDisabled` 讓整個 Picker 停用；此停用先前不顯示任何原因。同理 `SampleHandler.broadcastStarted` 也會因 acquire 失敗而 `finishBroadcastWithError`。
+
+### 修改 - 無 App Group 退回本地鎖 + 顯示停用原因
+
+- `CaptureLease.acquire()`：有 App Group 用共享鎖；否則退回 app 暫存目錄（僅程序內意義），不再丟錯。
+- `backendPicker`：無支援原因時，若 `anotherCapture`／`isBusy` 也顯示對應原因。
+
+**相關文件**: [CaptureLease.swift](SharedCapture/CaptureLease.swift)
+
+---
+
 ## 2026.10.05 02:47 修正 TTS 過濾 JSON 匯入：選完檔案無反應
 
 **類型**: 修復 · **檔案**: `liveAPP/TTSSettingsView.swift`
