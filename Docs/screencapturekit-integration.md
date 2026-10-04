@@ -28,9 +28,9 @@ ScreenCaptureKit 路徑會呈現系統分享選擇器，取得使用者選擇後
 ## SDK 與系統條件
 
 - Deployment Target 維持 iOS 16.6。
-- ScreenCaptureKit 需要 Xcode 27 SDK 與 iOS 27 實機。程式同時檢查編譯旗標、模組可匯入、系統版本與分享選擇器可用性。
-- 主 App 的 iPhoneOS／iPhoneSimulator 27.x SDK 自動加入 `SCREEN_CAPTURE_KIT_IOS27`。舊 SDK 不編譯新 API，只保留 ReplayKit；未來更新 SDK 主版本時須同步新增 SDK 條件，不能在舊 SDK 強制開啟旗標。
-- 新框架在 SDK 27 的建置中使用弱連結，搭配執行期版本判斷保留舊 iOS 啟動能力。
+- ScreenCaptureKit 需要 Xcode 27 SDK 與 iOS 27 實機。程式同時檢查編譯旗標、模組可匯入、`!targetEnvironment(simulator)`、系統版本與分享選擇器可用性。
+- 主 App 的 **iPhoneOS** 27.x SDK 加入 `SCREEN_CAPTURE_KIT_IOS27` 與 `-weak_framework ScreenCaptureKit`；**iPhoneSimulator 不加入**。ScreenCaptureKit 在 iOS 為**實機限定**（模擬器 SDK 不含此框架，強行連結會 `Framework 'ScreenCaptureKit' not found`），因此模擬器建置不編譯、也不連結此路徑。舊 SDK 不編譯新 API，只保留 ReplayKit；未來更新 SDK 主版本時須同步新增 SDK 條件，不能在舊 SDK 強制開啟旗標。
+- 新框架在 iPhoneOS SDK 27 的建置中使用弱連結，搭配執行期版本判斷保留舊 iOS 啟動能力。
 - Mac Catalyst 此次不接入新路徑。
 - Info.plist 新增 `screen-capture` 背景模式與螢幕擷取用途說明，保留 `audio` 背景模式及麥克風用途說明。
 - 新來源使用主 App，沒有搬移或移除 Broadcast Upload Extension。
@@ -112,7 +112,7 @@ Windows 可執行狀態機、有界佇列與音訊所有權的核心測試，以
 
 `iOS Unit Tests` workflow 在 PR、分支 push 或手動觸發時，使用 `liveAPP` scheme 於可用的 iPhone Simulator 執行 `liveAPPTests`。發布流程也會呼叫同一套測試，測試失敗時不進入建置／發布工作。CI 保存 `.xcresult` 和日誌，便於定位失敗。
 
-測試與發布 CI 使用 `xcode-27` runner，固定 `DEVELOPER_DIR=/Applications/Xcode_27.0.app/Contents/Developer`。兩者都檢查 iPhoneOS 與 iPhoneSimulator SDK 必須是 27.x；環境不符直接失敗。單元測試僅選擇 iOS 27 的 iPhone Simulator，避免舊 runtime 略過新功能。runner 目前為公開預覽，實際編譯與執行結果仍須以 CI 日誌為準。
+測試與發布 CI 使用 `xcode-27` runner，固定 `DEVELOPER_DIR=/Applications/Xcode_27.0.app/Contents/Developer`。兩者都檢查 iPhoneOS 與 iPhoneSimulator SDK 必須是 27.x；環境不符直接失敗。單元測試僅選擇 iOS 27 的 iPhone Simulator。因 ScreenCaptureKit 為實機限定，模擬器上的單元測試不編譯此路徑；新框架的 Apple SDK 編譯改由發布流程的裝置 archive（`generic/platform=iOS`）涵蓋。runner 目前為公開預覽，實際編譯與執行結果仍須以 CI 日誌為準。
 
 尚未接入的 GPU、浮水印、音訊處理、即時設定與 HEVC，以及首次 CI／實機驗證，統一追蹤於 [TODO.md](../TODO.md)。
 

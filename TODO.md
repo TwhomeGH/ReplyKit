@@ -66,7 +66,7 @@
 - [x] 新增 PR／push／手動可執行的單元測試 workflow，保存 `.xcresult` 與日誌。
 - [x] 發布 workflow 先執行相同 commit 的單元測試，成功後才建置及封裝。
 - [ ] **首次 CI 實跑**：確認 hosted runner 能建置並執行所有 `liveAPPTests`；目前只完成本地設定與靜態驗證。
-- [ ] **Xcode 27 CI 覆蓋**：workflow 已指定 xcode-27／Xcode 27.0 並強制檢查 SDK 27；待首次實跑確認 ScreenCaptureKit iOS 分支完成 Apple SDK 編譯。
+- [ ] **Xcode 27 CI 覆蓋**：workflow 已指定 xcode-27／Xcode 27.0 並強制檢查 SDK 27；ScreenCaptureKit 在 iOS 為實機限定，模擬器單元測試不編譯此路徑，改由發布流程的裝置 archive 涵蓋 Apple SDK 編譯；待首次實跑確認。
 
 ## TTS 配置分享驗收
 

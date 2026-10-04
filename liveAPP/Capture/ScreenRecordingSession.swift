@@ -1,4 +1,4 @@
-#if os(iOS) && SCREEN_CAPTURE_KIT_IOS27 && canImport(ScreenCaptureKit) && !targetEnvironment(macCatalyst)
+#if os(iOS) && SCREEN_CAPTURE_KIT_IOS27 && canImport(ScreenCaptureKit) && !targetEnvironment(macCatalyst) && !targetEnvironment(simulator)
 import Foundation
 @preconcurrency import ScreenCaptureKit
 @preconcurrency import AVFoundation

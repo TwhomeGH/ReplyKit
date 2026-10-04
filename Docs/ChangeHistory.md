@@ -20,6 +20,28 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.05 00:19 ScreenCaptureKit 改為實機限定，修正模擬器連結失敗
+
+**類型**: 修復 · **檔案**: `liveAPP.xcodeproj/project.pbxproj`, `liveAPP/Capture/CaptureCoordinator.swift`, `liveAPP/Capture/ScreenCaptureSource.swift`, `liveAPP/Capture/ScreenRecordingSession.swift`
+
+### 問題 - CI 於 iOS Simulator 連結失敗
+
+單元測試建置 App 時報 `Framework 'ScreenCaptureKit' not found`、連結器 exit 1，測試取消。
+
+### 根因 - ScreenCaptureKit 在 iOS 為實機限定，模擬器 SDK 不含此框架
+
+Apple 文件載明 ScreenCaptureKit 於 iOS 27 需實機（sample「requires a device running iOS 27」）；iPhoneSimulator 27 SDK 沒有 ScreenCaptureKit.framework。專案原本對 `sdk=iphonesimulator27.*` 也下 `-weak_framework ScreenCaptureKit`，而 `-weak_framework` 仍要求框架存在，故連結失敗。
+
+### 修改 - 只在 iPhoneOS 27 定義旗標與弱連結，原始碼排除模擬器
+
+- pbxproj：`SCREEN_CAPTURE_KIT_IOS27` 與 `-weak_framework ScreenCaptureKit` 只保留 `sdk=iphoneos27.*`，移除 `iphonesimulator27.*`（Debug／Release 各一組）。
+- 原始碼 5 處 `#if` 加 `&& !targetEnvironment(simulator)`（CaptureCoordinator ×3、ScreenCaptureSource、ScreenRecordingSession）。
+- 文件與 TODO 更新：說明實機限定；ScreenCaptureKit 的 Apple SDK 編譯改由發布流程的裝置 archive 涵蓋。
+
+**相關文件**: [screencapturekit-integration.md](Docs/screencapturekit-integration.md)
+
+---
+
 ## 2026.10.05 00:15 修正 Xcode 27 新編譯警告（捕捉與未使用的 throwing Task）
 
 **類型**: 修復 · **檔案**: `liveAPP/liveAPPApp.swift`, `ReplyKIT/SampleHandler.swift`

@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 #if os(iOS)
 import AVFoundation
-#if SCREEN_CAPTURE_KIT_IOS27 && canImport(ScreenCaptureKit) && !targetEnvironment(macCatalyst)
+#if SCREEN_CAPTURE_KIT_IOS27 && canImport(ScreenCaptureKit) && !targetEnvironment(macCatalyst) && !targetEnvironment(simulator)
 import ScreenCaptureKit
 #endif
 
@@ -20,7 +20,7 @@ import ScreenCaptureKit
     private var driver: (any CaptureDriver)?
     var isBusy: Bool { phase != .idle }
     var screenCaptureSupported: Bool {
-        #if SCREEN_CAPTURE_KIT_IOS27 && canImport(ScreenCaptureKit) && !targetEnvironment(macCatalyst)
+        #if SCREEN_CAPTURE_KIT_IOS27 && canImport(ScreenCaptureKit) && !targetEnvironment(macCatalyst) && !targetEnvironment(simulator)
         if #available(iOS 27.0, *) { return SCContentSharingPicker.shared.isAvailable }
         #endif
         return false
@@ -33,7 +33,7 @@ import ScreenCaptureKit
         }
         do { lease = try CaptureLease.acquire() }
         catch { errorMessage = error.localizedDescription; return }
-        #if SCREEN_CAPTURE_KIT_IOS27 && canImport(ScreenCaptureKit) && !targetEnvironment(macCatalyst)
+        #if SCREEN_CAPTURE_KIT_IOS27 && canImport(ScreenCaptureKit) && !targetEnvironment(macCatalyst) && !targetEnvironment(simulator)
         if #available(iOS 27.0, *) {
             errorMessage = nil
             phase = .selecting

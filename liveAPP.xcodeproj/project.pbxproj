@@ -859,9 +859,7 @@
 				MARKETING_VERSION = 16.1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = nuclear.liveAPP;
 				"OTHER_LDFLAGS[sdk=iphoneos27.*]" = "$(inherited) -weak_framework ScreenCaptureKit";
-				"OTHER_LDFLAGS[sdk=iphonesimulator27.*]" = "$(inherited) -weak_framework ScreenCaptureKit";
 				"SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=iphoneos27.*]" = "$(inherited) SCREEN_CAPTURE_KIT_IOS27";
-				"SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=iphonesimulator27.*]" = "$(inherited) SCREEN_CAPTURE_KIT_IOS27";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
@@ -910,9 +908,7 @@
 				MARKETING_VERSION = 16.1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = nuclear.liveAPP;
 				"OTHER_LDFLAGS[sdk=iphoneos27.*]" = "$(inherited) -weak_framework ScreenCaptureKit";
-				"OTHER_LDFLAGS[sdk=iphonesimulator27.*]" = "$(inherited) -weak_framework ScreenCaptureKit";
 				"SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=iphoneos27.*]" = "$(inherited) SCREEN_CAPTURE_KIT_IOS27";
-				"SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=iphonesimulator27.*]" = "$(inherited) SCREEN_CAPTURE_KIT_IOS27";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
