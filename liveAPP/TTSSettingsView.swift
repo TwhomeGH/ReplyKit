@@ -10,6 +10,7 @@ import SwiftUI
 import Foundation
 import Combine
 import UniformTypeIdentifiers
+import UIKit
 
 // MARK: TTS過濾管理器
 class SpeechFilterManager: ObservableObject {
@@ -159,11 +160,36 @@ class SpeechFilterManager: ObservableObject {
 }
 
 
+/// 匯入副本，讓文件供應商先交付可讀取的本地檔案。
+private struct SpeechFilterDocumentPicker: UIViewControllerRepresentable {
+    let completion: (Result<[URL], Error>) -> Void
+    func makeCoordinator() -> Coordinator { Coordinator(completion: completion) }
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        // 部分檔案供應商將 JSON 標示為一般 data；內容仍由解碼器嚴格驗證。
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.data], asCopy: true)
+        picker.allowsMultipleSelection = false
+        picker.delegate = context.coordinator
+        return picker
+    }
+    func updateUIViewController(_ controller: UIDocumentPickerViewController, context: Context) {}
+    final class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let completion: (Result<[URL], Error>) -> Void
+        init(completion: @escaping (Result<[URL], Error>) -> Void) { self.completion = completion }
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            completion(.success(urls))
+        }
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            completion(.success([]))
+        }
+    }
+}
+
 // MARK: TTS過濾頁
 @MainActor struct FilterSettingsView: View {
     @StateObject private var filter = SpeechFilterManager.shared
     
     @State private var importing = false
+    @State private var isReadingImport = false
     @State private var preview: SpeechFilterConfiguration?
     @State private var useIncomingConflicts = false
     @State private var notice: String?
@@ -181,10 +207,12 @@ class SpeechFilterManager: ObservableObject {
     
     var body: some View {
             Group {
-                if sizeClass == .regular {
+                if preview != nil {
+                    importPreview
+                } else if sizeClass == .regular {
                     // iPad / 寬螢幕 → 左右分欄
                     HStack(spacing: 0) {
-                        inputSection
+                        ScrollView { inputSection }
                             .frame(maxWidth: .infinity)
                             .padding()
                         
@@ -198,7 +226,7 @@ class SpeechFilterManager: ObservableObject {
                 } else {
                     // iPhone / 窄螢幕 → 上下排版
                     VStack(spacing: 0) {
-                        inputSection
+                        ScrollView { inputSection }
                             .padding()
                         
                         Divider()
@@ -210,15 +238,13 @@ class SpeechFilterManager: ObservableObject {
                 }
             }
             .toolbar { EditButton() }
-            .fileImporter(isPresented: $importing, allowedContentTypes: [.json], allowsMultipleSelection: false) { result in
-                handleImport(result)
+            .sheet(isPresented: $importing) {
+                SpeechFilterDocumentPicker { result in
+                    importing = false
+                    handleImport(result)
+                }
             }
-            .sheet(isPresented: Binding(get: { preview != nil }, set: { if !$0 { preview = nil } })) {
-                importPreview
-            }
-            .alert("過濾器配置", isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) {
-                Button("好") { notice = nil }
-            } message: { Text(notice ?? "") }
+
         
     }
     
@@ -265,7 +291,7 @@ class SpeechFilterManager: ObservableObject {
                 }
             }
             .navigationTitle("預覽過濾配置")
-            .toolbar { Button("取消") { preview = nil } }
+            .toolbar { Button("取消") { preview = nil; notice = "已取消匯入，現有配置未變更。" } }
         }
     }
     private func applyImport(_ incoming: SpeechFilterConfiguration, replace: Bool) {
@@ -277,43 +303,56 @@ class SpeechFilterManager: ObservableObject {
         } catch { preview = nil; notice = error.localizedDescription }
     }
 
-    /// 讀取使用者選擇的 JSON（含 security-scoped 存取與大小上限）。
-    private static func readConfiguration(from url: URL) throws -> SpeechFilterConfiguration {
+    /// 協調文件供應商讀取，並保持大小上限；不在主執行緒等待檔案。
+    nonisolated private static func readConfiguration(from url: URL) throws -> SpeechFilterConfiguration {
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
-        let handle = try FileHandle(forReadingFrom: url)
-        defer { try? handle.close() }
-        let data = try handle.read(upToCount: SpeechFilterConfiguration.maximumBytes + 1) ?? Data()
-        return try SpeechFilterConfiguration.decode(data)
+        var coordinationError: NSError?
+        var result: Result<SpeechFilterConfiguration, Error>?
+        NSFileCoordinator(filePresenter: nil).coordinate(readingItemAt: url, options: [], error: &coordinationError) { readableURL in
+            result = Result {
+                let handle = try FileHandle(forReadingFrom: readableURL)
+                defer { try? handle.close() }
+                let data = try handle.read(upToCount: SpeechFilterConfiguration.maximumBytes + 1) ?? Data()
+                return try SpeechFilterConfiguration.decode(data)
+            }
+        }
+        if let coordinationError { throw coordinationError }
+        guard let result else { throw CocoaError(.fileReadUnknown) }
+        return try result.get()
     }
 
-    /// 檔案選擇器收合與緊接的 sheet／alert 若落在同一執行週期，SwiftUI 會吞掉後者
-    /// （畫面看似「選完就沒反應」）；因此等選單收合後再切換呈現狀態。
     private func handleImport(_ result: Result<[URL], Error>) {
         switch result {
         case .failure(let error):
-            let message = error.localizedDescription
-            presentAfterPicker { notice = message }
+            notice = "選取失敗：\(error.localizedDescription)"
+            sendlog(title: "TTS匯入", message: "文件選取失敗")
         case .success(let urls):
-            guard let url = urls.first else { return }
-            do {
-                let incoming = try Self.readConfiguration(from: url)
-                presentAfterPicker {
-                    preview = incoming
-                    useIncomingConflicts = false
-                }
-            } catch {
-                let message = error.localizedDescription
-                presentAfterPicker { notice = message }
+            guard let url = urls.first else {
+                notice = "已取消匯入，現有配置未變更。"
+                sendlog(title: "TTS匯入", message: "取消選取")
+                return
             }
-        }
-    }
-
-    /// 待檔案選擇器收合後，於主執行緒切換呈現狀態。
-    private func presentAfterPicker(_ update: @escaping @MainActor () -> Void) {
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 150_000_000)
-            update()
+            isReadingImport = true
+            notice = "已選取檔案，正在讀取與驗證 JSON…"
+            sendlog(title: "TTS匯入", message: "已收到選檔回呼，開始協調讀取")
+            DispatchQueue.global(qos: .userInitiated).async {
+                let loaded = Result { try Self.readConfiguration(from: url) }
+                DispatchQueue.main.async {
+                    isReadingImport = false
+                    switch loaded {
+                    case .success(let incoming):
+                        useIncomingConflicts = false
+                        preview = incoming
+                        notice = nil
+                        sendlog(title: "TTS匯入", message: "讀取及驗證成功，顯示預覽：排除 \(incoming.blockKeywords.count) 條、替換 \(incoming.replaceKeywords.count) 條")
+                    case .failure(let error):
+                        notice = "讀取或解析失敗：\(error.localizedDescription)"
+                        let nsError = error as NSError
+                        sendlog(title: "TTS匯入", message: "讀取或解析失敗：\(nsError.domain) code=\(nsError.code)")
+                    }
+                }
+            }
         }
     }
 
@@ -321,7 +360,12 @@ class SpeechFilterManager: ObservableObject {
     private var inputSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Button("匯入 JSON") { importing = true }
+                Button("匯入 JSON") {
+                    notice = "請選取 JSON 配置檔案。"
+                    sendlog(title: "TTS匯入", message: "開啟文件選擇器")
+                    importing = true
+                }
+                .disabled(isReadingImport)
                 Button("匯出目前配置") {
                     do {
                         let url = try filter.configuration.write(to: documentsDirectory)
@@ -330,6 +374,7 @@ class SpeechFilterManager: ObservableObject {
                     } catch { notice = error.localizedDescription }
                 }
             }
+            if isReadingImport { ProgressView("讀取配置中…") }
             if let notice {
                 Text(notice)
                     .font(.caption)
