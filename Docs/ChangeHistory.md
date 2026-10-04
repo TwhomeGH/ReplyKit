@@ -20,6 +20,24 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.05 02:30 測試 target deployment 提升至 17.0
+
+**類型**: 修復 · **檔案**: `liveAPP.xcodeproj/project.pbxproj`
+
+### 問題 - 連結 XCTest/Testing 版本不符警告
+
+`building for iOS-simulator-16.6, but linking with dylib '@rpath/XCTest.framework/XCTest' which was built for newer version 17.0`（Testing、libXCTestSwiftSupport 同）。
+
+### 根因 - 測試 target 的 deployment target(16.6) 低於測試框架(17.0)
+
+### 修改 - liveAPPTests／liveAPPUITests deployment 改 17.0
+
+- 兩個測試 target（Debug／Release）`IPHONEOS_DEPLOYMENT_TARGET` 16.6 → 17.0；App 本體維持 16.6。
+
+**相關文件**: [project.pbxproj](liveAPP.xcodeproj/project.pbxproj)
+
+---
+
 ## 2026.10.05 02:29 BuildInfo 原始碼狀態加入未追蹤/已修改計數
 
 **類型**: 優化 · **檔案**: `Scripts/build_info.py`, `Scripts/test_build_info.py`, `liveAPP/BuildInformation.swift`
