@@ -20,6 +20,27 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.05 00:15 修正 Xcode 27 新編譯警告（捕捉與未使用的 throwing Task）
+
+**類型**: 修復 · **檔案**: `liveAPP/liveAPPApp.swift`, `ReplyKIT/SampleHandler.swift`
+
+### 問題 - Xcode 27 冒出兩類新警告
+
+`#ImplicitStrongCapture`（liveAPPApp.swift 外層隱式強捕捉 self 與內層 `[weak self]` 不一致）與 `#NoUseUnstructuredThrowingTask`（SampleHandler 15 處 fire-and-forget 的 `Task {}` 含未處理 `try`，返回值被丟棄）。
+
+### 根因 - 新版 Swift 對所有權與 throwing Task 更嚴格
+
+外層閉包隱式強捕捉 self、內層顯式 weak，被判為所有權不明；`Task {}` 內有未處理的 `try await` 使其為 throwing，結果未使用時錯誤會被靜默吞掉。
+
+### 修改 - 明確化捕捉與丟棄 Task
+
+- liveAPPApp.swift：外層 `bufferQueue.async` 改 `{ [self] in }`（顯式強捕捉，行為不變），內層 workItem 維持 `[weak self]` 以避免成環。
+- SampleHandler.swift：15 個 control handler（含 `try await requestSet`）的 `Task {` 改 `_ = Task {`，明確丟棄。
+
+**相關文件**: [liveAPPApp.swift](liveAPP/liveAPPApp.swift), [SampleHandler.swift](ReplyKIT/SampleHandler.swift)
+
+---
+
 ## 2026.10.04 23:43 CI 補裝 Xcode 26+ 的 Metal Toolchain
 
 **類型**: 優化 · **檔案**: `.github/workflows/unit-tests.yml`, `.github/workflows/main.yml`

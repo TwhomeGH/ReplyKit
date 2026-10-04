@@ -593,7 +593,9 @@ final class LogReceiver {
             let newLines = Array(lines.suffix(self.maxPush))
 
             // 讀取新的 lines
-            bufferQueue.async {
+            // 外層明確以 [self] 捕捉，與內層 workItem 的 [weak self] 並存不再觸發
+            // ImplicitStrongCapture 警告（workItem 仍弱引用 self，維持不產生成環）。
+            bufferQueue.async { [self] in
 
                 self.buffer.append(contentsOf: newLines)
 

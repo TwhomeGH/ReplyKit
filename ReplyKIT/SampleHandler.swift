@@ -284,7 +284,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         case "micAdd":
 
-            Task {
+            _ = Task {
 
                 var newVolume = (SharedDefaults.group?.object(forKey: "micAddVolume") as? Double) ?? 1.0
 
@@ -325,7 +325,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
 
-            Task {
+            _ = Task {
 
                 var newVolume = (SharedDefaults.group?.object(forKey: "appAddVolume") as? Double) ?? 1.0
 
@@ -367,7 +367,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         case "micVolumeChanged":
 
 
-            Task {
+            _ = Task {
                 var newVolume = (SharedDefaults.group?.object(forKey: "micVolume") as? Double) ?? 1.0
 
                 if RPConfig.shared.enableSocketLog {
@@ -409,7 +409,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         case "appVolumeChanged":
 
 
-            Task {
+            _ = Task {
 
                 var newVolume = (SharedDefaults.group?.object(forKey: "appVolume") as? Double) ?? 1.0
 
@@ -469,7 +469,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         case "DebugRotate":
 
 
-            Task {
+            _ = Task {
                 var Rlog=SharedDefaults.group?.bool(forKey: "EnableRotatelog") ?? false
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "EnableRotatelog", type: "Bool") {
@@ -499,7 +499,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         case "DebugTime":
 
 
-            Task {
+            _ = Task {
 
                 var Rlog=SharedDefaults.group?.bool(forKey: "EnableTimeDebug") ?? false
                 if RPConfig.shared.enableSocketLog {
@@ -527,7 +527,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         case "DebugPipeline":
 
-            Task {
+            _ = Task {
                 var Plog=SharedDefaults.group?.bool(forKey: "EnablePipelineLog") ?? false
                 if RPConfig.shared.enableSocketLog {
                     if let raw = try await SocketClient.shared.requestSet(for: "EnablePipelineLog", type: "Bool") {
@@ -558,7 +558,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
 
-            Task {
+            _ = Task {
 
                 var Rlog=SharedDefaults.group?.bool(
                 forKey: "RotateOriginal"
@@ -600,7 +600,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         case "Rotate":
 
-            Task {
+            _ = Task {
                 var Rlog=SharedDefaults.group?.integer(forKey: "Rotate") ?? 90
 
                 if RPConfig.shared.enableSocketLog {
@@ -671,7 +671,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         case "SocketLog":
 
 
-            Task {
+            _ = Task {
                 var Rlog=SharedDefaults.group?.bool(forKey: "EnableSocketlog") ?? false
 
 
@@ -699,7 +699,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         case "ChangeBit":
 
-            Task {
+            _ = Task {
 
                 var Rlog=SharedDefaults.group?.bool(forKey: "ChangeBit") ?? false
 
@@ -728,7 +728,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         case "bitRateChange":
 
-            Task {
+            _ = Task {
 
                 var newBitRate = SharedDefaults.group?.integer(forKey: "bitRate") ?? 6_000_000
 
@@ -764,7 +764,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         case "logURL":
 
-            Task {
+            _ = Task {
 
                 var logM=SharedDefaults.group?.string(
                     forKey: "logURL"
@@ -797,7 +797,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         case "logMode":
 
-            Task {
+            _ = Task {
 
                 var logM=SharedDefaults.group?.integer(forKey: "logMode") ?? 0
                 if RPConfig.shared.enableSocketLog {
@@ -880,7 +880,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         case "Enablelog":
 
-            Task {
+            _ = Task {
                 var Enablelog=SharedDefaults.group?.bool(forKey: "Enablelog") ?? false
 
                 if RPConfig.shared.enableSocketLog {
