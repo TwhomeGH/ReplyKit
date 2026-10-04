@@ -139,13 +139,11 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         }
         let config = SCStreamConfiguration()
         config.width = Int(size.width); config.height = Int(size.height)
-        config.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
-        config.minimumFrameInterval = CMTime(value: 1, timescale: 60)
-        config.queueDepth = 3
         config.capturesAudio = true
-        config.captureMicrophone = filter.isMicrophoneEnabled
-        // scalesToFit / preservesAspectRatio 為 macOS/macCatalyst 專用（iOS 標記為不可用），
-        // iOS 以 width/height 設定輸出尺寸，故不設定這兩個屬性。
+        // 以下皆為 macOS/macCatalyst 專用（iOS 標記為不可用），iOS 一概不設定：
+        // pixelFormat / minimumFrameInterval / queueDepth / captureMicrophone /
+        // scalesToFit / preservesAspectRatio。iOS 使用系統預設值；麥克風改由
+        // SCContentSharingPickerConfiguration.showsMicrophoneControl 控制。
         let source = SCStream(filter: filter, configuration: config, delegate: self)
         capture = source
         streamingViable = mode.wantsStreaming

@@ -20,6 +20,27 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.05 01:39 移除 ScreenCaptureKit iOS 不可用的 SCStreamConfiguration 屬性
+
+**類型**: 修復 · **檔案**: `liveAPP/Capture/ScreenCaptureSource.swift`, `Docs/screencapturekit-integration.md`
+
+### 問題 - 裝置 archive 續報多個 SCStreamConfiguration 屬性不可用
+
+iOS 編譯接連報 `pixelFormat`、`minimumFrameInterval`、`queueDepth`、`captureMicrophone` 在 iOS 不可用。
+
+### 根因 - 這些屬性在 SDK header 標記 API_UNAVAILABLE(ios)
+
+ScreenCaptureKit 在 iOS 的 `SCStreamConfiguration` 只有部分屬性可用（`width`／`height`／`capturesAudio` 可用），其餘 `pixelFormat`／`minimumFrameInterval`／`queueDepth`／`captureMicrophone`／`scalesToFit`／`preservesAspectRatio` 皆 macOS／Mac Catalyst 專用。Apple 文件 metadata 未反映此限制，以 SDK header 為準。
+
+### 修改 - iOS 只設定可用屬性並更新文件
+
+- ScreenCaptureSource.swift：移除 pixelFormat／minimumFrameInterval／queueDepth／captureMicrophone，只留 width／height／capturesAudio；麥克風改由 picker 的 `showsMicrophoneControl` 控制（已設）。
+- 文件：SDK 條件新增 iOS 屬性限制說明；擷取頻率與 queueDepth 描述改為 iOS 由系統決定。
+
+**相關文件**: [ScreenCaptureSource.swift](liveAPP/Capture/ScreenCaptureSource.swift)
+
+---
+
 ## 2026.10.05 01:36 主建置流程 (main.yml) 也接上日誌摘要
 
 **類型**: 優化 · **檔案**: `.github/workflows/main.yml`, `Scripts/ci_test_summary.py`

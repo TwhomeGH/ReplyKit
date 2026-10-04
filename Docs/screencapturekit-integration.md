@@ -31,6 +31,7 @@ ScreenCaptureKit 路徑會呈現系統分享選擇器，取得使用者選擇後
 - ScreenCaptureKit 需要 Xcode 27 SDK 與 iOS 27 實機。程式同時檢查編譯旗標、模組可匯入、`!targetEnvironment(simulator)`、系統版本與分享選擇器可用性。
 - 主 App 的 **iPhoneOS** 27.x SDK 加入 `SCREEN_CAPTURE_KIT_IOS27` 與 `-weak_framework ScreenCaptureKit`；**iPhoneSimulator 不加入**。ScreenCaptureKit 在 iOS 為**實機限定**（模擬器 SDK 不含此框架，強行連結會 `Framework 'ScreenCaptureKit' not found`），因此模擬器建置不編譯、也不連結此路徑。舊 SDK 不編譯新 API，只保留 ReplayKit；未來更新 SDK 主版本時須同步新增 SDK 條件，不能在舊 SDK 強制開啟旗標。
 - 新框架在 iPhoneOS SDK 27 的建置中使用弱連結，搭配執行期版本判斷保留舊 iOS 啟動能力。
+- ScreenCaptureKit 在 iOS 的 `SCStreamConfiguration` 屬性受限：`pixelFormat`、`minimumFrameInterval`、`queueDepth`、`captureMicrophone`、`scalesToFit`、`preservesAspectRatio` 皆為 macOS／Mac Catalyst 專用（iOS 標記不可用）。iOS 只設定 `width`／`height`／`capturesAudio`，其餘用系統預設；麥克風改由 `SCContentSharingPickerConfiguration.showsMicrophoneControl` 控制。
 - Mac Catalyst 此次不接入新路徑。
 - Info.plist 新增 `screen-capture` 背景模式與螢幕擷取用途說明，保留 `audio` 背景模式及麥克風用途說明。
 - 新來源使用主 App，沒有搬移或移除 Broadcast Upload Extension。
@@ -42,7 +43,7 @@ ScreenCaptureKit 路徑會呈現系統分享選擇器，取得使用者選擇後
 | 全螢幕與背景擷取 | 系統選擇器、SCStream |
 | 音訊 | 系統聲音 track 0、使用者選擇的麥克風 track 1 |
 | 畫面 | 使用輸出畫布尺寸，未設定時 1920×1080；尺寸取偶數並限制在 3840×2160 範圍內 |
-| 擷取頻率 | 請求最多 60 FPS，不代表系統會持續交付 60 FPS |
+| 擷取頻率 | 由系統決定（iOS 不提供 minimumFrameInterval 設定），不代表會持續交付 60 FPS |
 | 編碼 | H.264 High、無 B-frame、AAC；畫面維持比例 |
 | 推流設定 | 開始時讀取 RTMP 網址／金鑰、碼率、碼率模式、關鍵幀間隔及雙軌音量 |
 | 網路 | 底層自適應碼率與重連；重連耗盡停止推流，仍有效的本地錄製繼續 |
@@ -70,7 +71,7 @@ ScreenCaptureKit 路徑會呈現系統分享選擇器，取得使用者選擇後
 
 擷取回呼使用獨立序列佇列，只驗證並放入樣本。影像只接受有效、就緒且狀態為 complete 的樣本；idle／blank 等非完整影格不交給編碼器。
 
-影像樣本佇列預算為 12 MiB，系統音訊與麥克風各 1 MiB，停留時間上限 100 ms，慢消費時淘汰舊樣本。SCStream 的 queueDepth 設為 3；這是系統擷取緩衝，與後段樣本佇列分開。這些數字不是程序總記憶體上限，還有系統緩衝、消費端持有樣本、GPU 及編碼器用量。
+影像樣本佇列預算為 12 MiB，系統音訊與麥克風各 1 MiB，停留時間上限 100 ms，慢消費時淘汰舊樣本。SCStream 的 queueDepth 在 iOS 不接受設定，採系統預設；這是系統擷取緩衝，與後段樣本佇列分開。這些數字不是程序總記憶體上限，還有系統緩衝、消費端持有樣本、GPU 及編碼器用量。
 
 停止時先標記 stopping、取消啟動、推流與診斷工作，等待啟動中的操作退出；移除錄製輸出並停止 SCStream，等待錄製完成回呼，再關閉樣本佇列與下游。只在清理完成後釋放直播鎖。舊回呼無法把 stopping 工作改回 streaming，關閉的佇列不接受晚到樣本。
 
