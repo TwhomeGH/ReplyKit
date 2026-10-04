@@ -1703,7 +1703,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             sendlog(message: "SetupUI 提供 RTMP \(url) key:\(fixlogSafeKey(key))")
         }
 
-        Task(priority: .medium) {
+        Task(priority: .medium) { [self] in
 
             //進行Socket初始化
             SocketClient.shared.connect()

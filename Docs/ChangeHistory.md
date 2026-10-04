@@ -20,6 +20,26 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.05 01:05 修正 SampleHandler 的 ImplicitStrongCapture 警告
+
+**類型**: 修復 · **檔案**: `ReplyKIT/SampleHandler.swift`
+
+### 問題 - 直播啟動 Task 內外捕捉所有權不一致
+
+`Task(priority: .medium)` 外層隱式強捕捉 `self`，內層 `onPageStateChanged`／`onAudioConfigChanged` 用 `[weak self]`，觸發 `#ImplicitStrongCapture`（2 處）。
+
+### 根因 - 外層隱式強捕捉與內層顯式弱捕捉並存
+
+新版 Swift 對閉包所有權一致性更嚴格，隱式強與顯式弱並存即警告。
+
+### 修改 - 外層明確 [self]
+
+- `Task(priority: .medium) {` 改為 `Task(priority: .medium) { [self] in`；內層 `[weak self]` 保留（閉包由 SocketClient 單例長期持有，維持弱引用避免跨場次洩漏）。
+
+**相關文件**: [SampleHandler.swift](ReplyKIT/SampleHandler.swift)
+
+---
+
 ## 2026.10.05 00:50 修正 Swift Testing #expect 無法呼叫 mutating 方法
 
 **類型**: 修復 · **檔案**: `liveAPPTests/CaptureSessionTests.swift`
