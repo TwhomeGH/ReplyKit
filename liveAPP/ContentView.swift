@@ -1921,6 +1921,36 @@ struct AnimatedButton: View {
     }
 }
 
+/// 金鑰顯示狀態僅存在於當次畫面，不寫入偏好設定。
+private struct StreamKeyField: View {
+    @Binding var text: String
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var revealed = false
+
+    var body: some View {
+        HStack {
+            Group {
+                if revealed { TextField("Stream Key", text: $text) }
+                else { SecureField("Stream Key", text: $text) }
+            }
+#if os(iOS)
+            .textInputAutocapitalization(.never)
+#endif
+            .autocorrectionDisabled(true)
+            .privacySensitive()
+            Button { revealed.toggle() } label: {
+                Image(systemName: revealed ? "eye.slash" : "eye")
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel(revealed ? "隱藏串流金鑰" : "顯示串流金鑰")
+        }
+        .onDisappear { revealed = false }
+        .onChange(of: scenePhase) { phase in
+            if phase != .active { revealed = false }
+        }
+    }
+}
+
 struct FormView: View {
     @Environment(\.dismiss) var dismiss
     @StateObject private var manager = StreamConfigManager()
@@ -2018,11 +2048,7 @@ struct FormView: View {
                 .foregroundColor(.blue)
 
 
-                TextField("Stream Key", text: $rtmpKey)
-#if os(iOS)
-                    .textInputAutocapitalization(.never)
-#endif
-                    .autocorrectionDisabled(true)
+                StreamKeyField(text: $rtmpKey)
             }
 
             Section(header:Text("配置設定")){
@@ -2151,7 +2177,7 @@ struct FormView: View {
                                 rtmpKey = config.streamKey
                                 manager.updateConfig(config)
                                 manager.setActiveConfig(config)
-                                logger.debug("Now active:\(rtmpURL) \(rtmpKey)")
+                                logger.debug("已切換推流配置")
                             }
                             dismiss()
                         }
@@ -2193,7 +2219,7 @@ struct FormView: View {
                         rtmpKey = config.streamKey
                         manager.updateConfig(config)
                         manager.setActiveConfig(config)
-                        logger.debug("Disappear Now active:\(rtmpURL) \(rtmpKey)")
+                        logger.debug("已保存推流配置")
                     }
                 }
 
@@ -2353,313 +2379,50 @@ enum HEVCProfile: String, CaseIterable, Identifiable {
 
 
 
-    var body:some View{
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-        ScrollView {
-            VStack(spacing:20){
-
-                ZStack(alignment: .topLeading) {
-                    Color.clear // 或背景
-                    Text("松鼠推流")
-                        .font(.title)
-                        .padding()
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                HStack(alignment: .top, spacing: 16) {  // spacing 控制兩個區塊間距
-                    VStack(spacing:10) {
-                        Text("編碼配置")
-                            .font(.headline)
-                            .padding()
-
-                        VStack {
-                            Picker("編碼格式", selection: $videoCodec) {
-                                Text("H264").tag("H264")
-                                Text("HEVC").tag("HEVC")
-                            }
-                            .pickerStyle(.segmented)
-
-                            if videoCodec == "H264" {
-                                Picker("H264配置", selection: selectedProfile) {
-                                    ForEach(H264Profile.allCases) { profile in
-                                        Text(profile.rawValue).tag(profile)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                                Text("當前選擇:  \(selectedProfile.wrappedValue.rawValue)")
-                            } else {
-                                Picker("HEVC配置", selection: selectedHEVCProfile) {
-                                    ForEach(HEVCProfile.allCases) { profile in
-                                        Text(profile.rawValue).tag(profile)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                                Text("當前選擇: HEVC \(selectedHEVCProfile.wrappedValue.rawValue)")
-                            }
-                        }
-                        .frame(maxWidth: .infinity) //
-
-                        .fixedSize(horizontal: false, vertical: true) // 撐滿寬度，內容自適應高度
-                        .padding()
+    private var usesScreenCaptureKit: Bool {
 #if os(iOS)
-                        .background(Color(UIColor.secondarySystemGroupedBackground))
-#elseif os(macOS)
-                        .background(Color(NSColor.windowBackgroundColor))
+        captureBackend == CaptureBackend.screenCaptureKit.rawValue
+#else
+        false
 #endif
+    }
 
-                        .cornerRadius(8)
-
-
-                        #if os(iOS)
-                        Toggle("設備方向鎖定偵測",isOn:$lockDetect)
-                            .onChange(of: lockDetect) { enabled in
-                                if enabled {
-                                    print("啟用")
-                                    StableLockRotationDetector.shared.debugMode=true
-                                    StableLockRotationDetector.shared.startMonitoring()
-                                } else {
-                                    StableLockRotationDetector.shared.stopMonitoring()
-                                    print("停用偵測")
-                                }
-                            }
-#endif
-                        
-
-
-                    }
-                    .frame(maxWidth: .infinity)
-
-                }
-                .padding()
-
-                HStack(alignment: .top, spacing: 16) {
-                    VStack(spacing: 10){
-                        Text("基本配置")
-                            .font(.headline)
-                            .padding()
-
-                        VStack {
-
-                            Button("請求用於通信的本地網路") {
-                                permissionManager.requestPermission {
-                                    res in
-
-                                    showLocalAlert = true
-                                    
-                                    if res {
-                                        logTo("OK LocalNet")
-                                    } else {
-                                        logTo("Fail LocalNet")
-                                    }
-                                }
-
-
-                            }.alert(
-                                isPresented:$showLocalAlert
-                            ) {
-                                let resL = permissionManager.status
-                                return Alert(
-                                    title: Text("本地網路權限"),
-                                      message: Text(resL),
-                                      dismissButton: .default(Text("好")))
-
-                            }
-
-                            Button("請求麥克風") {
-                                checkMicrophonePermission()
-                            }.alert(isPresented: $showAlert) {
-                                Alert(title: Text("麥克風權限"),
-                                      message: Text(micStatus),
-                                      dismissButton: .default(Text("好")))
-                            }
-
-                        }
-                        .frame(maxWidth: .infinity) //
-                        .fixedSize(horizontal: false, vertical: true) // 撐滿寬度，內容自適應高度
-                        .padding()
-                        #if os(iOS)
-                        .background(Color(UIColor.secondarySystemGroupedBackground))
-                        #elseif os(macOS)
-                        .background(Color(NSColor.windowBackgroundColor))
-                        #endif
-                        .cornerRadius(8)
-
-                    }
-                    VStack(spacing: 10) {
-
-                        VStack {
-
-                            Toggle("暫停畫面",isOn: $PauseStream)
-                                .onChange(of: PauseStream){ newVal in
-
-                                    if newVal  == true {
-                                        CFNotificationCenterPostNotification(
-                                            cfCenter,
-                                            CFNotificationName(
-                                                "PauseStream" as CFString
-                                            ),
-                                            nil,
-                                            nil,
-                                            true
-                                        )
-                                    } else {
-                                        CFNotificationCenterPostNotification(
-                                            cfCenter,
-                                            CFNotificationName(
-                                                "ResumeStream" as CFString
-                                            ),
-                                            nil,
-                                            nil,
-                                            true
-                                        )
-                                    }
-
-                                }
-
-                        }
-                        .onAppear{
-                            if PauseStream == true {
-                                CFNotificationCenterPostNotification(
-                                    cfCenter,
-                                    CFNotificationName(
-                                        "PauseStream" as CFString
-                                    ),
-                                    nil,
-                                    nil,
-                                    true
-                                )
-                            }
-
-                        }
-                        .frame(maxWidth: .infinity) //
-
-                        .fixedSize(horizontal: false, vertical: true) // 撐滿寬度，內容自適應高度
-
-                        .padding()
+    private var needsStreamingSettings: Bool {
 #if os(iOS)
-                        .background(Color(UIColor.secondarySystemGroupedBackground))
-#elseif os(macOS)
-                        .background(Color(NSColor.windowBackgroundColor))
+        !usesScreenCaptureKit || (CaptureWorkMode(rawValue: captureWorkMode) ?? .stream).wantsStreaming
+#else
+        true
 #endif
+    }
 
-                        .cornerRadius(8)
-
-                    }
-                    .frame(maxWidth: .infinity) // 撐滿右側空間
-
-
-                }
-                .padding()
-
-                HStack (alignment: .center) {
-
-                    Text("當前寬高：")
-                    .padding()
-
-                    HStack(spacing: 10) {
-                        Button("橫向"){
-
-
-                            CFNotificationCenterPostNotification(cfCenter,
-                                                                 CFNotificationName("orientationV" as CFString),
-                                                                 nil, nil, true)
-
+    var body: some View {
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("松鼠推流").font(.largeTitle.bold())
+                    if geometry.size.width >= 850 && !dynamicTypeSize.isAccessibilitySize {
+                        HStack(alignment: .top, spacing: 20) {
+                            captureCard.frame(maxWidth: .infinity)
+                            settingsCards.frame(maxWidth: .infinity)
                         }
-                        Button("直向"){
-
-                            CFNotificationCenterPostNotification(cfCenter,
-                                                                 CFNotificationName("orientationH" as CFString),
-                                                                 nil, nil, true)
-
-                        }
-                    }
-                    .padding()
-                    #if os(iOS)
-                    .background(Color(UIColor.secondarySystemGroupedBackground))
-                    #elseif os(macOS)
-                    .background(Color(NSColor.windowBackgroundColor))
-                    #endif
-                    .cornerRadius(8)
-
-                }
-                .padding()
-                .frame(maxWidth: .infinity, alignment: .leading) // ✅ 這裡讓 HStack 靠左
-
-
-                HStack(alignment: .center , spacing: 16) {
-
-                    HStack(spacing: 10) {
-                        Button("輸入 RTMP 設定") {
-                            showForm.toggle()
-                        }
-                        .padding()
-                        .sheet(isPresented: $showForm) {
-                            FormView()
-
-                        }
-
-                    }
-                    .frame(maxWidth:.infinity,alignment: .center)
-
-                    HStack(spacing: 10) {
-                        // 測試顯示輸入的內容
-                        if !rtmpURL.isEmpty && !rtmpKey.isEmpty {
-                            Text("推流位址：\n\(rtmpURL)/")
-                                .padding()
-                                .multilineTextAlignment(.center)
-                        }
-                    }.frame(maxWidth:.infinity,alignment: .center)
-
-
-
-                }.frame(maxWidth:.infinity,alignment: .leading)
-
-                VStack(spacing: 10) {
-                    Text("Bitrate: \(manager.bitrate / 1000 ) kbps 原始：\(manager.bitrate)")
-                        .font(.headline)
-                    
-                    Text("Bitrate閘值：\(manager.multiplier) x \(manager.base)")
-
-                    if #available(iOS 17.0, *) {
-                        Slider(
-                            value: Binding(
-                                get: { Double(manager.multiplier) },
-                                set: { manager.multiplier = Int($0) }
-                            ),
-                            in: 10...200,    // 10*100_000 = 1_000_000, 100*100_000 = 100_000_000
-                            step: 1,
-                            onEditingChanged : { editing in
-
-                                if !editing {
-                                    // ⚡ 這裡可以即時更新 bitrate
-
-                                    let old = manager.multiplier * 100_000
-                                    manager.bitrate = manager.multiplier * 100_000
-
-                                    manager.updateStreamBitrate()
-
-                                    sendlog(message:
-                                        "Multiplier 改變: \(old) → 新的 bitrate: \(manager.bitrate)"
-                                    )
-                                }
-                            }
-                        )
-
-
-                    }
-
-                    HStack {
-                        Text("1000 kbps")
-                        Spacer()
-                        Text("20000 kbps")
+                    } else {
+                        captureCard
+                        settingsCards
                     }
                 }
-                .padding()
+                .padding(16)
+                .frame(maxWidth: 1200)
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .sheet(isPresented: $showForm) { FormView() }
+    }
 
-
-
-                VStack {
-
+    private var captureCard: some View {
+        GroupBox("擷取與開始") {
+            VStack(alignment: .leading, spacing: 16) {
 #if os(iOS)
                     CaptureSelectionView()
                     StreamBtn.frame(width: 1,height: 1).opacity(0.001)
@@ -2717,11 +2480,143 @@ enum HEVCProfile: String, CaseIterable, Identifiable {
                     .padding(.horizontal)
 #endif
 
-                }
+            }
+            .padding(.vertical, 8)
+        }
+    }
 
+    private var settingsCards: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if needsStreamingSettings {
+                GroupBox("推流設定") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text(rtmpURL.isEmpty ? "尚未設定推流位址" : rtmpURL)
+                            .font(.subheadline)
+                            .privacySensitive()
+                            .textSelection(.enabled)
+                        Label(rtmpKey.isEmpty ? "尚未設定金鑰" : "串流金鑰已設定", systemImage: "key")
+                            .foregroundStyle(.secondary)
+                        Button("編輯位址與金鑰") { showForm = true }
+                            .buttonStyle(.bordered)
+                        Divider()
+                        bitrateControls
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 8)
+                }
+                GroupBox {
+                    DisclosureGroup("進階編碼設定") {
+                        if usesScreenCaptureKit {
+                            Text("ScreenCaptureKit 測試路徑固定使用 H.264；編碼設定尚未接入。")
+                                .font(.caption).foregroundStyle(.secondary)
+                        } else {
+                            VStack(alignment: .leading, spacing: 12) {
+                            Picker("編碼格式", selection: $videoCodec) {
+                                Text("H264").tag("H264")
+                                Text("HEVC").tag("HEVC")
+                            }
+                            .pickerStyle(.segmented)
+
+                            if videoCodec == "H264" {
+                                Picker("H264配置", selection: selectedProfile) {
+                                    ForEach(H264Profile.allCases) { profile in
+                                        Text(profile.rawValue).tag(profile)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                Text("當前選擇:  \(selectedProfile.wrappedValue.rawValue)")
+                            } else {
+                                Picker("HEVC配置", selection: selectedHEVCProfile) {
+                                    ForEach(HEVCProfile.allCases) { profile in
+                                        Text(profile.rawValue).tag(profile)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                Text("當前選擇: HEVC \(selectedHEVCProfile.wrappedValue.rawValue)")
+                            }
+                            }.padding(.top, 8)
+                        }
+                    }
+                }
+            }
+            if !usesScreenCaptureKit {
+                GroupBox {
+                    DisclosureGroup("ReplayKit 畫面控制") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Toggle("暫停畫面", isOn: $PauseStream)
+                                .onChange(of: PauseStream) { paused in
+                                    notifyReplayKit(paused ? "PauseStream" : "ResumeStream")
+                                }
+                                .onAppear { if PauseStream { notifyReplayKit("PauseStream") } }
+                            HStack {
+                                Text("畫面方向")
+                                Spacer()
+                                Button("橫向") { notifyReplayKit("orientationV") }
+                                Button("直向") { notifyReplayKit("orientationH") }
+                            }
+#if os(iOS)
+                            Toggle("設備方向鎖定偵測", isOn: $lockDetect)
+                                .onChange(of: lockDetect) { enabled in
+                                    if enabled {
+                                        StableLockRotationDetector.shared.debugMode = true
+                                        StableLockRotationDetector.shared.startMonitoring()
+                                    } else {
+                                        StableLockRotationDetector.shared.stopMonitoring()
+                                    }
+                                }
+#endif
+                        }.padding(.top, 8)
+                    }
+                }
+            }
+            GroupBox {
+                DisclosureGroup("權限檢查") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Button("檢查本地網路權限") {
+                            permissionManager.requestPermission { _ in showLocalAlert = true }
+                        }
+                        .alert(isPresented: $showLocalAlert) {
+                            Alert(title: Text("本地網路權限"), message: Text(permissionManager.status), dismissButton: .default(Text("好")))
+                        }
+                        Button("檢查麥克風權限") { checkMicrophonePermission() }
+                            .alert(isPresented: $showAlert) {
+                                Alert(title: Text("麥克風權限"), message: Text(micStatus), dismissButton: .default(Text("好")))
+                            }
+                    }.padding(.top, 8)
+                }
             }
         }
     }
+
+    private var bitrateControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("推流碼率：\(manager.multiplier * 100) kbps").font(.headline)
+            Slider(value: Binding(
+                get: { Double(manager.multiplier) },
+                set: { manager.multiplier = Int($0) }
+            ), in: 10...200, step: 1) { editing in
+                if !editing {
+                    manager.bitrate = manager.multiplier * 100_000
+                    manager.updateStreamBitrate()
+                }
+            }
+            .accessibilityLabel("推流碼率")
+            HStack {
+                Text("1000 kbps")
+                Spacer()
+                Text("20000 kbps")
+            }.font(.caption).foregroundStyle(.secondary)
+            if usesScreenCaptureKit {
+                Text("碼率變更於下次開始推流時生效。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func notifyReplayKit(_ name: String) {
+        CFNotificationCenterPostNotification(cfCenter, CFNotificationName(name as CFString), nil, nil, true)
+    }
+
 
 }
 

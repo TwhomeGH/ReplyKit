@@ -88,7 +88,10 @@ import ScreenCaptureKit
         VStack(alignment: .leading, spacing: 10) {
             backendPicker
             if isScreenCaptureKit { screenCaptureKitOptions }
-            Button("本地錄影") { showingRecordings = true }
+            Button { showingRecordings = true } label: {
+                Label("本地錄影", systemImage: "folder")
+            }
+            .buttonStyle(.bordered)
             if let message = capture.errorMessage {
                 Label(message, systemImage: "xmark.octagon")
                     .font(.caption)
@@ -140,17 +143,24 @@ import ScreenCaptureKit
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            statusLine
+            GroupBox("目前狀態") {
+                statusLine.frame(maxWidth: .infinity, alignment: .leading)
+            }
             if capture.isBusy {
-                Button("停止擷取") { capture.stop() }
+                Button { capture.stop() } label: {
+                    Label(capture.phase == .stopping ? "正在停止與儲存…" : "停止擷取", systemImage: "stop.circle")
+                        .frame(maxWidth: .infinity)
+                }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
                     .disabled(capture.phase == .stopping)
             }
         }
     }
 
-    /// 擷取階段／推流／錄製進度合併為一行。
+    /// 狀態分行顯示，避免窄螢幕與大字體擠在同一列。
     private var statusLine: some View {
-        HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(capture.phase.title)
             if capture.isPublishing { Text("推流中").foregroundStyle(.green) }
             if let item = library.recordings.first, capture.isBusy, !item.phase.isTerminal {
