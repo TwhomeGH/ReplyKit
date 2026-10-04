@@ -20,6 +20,25 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.05 02:31 ScreenCaptureKit 不可用原因診斷與擷取畫面重整
+
+**類型**: 優化 · **檔案**: `liveAPP/Capture/CaptureCoordinator.swift`
+
+### 問題 - 實機選項變灰卻不知原因；擷取設定畫面可讀性差
+
+ScreenCaptureKit 灰掉時只有籠統說明，難判斷是建置旗標、SDK 或裝置限制；`CaptureSelectionView` 條件堆疊、狀態散落。
+
+### 根因 - 可用性只回 bool、無診斷；視圖為大型內聯 VStack
+
+### 修改 - 提供不可用原因並抽出子視圖
+
+- 新增 `screenCaptureUnavailableReason`（模擬器／macCatalyst／未定義旗標／無模組／iOS<27／`isAvailable == false` 各有明確訊息），`screenCaptureSupported` 由其推導；UI 於選項下方顯示原因。
+- CaptureSelectionView 抽出 `backendPicker`／`screenCaptureKitOptions`／`statusLine` 與計算屬性，狀態合併一行，輪詢移入 `watchCaptureLease()`。
+
+**相關文件**: [CaptureCoordinator.swift](liveAPP/Capture/CaptureCoordinator.swift)
+
+---
+
 ## 2026.10.05 02:30 測試 target deployment 提升至 17.0
 
 **類型**: 修復 · **檔案**: `liveAPP.xcodeproj/project.pbxproj`
