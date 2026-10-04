@@ -57,7 +57,7 @@ private func formatLinearVolumeForLog(_ value: Float) -> String {
     )
 }
 
-class SocketServer:ObservableObject {
+class SocketServer:ObservableObject, @unchecked Sendable {
 
     // MARK: - Properties
 
@@ -140,7 +140,7 @@ class SocketServer:ObservableObject {
         }
         isApplyingPort = true
         portError = nil
-        queue.async {
+        queue.async { [self] in
             if self.listener?.state == .ready, self.listener?.port?.rawValue == port {
                 DispatchQueue.main.async { self.isApplyingPort = false }
                 return
@@ -1423,7 +1423,7 @@ class SocketServer:ObservableObject {
         let id = ObjectIdentifier(conn)
 
 
-        queue.async {
+        queue.async { [self] in
             guard var queue = self.sendQueues[id], !queue.isEmpty else {
                 self.sendingFlags[id] = false
                 return

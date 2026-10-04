@@ -144,8 +144,8 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         config.queueDepth = 3
         config.capturesAudio = true
         config.captureMicrophone = filter.isMicrophoneEnabled
-        config.scalesToFit = true
-        config.preservesAspectRatio = true
+        // scalesToFit / preservesAspectRatio 為 macOS/macCatalyst 專用（iOS 標記為不可用），
+        // iOS 以 width/height 設定輸出尺寸，故不設定這兩個屬性。
         let source = SCStream(filter: filter, configuration: config, delegate: self)
         capture = source
         streamingViable = mode.wantsStreaming

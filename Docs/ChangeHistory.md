@@ -20,6 +20,27 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.05 01:16 修正 Socket 捕捉警告與 ScreenCaptureKit iOS 不可用屬性
+
+**類型**: 修復 · **檔案**: `liveAPP/Socket.swift`, `liveAPP/Capture/ScreenCaptureSource.swift`
+
+### 問題 - Xcode 27 警告與裝置 archive 編譯失敗
+
+`#ImplicitStrongCapture`（Socket.swift 外層隱式強捕捉 self 與內層 `[weak self]` 不一致）、`#SendableClosureCaptures`（於 `@Sendable` 閉包強捕捉非 Sendable 的 SocketServer）；裝置 archive 另報 `scalesToFit`／`preservesAspectRatio` 在 iOS 不可用。
+
+### 根因 - 捕捉所有權不一致與 macOS 專用屬性
+
+外層閉包隱式強捕捉、內層顯式弱捕捉即警告；`SocketServer` 非 Sendable 被 `@Sendable` 閉包強捕捉；`SCStreamConfiguration` 的 `scalesToFit`／`preservesAspectRatio` 標記 `API_UNAVAILABLE(ios)`，而該檔為 iOS 專用。
+
+### 修改 - 明確捕捉、標記 Sendable、移除 iOS 不可用屬性
+
+- Socket.swift：外層 `queue.async` 改 `{ [self] in }`（×2）；`class SocketServer` 加 `@unchecked Sendable`。
+- ScreenCaptureSource.swift：移除 `config.scalesToFit` / `config.preservesAspectRatio`（iOS 以 width/height 決定輸出尺寸）。
+
+**相關文件**: [Socket.swift](liveAPP/Socket.swift), [ScreenCaptureSource.swift](liveAPP/Capture/ScreenCaptureSource.swift)
+
+---
+
 ## 2026.10.05 01:05 修正 SampleHandler 的 ImplicitStrongCapture 警告
 
 **類型**: 修復 · **檔案**: `ReplyKIT/SampleHandler.swift`
