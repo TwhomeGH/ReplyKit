@@ -13,10 +13,13 @@ struct CaptureSessionTests {
     @Test func cannotStartTwiceOrResumeAfterStop() {
         var state = CaptureSessionState()
         let token = state.begin()!
-        #expect(state.begin() == nil)
-        #expect(state.transition(.starting, for: token))
+        let secondBegin = state.begin()
+        #expect(secondBegin == nil)
+        let started = state.transition(.starting, for: token)
+        #expect(started)
         state.stopping()
-        #expect(!state.transition(.streaming, for: token))
+        let resumedAfterStop = state.transition(.streaming, for: token)
+        #expect(!resumedAfterStop)
         state.finish(token)
         #expect(state.phase == .idle)
     }
@@ -27,14 +30,18 @@ struct CaptureSessionTests {
         let second = state.begin()!
         state.finish(first)
         #expect(state.id == second)
-        #expect(!state.transition(.starting, for: first))
-        #expect(state.transition(.starting, for: second))
-        #expect(state.transition(.streaming, for: second))
+        let lateStart = state.transition(.starting, for: first)
+        #expect(!lateStart)
+        let secondStart = state.transition(.starting, for: second)
+        #expect(secondStart)
+        let secondStreaming = state.transition(.streaming, for: second)
+        #expect(secondStreaming)
     }
     @Test func cannotSkipAuthorization() {
         var state = CaptureSessionState()
         let token = state.begin()!
-        #expect(!state.transition(.streaming, for: token))
+        let skipped = state.transition(.streaming, for: token)
+        #expect(!skipped)
         #expect(state.phase == .selecting)
     }
     @Test func mailboxEvictsOldSamplesWithinByteBudget() async {
@@ -95,19 +102,26 @@ struct CaptureSessionTests {
     }
     @Test func stopDoesNotMakeRecordingShareable() {
         var item = LocalRecording(id: UUID(), created: Date())
-        #expect(item.transition(to: .recording))
-        #expect(item.transition(to: .finishing))
+        let toRecording = item.transition(to: .recording)
+        #expect(toRecording)
+        let toFinishing = item.transition(to: .finishing)
+        #expect(toFinishing)
         #expect(item.phase != .ready)
-        #expect(!item.transition(to: .recording))
-        #expect(item.transition(to: .ready))
-        #expect(!item.transition(to: .failed))
+        let recordingAgain = item.transition(to: .recording)
+        #expect(!recordingAgain)
+        let toReady = item.transition(to: .ready)
+        #expect(toReady)
+        let toFailed = item.transition(to: .failed)
+        #expect(!toFailed)
         #expect(item.phase == .ready)
     }
     @Test func lateFinishCannotPromoteFailedOrTimedOutRecording() {
         for terminal in [RecordingPhase.failed, .interrupted] {
             var item = LocalRecording(id: UUID(), created: Date())
-            #expect(item.transition(to: terminal))
-            #expect(!item.transition(to: .ready))
+            let toTerminal = item.transition(to: terminal)
+            #expect(toTerminal)
+            let promotedToReady = item.transition(to: .ready)
+            #expect(!promotedToReady)
             #expect(item.phase == terminal)
         }
     }

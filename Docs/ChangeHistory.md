@@ -20,6 +20,26 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.05 00:50 修正 Swift Testing #expect 無法呼叫 mutating 方法
+
+**類型**: 修復 · **檔案**: `liveAPPTests/CaptureSessionTests.swift`
+
+### 問題 - CI 編譯測試檔失敗 13 個錯誤
+
+`#expect` 內呼叫 mutating 方法報 `Cannot use mutating member on immutable value: '$0' is immutable`（13 處）。
+
+### 根因 - #expect 巨集以不可變方式捕捉運算式
+
+Swift Testing 的 `#expect(expr)` 會把 expr 包進閉包並以不可變方式捕捉；expr 為 `mutating` 呼叫（`CaptureSessionState.transition/begin`、`LocalRecording.transition`）時即失敗。先前 CI 卡在更早階段（Metal／ScreenCaptureKit／警告），未曾編到此檔才未提早顯現。
+
+### 修改 - 先取出結果再 #expect
+
+- CaptureSessionTests 5 個測試函式、13 個 `transition` 呼叫改為 `let x = …; #expect(x)`，另將 `state.begin()` 一併提出。
+
+**相關文件**: [CaptureSessionTests.swift](liveAPPTests/CaptureSessionTests.swift)
+
+---
+
 ## 2026.10.05 00:19 ScreenCaptureKit 改為實機限定，修正模擬器連結失敗
 
 **類型**: 修復 · **檔案**: `liveAPP.xcodeproj/project.pbxproj`, `liveAPP/Capture/CaptureCoordinator.swift`, `liveAPP/Capture/ScreenCaptureSource.swift`, `liveAPP/Capture/ScreenRecordingSession.swift`
