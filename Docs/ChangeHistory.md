@@ -20,6 +20,54 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.05 修正 TTS 配置選檔流程並核對 TODO
+
+**類型**: 修復 · **檔案**: `liveAPP/TTSSettingsView.swift`、`TODO.md`
+
+### 修改 - 文件交付、背景讀取與頁面預覽
+
+- 使用系統文件選擇器匯入副本，支援被標記為一般資料的 JSON，保留內容驗證與大小上限。
+- 背景協調讀取檔案，移除 150 毫秒延遲與連續彈窗，改用頁面預覽及持續顯示的錯誤訊息。
+- 新增選檔、取消、讀取與解析階段日誌；待 iOS 實機回歸驗證。
+- TODO 修正已實作的動態島描述，將功能實作與實機／CI 驗收分開勾選。
+
+**相關文件**: [TTS 配置分享](tts-filter-configuration.md)
+
+---
+
+## 2026.10.05 主頁重排與串流金鑰遮蔽
+
+**類型**: 改進 · **檔案**: `liveAPP/ContentView.swift`、`liveAPP/Capture/CaptureCoordinator.swift`
+
+### 修改 - 優先顯示擷取操作並依模式整理設定
+
+- 主頁支援單欄／雙欄，進階控制預設收合；只錄製隱藏推流設定。
+- 金鑰預設遮蔽，可手動顯示，離開表單或切至背景自動隱藏。
+- 移除配置切換與關閉表單日誌中的金鑰，擷取與錄影狀態分行顯示。
+
+**相關文件**: [主頁操作與金鑰顯示](home-layout.md)
+
+---
+
+## 2026.10.05 ScreenCaptureKit 本地錄影收尾加入方向轉正
+
+**類型**: 修復 · **檔案**: `liveAPP/Capture/ScreenCaptureSource.swift`、`liveAPP/Capture/ScreenRecordingSession.swift`、`liveAPP/Capture/RecordingOrientationCorrector.swift`
+
+### 問題 - 實測原生 MP4 畫面橫倒且未帶旋轉矩陣
+
+本地錄製直接使用 SCRecordingOutput，未讀取影格方向，亦不經 RTMP Mixer，原本完成後立即開放分享。
+
+### 修改 - 依 EXIF 方向收尾，保留原生錄製與失敗原檔
+
+- 以輕量 screen output 收集 videoOrientation／PTS，僅保存有界方向事件，不保留影像 buffer。
+- 固定方向使用 track transform 與 passthrough；方向變化時使用 video composition 分段轉正並重新編碼。
+- 轉正期間維持 finishing；成功才取代原片，失敗保留原片並提示。加入背景工作到期取消與方向診斷。
+- 新增時間軸及八方向矩陣測試；四項 Windows 核心測試通過，Apple SDK 與真實匯出待實機驗證。
+
+**相關文件**: [ScreenCaptureKit 方向轉正](screencapturekit-integration.md)
+
+---
+
 ## 2026.10.05 03:17 TTS 匯入提示改行內顯示；.gitignore 忽略 CI 產物
 
 **類型**: 修復 · **檔案**: `liveAPP/TTSSettingsView.swift`, `.gitignore`

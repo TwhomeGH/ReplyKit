@@ -1,6 +1,8 @@
 # TODO 待辦事項
 
-集中管理全專案未完成／待處理的事項。
+集中管理全專案實作進度與驗收事項。
+
+`[x]` 表示該項描述已完成；實作與實機／CI 驗收分開記錄，避免尚待驗收被誤讀為功能尚未開發。最近程式核對：2026-10-05。
 
 > 新待辦請寫在這裡，不要在各文件的角落另開 TODO 區塊；完成後改為 `[x]`（整批清理時可移除已完成項）。
 
@@ -24,7 +26,8 @@
 
 ## Live Activity / 動態島
 
-- [ ] **動態島支援**：`LiveActivityAttributes.swift` 的 `StreamActivityDynamicIsland` 已定義但被註解；需在 Xcode 將 `ActivityKit.framework` 加入 target 的 Frameworks 後取消註解啟用
+- [x] **動態島接入**：`liveAPPWidget/LiveActivityWidgetBundle.swift` 已提供 DynamicIsland，Widget target 已引用 LiveActivityKit 並嵌入主 App。
+- [ ] **動態島實機驗收**：確認支援裝置上的展開／精簡顯示及開播、停播生命週期。
 - [x] **開播/停播整合**：於實際開播／停播路徑接入 `StreamActivityManager.shared.startStreamActivity()` / `endStreamActivity()`
 
 ## 本地化（Localization）
@@ -65,13 +68,34 @@
 - [x] `liveAPP` shared scheme 明確加入 `liveAPPTests`。
 - [x] 新增 PR／push／手動可執行的單元測試 workflow，保存 `.xcresult` 與日誌。
 - [x] 發布 workflow 先執行相同 commit 的單元測試，成功後才建置及封裝。
-- [ ] **首次 CI 實跑**：確認 hosted runner 能建置並執行所有 `liveAPPTests`；目前只完成本地設定與靜態驗證。
-- [ ] **Xcode 27 CI 覆蓋**：workflow 已指定 xcode-27／Xcode 27.0 並強制檢查 SDK 27；ScreenCaptureKit 在 iOS 為實機限定，模擬器單元測試不編譯此路徑，改由發布流程的裝置 archive 涵蓋 Apple SDK 編譯；待首次實跑確認。
+- [x] **首次 CI 實跑**：hosted runner 已完成建置與 `liveAPPTests` 執行；2026-10-05 由使用者確認。
+- [x] **Xcode 27 CI 覆蓋**：Xcode 27 CI 與 ScreenCaptureKit 建置路徑已實跑，2026-10-05 由使用者確認。模擬器執行核心單元測試；ScreenCaptureKit 實機限定路徑由裝置建置涵蓋。
 
-## TTS 配置分享驗收
+## TTS 配置分享實作與驗收
+
+- [x] JSON 匯入／匯出、合併／取代、自動備份、逐條啟用與替換排序已實作。
+- [x] 匯入流程改用文件副本與背景協調讀取、頁內預覽及階段日誌；移除固定延遲和接續彈窗。
 
 - [ ] **iOS 匯入／分享實機驗收**：檔案 App／iCloud 選取 JSON、取消選取、Documents 匯出及分享、合併衝突、逐條開關、拖曳排序與備份還原；目前 Foundation 邏輯測試及 Swift 語法檢查已通過。
 
-## 建置資訊驗收
+## 建置資訊實作與驗收
 
-- [ ] **Xcode／CI 產物驗收**：確認 build／archive 的 App bundle 含 BuildInfo.json，App 與套件 revision 對應該次 checkout，實機關於頁、複製分享及啟動 log.txt 顯示相同資訊。
+- [x] 已加入 BuildInfo 產生流程與主 App 建置資訊讀取／顯示。
+
+- [x] **Xcode／CI 建置資訊產物驗收**：使用者確認實機建置資訊有效，提供 `21a00d1e-bdef-496c-9e66-78d9468b52ff.txt` 作為證據。GitHub Actions run `37225832641` 的 Release／iphoneos 產物顯示 Xcode 27、SDK 27.0、App commit `dd59534`、產物識別碼與建置時間；HaishinKit checkout 與鎖定 commit `d1af6c5` 相符（2026-10-05 核對）。
+- [x] **啟動日誌建置資訊驗收**：使用者提供的啟動日誌完整輸出 `[BuildInfo]`，包含 App commit `ce7f7a2`、乾淨原始碼狀態、相符的 HaishinKit checkout／鎖定 commit `d1af6c5`、產物識別碼 `fdfd3005-0a9f-414b-a278-0984c176426f` 與 CI run `37227708511`（2026-10-05 確認）。此為較前項更新的產物，兩份證據分別確認建置資訊與啟動日誌有效，不視為同一產物的交叉比對。
+
+## ScreenCaptureKit 方向實作與驗收
+
+- [x] 本地錄影已加入方向事件收集、固定方向轉正及多方向收尾處理；失敗保留原片。
+
+- [ ] **本地錄影轉正實機驗收**：固定直向／左右橫向、途中多次轉向、音畫同步、既有矩陣避免重複旋轉、缺少附件提示、長片背景收尾及儲存空間不足保留原片。
+- [ ] **RTMP 即時方向轉正**：將 ScreenCaptureKit videoOrientation 接到即時影格處理；本次收尾轉正只涵蓋原生本地錄影。
+
+## 主頁排版與金鑰顯示實作與驗收
+
+- [x] 自適應單／雙欄、依工作模式隱藏推流設定、進階控制收合。
+- [x] 金鑰預設遮蔽、手動顯示與離開／背景自動隱藏；移除配置日誌的金鑰。
+
+- [ ] 在 iPhone、iPad 與大字體模式確認單／雙欄、開播與停止操作。
+- [ ] 確認只錄製隱藏推流設定，以及金鑰在關閉表單、App 背景返回後恢復遮蔽。
