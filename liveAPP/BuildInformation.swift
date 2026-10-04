@@ -6,6 +6,8 @@ struct BuildInformation: Decodable, Sendable {
     var buildID: String?
     var appRevision: String?
     var appDirty: Bool?
+    var appUntrackedCount: Int?
+    var appModifiedCount: Int?
     var builtAt: String?
     var source: String?
     var configuration: String?
@@ -18,6 +20,8 @@ struct BuildInformation: Decodable, Sendable {
     var haishinVersion: String?
     var haishinCheckoutRevision: String?
     var haishinCheckoutDirty: Bool?
+    var haishinCheckoutUntrackedCount: Int?
+    var haishinCheckoutModifiedCount: Int?
     var haishinVerification: String?
 
     static let current: Self = {
@@ -29,9 +33,13 @@ struct BuildInformation: Decodable, Sendable {
         return value
     }
     private func text(_ value: String?) -> String { value.flatMap { $0.isEmpty ? nil : $0 } ?? "未知" }
-    private func modifications(_ value: Bool?) -> String {
-        guard let value else { return "未知" }
-        return value ? "有未提交修改" : "乾淨"
+    private func modifications(dirty: Bool?, untracked: Int?, modified: Int?) -> String {
+        guard let dirty else { return "未知" }
+        guard dirty else { return "乾淨" }
+        var parts: [String] = []
+        if let modified, modified > 0 { parts.append("已追蹤 \(modified)") }
+        if let untracked, untracked > 0 { parts.append("未追蹤 \(untracked)") }
+        return parts.isEmpty ? "有未提交修改" : "有未提交修改（\(parts.joined(separator: "、"))）"
     }
     var verification: String {
         switch haishinVerification {
@@ -44,11 +52,11 @@ struct BuildInformation: Decodable, Sendable {
     var rows: [(String, String)] {
         [
             ("App commit", text(appRevision)),
-            ("App 原始碼狀態", modifications(appDirty)),
+            ("App 原始碼狀態", modifications(dirty: appDirty, untracked: appUntrackedCount, modified: appModifiedCount)),
             ("HaishinKit 鎖定 commit", text(haishinRevision)),
             ("HaishinKit checkout commit", text(haishinCheckoutRevision)),
             ("HaishinKit 版本標籤", text(haishinVersion)),
-            ("HaishinKit 原始碼狀態", modifications(haishinCheckoutDirty)),
+            ("HaishinKit 原始碼狀態", modifications(dirty: haishinCheckoutDirty, untracked: haishinCheckoutUntrackedCount, modified: haishinCheckoutModifiedCount)),
             ("套件核對結果", verification),
             ("產物識別碼", text(buildID)),
             ("建置時間（UTC）", text(builtAt)),

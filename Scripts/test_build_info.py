@@ -23,6 +23,8 @@ class BuildInfoTests(unittest.TestCase):
         info = build_info.collect(self.root, {"GITHUB_SHA": "wrong-event-sha", "GITHUB_ACTIONS": "true", "GITHUB_RUN_ID": "42"})
         self.assertIsNone(info["appRevision"])
         self.assertIsNone(info["appDirty"])
+        self.assertIsNone(info["appUntrackedCount"])
+        self.assertIsNone(info["appModifiedCount"])
         self.assertEqual(info["ciRun"], "42")
         self.assertEqual(info["haishinVerification"], "missing")
 
@@ -38,16 +40,18 @@ class BuildInfoTests(unittest.TestCase):
         packages = Path(self.temp.name) / "packages"
         checkout = packages / "checkouts" / "HaishinKitFixSwfit"
         checkout.mkdir(parents=True)
-        with patch.object(build_info, "snapshot", side_effect=[("b" * 40, False), ("a" * 40, True)]):
+        with patch.object(build_info, "snapshot", side_effect=[("b" * 40, False, 0, 0), ("a" * 40, True, 1, 0)]):
             info = build_info.collect(self.root, {"BUILD_INFO_PACKAGES_DIR": str(packages)})
         self.assertEqual(info["haishinVerification"], "matched")
         self.assertTrue(info["haishinCheckoutDirty"])
+        self.assertEqual(info["haishinCheckoutUntrackedCount"], 1)
+        self.assertEqual(info["haishinCheckoutModifiedCount"], 0)
 
     def test_mismatch_is_not_reported_as_verified(self):
         self.lock()
         packages = Path(self.temp.name) / "packages"
         (packages / "checkouts" / "HaishinKitFixSwfit").mkdir(parents=True)
-        with patch.object(build_info, "snapshot", side_effect=[("b" * 40, False), ("c" * 40, False)]):
+        with patch.object(build_info, "snapshot", side_effect=[("b" * 40, False, 0, 0), ("c" * 40, False, 0, 0)]):
             info = build_info.collect(self.root, {"BUILD_INFO_PACKAGES_DIR": str(packages)})
         self.assertEqual(info["haishinVerification"], "mismatch")
         self.assertEqual(info["haishinCheckoutRevision"], "c" * 40)
@@ -57,14 +61,17 @@ class BuildInfoTests(unittest.TestCase):
             subprocess.run(["git", "-C", str(self.root), *args], check=True, capture_output=True)
         git("init")
         git("-c", "user.name=BuildInfo Test", "-c", "user.email=build-info@example.invalid", "commit", "--allow-empty", "-m", "fixture")
-        revision, dirty = build_info.snapshot(self.root)
+        revision, dirty, untracked, modified = build_info.snapshot(self.root)
         self.assertEqual(len(revision), 40)
         self.assertFalse(dirty)
+        self.assertEqual((untracked, modified), (0, 0))
         (self.root / "untracked.txt").write_text("test", encoding="utf-8")
-        self.assertTrue(build_info.snapshot(self.root)[1])
+        after = build_info.snapshot(self.root)
+        self.assertTrue(after[1])
+        self.assertEqual((after[2], after[3]), (1, 0))
         nested = self.root / "nested"
         nested.mkdir()
-        self.assertEqual(build_info.snapshot(nested), (None, None))
+        self.assertEqual(build_info.snapshot(nested), (None, None, None, None))
 
     def test_malformed_lock_and_distinct_build_ids(self):
         self.lock()

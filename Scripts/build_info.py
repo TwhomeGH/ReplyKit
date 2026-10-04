@@ -26,17 +26,23 @@ def snapshot(path):
     # 目錄不能回退到上層 repository，否則可能把 App revision 當套件 revision。
     top = git(path, "rev-parse", "--show-toplevel")
     if top is None or Path(top).resolve() != path.resolve():
-        return None, None
+        return None, None, None, None
     revision = git(path, "rev-parse", "HEAD")
     status = git(path, "status", "--porcelain", "--untracked-files=normal")
-    return revision, (bool(status) if status is not None else None)
+    if status is None:
+        return revision, None, None, None
+    lines = status.splitlines()
+    untracked = sum(1 for line in lines if line.startswith("??"))
+    modified = len(lines) - untracked
+    return revision, bool(lines), untracked, modified
 
 
 def collect(root, env):
-    revision, dirty = snapshot(root)
+    revision, dirty, untracked, modified = snapshot(root)
     info = {
         "schemaVersion": 1, "buildID": str(uuid.uuid4()),
         "appRevision": revision, "appDirty": dirty,
+        "appUntrackedCount": untracked, "appModifiedCount": modified,
         "builtAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "source": "GitHub Actions" if env.get("GITHUB_ACTIONS") == "true" else "本機",
         "configuration": env.get("CONFIGURATION"), "platform": env.get("PLATFORM_NAME"),
@@ -44,6 +50,7 @@ def collect(root, env):
         "ciRun": env.get("GITHUB_RUN_ID"), "ciAttempt": env.get("GITHUB_RUN_ATTEMPT"),
         "haishinRevision": None, "haishinVersion": None,
         "haishinCheckoutRevision": None, "haishinCheckoutDirty": None,
+        "haishinCheckoutUntrackedCount": None, "haishinCheckoutModifiedCount": None,
         "haishinVerification": "missing",
     }
     try:
@@ -74,9 +81,11 @@ def collect(root, env):
         for checkout in checkouts.iterdir():
             if checkout.name.lower() not in IDENTITIES or not checkout.is_dir():
                 continue
-            actual, modified = snapshot(checkout)
+            actual, checkout_dirty, checkout_untracked, checkout_modified = snapshot(checkout)
             info["haishinCheckoutRevision"] = actual
-            info["haishinCheckoutDirty"] = modified
+            info["haishinCheckoutDirty"] = checkout_dirty
+            info["haishinCheckoutUntrackedCount"] = checkout_untracked
+            info["haishinCheckoutModifiedCount"] = checkout_modified
             if actual and info["haishinRevision"]:
                 info["haishinVerification"] = "matched" if actual == info["haishinRevision"] else "mismatch"
             return info

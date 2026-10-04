@@ -20,6 +20,28 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.05 02:29 BuildInfo 原始碼狀態加入未追蹤/已修改計數
+
+**類型**: 優化 · **檔案**: `Scripts/build_info.py`, `Scripts/test_build_info.py`, `liveAPP/BuildInformation.swift`
+
+### 問題 - 「有未提交修改」無法區分原始碼修改與未追蹤檔案
+
+`appDirty` 只是一個 bool（`git status --porcelain` 非空），把未追蹤檔也算成「有未提交修改」，容易誤報。
+
+### 根因 - git 狀態被壓成單一布林
+
+`snapshot()` 只回傳 dirty bool，未保留未追蹤／已修改的數量。
+
+### 修改 - 保留彈性，另存計數
+
+- build_info.py：`snapshot()` 回傳 `(revision, dirty, untracked, modified)`，逐行以 `??` 分類；BuildInfo.json 新增 `appUntrackedCount`／`appModifiedCount` 與 HaishinKit checkout 對應欄位（bool 保留，向後相容）。
+- BuildInformation.swift：新增計數欄位，`modifications(dirty:untracked:modified:)` 顯示如「有未提交修改（已追蹤 2、未追蹤 5）」。
+- 測試同步更新（6/6 通過）。
+
+**相關文件**: [build_info.py](Scripts/build_info.py)
+
+---
+
 ## 2026.10.05 01:39 移除 ScreenCaptureKit iOS 不可用的 SCStreamConfiguration 屬性
 
 **類型**: 修復 · **檔案**: `liveAPP/Capture/ScreenCaptureSource.swift`, `Docs/screencapturekit-integration.md`
