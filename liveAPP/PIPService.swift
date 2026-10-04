@@ -289,17 +289,19 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
     // MARK: - Audio
     func setupAudioSession() {
-        do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default,
-                                    options: [
-                                        .mixWithOthers,
-                                        .allowAirPlay
-                                    ]
-            )
-            try session.setActive(true)
-        } catch {
-            PIPLogTo("AVAudioSession setup error: \(error)")
+        CaptureAudioOwnership.shared.performUnlessCaptured {
+            do {
+                let session = AVAudioSession.sharedInstance()
+                try session.setCategory(.playback, mode: .default,
+                                        options: [
+                                            .mixWithOthers,
+                                            .allowAirPlay
+                                        ]
+                )
+                try session.setActive(true)
+            } catch {
+                PIPLogTo("AVAudioSession setup error: \(error)")
+            }
         }
     }
 
@@ -1185,7 +1187,9 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         cleanupMessageslayer()
 
         if !(userDefaults?.bool(forKey: "TTSEnabled") ?? false) {
-            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            CaptureAudioOwnership.shared.performUnlessCaptured {
+                try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            }
         }
 
         // PiP 停止後若 App 仍在背景，排程下一次 BGTask（PiP 活躍期間不排程以節省預算）
@@ -1390,12 +1394,14 @@ final class PIPTestService: NSObject {
 
     // MARK: - Audio
     func setupAudioSession() {
-        do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers, .allowAirPlay])
-            try session.setActive(true)
-        } catch {
-            logTo("AVAudioSession setup error: \(error)")
+        CaptureAudioOwnership.shared.performUnlessCaptured {
+            do {
+                let session = AVAudioSession.sharedInstance()
+                try session.setCategory(.playback, mode: .default, options: [.mixWithOthers, .allowAirPlay])
+                try session.setActive(true)
+            } catch {
+                logTo("AVAudioSession setup error: \(error)")
+            }
         }
     }
     // MARK: - Start PiP
@@ -1478,7 +1484,9 @@ final class PIPTestService: NSObject {
         isPiPActive = false
 
         if !(userDefaults?.bool(forKey: "TTSEnabled") ?? false) {
-            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            CaptureAudioOwnership.shared.performUnlessCaptured {
+                try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            }
         }
     }
 

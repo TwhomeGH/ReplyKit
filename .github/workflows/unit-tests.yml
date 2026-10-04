@@ -1,0 +1,107 @@
+name: iOS Unit Tests
+
+on:
+  pull_request:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: 要測試的 commit；發布流程傳入相同 head SHA
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - name: Checkout tested revision
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+
+      - name: Record Xcode and SDK versions
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks
+          SDK_VERSION=$(xcrun --sdk iphonesimulator --show-sdk-version)
+          echo "Simulator SDK: $SDK_VERSION" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$SDK_VERSION" != 27.* ]]; then
+            echo "此 SDK 未啟用 ScreenCaptureKit iOS 27 分支；本次仍會建置主 App 並執行核心單元測試。" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Select available iPhone simulator
+        id: simulator
+        run: |
+          xcrun simctl list devices available --json > "$RUNNER_TEMP/test-devices.json"
+          python3 - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          data = json.loads((Path(os.environ["RUNNER_TEMP"]) / "test-devices.json").read_text())
+          candidates = []
+          for runtime, devices in data["devices"].items():
+              match = re.search(r"SimRuntime\.iOS-(\d+)-(\d+)(?:-(\d+))?$", runtime)
+              if not match:
+                  continue
+              version = tuple(int(value or 0) for value in match.groups())
+              for device in devices:
+                  if device.get("isAvailable") and device["name"].startswith("iPhone"):
+                      candidates.append((version, device.get("state") == "Booted", device["name"], device["udid"]))
+          if not candidates:
+              raise SystemExit("No available iPhone simulator; tests cannot run.")
+          version, booted, name, udid = max(candidates)
+          print(f"Using {name}, iOS {version}, {udid}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"id={udid}\nbooted={str(booted).lower()}\n")
+          PY
+
+      - name: Boot simulator
+        env:
+          SIMULATOR_ID: ${{ steps.simulator.outputs.id }}
+          ALREADY_BOOTED: ${{ steps.simulator.outputs.booted }}
+        run: |
+          if [ "$ALREADY_BOOTED" != "true" ]; then
+            xcrun simctl boot "$SIMULATOR_ID"
+          fi
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
+
+      - name: Resolve locked package versions
+        run: |
+          set -o pipefail
+          mkdir -p TestResults
+          xcodebuild -resolvePackageDependencies \
+            -project liveAPP.xcodeproj -scheme liveAPP \
+            -onlyUsePackageVersionsFromResolvedFile 2>&1 | tee TestResults/resolve.log
+
+      - name: Run liveAPP unit tests
+        env:
+          SIMULATOR_ID: ${{ steps.simulator.outputs.id }}
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project liveAPP.xcodeproj -scheme liveAPP \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+            -destination-timeout 120 \
+            -only-testing:liveAPPTests \
+            -parallel-testing-enabled NO \
+            -disableAutomaticPackageResolution \
+            -onlyUsePackageVersionsFromResolvedFile \
+            -resultBundlePath TestResults/liveAPPTests.xcresult \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee TestResults/tests.log
+
+      - name: Upload test results and logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: liveAPP-unit-tests-${{ github.run_id }}-${{ github.run_attempt }}
+          path: TestResults/
+          if-no-files-found: warn
+          retention-days: 14

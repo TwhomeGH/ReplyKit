@@ -2216,7 +2216,12 @@ enum HEVCProfile: String, CaseIterable, Identifiable {
 
 
 
-struct homeView:View{
+@MainActor struct homeView:View{
+#if os(iOS)
+    @ObservedObject private var capture = CaptureCoordinator.shared
+    @AppStorage("captureBackend", store: userDefaults) private var captureBackend = CaptureBackend.replayKit.rawValue
+    @AppStorage("captureWorkMode", store: userDefaults) private var captureWorkMode = CaptureWorkMode.stream.rawValue
+#endif
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var showAlert = false
@@ -2643,28 +2648,17 @@ struct homeView:View{
                 VStack {
 
 #if os(iOS)
+                    CaptureSelectionView()
                     StreamBtn.frame(width: 1,height: 1).opacity(0.001)
                     Button(action: {
 
 
 
-                        var g = rtmpKey
-                        let replaceCount = min(5, g.count)
-                        let endIndex = g.index(g.endIndex, offsetBy: -replaceCount)
-                        let prefix = String(g[..<endIndex])
-
-                        // 保留前 (replaceCount - 2) 個字，再補 "00"
-                        if replaceCount > 2 {
-                            let startOfReplace = g.index(g.endIndex, offsetBy: -replaceCount)
-                            let midEnd = g.index(g.endIndex, offsetBy: -2)
-                            let middle = g[startOfReplace..<midEnd]
-                            g = prefix + middle + "00"
-                        } else {
-                            // 如果總長小於等於2，就全部換成0
-                            g = String(repeating: "0", count: g.count)
+                        guard !capture.isBusy else { return }
+                        if captureBackend == CaptureBackend.screenCaptureKit.rawValue {
+                            capture.startScreenCapture(url: rtmpURL, key: rtmpKey, mode: CaptureWorkMode(rawValue: captureWorkMode) ?? .stream)
+                            return
                         }
-                        
-                        sendlog(message: "RTMP To:\(rtmpURL) \(g)")
                         Task {
                             let ready = await SocketServer.shared.prepareForBroadcastAndWaitReady()
                             guard ready else {
@@ -2672,11 +2666,12 @@ struct homeView:View{
                                 return
                             }
                             await MainActor.run {
+                                guard !capture.isBusy else { return }
                                 BroadcastButton.Coordinator.trigger()
                             }
                         }
                     }) {
-                        Text("開始直播")
+                        Text(captureBackend == CaptureBackend.screenCaptureKit.rawValue ? (CaptureWorkMode(rawValue: captureWorkMode) ?? .stream).startTitle : "開始直播")
                             .font(.headline)
                             .foregroundColor(.white)
                             .padding()
@@ -2684,6 +2679,7 @@ struct homeView:View{
                             .background(Color.blue)
                             .cornerRadius(8)
                     }
+                    .disabled(capture.isBusy)
                     .padding(.horizontal)
 
 #endif

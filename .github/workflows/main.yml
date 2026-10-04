@@ -7,7 +7,16 @@ on:
       - completed
 
 jobs:
+  unit-tests:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    uses: ./.github/workflows/unit-tests.yml
+    permissions:
+      contents: read
+    with:
+      ref: ${{ github.event.workflow_run.head_sha }}
+
   build:
+    needs: unit-tests
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: macos-26
     env:
@@ -50,27 +59,10 @@ jobs:
           echo "Using tag: $TAG"
 
       
-      # 2️⃣ Detect default scheme
-      - name: Set Default Scheme 設定預設場景參數
+      # 使用主 App scheme，避免誤選 ReplyKITSetupUI 等擴展。
+      - name: Set application scheme
         id: scheme
-        run: |
-          scheme_list=$(xcodebuild -list -json 2>/dev/null || echo '{}')
-          default=$(echo "$scheme_list" | ruby -e "
-          require 'json'
-          begin
-          data = JSON.parse(STDIN.read)
-          schemes = data.dig('project','schemes') || []
-          puts schemes.find { |s| s.include?('ReplyKIT') } || schemes[0] || 'ReplyKIT'
-          rescue JSON::ParserError
-          puts 'ReplyKit'
-          end
-          ")
-
-          echo $default > default
-          echo Using default scheme: $default
-
-          echo "scheme=$default" >> $GITHUB_OUTPUT
-      
+        run: echo "scheme=liveAPP" >> "$GITHUB_OUTPUT"
 
       - name: Filetype Parameter 檔案類型參數設定
         id: filetype_parameter
@@ -94,9 +86,9 @@ jobs:
       # 2️⃣.5 Force resolve dependencies to locked revision
       - name: Resolve SwiftPM dependencies
         run: |
-          swift package update
           echo "Resolving Swift Package Manager dependencies to locked revisions"
-          xcodebuild -resolvePackageDependencies -project liveAPP.xcodeproj
+          xcodebuild -resolvePackageDependencies -project liveAPP.xcodeproj -scheme liveAPP \
+            -onlyUsePackageVersionsFromResolvedFile
         env:
           scheme: ${{ steps.scheme.outputs.scheme }}
 
@@ -119,6 +111,7 @@ jobs:
           set +e
           xcodebuild -scheme "$scheme" -"$filetype_parameter" "$file_to_build" \
             -sdk iphonesimulator -configuration Debug \
+            -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile \
             clean build CODE_SIGNING_ALLOWED=NO 2>&1 | tee xcodebuild.log | xcpretty --no-utf --no-color
           EXIT_CODE=${PIPESTATUS[0]}
           set -e
@@ -194,7 +187,8 @@ jobs:
             echo "Injected revision $REVISION into $CONST_FILE"
           fi
           
-          xcodebuild clean -$filetype_parameter "$file_to_build" -scheme "$scheme" -configuration Release
+          xcodebuild clean -$filetype_parameter "$file_to_build" -scheme "$scheme" -configuration Release \
+            -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile
           
      
           xcodebuild archive \
@@ -202,6 +196,7 @@ jobs:
             -scheme "$scheme" \
             -configuration Release \
             -archivePath $PWD/build/liveApp.xcarchive \
+            -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile \
             -destination "generic/platform=iOS" \
             CODE_SIGNING_ALLOWED=NO \
             SWIFT_SYMBOL_REDACTION=NO

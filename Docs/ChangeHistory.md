@@ -20,6 +20,36 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.04 接入 ScreenCaptureKit 雙來源、本地錄製與測試 CI
+
+**類型**: 新增 · **檔案**: `liveAPP/Capture/`、`SharedCapture/`、`liveAPP/ContentView.swift`、`ReplyKIT/SampleHandler.swift`、`liveAPPTests/`、`.github/workflows/`
+
+### 問題 - 新擷取來源需要保留舊版相容，並支援不推流的錄製測試
+
+原有流程使用 ReplayKit 推流，缺少 ScreenCaptureKit 選項與獨立的本地錄製入口；單元測試亦需納入 CI 與發布前檢查。
+
+### 修改 - 雙來源選擇、獨立輸出與持久錄影管理
+
+- 保留預設 ReplayKit，新增 iOS 27 ScreenCaptureKit 測試選項；以 SDK 條件、弱連結與執行期可用性檢查保留舊系統支援。
+- 提供只推流／只錄製／推流並錄製。只錄製不要求 RTMP 設定，也不建立推流 Mixer、編碼器或樣本消費佇列。
+- 接入 SCRecordingOutput 的 MP4／H.264 錄製，顯示時間、大小及狀態；完成後可播放、分享／匯出、存入照片及刪除。
+- 錄影與 JSON 紀錄存入持久目錄；只有完成回呼才能標為可用，失敗／收尾逾時／App 中斷的紀錄保留並標示。
+- 推流與錄製分開處理失敗；網路重連耗盡時，有效錄製繼續，錄製失敗亦不連帶停止有效推流。
+- 共用 Mixer 基本配置，加入跨程序擷取鎖、依位元組與停留時間限制的樣本佇列，以及來源／錄製診斷。
+- PiP／TTS 的 Audio Session 設定在擷取期間受共同保護，避免覆蓋麥克風配置。
+- 新增 PR／push／手動單元測試 workflow；發布前測試相同 commit，固定主 App scheme 與已鎖定的套件版本，保存測試結果及日誌。
+- 補齊中文操作說明、API 回傳欄位與限制；未接入功能及實機驗收統一列入 TODO.md。
+
+### 驗證 - 本地核心測試通過，Apple SDK 與實機驗收待完成
+
+- Windows 執行 12 項擷取核心測試與 3 項檔案管理測試，合計 15 項通過；Swift 語法、plist 與差異格式檢查通過。
+- Windows 測試排除 Apple UI／Photos 等整合，不能取代 Xcode 27 型別檢查、首次 CI 實跑或 iOS 27 實機驗收。
+- 新來源尚未接入 GPU 畫布、浮水印、進階音訊處理、即時設定與 HEVC；本地錄影不包含下游 Mixer 音量或最終處理效果。
+
+**相關文件**: [ScreenCaptureKit 使用方式與 API](screencapturekit-integration.md) · [集中待辦](../TODO.md)
+
+---
+
 ## 2026.10.03 00:59 DeviceView 記憶體明細：footprint 拆解 internal/compressed/external
 
 **類型**: 優化 · **檔案**: `liveAPP/OtherView.swift`

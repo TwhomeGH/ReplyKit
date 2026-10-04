@@ -187,6 +187,7 @@
 			sourceTree = "<group>";
 		};
 
+		CA2700000000000000000001 /* SharedCapture */ = {isa = PBXFileSystemSynchronizedRootGroup; path = SharedCapture; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -258,6 +259,7 @@
 		CE2819992E5AB3750023BBC4 = {
 			isa = PBXGroup;
 			children = (
+				CA2700000000000000000001 /* SharedCapture */,
 				CE2819A42E5AB3750023BBC4 /* liveAPP */,
 				CE2819B22E5AB3790023BBC4 /* liveAPPTests */,
 				CE2819BC2E5AB3790023BBC4 /* liveAPPUITests */,
@@ -315,6 +317,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				CE2819A42E5AB3750023BBC4 /* liveAPP */,
+				CA2700000000000000000001 /* SharedCapture */,
 			);
 			name = liveAPP;
 			packageProductDependencies = (
@@ -388,6 +391,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				CE2819EA2E5ACD670023BBC4 /* ReplyKIT */,
+				CA2700000000000000000001 /* SharedCapture */,
 			);
 			name = ReplyKIT;
 			packageProductDependencies = (
@@ -837,6 +841,10 @@
 				MACOSX_DEPLOYMENT_TARGET = 14.6;
 				MARKETING_VERSION = 16.1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = nuclear.liveAPP;
+				"OTHER_LDFLAGS[sdk=iphoneos27.*]" = "$(inherited) -weak_framework ScreenCaptureKit";
+				"OTHER_LDFLAGS[sdk=iphonesimulator27.*]" = "$(inherited) -weak_framework ScreenCaptureKit";
+				"SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=iphoneos27.*]" = "$(inherited) SCREEN_CAPTURE_KIT_IOS27";
+				"SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=iphonesimulator27.*]" = "$(inherited) SCREEN_CAPTURE_KIT_IOS27";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
@@ -883,6 +891,10 @@
 				MACOSX_DEPLOYMENT_TARGET = 14.6;
 				MARKETING_VERSION = 16.1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = nuclear.liveAPP;
+				"OTHER_LDFLAGS[sdk=iphoneos27.*]" = "$(inherited) -weak_framework ScreenCaptureKit";
+				"OTHER_LDFLAGS[sdk=iphonesimulator27.*]" = "$(inherited) -weak_framework ScreenCaptureKit";
+				"SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=iphoneos27.*]" = "$(inherited) SCREEN_CAPTURE_KIT_IOS27";
+				"SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=iphonesimulator27.*]" = "$(inherited) SCREEN_CAPTURE_KIT_IOS27";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;

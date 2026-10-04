@@ -396,16 +396,18 @@ private final class TTSCallAudioKeeper {
     }
 
     private func configurePlaybackSession() throws {
-        let session = AVAudioSession.sharedInstance()
-        try session.setCategory(
-            .playback,
-            mode: .default,
-            options: [
-                .mixWithOthers,
-                .allowAirPlay
-            ]
-        )
-        try session.setActive(true)
+        try CaptureAudioOwnership.shared.performUnlessCaptured {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(
+                .playback,
+                mode: .default,
+                options: [
+                    .mixWithOthers,
+                    .allowAirPlay
+                ]
+            )
+            try session.setActive(true)
+        }
     }
 }
 #endif

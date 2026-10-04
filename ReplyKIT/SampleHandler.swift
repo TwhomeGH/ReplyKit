@@ -96,7 +96,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
     // MARK: 全局 MediaMixer
-    let mediaMixer:MediaMixer = MediaMixer(captureSessionMode: .manual, multiTrackAudioMixingEnabled: true)
+    private let capturePipeline = CaptureMediaPipeline()
+    private var captureLease: CaptureLease?
+    var mediaMixer: MediaMixer { capturePipeline.mixer }
 
 
 
@@ -1411,9 +1413,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     }
     func configureAudio() async {
         // Audio settings
-        var audioSettings = await mediaMixer.audioMixerSettings
-        audioSettings.tracks[0] = .default
-        audioSettings.tracks[1] = .default
+        var audioSettings = CaptureMediaPipeline.audioSettings(
+            from: await mediaMixer.audioMixerSettings, microphone: true)
 
         // 混音時鐘用 mic（持續輸出、最穩），輸出格式用 app 軌（保留立體聲）。
         // 兩者脫鉤：避免 mainTrack=mic 時整個輸出被壓成 mono（見 outputFormatTrack）。
@@ -1689,6 +1690,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     override func broadcastStarted(
         withSetupInfo setupInfo: [String : NSObject]?
     ) {
+        guard captureLease == nil else { return }
+        do { captureLease = try CaptureLease.acquire() }
+        catch { finishBroadcastWithError(error); return }
         // User has requested to start the broadcast. Setup info from the UI extension can be suppdlied but optional.
         // Task已更命 priority default已棄用 -> 更名為 medium，避免在高優先級下阻塞其他任務
 
@@ -1892,6 +1896,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     private var broadcastEndTask: Task<Void, Never>?
 
     func broadcastEnd(message: String = "正常結束") {
+        guard captureLease != nil else { return }
         guard broadcastEndTask == nil else { return }
         sendlog(message: "[RTMP] \(message)")
         broadcastEndTask = Task { [weak self] in
@@ -1911,10 +1916,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
             // 1. 關閉串流：停 codec + 送出 closeStream 指令
 
-            _ = try? await rtmpStream.close()
-
-            // 2. 從 mixer 移除輸出（避免 stopRunning 時還有 data flow）
-            await mediaMixer.removeOutput(rtmpStream)
+            if let stream = rtmpStream {
+                _ = try? await stream.close()
+                await mediaMixer.removeOutput(stream)
+            }
 
             await mediaMixer.stopRunning()
 
@@ -1930,6 +1935,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             audioProcessor = nil
 
             volumeNotifier = nil
+            self.captureLease = nil
 
         }
 

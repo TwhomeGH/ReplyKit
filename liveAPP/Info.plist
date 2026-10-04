@@ -29,11 +29,18 @@
 	<array>
 		<string>_http._tcp</string>
 	</array>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>擷取您選擇的螢幕畫面與聲音，用於直播推流或本地錄製。</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>依您的選擇，將完成的本地錄影儲存至照片。</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>將您選擇分享的麥克風聲音加入直播或本地錄影。</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
 		<string>remote-notification</string>
 		<string>audio</string>
+		<string>screen-capture</string>
 	</array>
 	<key>NSSupportsLiveActivities</key>
 	<true/>

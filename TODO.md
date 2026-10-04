@@ -36,3 +36,34 @@
 - [ ] **斷音根因尚未確認**：`align()` 單位不一致已被推翻回退，改由 AHealth 量測指標判斷（見 [replykit-core-fixes-summary.md](Docs/replykit-core-fixes-summary.md) 的「根因再確認」）
 - [ ] **GPU 輸出成本尚未量測**：freeze snapshot 省下 `CVPixelBufferCreate`，但每幀仍建立 texture wrappers 與 format description，端到端效能未量測（見 [video-output-pool-lifetime.md](Docs/video-output-pool-lifetime.md)）
 - [ ] **overlay 合成合併**：把 overlay 合成併進 `rotateNV12_bilinear` / `rotateNV12_bicubic` kernel；已評估為不優先（見 [overlay-scene-config.md](Docs/overlay-scene-config.md)）
+
+## ScreenCaptureKit 接入（iOS 27）
+
+目前是基本全螢幕推流與本地錄製測試版，完整範圍見 [接入文件](Docs/screencapturekit-integration.md)。以下項目完成前，相關功能繼續使用 ReplayKit。
+
+- [ ] **共用 GPU 處理核心**：抽出並接入自訂畫布、裁切／縮放與旋轉；驗證直橫轉換及輸出比例。
+- [ ] **浮水印與 Overlay**：接入既有直播浮水印、文字／時間與其他覆蓋圖層，避免兩種來源行為不一致。
+- [ ] **共用音訊處理器**：接入既有 AudioProcessor、降噪、AGC 與回音處理，驗證系統聲音與麥克風雙軌。
+- [ ] **設定即時更新**：直播期間同步碼率、音量、畫布與支援的編碼設定；需要重建的設定須保留生命週期及世代隔離。
+- [ ] **HEVC**：接入編碼選項、伺服器能力協商及 H.264 回退，目前新路徑固定 H.264。
+- [ ] **iOS 27 實機驗收**：系統授權／取消、背景與跨 App、靜態畫面、旋轉、分享選項變更、停止重開。
+- [ ] **音訊共存驗收**：PiP／TTS 啟停、麥克風開關、耳機切換及來電中斷；確認 Audio Session 能正確還原。
+- [ ] **資源與網路量測**：相同輸出設定比較兩種來源的 CPU、GPU、記憶體與延遲，驗證慢網路與重連。
+
+## ScreenCaptureKit 本地錄製
+
+- [x] 接入只推流／只錄製／推流並錄製；只錄製不依賴 RTMP，也不建立推流 Mixer 與樣本佇列。
+- [x] 接入 SCRecordingOutput、MP4／H.264、錄製進度及完成回呼；未完成檔案保留並標記。
+- [x] 加入本地錄影列表、播放、分享／匯出、存入照片與刪除。
+- [x] 分開處理推流與錄製失敗，新增模式／收尾／重啟核心測試及中文 API 文件。
+- [ ] **錄製最終處理結果**：支援錄下經過 GPU 浮水印、畫布及音訊處理的最終推流內容；目前錄製 SCStream 原始擷取輸出，不套用 Mixer 音量。
+- [ ] **錄影實機驗收**：Xcode 27 編譯、iOS 27 背景／長時間錄製、立即停止、磁碟不足、斷網、完成回呼逾時、App 終止復原、播放分享與照片權限。
+- [ ] **雙輸出成本量測**：比較只推流、只錄製、推流並錄製的 CPU／GPU、記憶體、溫度與續航。
+
+## 自動測試與發布驗證
+
+- [x] `liveAPP` shared scheme 明確加入 `liveAPPTests`。
+- [x] 新增 PR／push／手動可執行的單元測試 workflow，保存 `.xcresult` 與日誌。
+- [x] 發布 workflow 先執行相同 commit 的單元測試，成功後才建置及封裝。
+- [ ] **首次 CI 實跑**：確認 hosted runner 能建置並執行所有 `liveAPPTests`；目前只完成本地設定與靜態驗證。
+- [ ] **Xcode 27 CI 覆蓋**：確認 runner 提供 SDK 27，讓 ScreenCaptureKit iOS 分支實際參與 Apple SDK 編譯；舊 SDK 的核心測試通過不能取代此項。
