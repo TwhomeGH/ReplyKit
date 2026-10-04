@@ -20,6 +20,27 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.04 23:43 CI 補裝 Xcode 26+ 的 Metal Toolchain
+
+**類型**: 優化 · **檔案**: `.github/workflows/unit-tests.yml`, `.github/workflows/main.yml`
+
+### 問題 - CI 在 Xcode 27 下無法編譯 Metal
+
+`liveAPP` 的單元測試與封存於 Xcode 27 環境失敗：`CompileMetalFile rotateNV12.metal` 報「The Metal Toolchain was not installed and could not compile the Metal source files」。
+
+### 根因 - Xcode 26 起 Metal 編譯器改為需另下載的元件
+
+Xcode 26 起把 Metal 編譯器（metalToolchain）從 Xcode 本體抽離成可選下載元件，未安裝即無法編譯任何 .metal。
+
+### 修改 - workflow 於建置前安裝 metalToolchain
+
+- unit-tests.yml 與 main.yml 在 Verify Xcode/iOS SDK 之後、所有 build 與 test 之前加入 `xcodebuild -downloadComponent metalToolchain`。
+- 不加 sudo，以保留 DEVELOPER_DIR 讓指令選用正確的 Xcode 版本。
+
+**相關文件**: [unit-tests.yml](.github/workflows/unit-tests.yml), [main.yml](.github/workflows/main.yml)
+
+---
+
 ## 2026.10.04 CI 切換 Xcode 27 並強制檢查 iOS SDK
 
 **類型**: 調整 · **檔案**: `.github/workflows/main.yml`、`.github/workflows/unit-tests.yml`

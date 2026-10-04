@@ -48,6 +48,13 @@ jobs:
             fi
           done
 
+      - name: Install Metal Toolchain
+        run: |
+          set -euo pipefail
+          # Xcode 26 起 Metal 編譯器（metalToolchain）改為需另外下載的元件，
+          # 缺少它會使 .metal 編譯失敗（rotateNV12.metal）。安裝到本機 Xcode。
+          xcodebuild -downloadComponent metalToolchain
+
       - name: Select available iPhone simulator
         id: simulator
         run: |
