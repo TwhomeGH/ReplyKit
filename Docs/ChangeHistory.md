@@ -20,6 +20,27 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.05 02:47 修正 TTS 過濾 JSON 匯入：選完檔案無反應
+
+**類型**: 修復 · **檔案**: `liveAPP/TTSSettingsView.swift`
+
+### 問題 - 匯入 JSON 開出檔案選擇器後無法進到預覽
+
+選好檔案後畫面沒反應，預覽 sheet 與錯誤 alert 都不出現。
+
+### 根因 - 檔案選擇器收合與下一個 modal 同執行週期，SwiftUI 吞掉後者
+
+`.fileImporter` 完成回呼在同一執行週期就設定 `preview`／`notice` 去開 sheet／alert；iOS 檔案選擇器（UIKit 模態）收合時再要求呈現下一個 modal 會被丟棄，連錯誤也被吞掉，畫面看似「選完就沒反應」。
+
+### 修改 - 選擇器收合後再切換呈現狀態
+
+- 以 `handleImport(_:)` 集中處理，透過 `Task { @MainActor in }` ＋短延遲，在選擇器收合後才設定 `preview`／`notice`（同時確保主執行緒更新）。
+- 讀檔抽成 `readConfiguration(from:)`（security-scoped 存取 + 2 MiB 上限不變）。
+
+**相關文件**: [TTSSettingsView.swift](liveAPP/TTSSettingsView.swift)
+
+---
+
 ## 2026.10.05 02:31 ScreenCaptureKit 不可用原因診斷與擷取畫面重整
 
 **類型**: 優化 · **檔案**: `liveAPP/Capture/CaptureCoordinator.swift`

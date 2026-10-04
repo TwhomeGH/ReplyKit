@@ -211,16 +211,7 @@ class SpeechFilterManager: ObservableObject {
             }
             .toolbar { EditButton() }
             .fileImporter(isPresented: $importing, allowedContentTypes: [.json], allowsMultipleSelection: false) { result in
-                do {
-                    guard let url = try result.get().first else { return }
-                    let access = url.startAccessingSecurityScopedResource()
-                    defer { if access { url.stopAccessingSecurityScopedResource() } }
-                    let handle = try FileHandle(forReadingFrom: url)
-                    defer { try? handle.close() }
-                    let data = try handle.read(upToCount: SpeechFilterConfiguration.maximumBytes + 1) ?? Data()
-                    preview = try SpeechFilterConfiguration.decode(data)
-                    useIncomingConflicts = false
-                } catch { notice = error.localizedDescription }
+                handleImport(result)
             }
             .sheet(isPresented: Binding(get: { preview != nil }, set: { if !$0 { preview = nil } })) {
                 importPreview
@@ -284,6 +275,46 @@ class SpeechFilterManager: ObservableObject {
             preview = nil
             notice = "已套用配置。原配置備份：\(backup.lastPathComponent)"
         } catch { preview = nil; notice = error.localizedDescription }
+    }
+
+    /// 讀取使用者選擇的 JSON（含 security-scoped 存取與大小上限）。
+    private static func readConfiguration(from url: URL) throws -> SpeechFilterConfiguration {
+        let access = url.startAccessingSecurityScopedResource()
+        defer { if access { url.stopAccessingSecurityScopedResource() } }
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        let data = try handle.read(upToCount: SpeechFilterConfiguration.maximumBytes + 1) ?? Data()
+        return try SpeechFilterConfiguration.decode(data)
+    }
+
+    /// 檔案選擇器收合與緊接的 sheet／alert 若落在同一執行週期，SwiftUI 會吞掉後者
+    /// （畫面看似「選完就沒反應」）；因此等選單收合後再切換呈現狀態。
+    private func handleImport(_ result: Result<[URL], Error>) {
+        switch result {
+        case .failure(let error):
+            let message = error.localizedDescription
+            presentAfterPicker { notice = message }
+        case .success(let urls):
+            guard let url = urls.first else { return }
+            do {
+                let incoming = try Self.readConfiguration(from: url)
+                presentAfterPicker {
+                    preview = incoming
+                    useIncomingConflicts = false
+                }
+            } catch {
+                let message = error.localizedDescription
+                presentAfterPicker { notice = message }
+            }
+        }
+    }
+
+    /// 待檔案選擇器收合後，於主執行緒切換呈現狀態。
+    private func presentAfterPicker(_ update: @escaping @MainActor () -> Void) {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            update()
+        }
     }
 
     // 左邊：輸入區
