@@ -117,6 +117,14 @@ jobs:
             -resultBundlePath TestResults/liveAPPTests.xcresult \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee TestResults/tests.log
 
+      - name: Summarize build & test log
+        if: always()
+        run: |
+          set -o pipefail
+          python3 Scripts/ci_test_summary.py TestResults/tests.log \
+            --markdown TestResults/summary.md \
+            --github-summary
+
       - name: Upload test results and logs
         if: always()
         uses: actions/upload-artifact@v7

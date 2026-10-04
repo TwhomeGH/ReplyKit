@@ -20,6 +20,25 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.05 01:17 CI 單元測試日誌摘要（顏色、擷取 warn 與 fail）
+
+**類型**: 優化 · **檔案**: `Scripts/ci_test_summary.py`, `.github/workflows/unit-tests.yml`
+
+### 問題 - CI 日誌冗長，warn／fail／測試清單需人工翻找
+
+單元測試的原始 xcodebuild 輸出與日誌混雜，難以快速看出哪裡 warning、哪裡失敗、有哪些測試。
+
+### 根因 - 無摘要步驟，原始輸出直接呈現
+
+### 修改 - 新增零依賴摘要工具並接進 workflow
+
+- 新增 `Scripts/ci_test_summary.py`：解析 `tests.log`，輸出彩色且可摺疊（`::group::`）的 Errors／Warnings／Tests 摘要；compile error 發 `::error file=,line=` 註解、失敗測試發 `::error::`，warnings 依訊息去重計數並附代表位置。
+- `unit-tests.yml` 於測試後（`if: always()`）執行，並輸出 `TestResults/summary.md` 至 `$GITHUB_STEP_SUMMARY`（隨 artifact 上傳）。
+
+**相關文件**: [ci_test_summary.py](Scripts/ci_test_summary.py)
+
+---
+
 ## 2026.10.05 01:16 修正 Socket 捕捉警告與 ScreenCaptureKit iOS 不可用屬性
 
 **類型**: 修復 · **檔案**: `liveAPP/Socket.swift`, `liveAPP/Capture/ScreenCaptureSource.swift`
