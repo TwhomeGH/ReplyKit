@@ -20,6 +20,27 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.05 01:18 測試 target 停止連結 HaishinKit，修正重複 ObjC 類別
+
+**類型**: 修復 · **檔案**: `liveAPP.xcodeproj/project.pbxproj`
+
+### 問題 - 單元測試執行時 HaishinKit 類別重複載入
+
+`Class _TtC10HaishinKit… is implemented in both …PackageFrameworks/HaishinKit…framework and …liveAPP.debug.dylib`，官方警告可能導致 spurious casting failures 與神秘崩潰。
+
+### 根因 - 測試 target 多餘連結 HaishinKit
+
+`liveAPPTests`（hosted，測試 bundle 會載入 app 行程）與 `liveAPPUITests` 從未 `import HaishinKit`，卻在 Frameworks 與 packageProductDependencies 連結它；執行時與 app 既有的 HaishinKit 同時載入 → 同名 ObjC 類別兩份。
+
+### 修改 - 從測試 target 移除 HaishinKit
+
+- 移除 `liveAPPTests`／`liveAPPUITests` 的 Frameworks 項目與 packageProductDependencies，並清掉孤兒 `PBXBuildFile`／`XCSwiftPackageProductDependency`。
+- `liveAPP` 與 `ReplyKIT` 保留（真正需要）。
+
+**相關文件**: [project.pbxproj](liveAPP.xcodeproj/project.pbxproj)
+
+---
+
 ## 2026.10.05 01:17 CI 單元測試日誌摘要（顏色、擷取 warn 與 fail）
 
 **類型**: 優化 · **檔案**: `Scripts/ci_test_summary.py`, `.github/workflows/unit-tests.yml`

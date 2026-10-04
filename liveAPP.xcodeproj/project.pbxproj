@@ -8,8 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		CE2819D42E5AB5750023BBC4 /* HaishinKit in Frameworks */ = {isa = PBXBuildFile; productRef = CE2819D32E5AB5750023BBC4 /* HaishinKit */; };
-		CE2819D92E5ABB260023BBC4 /* HaishinKit in Frameworks */ = {isa = PBXBuildFile; productRef = CE2819D82E5ABB260023BBC4 /* HaishinKit */; };
-		CE2819DD2E5ABC690023BBC4 /* HaishinKit in Frameworks */ = {isa = PBXBuildFile; productRef = CE2819DC2E5ABC690023BBC4 /* HaishinKit */; };
 		CE2819DF2E5ABD940023BBC4 /* RTMPHaishinKit in Frameworks */ = {isa = PBXBuildFile; productRef = CE2819DE2E5ABD940023BBC4 /* RTMPHaishinKit */; };
 		CE2819E92E5ACD670023BBC4 /* ReplayKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE2819E82E5ACD670023BBC4 /* ReplayKit.framework */; };
 		CE2819F32E5ACD680023BBC4 /* ReplayKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE2819E82E5ACD670023BBC4 /* ReplayKit.framework */; };
@@ -204,7 +202,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				CE2819DD2E5ABC690023BBC4 /* HaishinKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -212,7 +209,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				CE2819D92E5ABB260023BBC4 /* HaishinKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -348,7 +344,6 @@
 			);
 			name = liveAPPTests;
 			packageProductDependencies = (
-				CE2819DC2E5ABC690023BBC4 /* HaishinKit */,
 			);
 			productName = liveAPPTests;
 			productReference = CE2819AF2E5AB3790023BBC4 /* liveAPPTests.xctest */;
@@ -372,7 +367,6 @@
 			);
 			name = liveAPPUITests;
 			packageProductDependencies = (
-				CE2819D82E5ABB260023BBC4 /* HaishinKit */,
 			);
 			productName = liveAPPUITests;
 			productReference = CE2819B92E5AB3790023BBC4 /* liveAPPUITests.xctest */;
@@ -1367,16 +1361,6 @@
 
 /* Begin XCSwiftPackageProductDependency section */
 		CE2819D32E5AB5750023BBC4 /* HaishinKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = CE2819D22E5AB5750023BBC4 /* XCRemoteSwiftPackageReference "HaishinKit.swift" */;
-			productName = HaishinKit;
-		};
-		CE2819D82E5ABB260023BBC4 /* HaishinKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = CE2819D22E5AB5750023BBC4 /* XCRemoteSwiftPackageReference "HaishinKit.swift" */;
-			productName = HaishinKit;
-		};
-		CE2819DC2E5ABC690023BBC4 /* HaishinKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = CE2819D22E5AB5750023BBC4 /* XCRemoteSwiftPackageReference "HaishinKit.swift" */;
 			productName = HaishinKit;
