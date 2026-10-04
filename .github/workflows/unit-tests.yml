@@ -18,8 +18,11 @@ permissions:
 
 jobs:
   tests:
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 40
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
+      BUILD_INFO_PACKAGES_DIR: /tmp/liveapp-source-packages
     steps:
       - name: Checkout tested revision
         uses: actions/checkout@v6
@@ -27,15 +30,23 @@ jobs:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
 
-      - name: Record Xcode and SDK versions
+      - name: Test build information generator
+        run: python3 Scripts/test_build_info.py
+
+      - name: Verify Xcode 27 and iOS SDKs
         run: |
+          set -euo pipefail
           xcodebuild -version
           xcodebuild -showsdks
-          SDK_VERSION=$(xcrun --sdk iphonesimulator --show-sdk-version)
-          echo "Simulator SDK: $SDK_VERSION" >> "$GITHUB_STEP_SUMMARY"
-          if [[ "$SDK_VERSION" != 27.* ]]; then
-            echo "此 SDK 未啟用 ScreenCaptureKit iOS 27 分支；本次仍會建置主 App 並執行核心單元測試。" >> "$GITHUB_STEP_SUMMARY"
-          fi
+          echo "Developer directory: $DEVELOPER_DIR" >> "$GITHUB_STEP_SUMMARY"
+          for SDK in iphoneos iphonesimulator; do
+            SDK_VERSION=$(xcrun --sdk "$SDK" --show-sdk-version)
+            echo "$SDK SDK: $SDK_VERSION" >> "$GITHUB_STEP_SUMMARY"
+            if [[ "$SDK_VERSION" != 27.* ]]; then
+              echo "::error::需要 iOS 27.x SDK，實際 $SDK 為 $SDK_VERSION；停止以免略過 ScreenCaptureKit 分支。"
+              exit 1
+            fi
+          done
 
       - name: Select available iPhone simulator
         id: simulator
@@ -51,11 +62,13 @@ jobs:
               if not match:
                   continue
               version = tuple(int(value or 0) for value in match.groups())
+              if version[0] != 27:
+                  continue
               for device in devices:
                   if device.get("isAvailable") and device["name"].startswith("iPhone"):
                       candidates.append((version, device.get("state") == "Booted", device["name"], device["udid"]))
           if not candidates:
-              raise SystemExit("No available iPhone simulator; tests cannot run.")
+              raise SystemExit("No available iOS 27 iPhone simulator; tests cannot run.")
           version, booted, name, udid = max(candidates)
           print(f"Using {name}, iOS {version}, {udid}")
           with open(os.environ["GITHUB_OUTPUT"], "a") as output:
@@ -76,7 +89,7 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p TestResults
-          xcodebuild -resolvePackageDependencies \
+          xcodebuild -clonedSourcePackagesDirPath "$BUILD_INFO_PACKAGES_DIR" -resolvePackageDependencies \
             -project liveAPP.xcodeproj -scheme liveAPP \
             -onlyUsePackageVersionsFromResolvedFile 2>&1 | tee TestResults/resolve.log
 
@@ -85,7 +98,7 @@ jobs:
           SIMULATOR_ID: ${{ steps.simulator.outputs.id }}
         run: |
           set -o pipefail
-          xcodebuild test \
+          xcodebuild -clonedSourcePackagesDirPath "$BUILD_INFO_PACKAGES_DIR" test \
             -project liveAPP.xcodeproj -scheme liveAPP \
             -configuration Debug \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \

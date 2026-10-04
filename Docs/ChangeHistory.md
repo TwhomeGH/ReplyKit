@@ -20,6 +20,37 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.04 CI 切換 Xcode 27 並強制檢查 iOS SDK
+
+**類型**: 調整 · **檔案**: `.github/workflows/main.yml`、`.github/workflows/unit-tests.yml`
+
+### 修改 - 確保 ScreenCaptureKit iOS 27 分支參與 CI
+
+- 測試及封裝改用官方 `xcode-27` runner，固定 Xcode 27.0 Developer 目錄。
+- 同時檢查 iPhoneOS／iPhoneSimulator SDK 為 27.x，不符即失敗，移除舊 SDK 僅提示後繼續的行為。
+- 測試只選擇可用的 iOS 27 iPhone Simulator；沒有符合的 runtime 即失敗。
+- runner 目前為公開預覽；本地格式驗證不代表 GitHub 上已編譯通過。
+
+**相關文件**: [ScreenCaptureKit 接入](screencapturekit-integration.md) · [官方 runner 公告](https://github.blog/changelog/2026-09-10-xcode-27-runner-image-now-runs-on-macos-27/)
+
+---
+
+## 2026.10.04 新增關於與建置資訊及啟動來源日誌
+
+**類型**: 新增 · **檔案**: `liveAPP/BuildInformation.swift`、`liveAPP/AboutBuildView.swift`、`Scripts/build_info.py`、`liveAPP.xcodeproj/project.pbxproj`、`.github/workflows/`
+
+### 修改 - 以 Git 修訂與建置快照識別產物
+
+- 設定頁新增關於與建置資訊，顯示 App／HaishinKit revision、未提交修改、建置時間、CI 編號與產物識別碼，提供完整資訊複製及分享。
+- 每次主 App 建置產生 BuildInfo.json 並封裝入 bundle，啟動日誌使用同一份資料；不依賴專案版本號或 Build Version。
+- 區分套件鎖定值與 checkout 核對結果；資訊缺失顯示未知，不把未知誤標為乾淨或已驗證。
+- 統一 CI 套件 checkout 目錄，移除直接修改 HaishinKit 原始碼的 revision 注入方式。
+- 新增 Python 產生器及 Swift 模型測試、中文欄位說明與封裝驗收待辦。
+
+**相關文件**: [建置資訊說明](build-information.md)
+
+---
+
 ## 2026.10.04 TTS 過濾配置匯入匯出與逐條啟用控制
 
 **類型**: 新增 · **檔案**: `liveAPP/TTSSettingsView.swift`、`liveAPP/SpeechFilterConfiguration.swift`、`liveAPPTests/SpeechFilterConfigurationTests.swift`

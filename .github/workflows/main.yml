@@ -18,8 +18,10 @@ jobs:
   build:
     needs: unit-tests
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    runs-on: macos-26
+    runs-on: xcode-27
     env:
+      DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
+      BUILD_INFO_PACKAGES_DIR: /tmp/liveapp-source-packages
       FASTLANE_USER: ${{ secrets.APPID }}
       FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD: ${{ secrets.APPPass }}
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -33,15 +35,20 @@ jobs:
           fetch-tags: true
           ref: ${{ github.event.workflow_run.head_sha }}
 
-      # 1️⃣.5 HaishinKit dependency version
-      - name: Show & inject HaishinKit revision
+      - name: Verify Xcode 27 and iOS SDKs
         run: |
-          echo "=== HaishinKitFixSwfit (Package.resolved) ==="
-          grep -A5 "haishinkitfixswfit" liveAPP.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved | head -10
-          HASH=$(grep -A5 "haishinkitfixswfit" liveAPP.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved \
-            | grep revision | cut -d'"' -f4 | cut -c1-7)
-          echo "REVISION=$HASH" >> "$GITHUB_ENV"
-          echo "HaishinKit revision: $HASH"
+          set -euo pipefail
+          xcodebuild -version
+          xcodebuild -showsdks
+          echo "Developer directory: $DEVELOPER_DIR" >> "$GITHUB_STEP_SUMMARY"
+          for SDK in iphoneos iphonesimulator; do
+            SDK_VERSION=$(xcrun --sdk "$SDK" --show-sdk-version)
+            echo "$SDK SDK: $SDK_VERSION" >> "$GITHUB_STEP_SUMMARY"
+            if [[ "$SDK_VERSION" != 27.* ]]; then
+              echo "::error::需要 iOS 27.x SDK，實際 $SDK 為 $SDK_VERSION；停止以免略過 ScreenCaptureKit 分支。"
+              exit 1
+            fi
+          done
 
       - name: Get tag
         id: get_tag
@@ -87,7 +94,7 @@ jobs:
       - name: Resolve SwiftPM dependencies
         run: |
           echo "Resolving Swift Package Manager dependencies to locked revisions"
-          xcodebuild -resolvePackageDependencies -project liveAPP.xcodeproj -scheme liveAPP \
+          xcodebuild -clonedSourcePackagesDirPath "$BUILD_INFO_PACKAGES_DIR" -resolvePackageDependencies -project liveAPP.xcodeproj -scheme liveAPP \
             -onlyUsePackageVersionsFromResolvedFile
         env:
           scheme: ${{ steps.scheme.outputs.scheme }}
@@ -98,18 +105,11 @@ jobs:
           scheme: ${{ steps.scheme.outputs.scheme }}
           filetype_parameter: ${{ steps.filetype_parameter.outputs.filetype_parameter }}
           file_to_build: ${{ steps.filetype_parameter.outputs.file_to_build }}
-          REVISION: ${{ env.REVISION }}
         continue-on-error: true
         run: |
           echo "Running a fast build on iOS Simulator to surface compile errors quickly"
-          # Inject revision into checked-out HaishinKit source
-          CONST_FILE=SourcePackages/checkouts/HaishinKitFixSwfit/HaishinKit/Sources/Util/Constants.swift
-          if [ -f "$CONST_FILE" ]; then
-            sed -i '' 's/kHaishinKitRevision = \".*\"/kHaishinKitRevision = \"'"$REVISION"'\"/' "$CONST_FILE"
-            echo "Injected revision $REVISION into $CONST_FILE"
-          fi
           set +e
-          xcodebuild -scheme "$scheme" -"$filetype_parameter" "$file_to_build" \
+          xcodebuild -clonedSourcePackagesDirPath "$BUILD_INFO_PACKAGES_DIR" -scheme "$scheme" -"$filetype_parameter" "$file_to_build" \
             -sdk iphonesimulator -configuration Debug \
             -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile \
             clean build CODE_SIGNING_ALLOWED=NO 2>&1 | tee xcodebuild.log | xcpretty --no-utf --no-color
@@ -176,22 +176,15 @@ jobs:
           scheme: ${{ steps.scheme.outputs.scheme }}
           filetype_parameter: ${{ steps.filetype_parameter.outputs.filetype_parameter }}
           file_to_build: ${{ steps.filetype_parameter.outputs.file_to_build }}
-          REVISION: ${{ env.REVISION }}
 
         run: |
           mkdir -p build
           
-          CONST_FILE=SourcePackages/checkouts/HaishinKitFixSwfit/HaishinKit/Sources/Util/Constants.swift
-          if [ -f "$CONST_FILE" ]; then
-            sed -i '' 's/kHaishinKitRevision = \".*\"/kHaishinKitRevision = \"'"$REVISION"'\"/' "$CONST_FILE"
-            echo "Injected revision $REVISION into $CONST_FILE"
-          fi
-          
-          xcodebuild clean -$filetype_parameter "$file_to_build" -scheme "$scheme" -configuration Release \
+          xcodebuild -clonedSourcePackagesDirPath "$BUILD_INFO_PACKAGES_DIR" clean -$filetype_parameter "$file_to_build" -scheme "$scheme" -configuration Release \
             -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile
           
      
-          xcodebuild archive \
+          xcodebuild -clonedSourcePackagesDirPath "$BUILD_INFO_PACKAGES_DIR" archive \
             -$filetype_parameter "$file_to_build" \
             -scheme "$scheme" \
             -configuration Release \

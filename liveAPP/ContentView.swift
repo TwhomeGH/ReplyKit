@@ -948,6 +948,10 @@ struct LogSettingsView: View {
                 
                 LogSettingView()
 
+                NavigationLink("關於與建置資訊") {
+                    AboutBuildView()
+                }
+
                 NavigationLink("Socket 連線") {
                     SocketConnectionSettingsView()
                 }
@@ -1737,29 +1741,35 @@ struct LogView: View {
 
         VStack {
 
-            Text("日誌：\(logMode) \(logC.description)")
-            Button("App日誌") {
-                logMode = 1
-                LPConfig.shared.logMode=logMode
+            Text("\(AppLanguage.localized("main.log_mode"))：\(logMode) 使用:\(logC.description)")
 
-                CFNotificationCenterPostNotification(cfCenter, CFNotificationName("logMode" as CFString), nil, nil, true)
+            HStack {
+                Text("切換日誌模式：")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+
+                Button("App日誌") {
+                    logMode = 1
+                    LPConfig.shared.logMode=logMode
+
+                    CFNotificationCenterPostNotification(cfCenter, CFNotificationName("logMode" as CFString), nil, nil, true)
+                }
+
+                Button("外部日誌") {
+                    logMode = 0
+                    LPConfig.shared.logMode=logMode
+
+                    CFNotificationCenterPostNotification(cfCenter, CFNotificationName("logMode" as CFString), nil, nil, true)
 
 
+                }    
 
-            }
-            Button("外部日誌") {
-                logMode = 0
-                LPConfig.shared.logMode=logMode
+                Button("App + 外部日誌") {
+                    logMode = 2
+                    LPConfig.shared.logMode=logMode
+                    CFNotificationCenterPostNotification(cfCenter, CFNotificationName("logMode" as CFString), nil, nil, true)
 
-                CFNotificationCenterPostNotification(cfCenter, CFNotificationName("logMode" as CFString), nil, nil, true)
-
-
-            }
-            Button("App + 外部日誌") {
-                logMode = 2
-                LPConfig.shared.logMode=logMode
-                CFNotificationCenterPostNotification(cfCenter, CFNotificationName("logMode" as CFString), nil, nil, true)
-
+                }
             }
 
             Text("目前訊息數：\(logModel.messages.count)")
@@ -1768,7 +1778,7 @@ struct LogView: View {
 
 
             VStack {
-                Button("開啟日誌設定") {
+                Button("\(AppLanguage.localized("main.settings"))") {
                     showLogSettings = true
                 }
                 .padding()
@@ -1780,28 +1790,31 @@ struct LogView: View {
                 LogSettingsView()
             }
 
-            Button("清除日誌") {
-                logModel.clearLogs()
-                coordinator?.clearText()
-                AppLogPersister.shared.clear()
-                if let containerURL =
-                    FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.nuclear.liveAPP") {
-                    let logURL = containerURL.appendingPathComponent("log.txt")
-                    do {
-                        try "".write(to: logURL, atomically: true, encoding: .utf8)
-                        sendlog(message: "✅ log.txt 已清空")
-                    } catch {
-                        sendlog(message: "❌ 無法清空 log.txt：\(error)")
+            HStack {
+                Button("清除日誌") {
+                    logModel.clearLogs()
+                    coordinator?.clearText()
+                    AppLogPersister.shared.clear()
+                    if let containerURL =
+                        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.nuclear.liveAPP") {
+                        let logURL = containerURL.appendingPathComponent("log.txt")
+                        do {
+                            try "".write(to: logURL, atomically: true, encoding: .utf8)
+                            sendlog(message: "✅ log.txt 已清空")
+                        } catch {
+                            sendlog(message: "❌ 無法清空 log.txt：\(error)")
+                        }
                     }
                 }
-            }
 
-            Button("清除子母錯誤疊加層") {
-                LPConfig.shared.isReconnecting = false
-                LPConfig.shared.reconnectStatus = ""
-                PIPService.shared.clearAdOverlay()
-                sendlog(message: "子母錯誤疊加層已清除")
+                Button("清除子母錯誤疊加層") {
+                    LPConfig.shared.isReconnecting = false
+                    LPConfig.shared.reconnectStatus = ""
+                    PIPService.shared.clearAdOverlay()
+                    sendlog(message: "子母錯誤疊加層已清除")
+                }
             }
+            
 
             ZStack(alignment: .bottomTrailing) {
 

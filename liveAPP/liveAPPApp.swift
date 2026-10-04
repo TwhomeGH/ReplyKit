@@ -1017,6 +1017,9 @@ struct liveAPPApp: App {
 
     init() {
 
+        // 與關於頁共用同一份建置快照，便於從 log.txt 辨識產物。
+        AppLogPersister.shared.append(lines: BuildInformation.current.report.components(separatedBy: "\n").map { "[BuildInfo] " + $0 })
+
         // App 啟動時就啟動 Socket Server
         // 啟動一次
 

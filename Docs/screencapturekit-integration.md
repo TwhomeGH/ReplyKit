@@ -112,7 +112,7 @@ Windows 可執行狀態機、有界佇列與音訊所有權的核心測試，以
 
 `iOS Unit Tests` workflow 在 PR、分支 push 或手動觸發時，使用 `liveAPP` scheme 於可用的 iPhone Simulator 執行 `liveAPPTests`。發布流程也會呼叫同一套測試，測試失敗時不進入建置／發布工作。CI 保存 `.xcresult` 和日誌，便於定位失敗。
 
-CI 會記錄 Xcode／SDK 版本；SDK 非 27.x 時，新擷取分支不會被啟用，不能把核心測試通過視為 ScreenCaptureKit 整合驗收。
+測試與發布 CI 使用 `xcode-27` runner，固定 `DEVELOPER_DIR=/Applications/Xcode_27.0.app/Contents/Developer`。兩者都檢查 iPhoneOS 與 iPhoneSimulator SDK 必須是 27.x；環境不符直接失敗。單元測試僅選擇 iOS 27 的 iPhone Simulator，避免舊 runtime 略過新功能。runner 目前為公開預覽，實際編譯與執行結果仍須以 CI 日誌為準。
 
 尚未接入的 GPU、浮水印、音訊處理、即時設定與 HEVC，以及首次 CI／實機驗證，統一追蹤於 [TODO.md](../TODO.md)。
 

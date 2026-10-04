@@ -1303,7 +1303,22 @@
         "ja" : { "stringUnit" : { "state" : "translated", "value" : "秒" } },
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "秒" } }
       }
+    },
+    "main.settings" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Settings" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "設定" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "設置" } }
+        }
+    },
+    "main.log_mode" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Log Mode" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ログ記録モード" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "日誌模式" } }
+        }
     }
+    
   },
   "version" : "1.0"
 }
