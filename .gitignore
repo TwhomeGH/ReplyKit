@@ -8,3 +8,10 @@ __pycache__/
 
 # Playwright MCP 產物
 .playwright-mcp/
+
+# CI / 建置產物（main.yml、unit-tests.yml 會寫入）
+build/
+TestResults/
+xcodebuild.log
+xcodebuild-summary.md
+xcodebuild-summary.log

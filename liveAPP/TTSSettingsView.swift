@@ -330,6 +330,12 @@ class SpeechFilterManager: ObservableObject {
                     } catch { notice = error.localizedDescription }
                 }
             }
+            if let notice {
+                Text(notice)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if let url = exportedURL { ShareLink("分享最近匯出的配置", item: url) }
             Text("匯出與備份存放在與 log.txt 相同的 Documents 目錄。")
                 .font(.caption).foregroundStyle(.secondary)

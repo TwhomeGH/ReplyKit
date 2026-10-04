@@ -20,6 +20,25 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.05 03:17 TTS 匯入提示改行內顯示；.gitignore 忽略 CI 產物
+
+**類型**: 修復 · **檔案**: `liveAPP/TTSSettingsView.swift`, `.gitignore`
+
+### 問題 - TTS 匯入若 modal 呈現被吞掉就完全沒回饋
+
+匯入結果只以 sheet／alert 呈現，一旦被系統吞掉（選完檔案無反應）就無法得知成功或錯誤。
+
+### 根因 - 回饋完全依賴 modal 呈現
+
+### 修改
+
+- FilterSettingsView 於輸入區加入行內 `notice` 文字（成功／錯誤皆顯示），不再只依賴 alert。
+- `.gitignore` 忽略 CI 產物（`build/`、`TestResults/`、`xcodebuild.log`、`xcodebuild-summary.md`），避免 BuildInfo 誤報「有未提交修改（未追蹤 N）」。
+
+**相關文件**: [TTSSettingsView.swift](liveAPP/TTSSettingsView.swift)
+
+---
+
 ## 2026.10.05 03:16 修正側載無 App Group 導致螢幕擷取被鎖住
 
 **類型**: 修復 · **檔案**: `SharedCapture/CaptureLease.swift`, `liveAPP/Capture/CaptureCoordinator.swift`
