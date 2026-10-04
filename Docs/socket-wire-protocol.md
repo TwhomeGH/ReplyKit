@@ -79,7 +79,7 @@
 
 | 方向 | → Server |
 | ------ | ---------- |
-| Payload | `{"type":"audience","userNum":Int?,"userList":[String]?}` |
+| Payload | `{"type":"audience","userNum":Int?,"userList":[String]?,"useTTS":Bool?}` |
 | Server 行為 | 僅更新觀眾數量與列表，不渲染任何聊天訊息 |
 | 用途 | 與 `StreamMessage` 分離，避免為了更新人數而傳送空字串聊天訊息 |
 
@@ -90,7 +90,18 @@
 | 方向 | → Server |
 | ------ | ---------- |
 | Payload | `{"type":"StreamMessage","user":String,"message":String,"img":String?,"giftImg":String?,"isMain":Bool?,"userNum":Int?,"userList":[String]?}` |
-| Server 行為 | 更新觀眾資訊、PiP 疊加層渲染聊天訊息、TTS 朗讀 |
+| Server 行為 | 更新觀眾資訊、PiP 疊加層渲染聊天訊息；useTTS 允許時交由 TTS 服務判斷朗讀 |
+
+`useTTS` 為可選 JSON 布林值，省略或 `null` 時預設 `true`，相容既有發送端。`false` 只略過該則訊息的朗讀，不影響聊天顯示、觀眾資訊，也不停止正在朗讀的內容或清空既有佇列。`true` 仍受 App 的 TTS 總開關、主要訊息設定及文字篩選限制，不會強制啟用服務。字串 `"false"` 或數字不屬於合法值，會解碼失敗。
+
+```json
+{
+  "type": "StreamMessage",
+  "user": "userName",
+  "message": "這則只顯示，不朗讀",
+  "useTTS": false
+}
+```
 
 **PiP 行內 emoji 渲染** — `message` 中的圖片 URL（`https://...png|jpg|gif|webp`）會自動提取並在聊天文字中行內顯示：
 

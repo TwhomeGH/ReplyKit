@@ -9,6 +9,7 @@ import AVFoundation
 import SwiftUI
 import Foundation
 import Combine
+import UniformTypeIdentifiers
 
 // MARK: TTS過濾管理器
 class SpeechFilterManager: ObservableObject {
@@ -30,9 +31,49 @@ class SpeechFilterManager: ObservableObject {
         didSet { saveToUserDefaults() }
     }
     
+    @Published var disabledBlockKeywords: Set<String> = [] { didSet { saveToUserDefaults() } }
+    @Published var disabledReplacementKeywords: Set<String> = [] { didSet { saveToUserDefaults() } }
+    @Published var replacementOrder: [String] = [] { didSet { saveToUserDefaults() } }
+    private var loading = false
+    var orderedReplacementKeys: [String] {
+        var seen = Set<String>()
+        return (replacementOrder + replaceKeywords.keys.sorted()).filter { replaceKeywords[$0] != nil && seen.insert($0).inserted }
+    }
+    var configuration: SpeechFilterConfiguration {
+        var value = SpeechFilterConfiguration(blockKeywords: blockKeywords,
+            replaceKeywords: orderedReplacementKeys.map { SpeechReplacement(word: $0, replacement: replaceKeywords[$0]!, enabled: !disabledReplacementKeywords.contains($0)) },
+            removeURLs: removeURLs, removeEmoji: removeEmoji, removePureNumbers: removePureNumbers)
+        value.disabledBlockKeywords = blockKeywords.filter { disabledBlockKeywords.contains($0) }
+        return value
+    }
+    func apply(_ config: SpeechFilterConfiguration) throws {
+        let value = try config.validated()
+        loading = true
+        blockKeywords = value.blockKeywords
+        replaceKeywords = Dictionary(uniqueKeysWithValues: value.replaceKeywords.map { ($0.word, $0.replacement) })
+        replacementOrder = value.replaceKeywords.map(\.word)
+        disabledBlockKeywords = Set(value.disabledBlockKeywords)
+        disabledReplacementKeywords = Set(value.replaceKeywords.filter { !$0.enabled }.map(\.word))
+        if let flag = value.removeURLs { removeURLs = flag }
+        if let flag = value.removeEmoji { removeEmoji = flag }
+        if let flag = value.removePureNumbers { removePureNumbers = flag }
+        loading = false
+        saveToUserDefaults()
+    }
+    /// 完整驗證、成功備份後才套用；錯誤不得留下半套設定。
+    func importConfiguration(_ incoming: SpeechFilterConfiguration, replace: Bool,
+                             useIncomingConflicts: Bool, directory: URL) throws -> URL {
+        let current = configuration
+        let next = try replace ? incoming.validated() : current.merging(incoming, useIncomingConflicts: useIncomingConflicts)
+        let backup = try current.write(to: directory, backup: true)
+        try apply(next)
+        return backup
+    }
     private let defaultsKey = "SpeechFilterSettings"
     
-    private init() {   // 私有化 init，避免外部建立新實例
+    private let defaults: UserDefaults
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         loadFromUserDefaults()
     }
     
@@ -62,13 +103,13 @@ class SpeechFilterManager: ObservableObject {
         }
         
         // 4. 移除 blockKeywords
-        for word in blockKeywords {
+        for word in blockKeywords where !disabledBlockKeywords.contains(word) {
             result = result.replacingOccurrences(of: word, with: "")
         }
         
         // 5. 替換 replaceKeywords
-        for (word, replacement) in replaceKeywords {
-            result = result.replacingOccurrences(of: word, with: replacement)
+        for word in orderedReplacementKeys where !disabledReplacementKeywords.contains(word) {
+            result = result.replacingOccurrences(of: word, with: replaceKeywords[word] ?? "")
         }
         
         return result
@@ -76,20 +117,29 @@ class SpeechFilterManager: ObservableObject {
     
     /// 儲存到 UserDefaults
     private func saveToUserDefaults() {
+        guard !loading else { return }
         let dict: [String: Any] = [
             "blockKeywords": blockKeywords,
             "replaceKeywords": replaceKeywords,
+            "replacementOrder": orderedReplacementKeys,
+            "disabledBlockKeywords": Array(disabledBlockKeywords),
+            "disabledReplacementKeywords": Array(disabledReplacementKeywords),
             "removeURLs": removeURLs,
             "removeEmoji": removeEmoji,
             "removePureNumbers": removePureNumbers
         ]
-        UserDefaults.standard.set(dict, forKey: defaultsKey)
+        defaults.set(dict, forKey: defaultsKey)
     }
     
     /// 從 UserDefaults 載入
     private func loadFromUserDefaults() {
-        guard let dict = UserDefaults.standard.dictionary(forKey: defaultsKey) else { return }
+        loading = true
+        defer { loading = false }
+        guard let dict = defaults.dictionary(forKey: defaultsKey) else { return }
         
+        replacementOrder = dict["replacementOrder"] as? [String] ?? []
+        disabledBlockKeywords = Set(dict["disabledBlockKeywords"] as? [String] ?? [])
+        disabledReplacementKeywords = Set(dict["disabledReplacementKeywords"] as? [String] ?? [])
         if let block = dict["blockKeywords"] as? [String] {
             blockKeywords = block
         }
@@ -110,9 +160,14 @@ class SpeechFilterManager: ObservableObject {
 
 
 // MARK: TTS過濾頁
-struct FilterSettingsView: View {
+@MainActor struct FilterSettingsView: View {
     @StateObject private var filter = SpeechFilterManager.shared
     
+    @State private var importing = false
+    @State private var preview: SpeechFilterConfiguration?
+    @State private var useIncomingConflicts = false
+    @State private var notice: String?
+    @State private var exportedURL: URL?
     @State private var inputText = ""
     @State private var newBlockWord = ""
     @State private var newReplaceWord = ""
@@ -154,15 +209,99 @@ struct FilterSettingsView: View {
                     .navigationTitle("過濾器設定")
                 }
             }
-            .toolbar {
-                EditButton()
+            .toolbar { EditButton() }
+            .fileImporter(isPresented: $importing, allowedContentTypes: [.json], allowsMultipleSelection: false) { result in
+                do {
+                    guard let url = try result.get().first else { return }
+                    let access = url.startAccessingSecurityScopedResource()
+                    defer { if access { url.stopAccessingSecurityScopedResource() } }
+                    let handle = try FileHandle(forReadingFrom: url)
+                    defer { try? handle.close() }
+                    let data = try handle.read(upToCount: SpeechFilterConfiguration.maximumBytes + 1) ?? Data()
+                    preview = try SpeechFilterConfiguration.decode(data)
+                    useIncomingConflicts = false
+                } catch { notice = error.localizedDescription }
             }
+            .sheet(isPresented: Binding(get: { preview != nil }, set: { if !$0 { preview = nil } })) {
+                importPreview
+            }
+            .alert("過濾器配置", isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) {
+                Button("好") { notice = nil }
+            } message: { Text(notice ?? "") }
         
     }
     
+    private var documentsDirectory: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    }
+    private var importPreview: some View {
+        NavigationStack {
+            Form {
+                if let incoming = preview {
+                    Section("匯入內容") {
+                        Text("排除字：\(incoming.blockKeywords.count) 條；替換字：\(incoming.replaceKeywords.count) 條")
+                        Text("合併保留目前過濾開關；取代套用檔案內的開關，未提供的開關維持原值。")
+                        Text("套用前會先在 Documents 自動備份；備份失敗不變更設定。")
+                    }
+                    let blockConflicts = filter.configuration.blockConflicts(with: incoming)
+                    let conflicts = filter.configuration.conflicts(with: incoming)
+                    if !blockConflicts.isEmpty {
+                        Section("排除字狀態衝突（\(blockConflicts.count) 條）") {
+                            ForEach(blockConflicts, id: \.self) { word in
+                                Text("\(word)：目前\(filter.disabledBlockKeywords.contains(word) ? "停用" : "啟用") → 匯入\(incoming.disabledBlockKeywords.contains(word) ? "停用" : "啟用")")
+                            }
+                        }
+                    }
+                    if !blockConflicts.isEmpty || !conflicts.isEmpty {
+                        Toggle("合併衝突時採用匯入內容與啟用狀態", isOn: $useIncomingConflicts)
+                    }
+                    if !conflicts.isEmpty {
+                        Section("替換衝突（\(conflicts.count) 條）") {
+                            ForEach(conflicts, id: \.self) { word in
+                                VStack(alignment: .leading) {
+                                    Text(word)
+                                    Text("目前\(filter.disabledReplacementKeywords.contains(word) ? "停用" : "啟用")／匯入\((incoming.replaceKeywords.first(where: { $0.word == word })?.enabled ?? true) ? "啟用" : "停用")")
+                                    Text("目前：\(filter.replaceKeywords[word] ?? "")")
+                                    Text("匯入：\(incoming.replaceKeywords.first(where: { $0.word == word })?.replacement ?? "")")
+                                }
+                            }
+                        }
+                    }
+                    Section {
+                        Button("確認合併") { applyImport(incoming, replace: false) }
+                        Button("確認取代目前清單", role: .destructive) { applyImport(incoming, replace: true) }
+                    }
+                }
+            }
+            .navigationTitle("預覽過濾配置")
+            .toolbar { Button("取消") { preview = nil } }
+        }
+    }
+    private func applyImport(_ incoming: SpeechFilterConfiguration, replace: Bool) {
+        do {
+            let backup = try filter.importConfiguration(incoming, replace: replace,
+                useIncomingConflicts: useIncomingConflicts, directory: documentsDirectory)
+            preview = nil
+            notice = "已套用配置。原配置備份：\(backup.lastPathComponent)"
+        } catch { preview = nil; notice = error.localizedDescription }
+    }
+
     // 左邊：輸入區
     private var inputSection: some View {
         VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Button("匯入 JSON") { importing = true }
+                Button("匯出目前配置") {
+                    do {
+                        let url = try filter.configuration.write(to: documentsDirectory)
+                        exportedURL = url
+                        notice = "已儲存至檔案分享目錄 Documents：\(url.lastPathComponent)"
+                    } catch { notice = error.localizedDescription }
+                }
+            }
+            if let url = exportedURL { ShareLink("分享最近匯出的配置", item: url) }
+            Text("匯出與備份存放在與 log.txt 相同的 Documents 目錄。")
+                .font(.caption).foregroundStyle(.secondary)
             Text("朗讀過濾設定")
                 .font(.headline)
             
@@ -196,7 +335,7 @@ struct FilterSettingsView: View {
                     TextField("新增排除字", text: $newBlockWord)
                         .textFieldStyle(.roundedBorder)
                     Button("加入") {
-                        if !newBlockWord.isEmpty {
+                        if !newBlockWord.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !filter.blockKeywords.contains(newBlockWord) {
                             filter.blockKeywords.append(newBlockWord)
                             newBlockWord = ""
                         }
@@ -213,8 +352,10 @@ struct FilterSettingsView: View {
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 60)
                     Button("加入") {
-                        if !newReplaceWord.isEmpty {
+                        if !newReplaceWord.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            let isNew = filter.replaceKeywords[newReplaceWord] == nil
                             filter.replaceKeywords[newReplaceWord] = newReplacement
+                            if isNew { filter.replacementOrder = filter.orderedReplacementKeys.filter { $0 != newReplaceWord } + [newReplaceWord] }
                             newReplaceWord = ""
                             newReplacement = "B"
                         }
@@ -229,21 +370,46 @@ struct FilterSettingsView: View {
     List {
         Section(header: Text("已加入的排除字").font(.headline)) {
             ForEach(filter.blockKeywords.indices, id: \.self) { index in
-                if editMode?.wrappedValue.isEditing == true {
-                    TextField("編輯字", text: $filter.blockKeywords[index])
-                        .textFieldStyle(.roundedBorder)
-                } else {
-                    Text(filter.blockKeywords[index])
+                HStack {
+                    Toggle("啟用排除字 \(filter.blockKeywords[index])", isOn: Binding(
+                        get: { !filter.disabledBlockKeywords.contains(filter.blockKeywords[index]) },
+                        set: { enabled in
+                            let word = filter.blockKeywords[index]
+                            if enabled { filter.disabledBlockKeywords.remove(word) }
+                            else { filter.disabledBlockKeywords.insert(word) }
+                        }
+                    )).labelsHidden()
+                    if editMode?.wrappedValue.isEditing == true {
+                        TextField("編輯字", text: Binding(
+                            get: { filter.blockKeywords[index] },
+                            set: { word in
+                                guard !word.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                                      !filter.blockKeywords.enumerated().contains(where: { $0.offset != index && $0.element == word }) else { return }
+                                let old = filter.blockKeywords[index]
+                                let disabled = filter.disabledBlockKeywords.remove(old) != nil
+                                filter.blockKeywords[index] = word
+                                if disabled { filter.disabledBlockKeywords.insert(word) }
+                            }
+                        )).textFieldStyle(.roundedBorder)
+                    } else { Text(filter.blockKeywords[index]) }
                 }
             }
             .onDelete { indexSet in
+                for index in indexSet { filter.disabledBlockKeywords.remove(filter.blockKeywords[index]) }
                 filter.blockKeywords.remove(atOffsets: indexSet)
             }
         }
         
         Section(header: Text("已加入的替換字").font(.headline)) {
-            ForEach(filter.replaceKeywords.keys.sorted(), id: \.self) { key in
+            ForEach(filter.orderedReplacementKeys, id: \.self) { key in
                 HStack {
+                    Toggle("啟用替換字 \(key)", isOn: Binding(
+                        get: { !filter.disabledReplacementKeywords.contains(key) },
+                        set: { enabled in
+                            if enabled { filter.disabledReplacementKeywords.remove(key) }
+                            else { filter.disabledReplacementKeywords.insert(key) }
+                        }
+                    )).labelsHidden()
                     Text(key) // 原字顯示，不直接編輯
                     Spacer()
                     if editMode?.wrappedValue.isEditing == true {
@@ -261,11 +427,17 @@ struct FilterSettingsView: View {
                 }
             }
             .onDelete { indexSet in
-                let keys = filter.replaceKeywords.keys.sorted()
+                let keys = filter.orderedReplacementKeys
                 for index in indexSet {
                     let key = keys[index]
+                    filter.disabledReplacementKeywords.remove(key)
                     filter.replaceKeywords.removeValue(forKey: key)
                 }
+            }
+            .onMove { source, destination in
+                var keys = filter.orderedReplacementKeys
+                keys.move(fromOffsets: source, toOffset: destination)
+                filter.replacementOrder = keys
             }
         }
     }

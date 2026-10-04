@@ -20,6 +20,38 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.04 TTS 過濾配置匯入匯出與逐條啟用控制
+
+**類型**: 新增 · **檔案**: `liveAPP/TTSSettingsView.swift`、`liveAPP/SpeechFilterConfiguration.swift`、`liveAPPTests/SpeechFilterConfigurationTests.swift`
+
+### 修改 - 保存清單、規則狀態與明確替換順序
+
+- 過濾設定頁新增 JSON 匯入、匯出及分享，檔案存入與 log.txt 相同的 Documents 目錄。
+- 支援合併／取代與衝突預覽；套用前先自動備份，驗證或備份失敗不更動設定。
+- 排除與替換規則新增逐條 enabled 開關，停用規則保留於清單、保存設定及匯出 JSON。
+- 相容舊版字串／Dictionary 配置，缺少 enabled 預設啟用；新增替換順序保存與拖曳排序。
+- 修正設定載入期間逐欄觸發儲存的問題，整批套用完成後才保存。
+- 補上中文格式文件、可匯入範例與 11 項測試；Windows 核心測試通過，iOS 選檔及分享仍待實機驗收。
+
+**相關文件**: [TTS 過濾配置](tts-filter-configuration.md) · [JSON 範例](examples/tts-filters.example.json)
+
+---
+
+## 2026.10.04 StreamMessage 新增單則訊息朗讀控制
+
+**類型**: 新增 · **檔案**: `liveAPP/Socket.swift`、`liveAPPTests/StreamMessageTests.swift`
+
+### 修改 - 可選 useTTS 欄位控制是否加入朗讀佇列
+
+- `useTTS` 省略或為 null 時預設 true，維持舊訊息格式相容；false 只略過該則朗讀。
+- 聊天顯示與觀眾資訊照常更新，不停止既有朗讀，不改動 App 的 TTS 總開關。
+- 允許朗讀時仍沿用主要訊息與文字篩選；非布林值維持解碼失敗。
+- 新增省略、null、true、false、非法型別及其他訊息欄位的解碼測試。
+
+**相關文件**: [Socket 協定](socket-wire-protocol.md)
+
+---
+
 ## 2026.10.04 接入 ScreenCaptureKit 雙來源、本地錄製與測試 CI
 
 **類型**: 新增 · **檔案**: `liveAPP/Capture/`、`SharedCapture/`、`liveAPP/ContentView.swift`、`ReplyKIT/SampleHandler.swift`、`liveAPPTests/`、`.github/workflows/`

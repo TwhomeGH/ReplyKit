@@ -67,3 +67,7 @@
 - [x] 發布 workflow 先執行相同 commit 的單元測試，成功後才建置及封裝。
 - [ ] **首次 CI 實跑**：確認 hosted runner 能建置並執行所有 `liveAPPTests`；目前只完成本地設定與靜態驗證。
 - [ ] **Xcode 27 CI 覆蓋**：確認 runner 提供 SDK 27，讓 ScreenCaptureKit iOS 分支實際參與 Apple SDK 編譯；舊 SDK 的核心測試通過不能取代此項。
+
+## TTS 配置分享驗收
+
+- [ ] **iOS 匯入／分享實機驗收**：檔案 App／iCloud 選取 JSON、取消選取、Documents 匯出及分享、合併衝突、逐條開關、拖曳排序與備份還原；目前 Foundation 邏輯測試及 Swift 語法檢查已通過。

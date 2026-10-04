@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "blockKeywords": [
+    {
+      "word": "廣告詞",
+      "enabled": true
+    },
+    {
+      "word": "暫停排除的詞",
+      "enabled": false
+    }
+  ],
+  "replaceKeywords": [
+    {
+      "word": "FPS",
+      "replacement": "每秒影格數",
+      "enabled": true
+    },
+    {
+      "word": "暫停替換的詞",
+      "replacement": "替代內容",
+      "enabled": false
+    }
+  ],
+  "removeURLs": true,
+  "removeEmoji": true,
+  "removePureNumbers": false
+}

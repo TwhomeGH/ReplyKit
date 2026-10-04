@@ -597,6 +597,7 @@ class SocketServer:ObservableObject {
     }
 
     struct ChatMessage: Codable {
+        let useTTS: Bool
         let user:String
         let message:String
         let img:String?
@@ -607,6 +608,7 @@ class SocketServer:ObservableObject {
 
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
+            useTTS = try container.decodeIfPresent(Bool.self, forKey: .useTTS) ?? true
             user = try container.decode(String.self, forKey: .user)
             message = try container.decode(String.self, forKey: .message)
             img = try container.decodeIfPresent(String.self, forKey: .img)
@@ -1127,8 +1129,11 @@ class SocketServer:ObservableObject {
 
                 renderChatMessage(user: user, msg: msg, img: img, giftImg: giftImg, isMain: isMain)
 
-                Task { @MainActor in
-                    TTSService.shared.speakStreamMessage(user: user, message: msg, isMain: isMain)
+                // 單則訊息只能略過朗讀；是否啟用及文字篩選仍由 TTSService 判斷。
+                if dict.useTTS {
+                    Task { @MainActor in
+                        TTSService.shared.speakStreamMessage(user: user, message: msg, isMain: isMain)
+                    }
                 }
 
             case "UPSet":
