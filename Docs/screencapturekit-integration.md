@@ -176,3 +176,27 @@ Windows 執行 12 項擷取核心測試與 3 項錄影檔案管理測試，合�
 實機應測試：空白 RTMP 的只錄製、拒絕／取消擷取、麥克風開關、背景錄製、開始後立即停止、斷網繼續錄影、磁碟不足但推流繼續、錄製收尾失敗／逾時、App 被終止後重開、播放與分享、照片權限拒絕及儲存、長時間雙編碼的溫度與記憶體。
 
 官方 API：[SCRecordingOutputConfiguration](https://developer.apple.com/documentation/screencapturekit/screcordingoutputconfiguration)、[SCRecordingOutputDelegate](https://developer.apple.com/documentation/screencapturekit/screcordingoutputdelegate)。
+
+## 本地錄影方向轉正（2026-10-05）
+
+實測 MP4 為 1920×1080、沒有 track 旋轉矩陣，畫面內容橫倒。原生 SCRecordingOutput 直接寫入檔案，不經 Mixer，因此調整 RTMP 的 Mixer 不會修正這種本地錄影。
+
+新增 screen output 只讀取 `SCStreamFrameInfo.videoOrientation`（CGImagePropertyOrientation／EXIF 1～8）、像素尺寸及 PTS，不持有影格、不建立影像消費佇列。方向固定時只保留一筆事件；最多 4096 次變化，超限或時間倒退時保留原片並提示無法可靠轉正。
+
+原生錄製完成回呼之後仍維持 finishing，依方向時間軸收尾：
+
+- **方向固定**：使用 AVMutableComposition track 的 preferredTransform 與 passthrough 匯出，保留編碼資料，無需重新壓縮影音；仍需讀寫一份新容器及暫存磁碟空間。
+- **途中改變方向**：使用 video composition 按時間區段轉正，重新編碼。輸出畫布依第一個有效方向決定，其他方向等比例置中，可能留黑邊；音訊保留原時間位置。
+- **已存在系統方向矩陣**：保留該矩陣，避免重複旋轉。
+- **缺少有效方向附件**：不猜角度，保留系統原片，錄影清單會顯示原因。
+- **轉正失敗或背景工作到期**：取消匯出，保留原片並在清單標示方向可能尚未轉正；原生錄製已完成，所以檔案仍可播放或分享。
+
+只有轉正成功才以暫存檔取代原 MP4；不修改使用者先前匯出的影片。處理期間不能分享或刪除，完成後才成為 ready。30 秒等待只適用於原生錄製完成回呼，轉正工作另受系統背景執行期限影響；長片在前景可能需要較長收尾時間。
+
+方向時間使用第一個觀察到的影格 PTS 作相對起點，再對齊 MP4 video track 起點；實機需驗證轉向交界與音畫同步。這次改善只接入原生本地錄製收尾，RTMP 樣本轉正仍需另接即時處理路徑。
+
+診斷新增 `[RecordingOrientation]`，記錄 EXIF 值、pixel 尺寸、PTS、方向事件數、缺少附件次數、可靠性與收尾結果。下次驗收請一併提供 log.txt，確認實機附件值與實際畫面一致。
+
+四項 Foundation 時間軸測試於 Windows 通過；新增 iOS 專用八方向矩陣測試，待 Apple SDK 執行。Windows 的 Swift 語法解析不代表 AVFoundation 匯出已經通過實機驗證。
+
+參考：[videoOrientation](https://developer.apple.com/documentation/screencapturekit/scstreamframeinfo/videoorientation)、[AVFoundation 影片方向處理](https://developer.apple.com/library/archive/qa/qa1744/_index.html)。

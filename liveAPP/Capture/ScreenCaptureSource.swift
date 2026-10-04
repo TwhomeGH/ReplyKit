@@ -63,6 +63,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     private let publishingChanged: @MainActor (Bool) -> Void
     private var pipeline: CaptureMediaPipeline?
     private var recording: ScreenRecordingSession?
+    private var recordingOrientation: ScreenRecordingOrientationObserver?
     private var publishingTask: Task<Void, Never>?
     private var streamingViable = false
     private var cleaningPublishing = false
@@ -149,7 +150,10 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         streamingViable = mode.wantsStreaming
         if mode.wantsRecording {
             do {
-                let recording = try ScreenRecordingSession { [weak self] message in
+                let observer = ScreenRecordingOrientationObserver()
+                recordingOrientation = observer
+                try source.addStreamOutput(observer, type: .screen, sampleHandlerQueue: sampleQueue)
+                let recording = try ScreenRecordingSession(orientation: observer.timeline) { [weak self] message in
                     guard let self, self.state.phase != .stopping else { return }
                     if let capture = self.capture { self.recording?.detach(from: capture) }
                     self.update(self.state.phase, message)
@@ -315,7 +319,10 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             recording?.detach(from: capture)
             try? await capture.stopCapture()
         }
-        await recording?.awaitCompletion(); recording = nil
+        if let recordingOrientation, let capture {
+            try? capture.removeStreamOutput(recordingOrientation, type: .screen)
+        }
+        await recording?.awaitCompletion(); recording = nil; recordingOrientation = nil
         await stopPublishing(); capture = nil
         let picker = SCContentSharingPicker.shared
         picker.remove(self); picker.isActive = false
