@@ -69,7 +69,7 @@ SUITE_PASS = re.compile(r"✔\s+Suite\s+(.+?)\s+passed")
 SUITE_FAIL = re.compile(r"✘\s+Suite\s+(.+?)\s+failed")
 RUN_DONE = re.compile(r"Test run with \d+ tests?.*?(passed|failed)")
 EXECUTED = re.compile(r"Executed \d+ tests?, with \d+ failures")
-TESTING_FAILED = re.compile(r"^\s*Testing failed:")
+TESTING_FAILED = re.compile(r"^\s*(?:Testing failed:|The following build commands failed:)")
 
 
 class Finding:
@@ -99,7 +99,7 @@ def parse(log_text: str):
             testing_failed_block.append(line.strip())
             continue
         if in_failed_block:
-            if "TEST FAILED" in line or "BUILD FAILED" in line:
+            if "TEST FAILED" in line or "BUILD FAILED" in line or "ARCHIVE FAILED" in line:
                 in_failed_block = False
                 continue
             stripped = line.strip()
@@ -177,8 +177,10 @@ def print_console(result) -> None:
     passed = len(result["tests_passed"])
 
     head = col("CI 摘要", "bold")
-    print(f"\n{head}  ❌ errors={len(errors)+len(other_errors)}  "
-          f"⚠️ warnings={warn_total}  🧪 tests: {passed} passed / {failed} failed\n")
+    summary_line = f"\n{head}  ❌ errors={len(errors)+len(other_errors)}  ⚠️ warnings={warn_total}"
+    if passed or failed:
+        summary_line += f"  🧪 tests: {passed} passed / {failed} failed"
+    print(summary_line + "\n")
 
     if errors or other_errors or result["testing_failed"]:
         console_group(col(f"❌ Errors ({len(errors)+len(other_errors)})", "red", "bold"))
@@ -200,17 +202,16 @@ def print_console(result) -> None:
                 print(col(f"      {locs}", "dim"))
         console_endgroup()
 
-    console_group(col("🧪 Tests", "cyan", "bold"))
-    for name in result["tests_failed"]:
-        print(col(f"  ✘ {name}", "red", "bold"))
-        print(f"::error::{name}")
-    for name in result["tests_passed"]:
-        print(col(f"  ✔ {name}", "green"))
-    for name in result["suites_failed"]:
-        print(col(f"  ✘ Suite {name}", "red"))
-    if not result["tests_passed"] and not result["tests_failed"]:
-        print(col("  (no test results — build failed before running)", "dim"))
-    console_endgroup()
+    if result["tests_passed"] or result["tests_failed"]:
+        console_group(col("🧪 Tests", "cyan", "bold"))
+        for name in result["tests_failed"]:
+            print(col(f"  ✘ {name}", "red", "bold"))
+            print(f"::error::{name}")
+        for name in result["tests_passed"]:
+            print(col(f"  ✔ {name}", "green"))
+        for name in result["suites_failed"]:
+            print(col(f"  ✘ Suite {name}", "red"))
+        console_endgroup()
     if result["exec_line"]:
         print(result["exec_line"])
 

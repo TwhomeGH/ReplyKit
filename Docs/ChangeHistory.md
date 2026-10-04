@@ -20,6 +20,26 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.05 01:36 主建置流程 (main.yml) 也接上日誌摘要
+
+**類型**: 優化 · **檔案**: `.github/workflows/main.yml`, `Scripts/ci_test_summary.py`
+
+### 問題 - 發布建置的錯誤分類薄弱，仍需人工翻 log
+
+`main.yml` 只以 grep 粗略抽取 error／warning，archive 階段完全沒有摘要；build 失敗時仍得從整包 log 找。
+
+### 根因 - 摘要工具只接在 unit-tests workflow
+
+### 修改 - main.yml 兩階段（fast build、archive）都接上摘要工具
+
+- Fast compile 後（`if: always`）以 `ci_test_summary.py` 摘要 `xcodebuild.log`，取代原 grep 抽取。
+- Archive 指令改 `tee build/archive.log`（`set -o pipefail` 保留失敗碼），archive 後（`if: always`）摘要 `archive.log`。
+- `ci_test_summary.py` 增援「The following build commands failed:」區塊與 `ARCHIVE FAILED` 結束條件；無測試結果時不顯示 Tests 段。
+
+**相關文件**: [main.yml](.github/workflows/main.yml)
+
+---
+
 ## 2026.10.05 01:18 測試 target 停止連結 HaishinKit，修正重複 ObjC 類別
 
 **類型**: 修復 · **檔案**: `liveAPP.xcodeproj/project.pbxproj`

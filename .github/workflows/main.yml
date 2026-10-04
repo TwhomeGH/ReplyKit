@@ -138,29 +138,13 @@ jobs:
             echo "::notice::Fast build succeeded"
           fi
 
-      - name: Extract errors & warnings from xcodebuild.log
-        if: steps.fast_build.outcome == 'failure'
+      - name: Summarize fast-build log 彙整編譯錯誤與警告
+        if: always()
         run: |
-          echo "=== Extracting errors & warnings from xcodebuild.log ==="
-          echo "## xcodebuild Errors & Warnings" > xcodebuild-summary.log
-          echo "" >> xcodebuild-summary.log
-
-          # Extract error lines (case-insensitive)
-          echo "### Errors" >> xcodebuild-summary.log
-          grep -iE '(error:|fatal error:|ld:.*error|clang: error)' xcodebuild.log >> xcodebuild-summary.log 2>/dev/null || echo "(no errors found)" >> xcodebuild-summary.log
-          echo "" >> xcodebuild-summary.log
-
-          # Extract warning lines
-          echo "### Warnings" >> xcodebuild-summary.log
-          grep -iE '(warning:|ld: warning)' xcodebuild.log >> xcodebuild-summary.log 2>/dev/null || echo "(no warnings found)" >> xcodebuild-summary.log
-          echo "" >> xcodebuild-summary.log
-
-          # Summary count
-          ERROR_COUNT=$(grep -icE '(error:|fatal error:|ld:.*error|clang: error)' xcodebuild.log 2>/dev/null || echo 0)
-          WARN_COUNT=$(grep -icE '(warning:|ld: warning)' xcodebuild.log 2>/dev/null || echo 0)
-          echo "### Summary: ${ERROR_COUNT} error(s), ${WARN_COUNT} warning(s)" >> xcodebuild-summary.log
-
-          echo "Errors: $ERROR_COUNT, Warnings: $WARN_COUNT"
+          set -o pipefail
+          python3 Scripts/ci_test_summary.py xcodebuild.log \
+            --markdown xcodebuild-summary.md \
+            --github-summary
 
       - name: Upload full xcodebuild.log
         if: steps.fast_build.outcome == 'failure'
@@ -170,11 +154,12 @@ jobs:
           path: xcodebuild.log
 
       - name: Upload xcodebuild errors/warnings summary
-        if: steps.fast_build.outcome == 'failure'
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: xcodebuild-errors-warnings
-          path: xcodebuild-summary.log
+          path: xcodebuild-summary.md
+          if-no-files-found: warn
 
 
       # 3️⃣ Build & Archive (Unsigned)
@@ -185,12 +170,12 @@ jobs:
           file_to_build: ${{ steps.filetype_parameter.outputs.file_to_build }}
 
         run: |
+          set -o pipefail
           mkdir -p build
-          
+
           xcodebuild -clonedSourcePackagesDirPath "$BUILD_INFO_PACKAGES_DIR" clean -$filetype_parameter "$file_to_build" -scheme "$scheme" -configuration Release \
-            -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile
-          
-     
+            -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile 2>&1 | tee build/archive.log
+
           xcodebuild -clonedSourcePackagesDirPath "$BUILD_INFO_PACKAGES_DIR" archive \
             -$filetype_parameter "$file_to_build" \
             -scheme "$scheme" \
@@ -199,9 +184,27 @@ jobs:
             -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile \
             -destination "generic/platform=iOS" \
             CODE_SIGNING_ALLOWED=NO \
-            SWIFT_SYMBOL_REDACTION=NO
+            SWIFT_SYMBOL_REDACTION=NO 2>&1 | tee -a build/archive.log
 
             
+      - name: Summarize archive log 彙整封存錯誤與警告
+        if: always()
+        run: |
+          set -o pipefail
+          python3 Scripts/ci_test_summary.py build/archive.log \
+            --markdown build/archive-summary.md \
+            --github-summary
+
+      - name: Upload archive log & summary
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: archive-log
+          path: |
+            build/archive.log
+            build/archive-summary.md
+          if-no-files-found: warn
+
       # 4️⃣ Extract symbols for crash symbolication
       - name: Extract symbol map 提取符號表
         run: |
