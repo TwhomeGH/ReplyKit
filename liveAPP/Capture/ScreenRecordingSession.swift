@@ -28,13 +28,20 @@ import UIKit
     func attach(to stream: SCStream) throws {
         do {
             let config = SCRecordingOutputConfiguration()
-            guard config.availableOutputFileTypes.contains(.mp4), config.availableVideoCodecTypes.contains(.h264) else {
+            guard config.availableOutputFileTypes.contains(.mp4), !config.availableVideoCodecTypes.isEmpty else {
                 throw NSError(domain: "LocalRecording", code: 2)
             }
+            let preference = RecordingVideoCodec.current
+            let resolved = ScreenRecordingCodecSupport.resolve(preference)
             config.outputURL = RecordingLibrary.shared.fileURL(for: id)
             config.outputFileType = .mp4
-            config.videoCodecType = .h264
+            config.videoCodecType = resolved.codec
             config.mixesAudioWithMicrophone = true
+            if let note = resolved.note {
+                sendlog(message: "[RecordingCodec] id=\(id) preference=\(preference.rawValue) \(note)")
+            } else {
+                sendlog(message: "[RecordingCodec] id=\(id) preference=\(preference.rawValue) codec=\(resolved.codec.rawValue)")
+            }
             let output = SCRecordingOutput(configuration: config, delegate: self)
             self.output = output
             try stream.addRecordingOutput(output)
@@ -122,6 +129,43 @@ import UIKit
             let message = "本地錄製失敗（錯誤碼 \(code)）；未完成檔案已保留。"
             self.complete(.failed, message: message)
             self.failed(message)
+        }
+    }
+}
+
+/// ScreenCaptureKit 錄影編碼能力查詢與偏好解析。
+@available(iOS 27.0, *)
+enum ScreenRecordingCodecSupport {
+    /// 執行期可用的編碼清單（惰性取一次）。
+    static let availableVideoCodecs: [AVVideoCodecType] = SCRecordingOutputConfiguration().availableVideoCodecTypes
+
+    /// 使用者選擇的編碼是否可用；`auto` 一律視為可用。
+    static func isAvailable(_ codec: RecordingVideoCodec) -> Bool {
+        guard let id = codec.codecIdentifier else { return true }
+        return availableVideoCodecs.contains { $0.rawValue == id }
+    }
+
+    /// 依偏好挑選實際編碼；不支援時退回相容選項並附提示。
+    static func resolve(_ preference: RecordingVideoCodec) -> (codec: AVVideoCodecType, note: String?) {
+        let fallback = availableVideoCodecs.first { $0 == .h264 } ?? availableVideoCodecs.first
+        if preference == .auto {
+            if let hevc = availableVideoCodecs.first(where: { $0 == .hevc }) { return (hevc, nil) }
+            if let fallback { return (fallback, nil) }
+        } else if let id = preference.codecIdentifier,
+                  let match = availableVideoCodecs.first(where: { $0.rawValue == id }) {
+            return (match, nil)
+        } else if let fallback {
+            return (fallback, "不支援 \(preference.title)，已改用 \(name(fallback))。")
+        }
+        return (.h264, nil)
+    }
+
+    private static func name(_ codec: AVVideoCodecType) -> String {
+        switch codec.rawValue {
+        case "avc1": return "H.264"
+        case "hvc1", "hev1": return "HEVC"
+        case "av01": return "AV1"
+        default: return codec.rawValue
         }
     }
 }

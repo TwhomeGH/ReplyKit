@@ -213,6 +213,15 @@ Windows 執行 12 項擷取核心測試與 3 項錄影檔案管理測試，合�
 
 本次範例 `82949D9C-CD98-46E5-A98C-1F05DBA79AC6.mp4` 的原始影格需向左旋轉，但檔案矩陣導致顛倒。方向策略已有核心測試；完整 Apple SDK 匯出、左右橫向與途中轉向仍需實機回歸。
 
+## 本地錄影編碼選擇（2026-10-05）
+
+在「擷取與開始」選擇 ScreenCaptureKit 與含錄製的工作模式後，可於「錄影編碼」選擇偏好：自動（裝置最佳）、H.264（AVC，最相容）、HEVC（H.265）、AV1。
+
+- 選項與可用性以執行期 `SCRecordingOutputConfiguration.availableVideoCodecTypes` 為準，不硬編；AV1 需裝置具備編碼器才會啟用（Apple 裝置目前多為 AV1 解碼，通常只有 H.264／HEVC）。
+- 自動＝優先 HEVC，其次 H.264；指定但不支援時退回 H.264，並以 `[RecordingCodec]` 記錄實際採用編碼。
+- 容器固定為 `.mp4`。方向修正的單一方向路徑用 passthrough，保留 HEVC；方向變化多次時重新編碼，可能回落為 H.264。
+- 偏好存於 `recordingVideoCodec`，只影響本機錄影，不影響 RTMP 推流編碼。
+
 ## 推流失敗診斷
 
 `capturePhase=streaming` 只代表擷取中，不代表 RTMP 發布成功。`publishPhase` 分別記錄 `idle`、`rtmp.connect`、`rtmp.publish`、`published`、`failed`。佇列 accepted 表示樣本已進入佇列，不能證明編碼或伺服器接收成功。

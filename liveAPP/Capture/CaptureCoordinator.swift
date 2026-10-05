@@ -78,6 +78,7 @@ import ScreenCaptureKit
     @AppStorage("captureWorkMode", store: userDefaults) private var workMode = CaptureWorkMode.stream.rawValue
     @ObservedObject private var library = RecordingLibrary.shared
     @AppStorage("recordingOrientationPolicy", store: userDefaults) private var recordingPolicy = RecordingOrientationPolicy.automatic.rawValue
+    @AppStorage(RecordingVideoCodec.storageKey, store: userDefaults) private var recordingCodec = RecordingVideoCodec.auto.rawValue
     @State private var anotherCapture = false
     @State private var showingRecordings = false
 
@@ -151,6 +152,7 @@ import ScreenCaptureKit
                 .disabled(controlsDisabled)
                 Text(AppLanguage.localized("recording.orientation.help"))
                     .font(.caption).foregroundStyle(.secondary)
+                recordingCodecPicker
                 Text("本地錄影保存系統擷取的畫面與聲音，不含浮水印、進階音訊處理或推流音量調整；只錄製不需 RTMP 設定。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -168,6 +170,25 @@ import ScreenCaptureKit
                     .disabled(capture.phase == .stopping)
             }
         }
+    }
+
+    /// 錄影編碼偏好；選項依執行期可用清單產生，AV1 需裝置支援才會啟用。
+    @ViewBuilder
+    private var recordingCodecPicker: some View {
+        #if SCREEN_CAPTURE_KIT_IOS27 && canImport(ScreenCaptureKit) && !targetEnvironment(macCatalyst) && !targetEnvironment(simulator)
+        if #available(iOS 27.0, *) {
+            Picker("錄影編碼", selection: $recordingCodec) {
+                ForEach(RecordingVideoCodec.allCases) { codec in
+                    Text(codec.title).tag(codec.rawValue)
+                        .disabled(!ScreenRecordingCodecSupport.isAvailable(codec))
+                }
+            }
+            .pickerStyle(.menu)
+            .disabled(controlsDisabled)
+            Text("HEVC 檔案較小、畫質較好；AV1 需裝置支援才會出現。方向變化多次時系統可能重新編碼。")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        #endif
     }
 
     /// 狀態分行顯示，避免窄螢幕與大字體擠在同一列。

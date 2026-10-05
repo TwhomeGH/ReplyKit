@@ -229,6 +229,27 @@
 
 ---
 
+## 2026.10.05 19:11 本機錄影可選編碼（H.264／HEVC／AV1，依裝置能力）
+
+**類型**: 新增 · **檔案**: `liveAPP/Capture/RecordingVideoCodec.swift`, `liveAPP/Capture/ScreenRecordingSession.swift`, `liveAPP/Capture/CaptureCoordinator.swift`, `Docs/screencapturekit-integration.md`
+
+### 問題 / 需求 - ScreenCaptureKit 錄影無法選擇編碼
+
+原本硬編 H.264，無法依需求改用 HEVC 或 AV1。
+
+### 根因 - 錄製編碼固定為 .h264
+
+### 修改 - 以執行期可用清單提供編碼偏好
+
+- 新增 `RecordingVideoCodec`（auto/h264/hevc/av1）與持久化 `recordingVideoCodec`。
+- `ScreenRecordingCodecSupport` 以 `SCRecordingOutputConfiguration.availableVideoCodecTypes` 解析：auto 優先 HEVC、不支援時退回 H.264，並回報實際採用編碼。
+- 擷取頁新增「錄影編碼」Picker，選項依執行期清單產生並標示不可用者（AV1 需裝置支援）。
+- 文件補充編碼選擇與方向修正的交互。
+
+**相關文件**: [screencapturekit-integration.md](Docs/screencapturekit-integration.md)
+
+---
+
 ## 2026.10.05 03:17 TTS 匯入提示改行內顯示；.gitignore 忽略 CI 產物
 
 **類型**: 修復 · **檔案**: `liveAPP/TTSSettingsView.swift`, `.gitignore`
