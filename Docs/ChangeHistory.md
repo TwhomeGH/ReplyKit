@@ -287,6 +287,30 @@ operation 回填合成的 Connect.Failed，病因被掩蓋。
 
 ---
 
+## 2026.10.06 04:20 修正推流左轉畫面尺寸與多軌混音無輸出（HaishinKit fork）
+
+**類型**: 修復 · **檔案**: `liveAPP/Capture/ScreenCaptureSource.swift`, `Package.resolved`, HaishinKit fork（`AudioMixerSettings.swift`／`AudioMixerByMultiTrack.swift`／`AudioPipelineDiagnostics.swift`）
+
+### 問題 - 左轉後畫面縮小；App／麥克風音訊完全沒送
+
+開啟「推流左轉 90°」後畫面轉正但縮成中間一小條；ScreenCaptureKit 推流完全沒有音訊封包（`mixed=0 delivered=0`）。
+
+### 根因
+
+- 影片：旋轉器輸出 1080×1920，但編碼畫布固定 1920×1080 + letterbox，豎畫面被塞進橫畫布而縮小。
+- 音訊：SC 的 float32 planar 音訊使 mixer 輸出格式推導為 non-interleaved，`MultiChannelMixer`／`GenericOutput` 初始化／render 失敗 → `outputNode` 為 nil、mixer 永不輸出；錯誤又被 `AudioCaptureUnit` 吞掉。
+
+### 修改
+
+- `ScreenCaptureSource`：編碼畫布跟著旋轉後尺寸（`rotateLeft` 時交換寬高）。
+- fork `AudioMixerSettings.makeOutputFormat`：輸出格式一律 interleaved。
+- fork `AudioPipelineDiagnostics`：新增 `mixerReady` 與 `lastError`；`[CaptureAudioPipeline]` 日誌新增 `ready=`／`error=`。
+- 更新 `Package.resolved` 指向 fork `1b4650c6`。
+
+**相關文件**: [screencapturekit-integration.md](Docs/screencapturekit-integration.md)
+
+---
+
 ## 2026.10.05 23:53 CI 允許套件外掛，修正 HaishinKit 外掛驗證失敗
 
 **類型**: 修復 · **檔案**: `.github/workflows/unit-tests.yml`, `.github/workflows/main.yml`

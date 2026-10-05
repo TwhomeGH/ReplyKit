@@ -240,7 +240,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                 if let mixer = self.pipeline?.mixer {
                     let health = await mixer.audioPipelineDiagnostics()
                     let tracks = health.tracks.map { "track=\($0.trackId) converted=\($0.outputFrames) noData=\($0.resampleNoDataCount) buffered=\($0.ringBufferCounts) overflow=\($0.overflowDroppedSamples) gap=\($0.skipInsertedSamples)" }.joined(separator: " | ")
-                    sendlog(message: "[CaptureAudioPipeline] session=\(token) mixed=\(health.mixerOutputFrames) channels=\(health.outputChannels) rms=\(health.outputChannelRMS) \(self.audioProbe?.summary() ?? "probe=none") \(tracks)")
+                    sendlog(message: "[CaptureAudioPipeline] session=\(token) mixed=\(health.mixerOutputFrames) ready=\(health.mixerReady) error=\(health.lastError ?? "none") channels=\(health.outputChannels) rms=\(health.outputChannelRMS) \(self.audioProbe?.summary() ?? "probe=none") \(tracks)")
                 }
                 do { try await Task.sleep(nanoseconds: 5_000_000_000) } catch { return }
             }
@@ -274,7 +274,10 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         }
         try Task.checkCancellation()
         var video = await stream.videoSettings
-        video.videoSize = size
+        // 推流左轉 90° 時，編碼畫布必須跟著旋轉後的尺寸；否則 1080×1920 的轉正畫面會被
+        // letterbox 進 1920×1080，內容縮成一小條。size 是旋轉前的擷取尺寸，編碼取旋轉後尺寸。
+        let rotateLeft = defaults.object(forKey: "screenStreamRotateLeft") as? Bool ?? true
+        video.videoSize = rotateLeft ? CGSize(width: size.height, height: size.width) : size
         video.bitRate = max(100_000, defaults.object(forKey: "bitRate") as? Int ?? 6_000_000)
         video.maxKeyFrameIntervalDuration = Int32(max(0, min(60, defaults.object(forKey: "KeyFrameInterval") as? Int ?? 2)))
         video.allowFrameReordering = false
@@ -316,7 +319,6 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         await pipeline.mixer.addOutput(stream)
         await pipeline.mixer.startRunning()
         try Task.checkCancellation()
-        let rotateLeft = defaults.object(forKey: "screenStreamRotateLeft") as? Bool ?? true
         sendlog(message: "[CaptureVideoRotation] session=\(logSession) policy=\(rotateLeft ? "left90" : "none")")
         let pump = try ScreenSamplePump(mixer: pipeline.mixer, probe: probe, rotateLeft: rotateLeft)
         self.pump = pump
