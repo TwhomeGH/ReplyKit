@@ -287,6 +287,20 @@ operation 回填合成的 Connect.Failed，病因被掩蓋。
 
 ---
 
+## 2026.10.06 05:13 移除 SC 推流閒置 keep-alive 幀泵
+
+**類型**: 修復 · **檔案**: `liveAPP/Capture/ScreenCaptureSource.swift`
+
+### 問題 - 可能造成影片破損/斷續
+
+實機出現影片破損、斷續，疑似 keep-alive 合成 PTS 造成時間戳不連續（待隔離確認）。
+
+### 修改 - 移除 ScreenSamplePump 的 keep-alive
+
+回復為僅旋轉/疊加與 mailboxes；移除定時重播、相關欄位與 `keepAlive{}` 診斷。日後若要重做 idle 保活，需重新設計（PTS 對齊 host clock、不與真實幀競速）。
+
+---
+
 ## 2026.10.06 05:00 修正 ScreenOverlayComposer 的 uiFontWeight 重複宣告
 
 **類型**: 修復 · **檔案**: `liveAPP/Capture/ScreenOverlayComposer.swift`
