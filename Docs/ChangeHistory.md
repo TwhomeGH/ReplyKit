@@ -287,6 +287,26 @@ operation 回填合成的 Connect.Failed，病因被掩蓋。
 
 ---
 
+## 2026.10.06 04:53 修正 SC 推流畫布寬高：改用 (odstW, odstH) 不轉置
+
+**類型**: 修復 · **檔案**: `liveAPP/Capture/ScreenCaptureSource.swift`
+
+### 問題 - 推流畫布變成 1080×1920（直的）
+
+左轉後推流解析度變成 1080×1920，應為橫向 1920×1080。
+
+### 根因 - 編碼畫布多了一次轉置
+
+SC 擷取緩衝的寬高本身即與設定轉置（與 ReplayKit 相同），旋轉後已對上 (odstW, odstH)；先前又交換畫布，導致輸出變直的。
+
+### 修改 - 編碼畫布直接用 size，與 ReplayKit encoder 慣例一致
+
+`video.videoSize = size`（ReplayKit `SampleHandler` 的 encoderW/H = ODWidth/ODHeight，不轉置）。
+
+**相關文件**: [screencapturekit-integration.md](Docs/screencapturekit-integration.md)
+
+---
+
 ## 2026.10.06 04:45 SC 推流輸出時間疊加（影像合成器）
 
 **類型**: 新增 · **檔案**: `liveAPP/Capture/ScreenOverlayComposer.swift`（新）, `liveAPP/Capture/ScreenStreamVideoRotator.swift`, `liveAPP/Capture/ScreenCaptureSource.swift`, `liveAPP/Capture/CaptureCoordinator.swift`

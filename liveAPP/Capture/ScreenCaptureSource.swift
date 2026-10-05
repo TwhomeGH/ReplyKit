@@ -347,10 +347,11 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         }
         try Task.checkCancellation()
         var video = await stream.videoSettings
-        // 推流左轉 90° 時，編碼畫布必須跟著旋轉後的尺寸；否則 1080×1920 的轉正畫面會被
-        // letterbox 進 1920×1080，內容縮成一小條。size 是旋轉前的擷取尺寸，編碼取旋轉後尺寸。
+        // 編碼畫布沿用與 ReplayKit 相同的慣例：RTMP 直接用 (odstW, odstH)，不在此轉置
+        //（ReplayKit SampleHandler 的 encoderW/H = ODWidth/ODHeight）。SC 擷取緩衝的寬高
+        // 本身與設定是轉置的，旋轉後剛好對上這個畫布；先前在此再交換會讓輸出變成 1080×1920（直的）。
         let rotateLeft = defaults.object(forKey: "screenStreamRotateLeft") as? Bool ?? true
-        video.videoSize = rotateLeft ? CGSize(width: size.height, height: size.width) : size
+        video.videoSize = size
         video.bitRate = max(100_000, defaults.object(forKey: "bitRate") as? Int ?? 6_000_000)
         video.maxKeyFrameIntervalDuration = Int32(max(0, min(60, defaults.object(forKey: "KeyFrameInterval") as? Int ?? 2)))
         video.allowFrameReordering = false
