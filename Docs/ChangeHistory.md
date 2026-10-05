@@ -272,6 +272,26 @@ operation 回填合成的 Connect.Failed，病因被掩蓋。
 
 ---
 
+## 2026.10.05 23:53 CI 允許套件外掛，修正 HaishinKit 外掛驗證失敗
+
+**類型**: 修復 · **檔案**: `.github/workflows/unit-tests.yml`, `.github/workflows/main.yml`
+
+### 問題 - CI 建置中止於 HaishinKitRevisionPlugin
+
+`Plugin "HaishinKitRevisionPlugin" from package "HaishinKit" must be enabled before it can be used`。
+
+### 根因 - 套件 build tool plugin 需互動式信任，非互動 CI 無法回應
+
+HaishinKit（fork）提供 build tool plugin；xcodebuild 在非互動環境要求先「enable」外掛才允許執行。
+
+### 修改 - 所有 xcodebuild 呼叫加上 -skipPackagePluginValidation -skipMacroValidation
+
+unit-tests.yml 測試、main.yml fast build／clean／archive 皆加旗標；跳過外掛／巨集的簽章驗證，但仍會執行外掛（保留 HaishinKit revision 注入）。
+
+**相關文件**: [unit-tests.yml](.github/workflows/unit-tests.yml), [main.yml](.github/workflows/main.yml)
+
+---
+
 ## 2026.10.05 19:11 本機錄影可選編碼（H.264／HEVC／AV1，依裝置能力）
 
 **類型**: 新增 · **檔案**: `liveAPP/Capture/RecordingVideoCodec.swift`, `liveAPP/Capture/ScreenRecordingSession.swift`, `liveAPP/Capture/CaptureCoordinator.swift`, `Docs/screencapturekit-integration.md`

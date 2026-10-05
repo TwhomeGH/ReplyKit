@@ -105,7 +105,8 @@ jobs:
           SIMULATOR_ID: ${{ steps.simulator.outputs.id }}
         run: |
           set -o pipefail
-          xcodebuild -clonedSourcePackagesDirPath "$BUILD_INFO_PACKAGES_DIR" test \
+          xcodebuild -skipPackagePluginValidation -skipMacroValidation \
+            -clonedSourcePackagesDirPath "$BUILD_INFO_PACKAGES_DIR" test \
             -project liveAPP.xcodeproj -scheme liveAPP \
             -configuration Debug \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \

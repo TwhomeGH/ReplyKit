@@ -116,7 +116,8 @@ jobs:
         run: |
           echo "Running a fast build on iOS Simulator to surface compile errors quickly"
           set +e
-          xcodebuild -clonedSourcePackagesDirPath "$BUILD_INFO_PACKAGES_DIR" -scheme "$scheme" -"$filetype_parameter" "$file_to_build" \
+          xcodebuild -skipPackagePluginValidation -skipMacroValidation \
+            -clonedSourcePackagesDirPath "$BUILD_INFO_PACKAGES_DIR" -scheme "$scheme" -"$filetype_parameter" "$file_to_build" \
             -sdk iphonesimulator -configuration Debug \
             -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile \
             clean build CODE_SIGNING_ALLOWED=NO 2>&1 | tee xcodebuild.log | xcpretty --no-utf --no-color
@@ -173,10 +174,12 @@ jobs:
           set -o pipefail
           mkdir -p build
 
-          xcodebuild -clonedSourcePackagesDirPath "$BUILD_INFO_PACKAGES_DIR" clean -$filetype_parameter "$file_to_build" -scheme "$scheme" -configuration Release \
+          xcodebuild -skipPackagePluginValidation -skipMacroValidation \
+            -clonedSourcePackagesDirPath "$BUILD_INFO_PACKAGES_DIR" clean -$filetype_parameter "$file_to_build" -scheme "$scheme" -configuration Release \
             -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile 2>&1 | tee build/archive.log
 
-          xcodebuild -clonedSourcePackagesDirPath "$BUILD_INFO_PACKAGES_DIR" archive \
+          xcodebuild -skipPackagePluginValidation -skipMacroValidation \
+            -clonedSourcePackagesDirPath "$BUILD_INFO_PACKAGES_DIR" archive \
             -$filetype_parameter "$file_to_build" \
             -scheme "$scheme" \
             -configuration Release \
