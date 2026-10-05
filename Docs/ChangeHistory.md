@@ -20,6 +20,49 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.05 22:03 自動產生 kHaishinKitRevision（SwiftPM build tool plugin）
+
+**類型**: 優化 · **檔案**: `Package.resolved`
+
+### 問題 - 原本是手動常數，會與實際 HEAD 漂移（App log 曾顯示舊值）
+
+Docs 宣稱的 CI 自動流程並不存在。
+
+### 修改 - SwiftPM build tool plugin：RevisionTool 跑 `git rev-parse --short HEAD`
+
+HaishinKitRevisionPlugin 產生常數並掛到 HaishinKit target。
+
+**相關文件**: [自動產生 kHaishinKitRevision](https://github.com/TwhomeGH/HaishinKitFixSwfit/blob/main/CHANGES.md#64-%E8%87%AA%E5%8B%95%E7%94%A2%E7%94%9F-khaishinkitrevisionswiftpm-build-tool-plugin)
+
+---
+
+## 2026.10.05 21:52 修正 RTMP 重連：S2 之後同段資料被丟棄導致 connect 永不 resolve
+
+**類型**: 修復 · **檔案**: `Package.resolved`
+
+### 根因 - `RTMPHandshake` 有兩種不一致的消費語意——c2packet() 用
+
+removeSubrange 移除 S0+S1，但 S2 只用「buffered 數量」判斷、從不移除
+
+而 RTMPConnection.listen 的 .ackSent 轉到 .handshakeDone 後用的是另一個 buffer。
+
+於是任何與 S2 同一段 TCP read 抵達的位元組（伺服器緊接送出的 SetChunkSize / WindowAckSize / SetPeerBandwidth
+
+或與 S2 合併的 connect `_result`）都被靜默丟棄，connect continuation 永不 resume
+
+伺服器等不到 createStream/publish，數秒後關閉連線，recv loop EOF → close() 對 pending
+
+operation 回填合成的 Connect.Failed，病因被掩蓋。
+
+### 修改 - `RTMPSocket` 新增 `didEndStream`（乾淨 EOF，content == nil）並留下日誌
+
+- close() 在未連線階段以真正的底層原因回填 pending operation
+- （`.socketErrorOccurred(NWError / .endOfStream)`），不再合成空白 `Connect.Failed`。
+
+**相關文件**: [RTMP 重連：S2 之後同段資料被丟棄](https://github.com/TwhomeGH/HaishinKitFixSwfit/blob/main/CHANGES.md#61-%E4%BF%AE%E6%AD%A3-rtmp-%E9%87%8D%E9%80%A3s2-%E4%B9%8B%E5%BE%8C%E5%90%8C%E6%AE%B5%E8%B3%87%E6%96%99%E8%A2%AB%E4%B8%9F%E6%A3%84%E5%B0%8E%E8%87%B4-connect-%E6%B0%B8%E4%B8%8D-resolve)
+
+---
+
 ## 2026.10.05 18:38 外部音訊播放時跳過還原並開放 RTMP 握手診斷
 
 **類型**: 修復／診斷 · **檔案**: `liveAPP/Capture/ScreenCaptureSource.swift`
