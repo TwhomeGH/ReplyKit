@@ -31,7 +31,8 @@ import UIKit
             page = next; error = nil; newLines = 0
             if latest {
                 follow = true
-                anchor = next.lines.enumerated().last(where: { matches($0.element) }).map { next.start + $0.offset }
+                // Array.indices 在最低支援版本即可反向查找，不依賴新版 EnumeratedSequence 集合遵循。
+                anchor = next.lines.indices.last(where: { matches(next.lines[$0]) }).map { next.start + $0 }
             }
             else { follow = false; anchor = next.start }
             if replaced { hits = []; searchNotice = AppLanguage.localized("logs.fileChanged") }

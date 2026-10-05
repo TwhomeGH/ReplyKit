@@ -61,7 +61,7 @@ enum RecordingOrientationCorrector {
             let range = try await track.load(.timeRange)
             try copy.insertTimeRange(range, of: track, at: range.start)
         }
-        guard let video = composition.tracks(withMediaType: .video).first as? AVMutableCompositionTrack else {
+        guard let video = composition.tracks(withMediaType: .video).first else {
             throw NSError(domain: "RecordingOrientation", code: 3)
         }
         let single = events.count == 1

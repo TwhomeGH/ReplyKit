@@ -20,6 +20,19 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.05 16:59 修正日誌併發與舊版 iOS 集合相容性警告
+
+**類型**: 修復 · **檔案**: `liveAPP/liveAPPApp.swift`、`liveAPP/FileLogView.swift`、`liveAPP/Capture/RecordingOrientationCorrector.swift`
+
+### 修改 - 明確隔離與相容操作
+
+- AppLogPersister 明確宣告以序列佇列保護狀態的 Sendable 契約；統計讀寫另外加鎖，避免跨執行緒競爭。
+- 最新日誌定位改用 Array.indices.last，避免依賴 iOS 26 才提供的 EnumeratedSequence BidirectionalCollection 遵循。
+- 移除 AVMutableCompositionTrack 的無效條件轉型。
+- Swift 語法與差異格式檢查通過；完整 Apple SDK 警告驗收仍需 CI。
+
+---
+
 ## 2026.10.05 16:48 本地錄影加入詳細資訊與直接碼率分析
 
 **類型**: 功能／修復 · **檔案**: `liveAPP/Capture/RecordingLibrary.swift`、`liveAPP/Capture/RecordingDetailsView.swift`、`liveAPP/VideoBitrateView.swift`

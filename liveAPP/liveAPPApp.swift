@@ -125,7 +125,9 @@ final class LogBuffer {
 
 
 // MARK: - Documents 日誌持久化（供檔案 App 讀取）
-final class AppLogPersister {
+/// 檔案 handle、待寫內容與歷史索引僅由 queue 存取。
+/// 跨執行緒的統計快照另由 statisticsLock 保護；新增公開狀態時須維持此隔離契約。
+final class AppLogPersister: @unchecked Sendable {
     static let shared = AppLogPersister()
     private let queue = DispatchQueue(label: "liveApp.logPersister", qos: .utility)
     private let historyReader = LogFileReader()
@@ -289,7 +291,14 @@ final class AppLogPersister {
         }
     }
 
-    private(set) var totalWrittenBytes: UInt64 = 0
+    private let statisticsLock = NSLock()
+    private var writtenBytes: UInt64 = 0
+    /// 提供 UI 讀取的累積寫入量；不直接暴露持久化佇列內的可變狀態。
+    var totalWrittenBytes: UInt64 {
+        statisticsLock.lock()
+        defer { statisticsLock.unlock() }
+        return writtenBytes
+    }
 
     /// 寫入失敗以帶外 OSLog 記錄，並累積成有界摘要經 SocketServer 群播；
     /// 不經 log 管線（避免回饋迴圈）。
@@ -337,7 +346,9 @@ final class AppLogPersister {
     }
 
     private func appendRaw(_ data: Data) {
-        totalWrittenBytes += UInt64(data.count)
+        statisticsLock.lock()
+        writtenBytes += UInt64(data.count)
+        statisticsLock.unlock()
         let newLines = data.reduce(0) { $0 + ($1 == 0x0A ? 1 : 0) }
         estimatedLineCount += newLines
         if let handle = writeHandle ?? openWriteHandle() {
