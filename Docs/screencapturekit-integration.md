@@ -49,7 +49,8 @@ ScreenCaptureKit 路徑會呈現系統分享選擇器，取得使用者選擇後
 | 網路 | 底層自適應碼率與重連；重連耗盡停止推流，仍有效的本地錄製繼續 |
 | 本地錄製 | SCRecordingOutput、MP4／H.264，可只錄製或邊推流邊錄製 |
 | 診斷 | VideoQueue 與 CaptureSource，每五秒記錄 |
-| 自訂 GPU 畫布、旋轉、浮水印 | 尚未接入，使用 ReplayKit |
+| 推流固定方向 | 可選左轉 90°（預設開啟）或不旋轉；停止後套用 |
+| 自訂 GPU 畫布、動態方向、浮水印 | 尚未接入，使用 ReplayKit |
 | 降噪、AGC、既有音訊處理器 | 尚未接入，使用 ReplayKit |
 | 設定即時更新、HEVC | 此測試路徑尚未接入；設定在下次開播生效，編碼固定 H.264 |
 
@@ -251,3 +252,31 @@ CaptureAudio 日誌以 session 串接 capture.begin、audioActivated、stopBegin
 實機日誌顯示 otherAudio 在停止擷取後仍為 true，切換回 playback 後才變為 false。收尾因此新增保護：當其他音訊仍在播放，跳過 category 還原，記錄 `restore.deferredOtherAudioPlaying`。不安排延遲還原；目前混音 playAndRecord session 會保留，後續音訊功能需要時再配置，仍需實機驗證播放與資源行為。
 
 `CaptureTransport` 現在轉送經遮蔽的 TCP connecting／connected、C0C1、S0S1、Waiting for S2、Response、Connect success／timed out 等底層事件。所有事件帶同一 session，方便判斷逾時停在哪一層；這項改動補足觀測能力，不代表已修復 RTMP 連線根因。
+
+## 推流方向與音訊診斷
+
+主頁提供「推流畫面左轉 90°」開關，預設開啟；停止後可變更。旋轉在單一影像 worker 以 Metal／Core Image 處理像素，保留 PTS，輸出維持設定的畫布比例（letterbox）。此設定獨立於本地錄影收尾方向。輸出 buffer pool 最多配置六張同尺寸 BGRA 影格；滿載時丟幀並節流記錄 `CaptureVideoRotation`，不送出方向錯誤的原始幀。這不是整個 App 的記憶體上限。
+
+主頁連線進度涵蓋 TCP、S0/S1、S2、connect、建立及發布串流；失敗保留最後階段。基本 RTMP 握手不是完整音訊能力協商，目前套件沒有公開伺服器音訊能力清單，所以顯示未取得，不把本機 AAC 設定當作伺服器已確認。
+
+推流音訊格式取自編碼器回報的輸出格式日誌；該訊息在建立轉換器時產生，須搭配封包計數確認產出。目標碼率明確標為設定值；封包狀態取自 `publish throughput` 的 `audioFrames`，約十秒取樣一次，二十秒未更新顯示過期。此計數表示 RTMP 音訊訊息已產生，不代表伺服器或播放器已成功解碼，也不能證明區間內每一秒都正常。未知或日誌格式不相容時保留等待狀態。
+
+| 診斷 | 內容與用途 |
+| --- | --- |
+| CaptureAudioFormat | 系統聲音 track 0、麥克風 track 1；實際 ASBD 格式代碼、取樣率、聲道、位深、float／nonInterleaved、每幀位元組、每封包幀數，以及首次／格式改變當批 samples、PTS、duration |
+| CaptureAudioRead | 同批 PCM 複製的 OSStatus（0 為成功）及 Int16 轉換器是否能建立；只檢查，不改動送入 Mixer 的樣本 |
+| CaptureAudioSettings | 真正套用的雙軌音量、主時鐘軌、格式來源軌與目標碼率 |
+| CaptureAudioPipeline | 每五秒：各軌重取樣產出、缺資料次數、緩衝樣本、溢位、PTS 補零；Mixer 混音次數、聲道／RMS，以及真正交付到輸出端的 buffer 數 |
+| CaptureTransport | AAC 編碼格式、轉換錯誤與 RTMP 封包摘要；沿用金鑰遮罩 |
+
+`accepted > 0` 只證明來源進入佇列。若 `converted=0`，檢查格式／PCM 複製與重取樣；若 `mixed>0` 但 `delivered=0`，檢查 Mixer 的時間錨點與輸出橋接；若 delivered 持續增加但 audioFrames=0，檢查 AAC 編碼及 RTMP。現有底層部分 Mixer 錯誤回呼尚未對外公開，不能只憑沒有 error 日誌判定正常。
+
+本次尚無新版本實機音訊樣本；不能預先指定 ScreenCaptureKit 一定提供哪一種 PCM 格式，也尚未確認無聲根因。請回傳新版格式與管線日誌，並拉流確認方向、聲音、左右聲道及長時間資源用量。
+
+## 推流 AAC 碼率
+
+「音訊設定 → 推流音訊碼率」提供自動、128、96、64 kbps，兩種擷取來源都在下次開播時套用。預設自動使用 `recommendedRtmpBitrate`（目前 128000 bit/s），不是依網速自適應；固定選項維持 AAC LC，只改目標碼率。原生 SCRecordingOutput 本地錄影不使用此設定。
+
+偏好以 `streamAudioBitrate` 儲存在既有共用 UserDefaults，值為 `auto`、`128`、`96`、`64`；缺少或無效時回到自動。ReplayKit 的統計策略讀取已套用碼率；ScreenCaptureKit 主頁顯示對應目標值。設定碼率不等於實際傳送吞吐量。側載缺少 App Group 時，主 App 與擴展的設定仍受既有沙盒隔離限制。
+
+`bestAacBitrate` 是搭配 `bestAacFormat` 的低頻寬建議（可能選 HE-AAC），本次推流碼率選單不使用該策略。

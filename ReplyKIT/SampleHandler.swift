@@ -1434,14 +1434,17 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         var audioSet = await rtmpStream.audioSettings
 
-        // RTMP/FLV 推流預設使用相容性優先的 AAC LC 128kbps。
-        audioSet.bitRate = AudioCodecSettings.recommendedRtmpBitrate
+        // 開播時讀取共用偏好；自動維持 RTMP 建議值，固定選項只改碼率。
+        let audioBitrate = StreamAudioBitrate.load(from: SharedDefaults.group ?? .standard)
+        audioSet.bitRate = audioBitrate.resolve(recommended: AudioCodecSettings.recommendedRtmpBitrate)
         audioSet.format = AudioCodecSettings.recommendedRtmpFormat
 
-        try? await rtmpStream.setAudioSettings(audioSet)
-
-        // Log 會顯示選擇結果
-        sendlog(message: "Audio格式使用RTMP推薦: format=\(AudioCodecSettings.recommendedRtmpFormat.audioDescription) bitrate=\(AudioCodecSettings.recommendedRtmpBitrate/1000)kbps")
+        do {
+            try await rtmpStream.setAudioSettings(audioSet)
+            sendlog(message: "Audio設定已套用: format=\(audioSet.format.audioDescription) bitrate=\(audioSet.bitRate / 1000)kbps policy=\(audioBitrate.rawValue)")
+        } catch {
+            sendlog(message: "Audio設定套用失敗: \(error)")
+        }
 
         await mediaMixer.setAudioMixerSettings(audioSettings)
 
@@ -1457,7 +1460,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         // adaptiveBufferManager = AdaptiveVideoBufferManager()
 
         streamStataus = MyStreamBitRateStrategy(
-            videoBitRate: RPConfig.shared.state.BitRate
+            videoBitRate: RPConfig.shared.state.BitRate,
+            audioBitRate: (await rtmpStream.audioSettings).bitRate
         )
 
         await rtmpStream.setBitRateStrategy(streamStataus)

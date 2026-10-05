@@ -17,6 +17,7 @@ import ScreenCaptureKit
     @Published private(set) var phase: CapturePhase = .idle
     @Published var errorMessage: String?
     @Published private(set) var isPublishing = false
+    @Published private(set) var streamTelemetry = CaptureStreamTelemetry()
     private var lease: CaptureLease?
     private var driver: (any CaptureDriver)?
     var isBusy: Bool { phase != .idle }
@@ -51,12 +52,13 @@ import ScreenCaptureKit
         if #available(iOS 27.0, *) {
             errorMessage = nil
             phase = .selecting
+            streamTelemetry = CaptureStreamTelemetry()
             let source = ScreenCaptureSource(url: url, key: key, mode: mode, publishingChanged: { [weak self] active in
                 guard let self, self.isPublishing != active else { return }
                 self.isPublishing = active
                 if active { SocketServer.shared.StreamStarting() }
                 else { SocketServer.shared.StreamStatusChanged(isLive: false, message: nil) }
-            }) { [weak self] phase, message in
+            }, telemetryChanged: { [weak self] in self?.streamTelemetry = $0 }) { [weak self] phase, message in
                 guard let self else { return }
                 self.phase = phase
                 if let message { self.errorMessage = message }
@@ -79,6 +81,7 @@ import ScreenCaptureKit
     @ObservedObject private var library = RecordingLibrary.shared
     @AppStorage("recordingOrientationPolicy", store: userDefaults) private var recordingPolicy = RecordingOrientationPolicy.automatic.rawValue
     @AppStorage(RecordingVideoCodec.storageKey, store: userDefaults) private var recordingCodec = RecordingVideoCodec.auto.rawValue
+    @AppStorage("screenStreamRotateLeft", store: userDefaults) private var streamRotateLeft = true
     @State private var anotherCapture = false
     @State private var showingRecordings = false
 
@@ -142,6 +145,10 @@ import ScreenCaptureKit
             }
             .pickerStyle(.menu)
             .disabled(controlsDisabled)
+            if selectedWorkMode.wantsStreaming {
+                Toggle(AppLanguage.localized("capture.stream.left90"), isOn: $streamRotateLeft)
+                    .disabled(controlsDisabled)
+            }
             if selectedWorkMode.wantsRecording {
                 Picker(AppLanguage.localized("recording.orientation.title"), selection: $recordingPolicy) {
                     ForEach(RecordingOrientationPolicy.allCases) { policy in
@@ -196,6 +203,25 @@ import ScreenCaptureKit
         VStack(alignment: .leading, spacing: 8) {
             Text(AppLanguage.localized("capture.phase." + capture.phase.rawValue))
             if capture.isPublishing { Text(AppLanguage.localized("capture.publishing")).foregroundStyle(.green) }
+            if capture.streamTelemetry.stage != "idle" {
+                Text(AppLanguage.localized("capture.connection.title") + " · " + AppLanguage.localized("capture.connection." + capture.streamTelemetry.stage))
+                if capture.streamTelemetry.failed {
+                    Text(AppLanguage.localized("capture.connection.failed")).foregroundStyle(.red)
+                }
+                Text(AppLanguage.localized("capture.audio.capabilitiesUnknown")).foregroundStyle(.secondary)
+            }
+            if capture.isPublishing {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(AppLanguage.localized("capture.audio.title")).bold()
+                        Text(AppLanguage.localized("capture.audio.encoder") + " · " + (capture.streamTelemetry.encoderFormat ?? AppLanguage.localized("capture.audio.formatWaiting")))
+                        Text(AppLanguage.localized("capture.audio.target") + " \(capture.streamTelemetry.targetBitrate / 1000) kbps")
+                        let status = capture.streamTelemetry.audioState(at: context.date)
+                        Text(AppLanguage.localized("capture.audio." + status))
+                            .foregroundStyle(status == "packets" ? Color.green : Color.orange)
+                    }
+                }
+            }
             if let item = library.recordings.first, capture.isBusy, !item.phase.isTerminal {
                 Text("· \(item.phase.title) \(Int(item.duration)) 秒 · \(ByteCountFormatter.string(fromByteCount: item.bytes, countStyle: .file))")
                     .foregroundStyle(.secondary)

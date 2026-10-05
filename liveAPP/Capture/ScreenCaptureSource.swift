@@ -18,13 +18,26 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     let audio = CaptureMailbox<CapturedSample>(budget: 1024 * 1024)
     let mic = CaptureMailbox<CapturedSample>(budget: 1024 * 1024)
     private var workers: [Task<Void, Never>] = []
-    init(mixer: MediaMixer) {
+    init(mixer: MediaMixer, probe: ScreenAudioProbe, rotateLeft: Bool) throws {
+        let rotator = try rotateLeft ? ScreenStreamVideoRotator() : nil
         super.init()
-        for (queue, track) in [(video, UInt8(0)), (audio, UInt8(0)), (mic, UInt8(1))] {
+        for (queue, track, isVideo) in [(video, UInt8(0), true), (audio, UInt8(0), false), (mic, UInt8(1), false)] {
             workers.append(Task {
+                var rotationFailures = 0
                 for await sample in queue.stream() {
                     guard !Task.isCancelled else { break }
-                    await mixer.append(sample.buffer, track: track)
+                    if isVideo, let rotator {
+                        do { await mixer.append(try rotator.rotate(sample.buffer), track: track) }
+                        catch {
+                            rotationFailures += 1
+                            if rotationFailures == 1 || rotationFailures % 300 == 0 {
+                                sendlog(message: "[CaptureVideoRotation] dropped=\(rotationFailures) error=\(error)")
+                            }
+                        }
+                    } else {
+                        if !isVideo { probe.observe(sample.buffer, track: track) }
+                        await mixer.append(sample.buffer, track: track)
+                    }
                 }
             })
         }
@@ -63,6 +76,9 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     private let recordingPolicy: RecordingOrientationPolicy
     private let publishingChanged: @MainActor (Bool) -> Void
     private var pipeline: CaptureMediaPipeline?
+    private var audioProbe: ScreenAudioProbe?
+    private var telemetry = CaptureStreamTelemetry()
+    private let telemetryChanged: @MainActor (CaptureStreamTelemetry) -> Void
     private var recording: ScreenRecordingSession?
     private var recordingOrientation: ScreenRecordingOrientationObserver?
     private var publishingTask: Task<Void, Never>?
@@ -84,10 +100,12 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     private let sampleQueue = DispatchQueue(label: "capture.screencapturekit.samples", qos: .userInitiated)
     init(url: String, key: String, mode: CaptureWorkMode,
          publishingChanged: @escaping @MainActor (Bool) -> Void,
+         telemetryChanged: @escaping @MainActor (CaptureStreamTelemetry) -> Void,
          update: @escaping @MainActor (CapturePhase, String?) -> Void) {
         self.url = url; self.key = key; self.mode = mode
         recordingPolicy = RecordingOrientationPolicy(rawValue: userDefaults?.string(forKey: "recordingOrientationPolicy") ?? "") ?? .automatic
         self.publishingChanged = publishingChanged; self.update = update
+        self.telemetryChanged = telemetryChanged
     }
     func present() {
         guard state.begin() != nil else { return }
@@ -219,6 +237,11 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                 guard let self else { return }
                 let queues = self.pump.map { "video{\($0.video.summary)} audio{\($0.audio.summary)} mic{\($0.mic.summary)}" } ?? "sampleQueues=none"
                 sendlog(message: "[CaptureSource] backend=screenCaptureKit session=\(token) mode=\(self.mode.rawValue) capturePhase=\(self.state.phase.rawValue) publishPhase=\(self.publishingStage) \(queues)")
+                if let mixer = self.pipeline?.mixer {
+                    let health = await mixer.audioPipelineDiagnostics()
+                    let tracks = health.tracks.map { "track=\($0.trackId) converted=\($0.outputFrames) noData=\($0.resampleNoDataCount) buffered=\($0.ringBufferCounts) overflow=\($0.overflowDroppedSamples) gap=\($0.skipInsertedSamples)" }.joined(separator: " | ")
+                    sendlog(message: "[CaptureAudioPipeline] session=\(token) mixed=\(health.mixerOutputFrames) channels=\(health.outputChannels) rms=\(health.outputChannelRMS) \(self.audioProbe?.summary() ?? "probe=none") \(tracks)")
+                }
                 do { try await Task.sleep(nanoseconds: 5_000_000_000) } catch { return }
             }
         }
@@ -227,20 +250,27 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         let defaults = userDefaults ?? .standard
         let pipeline = CaptureMediaPipeline()
         self.pipeline = pipeline
-        let conn = RTMPConnection()
+        let conn = RTMPConnection(minimumLogLevel: .debug)
         let stream = RTMPStream(connection: conn)
         connection = conn; output = stream
         let logSession = state.id?.uuidString ?? "none"
         let logSecrets = [url, key]
-        await conn.setOnLog { event in
+        await conn.setOnLog { [weak self] event in
             // 只放行連線生命週期與佇列摘要，不開啟高頻封包或完整命令參數輸出。
             let prefixes = ["VideoQueue", "TCP ", "State:", "S0 version", "S0S1 received",
                             "Waiting for S2", "Response:", "Connect ", "Command error",
                             "Command timeout", "Socket recv", "Close requested", "Reconnect",
-                            "Reconnecting", "Keepalive", "Liveness watchdog", "Output continuity"]
-            guard prefixes.contains(where: { event.message.hasPrefix($0) }) else { return }
+                            "Reconnecting", "Keepalive", "Liveness watchdog", "Output continuity",
+                            "audio:", "audio track", "inputFormat:", "AudioCodec", "publish throughput",
+                            "audio stall", "Restarting audio", "failedTo", "unableTo"]
+            guard event.level == .error || prefixes.contains(where: { event.message.hasPrefix($0) }) else { return }
             let detail = CaptureErrorDiagnostics.sanitize(event.message + " " + (event.detail ?? ""), secrets: logSecrets)
             sendlog(message: "[CaptureTransport] session=\(logSession) \(detail)")
+            Task { @MainActor [weak self] in
+                guard let self, self.state.phase != .stopping, self.state.phase != .idle else { return }
+                self.telemetry.consume(message: event.message, detail: event.detail, now: event.timestamp)
+                self.telemetryChanged(self.telemetry)
+            }
         }
         try Task.checkCancellation()
         var video = await stream.videoSettings
@@ -266,21 +296,29 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             }
         }
         var audio = await stream.audioSettings
-        audio.bitRate = AudioCodecSettings.recommendedRtmpBitrate
+        let audioBitrate = StreamAudioBitrate.load(from: defaults)
+        audio.bitRate = audioBitrate.resolve(recommended: AudioCodecSettings.recommendedRtmpBitrate)
         audio.format = AudioCodecSettings.recommendedRtmpFormat
         startupStage = "pipeline.audioSettings"
         try await stream.setAudioSettings(audio)
+        telemetry.targetBitrate = audio.bitRate
         var mixing = CaptureMediaPipeline.audioSettings(from: await pipeline.mixer.audioMixerSettings, microphone: filter.isMicrophoneEnabled)
         mixing.tracks[0]?.volume = Float(defaults.object(forKey: "appVolume") as? Double ?? 1)
         mixing.tracks[1]?.volume = Float(defaults.object(forKey: "micVolume") as? Double ?? 1)
         await pipeline.mixer.setAudioMixerSettings(mixing)
+        sendlog(message: "[CaptureAudioSettings] session=\(logSession) mainTrack=\(mixing.mainTrack) outputFormatTrack=\(mixing.outputFormatTrack) appVolume=\(mixing.tracks[0]?.volume ?? 0) micVolume=\(mixing.tracks[1]?.volume ?? 0) targetBitrate=\(audio.bitRate) bitratePolicy=\(audioBitrate.rawValue)")
         var videoMixing = await pipeline.mixer.videoMixerSettings
         videoMixing.mode = .passthrough
         await pipeline.mixer.setVideoMixerSettings(videoMixing)
+        let probe = ScreenAudioProbe(session: logSession)
+        audioProbe = probe
+        await pipeline.mixer.addOutput(probe)
         await pipeline.mixer.addOutput(stream)
         await pipeline.mixer.startRunning()
         try Task.checkCancellation()
-        let pump = ScreenSamplePump(mixer: pipeline.mixer)
+        let rotateLeft = defaults.object(forKey: "screenStreamRotateLeft") as? Bool ?? true
+        sendlog(message: "[CaptureVideoRotation] session=\(logSession) policy=\(rotateLeft ? "left90" : "none")")
+        let pump = try ScreenSamplePump(mixer: pipeline.mixer, probe: probe, rotateLeft: rotateLeft)
         self.pump = pump
         startupStage = "pipeline.sampleOutputs"
         try source.addStreamOutput(pump, type: .screen, sampleHandlerQueue: sampleQueue)
@@ -304,14 +342,25 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         publishingChanged(true)
     }
     private func logStage() {
+        if !telemetry.failed {
+            telemetry.stage = publishingStage == "published" ? "published" : (publishingStage == "rtmp.publish" ? "publish" : "tcp")
+            telemetry.stageStartedAt = Date()
+            telemetryChanged(telemetry)
+        }
         sendlog(message: "[CaptureSource] session=\(state.id?.uuidString ?? "none") mode=\(mode.rawValue) publishPhase=\(publishingStage)")
     }
     private func logFailure(_ error: Error, stage: String) {
+        if stage.hasPrefix("rtmp.") {
+            telemetry.failed = true
+            telemetryChanged(telemetry)
+        }
         let detail = CaptureErrorDiagnostics.describe(error, secrets: [url, key])
         sendlog(message: "[CaptureError] session=\(state.id?.uuidString ?? "none") mode=\(mode.rawValue) stage=\(stage) \(detail)")
     }
     private func publishingFailed(_ message: String) async {
         guard state.id != nil, state.phase != .stopping, !cleaningPublishing else { return }
+        telemetry.failed = true
+        telemetryChanged(telemetry)
         publishingStage = "failed"
         logStage()
         cleaningPublishing = true
@@ -326,6 +375,10 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         } else { await finish(message: message) }
     }
     private func stopPublishing() async {
+        if !telemetry.failed, telemetry.stage != "idle" {
+            telemetry.stage = "stopped"
+            telemetryChanged(telemetry)
+        }
         publishingChanged(false)
         if let connection { await connection.setReconnectEnabled(false) }
         if let pump, let capture {
@@ -338,6 +391,8 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             _ = try? await output.close()
             await pipeline?.mixer.removeOutput(output)
         }
+        if let audioProbe { await pipeline?.mixer.removeOutput(audioProbe) }
+        self.audioProbe = nil
         await pipeline?.mixer.stopRunning()
         _ = try? await connection?.close()
         output = nil; connection = nil; pipeline = nil

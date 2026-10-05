@@ -1,6 +1,578 @@
 {
   "sourceLanguage" : "zh-Hant",
   "strings" : {
+  "audio.bitrate.title": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "推流音訊碼率"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Stream audio bitrate"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "配信音声ビットレート"
+        }
+      }
+    }
+  },
+  "audio.bitrate.auto": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "自動（目前 128 kbps）"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Automatic (currently 128 kbps)"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "自動（現在 128 kbps）"
+        }
+      }
+    }
+  },
+  "audio.bitrate.128": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "128 kbps"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "128 kbps"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "128 kbps"
+        }
+      }
+    }
+  },
+  "audio.bitrate.96": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "96 kbps"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "96 kbps"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "96 kbps"
+        }
+      }
+    }
+  },
+  "audio.bitrate.64": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "64 kbps"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "64 kbps"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "64 kbps"
+        }
+      }
+    }
+  },
+  "audio.bitrate.help": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "適用於 ReplayKit 與 ScreenCaptureKit 推流，下次開播生效。自動採用 RTMP 建議碼率，不會依網速即時切換；維持 AAC LC，不影響原生本地錄影。"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Applies to ReplayKit and ScreenCaptureKit on the next stream. Automatic uses the RTMP recommendation, not live network adaptation. Keeps AAC LC; native local recording is unaffected."
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ReplayKit と ScreenCaptureKit の次回配信から適用。自動は RTMP 推奨値を使用し、通信速度には追従しません。AAC LC を維持し、標準のローカル録画には影響しません。"
+        }
+      }
+    }
+  },
+  "capture.connection.stopped": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "推流已停止"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Stream stopped"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "配信停止済み"
+        }
+      }
+    }
+  },
+  "capture.audio.encoder": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "編碼器回報格式"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Encoder-reported format"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "エンコーダー報告形式"
+        }
+      }
+    }
+  },
+  "capture.stream.left90": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "推流畫面左轉 90°"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Rotate stream left 90°"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "配信映像を左に90°回転"
+        }
+      }
+    }
+  },
+  "capture.connection.title": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "推流連線進度"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Stream connection"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "配信接続の進行状況"
+        }
+      }
+    }
+  },
+  "capture.connection.tcp": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "正在連接伺服器"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Connecting to server"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "サーバーに接続中"
+        }
+      }
+    }
+  },
+  "capture.connection.handshake": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "TCP 已連接，等待 RTMP 握手"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "TCP connected; waiting for RTMP handshake"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "TCP 接続済み・RTMP ハンドシェイク待機中"
+        }
+      }
+    }
+  },
+  "capture.connection.handshakeReply": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "已收到 S0/S1，等待 S2"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Received S0/S1; waiting for S2"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "S0/S1 受信済み・S2 待機中"
+        }
+      }
+    }
+  },
+  "capture.connection.connect": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "握手完成，等待連線接受"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Handshake complete; waiting for connection acceptance"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ハンドシェイク完了・接続承認待機中"
+        }
+      }
+    }
+  },
+  "capture.connection.publish": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "連線已接受，正在建立及發布串流"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Connection accepted; creating and publishing stream"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "接続承認済み・ストリーム作成と配信開始中"
+        }
+      }
+    }
+  },
+  "capture.connection.published": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "串流已發布"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Stream published"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "配信開始済み"
+        }
+      }
+    }
+  },
+  "capture.connection.reconnect": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "連線中斷，正在重連"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Disconnected; reconnecting"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "切断・再接続中"
+        }
+      }
+    }
+  },
+  "capture.connection.failed": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "此階段失敗；詳細原因請查看下方錯誤與日誌"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Failed at this stage; see the error and log"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "この段階で失敗しました。エラーとログを確認してください"
+        }
+      }
+    }
+  },
+  "capture.audio.capabilitiesUnknown": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "尚未取得伺服器音訊能力清單"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Server audio capabilities unavailable"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "サーバーの音声対応形式は未取得"
+        }
+      }
+    }
+  },
+  "capture.audio.title": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "推流音訊"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Stream audio"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "配信音声"
+        }
+      }
+    }
+  },
+  "capture.audio.formatWaiting": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "尚未取得編碼器實際輸出格式"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Waiting for encoder output format"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "エンコーダーの出力形式を待機中"
+        }
+      }
+    }
+  },
+  "capture.audio.target": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "設定目標碼率"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Configured target bitrate"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "設定目標ビットレート"
+        }
+      }
+    }
+  },
+  "capture.audio.waiting": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "等待音訊封包統計（約 10 秒更新）"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Waiting for audio packet statistics (about every 10 s)"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "音声パケット統計を待機中（約10秒ごと）"
+        }
+      }
+    }
+  },
+  "capture.audio.packets": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "最近已產出 RTMP 音訊封包"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "RTMP audio packets recently produced"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "最近 RTMP 音声パケットを生成"
+        }
+      }
+    }
+  },
+  "capture.audio.missing": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "最近沒有產出音訊封包"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "No audio packets in the latest sample"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "最新の統計に音声パケットがありません"
+        }
+      }
+    }
+  },
+  "capture.audio.stale": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "音訊統計已逾時，尚無最新資料"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Audio statistics are stale"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "音声統計が更新されていません"
+        }
+      }
+    }
+  },
   "recording.details": {
     "localizations": {
       "zh-Hant": {

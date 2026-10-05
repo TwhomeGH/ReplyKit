@@ -513,6 +513,7 @@ struct GPURotateView: View {
 
 
 struct AudioSettingsView:View {
+    @AppStorage(StreamAudioBitrate.storageKey, store: userDefaults) private var streamAudioBitrate = StreamAudioBitrate.automatic.rawValue
 
     @AppStorage("isOringinAudio",store:userDefaults)  private var isOringinAudio = true
 
@@ -524,6 +525,15 @@ struct AudioSettingsView:View {
 
     var body: some View {
         Form {
+            Section(header: Text(AppLanguage.localized("audio.bitrate.title"))) {
+                Picker(AppLanguage.localized("audio.bitrate.title"), selection: $streamAudioBitrate) {
+                    ForEach(StreamAudioBitrate.allCases) { option in
+                        Text(AppLanguage.localized(option.titleKey)).tag(option.rawValue)
+                    }
+                }
+                Text(AppLanguage.localized("audio.bitrate.help"))
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
             Section(header: Text("settings.audio.title")) {
             
                 Toggle(isOn:$isOringinAudio){

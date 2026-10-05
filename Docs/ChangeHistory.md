@@ -20,6 +20,21 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.06 03:07 加入推流 AAC 碼率選項
+
+- 音訊設定提供自動、128、96、64 kbps；預設自動，下次開播生效。
+- ReplayKit／ScreenCaptureKit 共用偏好與解析規則，維持 AAC LC；不影響原生本地錄影。
+- ReplayKit 統計改讀已套用碼率，ScreenCaptureKit 目標碼率顯示與日誌同步，補齊三語說明。
+
+## 2026.10.06 02:56 ScreenCaptureKit 推流左轉與音訊、連線診斷
+
+- 加入預設左轉 90° 的推流像素修正，可在停止後關閉；本地錄影方向獨立設定。
+- 記錄來源音訊 ASBD、PCM 可讀性、Mixer 產出及 RTMP 音訊封包，補齊先前被篩掉的音訊診斷。
+- 主頁顯示 RTMP 連線階段、實際編碼器格式、設定碼率及音訊封包等待／缺失／過期狀態，補上三語文字。
+- 無聲根因與 Apple SDK 建置、實機方向／音訊仍待驗證；不將來源 accepted 誤認為成功送音訊。
+
+**相關文件**：[ScreenCaptureKit 接入](screencapturekit-integration.md)
+
 ## 2026.10.05 22:03 自動產生 kHaishinKitRevision（SwiftPM build tool plugin）
 
 **類型**: 優化 · **檔案**: `Package.resolved`
