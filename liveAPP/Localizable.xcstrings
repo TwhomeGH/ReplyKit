@@ -1,6 +1,382 @@
 {
   "sourceLanguage" : "zh-Hant",
   "strings" : {
+  "recording.details": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "錄影詳細資訊"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Recording details"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "録画の詳細"
+        }
+      }
+    }
+  },
+  "recording.analyze": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "分析碼率"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Analyze bitrate"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ビットレートを分析"
+        }
+      }
+    }
+  },
+  "recording.duration": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "時長"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Duration"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "再生時間"
+        }
+      }
+    }
+  },
+  "recording.size": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "檔案大小"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "File size"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ファイルサイズ"
+        }
+      }
+    }
+  },
+  "recording.encodedSize": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "編碼尺寸"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Encoded dimensions"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "符号化サイズ"
+        }
+      }
+    }
+  },
+  "recording.displaySize": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "顯示尺寸（含方向矩陣）"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Display dimensions (with transform)"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "表示サイズ（向き補正後）"
+        }
+      }
+    }
+  },
+  "recording.fps": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "標稱 FPS"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Nominal FPS"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "公称FPS"
+        }
+      }
+    }
+  },
+  "recording.videoRate": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "影像軌估計碼率"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Estimated video bitrate"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "映像の推定ビットレート"
+        }
+      }
+    }
+  },
+  "recording.fileRate": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "整檔平均碼率"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Average file bitrate"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ファイル全体の平均ビットレート"
+        }
+      }
+    }
+  },
+  "recording.videoCodec": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "影像編碼（FourCC）"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Video codec (FourCC)"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "映像コーデック（FourCC）"
+        }
+      }
+    }
+  },
+  "recording.audioCodec": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "音訊編碼（各軌 FourCC）"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Audio codecs (FourCC per track)"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "音声コーデック（各トラックのFourCC）"
+        }
+      }
+    }
+  },
+  "recording.noVideo": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "影片沒有可讀取的影像軌。"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "No readable video track."
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "読み取れる映像トラックがありません。"
+        }
+      }
+    }
+  },
+  "recording.infoHelp": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "資料取自完成後的檔案。FPS 為軌道標稱值；影像碼率為軌道估計值。整檔平均包含音訊與封裝；逐段碼率請使用分析功能。"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Values come from the completed file. FPS is nominal and video bitrate is estimated. File average includes audio and container overhead. Use analysis for bitrate over time."
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "完成したファイルの情報です。FPSは公称値、映像ビットレートは推定値です。全体平均には音声とコンテナ情報も含みます。時間ごとの値は分析で確認できます。"
+        }
+      }
+    }
+  },
+
+  "logs.modeHelp": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "選擇接收的日誌來源；下方模組與搜尋用於篩選已保存的歷史。"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Choose which log sources to receive. Module and search filters below apply to saved history."
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "受信するログの種類を選択します。下のモジュール・検索条件は保存済み履歴を絞り込みます。"
+        }
+      }
+    }
+  },
+  "logs.selectText": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "框選原文（多筆）"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Select log text"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "複数ログの原文を選択"
+        }
+      }
+    }
+  },
+  "logs.selectionHelp": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "目前頁面篩選結果的固定快照。長按文字並拖曳選取把手，可跨多筆複製；不隨新日誌更新。"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Snapshot of the filtered current page. Touch and hold, then drag selection handles across entries to copy. New logs do not update this text."
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "現在のページの絞り込み結果です。長押しして選択ハンドルを動かすと複数行をコピーできます。新しいログでは更新されません。"
+        }
+      }
+    }
+  },
+  "logs.copyAll": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "複製全部原文"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Copy all text"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "原文をすべてコピー"
+        }
+      }
+    }
+  },
+
   "logs.fileChanged": {
     "localizations": {
       "zh-Hant": {

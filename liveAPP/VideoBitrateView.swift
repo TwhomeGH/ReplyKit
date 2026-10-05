@@ -3,6 +3,8 @@ import PhotosUI
 import Charts
 
 struct VideoBitrateView: View {
+    var initialURL: URL? = nil
+    @State private var didLoadInitialURL = false
     @State private var selectedPickerItem: PhotosPickerItem?
     @State private var selectedFileURL: URL?
     @State private var isAnalyzing = false
@@ -42,6 +44,12 @@ struct VideoBitrateView: View {
                     tempFileURLs.append(tempURL)
                     selectedPickerItem = nil
                     startAnalysis(url: tempURL)
+                }
+            }
+            .onAppear {
+                if !didLoadInitialURL, let initialURL {
+                    didLoadInitialURL = true
+                    startAnalysis(url: initialURL)
                 }
             }
             .onDisappear {
@@ -314,7 +322,7 @@ struct VideoBitrateView: View {
             if url == keepURL { continue }
             try? FileManager.default.removeItem(at: url)
         }
-        if let keepURL = keepURL {
+        if let keepURL = keepURL, tempFileURLs.contains(keepURL) {
             tempFileURLs = [keepURL]
         } else {
             tempFileURLs.removeAll()

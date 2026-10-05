@@ -75,6 +75,8 @@ import Photos
     @ObservedObject private var library = RecordingLibrary.shared
     @Environment(\.dismiss) private var dismiss
     @State private var playing: LocalRecording?
+    @State private var details: LocalRecording?
+    @State private var analyzing: LocalRecording?
     @State private var deleting: LocalRecording?
     @State private var saving: UUID?
     @State private var message: String?
@@ -90,6 +92,10 @@ import Photos
                             .font(.caption)
                         if let error = item.message { Text(error).font(.caption).foregroundStyle(.secondary) }
                         if item.phase == .ready {
+                            HStack {
+                                Button(AppLanguage.localized("recording.details")) { details = item }
+                                Button(AppLanguage.localized("recording.analyze")) { analyzing = item }
+                            }.buttonStyle(.borderless)
                             HStack {
                                 Button("播放") { playing = item }
                                 ShareLink("分享／匯出", item: library.fileURL(for: item.id))
@@ -112,6 +118,15 @@ import Photos
             }
             .navigationTitle("本地錄影")
             .toolbar { Button("完成") { dismiss() }.disabled(saving != nil) }
+            .sheet(item: $details) { item in
+                RecordingDetailsView(url: library.fileURL(for: item.id))
+            }
+            .sheet(item: $analyzing) { item in
+                NavigationStack {
+                    VideoBitrateView(initialURL: library.fileURL(for: item.id))
+                        .toolbar { Button(AppLanguage.localized("logs.close")) { analyzing = nil } }
+                }
+            }
             .sheet(item: $playing) { item in RecordingPlayerView(url: library.fileURL(for: item.id)) }
             .alert("本地錄影", isPresented: Binding(get: { message != nil }, set: { if !$0 { message = nil } })) {
                 Button("好") { message = nil }

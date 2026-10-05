@@ -2,6 +2,15 @@ import Foundation
 
 /// 只輸出已知錯誤欄位；不傾印 userInfo 或 RTMP arguments。
 enum CaptureErrorDiagnostics {
+    static func endpoint(_ raw: String, key: String) -> String {
+        guard let url = URL(string: raw), let scheme = url.scheme?.lowercased(),
+              ["rtmp", "rtmps"].contains(scheme), let host = url.host, !host.isEmpty else {
+            return "endpoint=invalid expected=rtmp://host[:port]/app"
+        }
+        let port = url.port ?? (scheme == "rtmps" ? 443 : 1935)
+        let path = sanitize(url.path, secrets: [key])
+        return "scheme=\(scheme) host=\(sanitize(host, secrets: [key])) port=\(port) portSource=\(url.port == nil ? "default" : "explicit") appPath=\(path)"
+    }
     static func sanitize(_ text: String, secrets: [String]) -> String {
         var result = text
         var tokens = secrets

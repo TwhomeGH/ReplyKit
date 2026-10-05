@@ -77,6 +77,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     private var operation: Task<Void, Never>?
     private var diagnostics: Task<Void, Never>?
     private var ownsAudioSession = false
+    private var audioObservers: [NSObjectProtocol] = []
     private var priorCategory: AVAudioSession.Category?
     private var priorMode: AVAudioSession.Mode?
     private var priorOptions: AVAudioSession.CategoryOptions = []
@@ -139,13 +140,16 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         let height = max(2, defaults.integer(forKey: "odstH") > 0 ? defaults.integer(forKey: "odstH") : 1080)
         let size = CGSize(width: min(3840, width / 2 * 2), height: min(2160, height / 2 * 2))
         CaptureAudioOwnership.shared.begin()
+        observeAudioSession(token: token)
+        logAudioSession("capture.begin")
         if filter.isMicrophoneEnabled {
             let session = AVAudioSession.sharedInstance()
             priorCategory = session.category; priorMode = session.mode; priorOptions = session.categoryOptions
             ownsAudioSession = true
             startupStage = "audioSession.configure"
-            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .mixWithOthers])
+            try session.setCategory(.playAndRecord, mode: .default, options: [.mixWithOthers])
             try session.setActive(true)
+            logAudioSession("capture.audioActivated")
         }
         let config = SCStreamConfiguration()
         config.width = Int(size.width); config.height = Int(size.height)
@@ -281,6 +285,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         guard let conn = connection, let stream = output else { throw CancellationError() }
         try Task.checkCancellation()
         publishingStage = "rtmp.connect"
+        sendlog(message: "[CaptureEndpoint] session=\(state.id?.uuidString ?? "none") transport=HaishinKit \(CaptureErrorDiagnostics.endpoint(url, key: key))")
         logStage()
         _ = try await conn.connect(url)
         try Task.checkCancellation()
@@ -341,6 +346,52 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             await self.finish(message: "系統已停止畫面分享（錯誤碼 \(code)）。")
         }
     }
+    /// 不能將仍啟用的共用 session 還原為排他 category，否則會中斷其他 App 播放。
+    /// 不停用共用 session：PiP／TTS 可能仍在使用；保持可混音，交回既有擁有者管理。
+    private func restoreMixingAudioSession() {
+        guard ownsAudioSession else { return }
+        defer { ownsAudioSession = false }
+        let session = AVAudioSession.sharedInstance()
+        guard session.category == .playAndRecord, session.categoryOptions.contains(.mixWithOthers) else {
+            logAudioSession("restore.skippedSessionChanged")
+            return
+        }
+        let compatible = priorCategory == .playback || priorCategory == .playAndRecord || priorCategory == .multiRoute
+        let category: AVAudioSession.Category = compatible ? (priorCategory ?? .playback) : .playback
+        let mode: AVAudioSession.Mode = compatible ? (priorMode ?? .default) : .default
+        var options: AVAudioSession.CategoryOptions = compatible ? priorOptions : []
+        options.remove(.duckOthers)
+        options.remove(.interruptSpokenAudioAndMixWithOthers)
+        options.insert(.mixWithOthers)
+        do {
+            logAudioSession("restore.begin")
+            if session.category != category || session.mode != mode || session.categoryOptions != options {
+                try session.setCategory(category, mode: mode, options: options)
+            }
+            logAudioSession("restore.mixingComplete")
+        } catch {
+            // 失敗時維持現有混音設定，不再嘗試排他還原或重新啟用。
+            logFailure(error, stage: "audioSession.restoreMixing")
+        }
+    }
+    private func logAudioSession(_ event: String) {
+        let audio = AVAudioSession.sharedInstance()
+        let outputs = audio.currentRoute.outputs.map { $0.portType.rawValue }.joined(separator: ",")
+        sendlog(message: "[CaptureAudio] session=\(state.id?.uuidString ?? "none") event=\(event) category=\(audio.category.rawValue) mode=\(audio.mode.rawValue) options=\(audio.categoryOptions.rawValue) otherAudio=\(audio.isOtherAudioPlaying) outputs=\(outputs)")
+    }
+    private func observeAudioSession(token: UUID) {
+        let center = NotificationCenter.default
+        let interruption = center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { note in
+            let type = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? NSNumber)?.uintValue
+            let options = (note.userInfo?[AVAudioSessionInterruptionOptionKey] as? NSNumber)?.uintValue
+            sendlog(message: "[CaptureAudio] session=\(token) event=interruption type=\(type.map(String.init) ?? "unknown") options=\(options.map(String.init) ?? "unknown")")
+        }
+        let route = center.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { note in
+            let reason = (note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? NSNumber)?.uintValue
+            sendlog(message: "[CaptureAudio] session=\(token) event=routeChange reason=\(reason.map(String.init) ?? "unknown")")
+        }
+        audioObservers = [interruption, route]
+    }
     func stop() async { await finish(message: nil) }
     private func finish(message: String?) async {
         guard let token = state.id, state.phase != .stopping else { return }
@@ -355,7 +406,10 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         while cleaningPublishing { try? await Task.sleep(nanoseconds: 10_000_000) }
         if let capture {
             recording?.detach(from: capture)
-            try? await capture.stopCapture()
+            logAudioSession("capture.stopBegin")
+            do { try await capture.stopCapture() }
+            catch { logFailure(error, stage: "capture.stop") }
+            logAudioSession("capture.stopEnd")
         }
         if let recordingOrientation, let capture {
             try? capture.removeStreamOutput(recordingOrientation, type: .screen)
@@ -364,11 +418,10 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         await stopPublishing(); capture = nil
         let picker = SCContentSharingPicker.shared
         picker.remove(self); picker.isActive = false
-        if ownsAudioSession {
-            let session = AVAudioSession.sharedInstance()
-            if let priorCategory, let priorMode { try? session.setCategory(priorCategory, mode: priorMode, options: priorOptions) }
-            ownsAudioSession = false
-        }
+        restoreMixingAudioSession()
+        logAudioSession("capture.cleanupComplete")
+        for observer in audioObservers { NotificationCenter.default.removeObserver(observer) }
+        audioObservers.removeAll()
         CaptureAudioOwnership.shared.end()
         state.finish(token); update(.idle, message)
     }

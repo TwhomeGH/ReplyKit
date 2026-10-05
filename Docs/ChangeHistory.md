@@ -20,6 +20,57 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.05 16:48 本地錄影加入詳細資訊與直接碼率分析
+
+**類型**: 功能／修復 · **檔案**: `liveAPP/Capture/RecordingLibrary.swift`、`liveAPP/Capture/RecordingDetailsView.swift`、`liveAPP/VideoBitrateView.swift`
+
+### 修改 - 以實際完成檔案查看資訊
+
+- 已完成錄影提供詳細資訊與直接分析碼率，包含方向矩陣前後尺寸、標稱 FPS、估計影像碼率與整檔平均。
+- 快速資訊按需讀取與快取，完整分析沿用既有分析器。
+- 修正分析頁將非暫存來源加入清理清單的問題，避免關閉分析時刪除原片。
+- 新增三語資訊標籤與文件；Apple SDK 建置與實際影片驗收待確認。
+
+---
+
+## 2026.10.05 16:43 避免擷取失敗收尾切回排他音訊設定
+
+**類型**: 修復 · **檔案**: `liveAPP/Capture/ScreenCaptureSource.swift`
+
+### 修改 - 保持音訊混音並補充收尾時序
+
+- 背景麥克風保留 playAndRecord／mixWithOthers，移除強制 defaultToSpeaker。
+- 收尾只還原可混音 category；原設定為排他類型時使用 playback／mixWithOthers，移除 duckOthers 與 spoken-audio 中斷選項。
+- 不停用或重新啟用 PiP／TTS 共用 session；若設定已被其他使用者改動則跳過還原。
+- 記錄音訊啟動、系統停止前後、還原、中斷通知及路由原因；不記錄裝置名稱。
+- 此為 App 端干擾風險修正；外部影片暫停的實際觸發點仍需實機回歸確認。
+
+---
+
+## 2026.10.05 16:38 補充 ScreenCaptureKit 推流目標與連接埠日誌
+
+**類型**: 改進 · **檔案**: `liveAPP/Capture/ScreenCaptureSource.swift`、`liveAPP/Capture/CaptureErrorDiagnostics.swift`
+
+### 修改 - 連線前顯示實際目標解析
+
+- CaptureEndpoint 記錄 session、HaishinKit 傳輸、scheme、host、port、port 是否明確指定及 appPath。
+- 不輸出使用者憑證、query 與串流金鑰；新增 1936 明確指定、預設 port、錯誤網址與憑證遮蔽檢查。
+
+---
+
+## 2026.10.05 16:35 恢復日誌跨筆框選並標示日誌模式
+
+**類型**: 改進 · **檔案**: `liveAPP/FileLogView.swift`、`liveAPP/Localizable.xcstrings`
+
+### 修改 - 連續原文選取與來源說明
+
+- 新增目前篩選頁面的固定原文快照，透過單一 UITextView 跨多筆框選複製。
+- 開啟框選時暫停追尾，快照不受新日誌刷新影響。
+- 來源選擇上方新增日誌模式標題與用途說明，補齊三語文字。
+- Swift 語法與字串格式檢查通過；系統選取把手互動仍待實機驗證。
+
+---
+
 ## 2026.10.05 12:24 修正日誌頁 iOS 16.6 建置相容性
 
 **類型**: 修復 · **檔案**: `liveAPP/FileLogView.swift`

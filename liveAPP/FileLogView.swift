@@ -95,6 +95,8 @@ struct FileLogView: View {
     @State private var showSettings = false
     @State private var confirmClear = false
     @State private var showSearch = false
+    @State private var showSelection = false
+    @State private var selectionText = ""
 
     private var visible: [(line: Int, text: String)] {
         state.page.lines.enumerated().compactMap { index, text in
@@ -104,6 +106,11 @@ struct FileLogView: View {
     var body: some View {
         VStack(spacing: 8) {
             VStack(spacing: 8) {
+                Text(AppLanguage.localized("main.log_mode"))
+                    .font(.headline).frame(maxWidth: .infinity, alignment: .leading)
+                Text(AppLanguage.localized("logs.modeHelp"))
+                    .font(.caption).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 Picker(AppLanguage.localized("main.log_mode"), selection: $logMode) {
                     Text(AppLanguage.localized("logs.app")).tag(1)
                     Text(AppLanguage.localized("logs.external")).tag(0)
@@ -147,6 +154,12 @@ struct FileLogView: View {
                     Spacer()
                     Button(AppLanguage.localized("logs.latest")) { Task { await state.load(latest: true) } }
                 }
+                Button(AppLanguage.localized("logs.selectText")) {
+                    state.follow = false
+                    selectionText = visible.map(\.text).joined(separator: "\n")
+                    showSelection = true
+                }
+                .disabled(visible.isEmpty)
                 HStack {
                     Text("log.txt · \(state.page.total == 0 ? 0 : state.page.start + 1)–\(min(state.page.total, state.page.start + 200)) / \(state.page.total)")
                     Spacer()
@@ -190,6 +203,24 @@ struct FileLogView: View {
                     if following, let target = state.anchor { proxy.scrollTo(target, anchor: .bottom) }
                 }
                 .simultaneousGesture(DragGesture().onChanged { _ in state.follow = false })
+            }
+        }
+        .sheet(isPresented: $showSelection) {
+            NavigationStack {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(AppLanguage.localized("logs.selectionHelp"))
+                        .font(.caption).foregroundStyle(.secondary).padding(.horizontal)
+                    LogSelectionTextView(text: selectionText)
+                }
+                .navigationTitle(AppLanguage.localized("logs.selectText"))
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button(AppLanguage.localized("logs.close")) { showSelection = false }
+                    }
+                    ToolbarItem(placement: .primaryAction) {
+                        Button(AppLanguage.localized("logs.copyAll")) { UIPasteboard.general.string = selectionText }
+                    }
+                }
             }
         }
         .sheet(isPresented: $showSettings) { LogSettingsView() }
@@ -240,5 +271,25 @@ private struct LogVisibleLinesKey: PreferenceKey {
     static var defaultValue: [Int: CGRect] { [:] }
     static func reduce(value: inout [Int: CGRect], nextValue: () -> [Int: CGRect]) {
         value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
+}
+
+/// 靜態原文快照使用單一文字容器，支援跨列選取；更新時不重設選取範圍。
+private struct LogSelectionTextView: UIViewRepresentable {
+    let text: String
+    func makeUIView(context: Context) -> UITextView {
+        let view = UITextView()
+        view.isEditable = false
+        view.isSelectable = true
+        view.backgroundColor = .systemBackground
+        view.textColor = .label
+        view.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .monospacedSystemFont(ofSize: 14, weight: .regular))
+        view.adjustsFontForContentSizeCategory = true
+        view.textContainerInset = UIEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
+        view.text = text
+        return view
+    }
+    func updateUIView(_ view: UITextView, context: Context) {
+        if view.text != text { view.text = text }
     }
 }
