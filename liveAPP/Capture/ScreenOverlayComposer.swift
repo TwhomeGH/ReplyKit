@@ -103,14 +103,6 @@ final class ScreenOverlayComposer: @unchecked Sendable {
     }
 }
 
-private func uiFontWeight(_ weight: OverlayFontWeight) -> UIFont.Weight {
-    switch weight {
-    case .regular: return .regular
-    case .medium: return .medium
-    case .bold: return .bold
-    }
-}
-
 private extension UIColor {
     convenience init?(overlayHex hex: String) {
         var raw = hex.trimmingCharacters(in: .whitespacesAndNewlines)

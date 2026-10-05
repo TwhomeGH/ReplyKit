@@ -287,6 +287,20 @@ operation 回填合成的 Connect.Failed，病因被掩蓋。
 
 ---
 
+## 2026.10.06 05:00 修正 ScreenOverlayComposer 的 uiFontWeight 重複宣告
+
+**類型**: 修復 · **檔案**: `liveAPP/Capture/ScreenOverlayComposer.swift`
+
+### 問題 - CI 編譯失敗
+
+`ScreenOverlayComposer.swift` 的 `private func uiFontWeight` 與 `OverlaySettingsView.swift` 既有的同名函式（internal）造成 invalid redeclaration。
+
+### 修改 - 移除重複宣告，改用既有函式
+
+移除本檔的 `uiFontWeight`，直接使用 `OverlaySettingsView.swift` 既有的 internal 版本。
+
+---
+
 ## 2026.10.06 04:53 修正 SC 推流畫布寬高：改用 (odstW, odstH) 不轉置
 
 **類型**: 修復 · **檔案**: `liveAPP/Capture/ScreenCaptureSource.swift`
