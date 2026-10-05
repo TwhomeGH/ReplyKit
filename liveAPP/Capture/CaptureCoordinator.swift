@@ -137,7 +137,7 @@ import ScreenCaptureKit
     /// ScreenCaptureKit（測試版）的工作模式、狀態與停止。
     private var screenCaptureKitOptions: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("測試版使用系統全螢幕擷取；自訂 GPU 畫布、浮水印與進階音訊處理請改用 ReplayKit。")
+            Text("測試版使用系統全螢幕擷取；支援輸出時間疊加。自訂 GPU 畫布、浮水印與進階音訊處理請改用 ReplayKit。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Picker(AppLanguage.localized("capture.mode"), selection: $workMode) {

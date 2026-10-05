@@ -31,15 +31,15 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     private var keepAliveTimer: DispatchSourceTimer?
 
     init(mixer: MediaMixer, probe: ScreenAudioProbe, rotateLeft: Bool) throws {
-        let rotator = try rotateLeft ? ScreenStreamVideoRotator() : nil
+        let compositor = try ScreenStreamVideoRotator(rotateLeft: rotateLeft, overlay: ScreenOverlayComposer())
         super.init()
         for (queue, track, isVideo) in [(video, UInt8(0), true), (audio, UInt8(0), false), (mic, UInt8(1), false)] {
             workers.append(Task {
                 var rotationFailures = 0
                 for await sample in queue.stream() {
                     guard !Task.isCancelled else { break }
-                    if isVideo, let rotator {
-                        do { await mixer.append(try rotator.rotate(sample.buffer), track: track) }
+                    if isVideo {
+                        do { await mixer.append(try compositor.rotate(sample.buffer), track: track) }
                         catch {
                             rotationFailures += 1
                             if rotationFailures == 1 || rotationFailures % 300 == 0 {
@@ -47,7 +47,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                             }
                         }
                     } else {
-                        if !isVideo { probe.observe(sample.buffer, track: track) }
+                        probe.observe(sample.buffer, track: track)
                         await mixer.append(sample.buffer, track: track)
                     }
                 }

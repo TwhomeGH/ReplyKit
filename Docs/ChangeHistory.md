@@ -287,6 +287,26 @@ operation 回填合成的 Connect.Failed，病因被掩蓋。
 
 ---
 
+## 2026.10.06 04:45 SC 推流輸出時間疊加（影像合成器）
+
+**類型**: 新增 · **檔案**: `liveAPP/Capture/ScreenOverlayComposer.swift`（新）, `liveAPP/Capture/ScreenStreamVideoRotator.swift`, `liveAPP/Capture/ScreenCaptureSource.swift`, `liveAPP/Capture/CaptureCoordinator.swift`
+
+### 問題 / 需求 - SC 推流沒有輸出疊加
+
+ReplayKit 路徑的輸出疊加（時間層）由 extension 的 Metal renderer 處理；ScreenCaptureKit 路徑完全沒有疊加、也無自訂畫布。
+
+### 修改 - 影像 worker 加上 CoreGraphics 疊加階段
+
+- 新增 `ScreenOverlayComposer`：依 `OverlaySceneConfig`（時間層）raster 出疊加圖，每秒或設定變更重建；座標採左上原點（與 `OverlayAnchor` 一致）。
+- `ScreenStreamVideoRotator` 改為同時處理旋轉（可選）與疊加：CoreImage 旋轉後，以左上原點 CTM 把疊加圖畫進 BGRA 緩衝；無旋轉且無疊加時原樣返回。
+- `ScreenSamplePump` 一律建立帶 overlay 的合成器；`CaptureCoordinator` 說明更新。
+
+**相關文件**: [screencapturekit-integration.md](Docs/screencapturekit-integration.md)
+
+**待驗證**: 疊加的垂直錨點（CoreGraphics 翻轉 CTM）與效能需實機確認。
+
+---
+
 ## 2026.10.06 04:26 推流閒置 keep-alive 幀泵（重播最後一格）
 
 **類型**: 新增 · **檔案**: `liveAPP/Capture/ScreenCaptureSource.swift`

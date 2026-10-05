@@ -1,44 +1,64 @@
 #if os(iOS) && canImport(Metal)
 import AVFoundation
+import CoreGraphics
 import CoreImage
 import Metal
 
-/// 單一 video worker 使用的 GPU 左轉器。重用 context 與有限的 buffer pool，保留原始時間戳。
-/// 只處理推流；原生 SCRecordingOutput 的方向仍由錄影設定控制。
+/// 單一 video worker 使用的 GPU 影像階段：可選左轉 90° + 疊加輸出層（時間層）。
+/// 重用 context 與有限的 buffer pool，保留原始時間戳。
 // Sendable 僅供移交至 worker；建立後只能由單一 video worker 呼叫 rotate。
 final class ScreenStreamVideoRotator: @unchecked Sendable {
     private let context: CIContext
+    private let rotateLeft: Bool
+    private let overlay: ScreenOverlayComposer?
     private var pool: CVPixelBufferPool?
     private var width = 0
     private var height = 0
 
-    init() throws {
+    init(rotateLeft: Bool = true, overlay: ScreenOverlayComposer? = nil) throws {
         guard let device = MTLCreateSystemDefaultDevice() else { throw RotationError.unavailable }
         context = CIContext(mtlDevice: device, options: [.cacheIntermediates: false])
+        self.rotateLeft = rotateLeft
+        self.overlay = overlay
     }
 
-    /// 將像素逆時針旋轉 90 度。池已滿時丟棄該幀，不回退成方向錯誤的畫面。
+    /// 旋轉（可選）並疊加輸出層。池已滿時丟棄該幀，不回退成方向錯誤的畫面。
     func rotate(_ sample: CMSampleBuffer) throws -> CMSampleBuffer {
         guard let source = sample.imageBuffer else { throw RotationError.invalidSample }
-        let w = CVPixelBufferGetHeight(source), h = CVPixelBufferGetWidth(source)
-        if pool == nil || width != w || height != h {
+        let sourceWidth = CVPixelBufferGetWidth(source)
+        let sourceHeight = CVPixelBufferGetHeight(source)
+        let outWidth = rotateLeft ? sourceHeight : sourceWidth
+        let outHeight = rotateLeft ? sourceWidth : sourceHeight
+        let canvas = CGSize(width: outWidth, height: outHeight)
+        let layer = overlay?.layer(canvas: canvas)
+        // 無旋轉且無疊加 → 原樣返回，省一次 GPU pass。
+        if !rotateLeft, layer == nil { return sample }
+
+        if pool == nil || width != outWidth || height != outHeight {
             pool = nil
             let attributes: [String: Any] = [
-                kCVPixelBufferWidthKey as String: w, kCVPixelBufferHeightKey as String: h,
+                kCVPixelBufferWidthKey as String: outWidth, kCVPixelBufferHeightKey as String: outHeight,
                 kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
                 kCVPixelBufferMetalCompatibilityKey as String: true,
                 kCVPixelBufferIOSurfacePropertiesKey as String: [:]
             ]
             try check(CVPixelBufferPoolCreate(nil, nil, attributes as CFDictionary, &pool))
-            width = w; height = h
+            width = outWidth; height = outHeight
         }
         guard let pool else { throw RotationError.invalidSample }
         var destination: CVPixelBuffer?
         try check(CVPixelBufferPoolCreatePixelBufferWithAuxAttributes(nil, pool,
             [kCVPixelBufferPoolAllocationThresholdKey as String: 6] as CFDictionary, &destination))
         guard let destination else { throw RotationError.invalidSample }
-        let image = CIImage(cvPixelBuffer: source).oriented(.left)
+
+        var image = CIImage(cvPixelBuffer: source)
+        if rotateLeft { image = image.oriented(.left) }
         context.render(image, to: destination)
+
+        if let layer {
+            draw(layer, into: destination)
+        }
+
         var description: CMVideoFormatDescription?
         try check(CMVideoFormatDescriptionCreateForImageBuffer(allocator: kCFAllocatorDefault,
             imageBuffer: destination, formatDescriptionOut: &description))
@@ -50,6 +70,25 @@ final class ScreenStreamVideoRotator: @unchecked Sendable {
             imageBuffer: destination, formatDescription: description, sampleTiming: &timing, sampleBufferOut: &result))
         guard let result else { throw RotationError.invalidSample }
         return result
+    }
+
+    /// 以左上原點 CTM 把疊加圖畫進 BGRA 緩衝（與 `OverlayAnchor` 座標一致）。
+    private func draw(_ layer: (image: CGImage, origin: CGPoint, size: CGSize), into buffer: CVPixelBuffer) {
+        CVPixelBufferLockBaseAddress(buffer, [])
+        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+        guard let base = CVPixelBufferGetBaseAddress(buffer) else { return }
+        let w = CVPixelBufferGetWidth(buffer)
+        let h = CVPixelBufferGetHeight(buffer)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
+        guard let ctx = CGContext(
+            data: base, width: w, height: h, bitsPerComponent: 8, bytesPerRow: bytesPerRow,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
+        ) else { return }
+        // CGContext 預設左下原點，翻成左上讓 OverlayAnchor.origin 直接可用。
+        ctx.translateBy(x: 0, y: CGFloat(h))
+        ctx.scaleBy(x: 1, y: -1)
+        ctx.draw(layer.image, in: CGRect(origin: layer.origin, size: layer.size))
     }
 
     private func check(_ status: Int32) throws {
