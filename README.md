@@ -67,12 +67,12 @@
 >
 > 目前所指向的版本號 有可能文檔紀錄版本可能過時 或未更新
 
-以下示例版本是 **16.1.1**
+以下示例版本是 **16.3.5**
 <!-- you can set the alighnment here to left/center/right -->
 <h1 align="left">
 <a href="https://stikstore.app/altdirect/?url=https://raw.githubusercontent.com/TwhomeGH/ReplyKit/refs/heads/main/AltStoreTest.json"><img src="https://github.com/StikStore/altdirect/blob/main/assets/png/AltSource_Blue.png?raw=true" alt="加入 AltStore 來源" target="_blank" width="200">
 </a>
-<a href="https://github.com/TwhomeGH/ReplyKit/releases/download/16.1.1/liveApp_16.1.1.ipa"><img src="https://github.com/StikStore/altdirect/blob/main/assets/png/Download_Blue.png?raw=true" alt="下載 IPA" target="_blank" width="200">
+<a href="https://github.com/TwhomeGH/ReplyKit/releases/download/16.3.5/liveApp_16.3.5.ipa"><img src="https://github.com/StikStore/altdirect/blob/main/assets/png/Download_Blue.png?raw=true" alt="下載 IPA" target="_blank" width="200">
 </a>
 </h1>
 
