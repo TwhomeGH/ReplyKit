@@ -20,6 +20,18 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.05 12:24 修正日誌頁 iOS 16.6 建置相容性
+
+**類型**: 修復 · **檔案**: `liveAPP/FileLogView.swift`
+
+### 修改 - 移除 iOS 17 限定的捲動 API
+
+- 使用 ScrollViewReader 取代 scrollTargetLayout／scrollPosition，不提高最低系統版本。
+- 透過可見列位置記錄閱讀行號，保留歷史定位、切頁返回與最新追尾。
+- Windows Swift 語法檢查通過；Apple SDK 可用性與 iOS 16.6 捲動操作待 CI／實機確認。
+
+---
+
 ## 2026.10.05 12:06 日誌頁改以主檔案分頁讀取歷史
 
 **類型**: 改進 · **檔案**: `liveAPP/FileLogView.swift`、`liveAPP/LogFileReader.swift`、`liveAPP/liveAPPApp.swift`

@@ -10,6 +10,7 @@ import UIKit
     @Published var follow = true
     @Published var showContext = false
     @Published var anchor: Int?
+    var readingAnchor: Int?
     @Published var error: String?
     @Published var newLines = 0
     @Published var searching = false
@@ -156,15 +157,40 @@ struct FileLogView: View {
                 if let error = state.error { Text(error).font(.caption).foregroundStyle(.red) }
                 if let notice = state.searchNotice { Text(notice).font(.caption).foregroundStyle(.secondary) }
             }.padding(.horizontal)
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 12) {
-                    ForEach(visible, id: \.line) { item in
-                        row(item.text, line: item.line).id(item.line)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 12) {
+                        ForEach(visible, id: \.line) { item in
+                            row(item.text, line: item.line)
+                                .id(item.line)
+                                .background(GeometryReader { geometry in
+                                    Color.clear.preference(key: LogVisibleLinesKey.self,
+                                        value: [item.line: geometry.frame(in: .named("logViewport"))])
+                                })
+                        }
+                    }.padding()
+                }
+                .coordinateSpace(name: "logViewport")
+                .onPreferenceChange(LogVisibleLinesKey.self) { frames in
+                    if let first = frames.filter({ $0.value.maxY > 0 })
+                        .min(by: { $0.value.minY < $1.value.minY }) {
+                        state.readingAnchor = first.key
                     }
-                }.scrollTargetLayout().padding()
+                }
+                .onAppear {
+                    let target = state.follow ? state.anchor : (state.readingAnchor ?? state.anchor)
+                    DispatchQueue.main.async {
+                        if let target { proxy.scrollTo(target, anchor: state.follow ? .bottom : .top) }
+                    }
+                }
+                .onChange(of: state.anchor) { target in
+                    if let target { proxy.scrollTo(target, anchor: state.follow ? .bottom : .top) }
+                }
+                .onChange(of: state.follow) { following in
+                    if following, let target = state.anchor { proxy.scrollTo(target, anchor: .bottom) }
+                }
+                .simultaneousGesture(DragGesture().onChanged { _ in state.follow = false })
             }
-            .scrollPosition(id: $state.anchor)
-            .simultaneousGesture(DragGesture().onChanged { _ in state.follow = false })
         }
         .sheet(isPresented: $showSettings) { LogSettingsView() }
         .sheet(isPresented: $showSearch, onDismiss: { state.cancelSearch() }) {
@@ -206,5 +232,13 @@ struct FileLogView: View {
                 .font(.caption).foregroundStyle(color)
             Text(text).font(.system(.caption, design: .monospaced)).foregroundStyle(color).textSelection(.enabled)
         }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// iOS 16 使用可見列位置記錄閱讀錨點，不依賴 iOS 17 scrollPosition。
+private struct LogVisibleLinesKey: PreferenceKey {
+    static var defaultValue: [Int: CGRect] { [:] }
+    static func reduce(value: inout [Int: CGRect], nextValue: () -> [Int: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
     }
 }
