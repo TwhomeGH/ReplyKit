@@ -40,6 +40,21 @@ struct RecordingOrientationTests {
         timeline.observe(seconds: 10, orientation: 8)
         #expect(timeline.snapshot().events == [RecordingOrientationEvent(seconds: 0, orientation: 8)])
     }
+    @Test func automaticUsesInverseQuarterTurnsAndPreservesOtherExifValues() {
+        #expect(RecordingOrientationPolicy.automatic.outputOrientation(for: 6) == 8)
+        #expect(RecordingOrientationPolicy.automatic.outputOrientation(for: 8) == 6)
+        for value in [1, 2, 3, 4, 5, 7] {
+            #expect(RecordingOrientationPolicy.automatic.outputOrientation(for: value) == value)
+        }
+    }
+    @Test func manualDirectionsIgnoreSourceMetadata() {
+        for value in 1...8 {
+            #expect(RecordingOrientationPolicy.none.outputOrientation(for: value) == 1)
+            #expect(RecordingOrientationPolicy.left.outputOrientation(for: value) == 8)
+            #expect(RecordingOrientationPolicy.right.outputOrientation(for: value) == 6)
+            #expect(RecordingOrientationPolicy.halfTurn.outputOrientation(for: value) == 3)
+        }
+    }
     #if os(iOS)
     @Test func allExifTransformsKeepPixelsInsidePositiveOutputBounds() {
         let size = CGSize(width: 1920, height: 1080)

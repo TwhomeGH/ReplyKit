@@ -60,12 +60,15 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     private let update: @MainActor (CapturePhase, String?) -> Void
     private var state = CaptureSessionState()
     private let mode: CaptureWorkMode
+    private let recordingPolicy: RecordingOrientationPolicy
     private let publishingChanged: @MainActor (Bool) -> Void
     private var pipeline: CaptureMediaPipeline?
     private var recording: ScreenRecordingSession?
     private var recordingOrientation: ScreenRecordingOrientationObserver?
     private var publishingTask: Task<Void, Never>?
     private var streamingViable = false
+    private var startupStage = "idle"
+    private var publishingStage = "idle"
     private var cleaningPublishing = false
     private var connection: RTMPConnection?
     private var output: RTMPStream?
@@ -82,10 +85,12 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
          publishingChanged: @escaping @MainActor (Bool) -> Void,
          update: @escaping @MainActor (CapturePhase, String?) -> Void) {
         self.url = url; self.key = key; self.mode = mode
+        recordingPolicy = RecordingOrientationPolicy(rawValue: userDefaults?.string(forKey: "recordingOrientationPolicy") ?? "") ?? .automatic
         self.publishingChanged = publishingChanged; self.update = update
     }
     func present() {
         guard state.begin() != nil else { return }
+        startupStage = "picker.present"
         let picker = SCContentSharingPicker.shared
         var settings = SCContentSharingPickerConfiguration()
         settings.showsMicrophoneControl = true
@@ -100,7 +105,10 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     }
     nonisolated func contentSharingPickerStartDidFailWithError(_ error: Error) {
         let code = (error as NSError).code
-        Task { @MainActor [weak self] in await self?.finish(message: "無法開啟畫面分享選擇器（錯誤碼 \(code)）。") }
+        Task { @MainActor [weak self] in
+            self?.logFailure(error, stage: "picker.present")
+            await self?.finish(message: "無法開啟畫面分享選擇器（錯誤碼 \(code)）。")
+        }
     }
     nonisolated func contentSharingPicker(_ picker: SCContentSharingPicker, didUpdateWith filter: SCContentFilter, for stream: SCStream?) {
         let selection = SelectedCaptureFilter(filter: filter)
@@ -119,7 +127,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                 if state.phase != .stopping { Task { await self.finish(message: nil) } }
             }
             catch {
-                // 不輸出可能包含串流金鑰的底層錯誤描述。
+                logFailure(error, stage: startupStage)
                 let code = (error as NSError).code
                 Task { await self.finish(message: "啟動擷取失敗（錯誤碼 \(code)），請檢查授權與擷取設定。") }
             }
@@ -135,6 +143,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             let session = AVAudioSession.sharedInstance()
             priorCategory = session.category; priorMode = session.mode; priorOptions = session.categoryOptions
             ownsAudioSession = true
+            startupStage = "audioSession.configure"
             try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .mixWithOthers])
             try session.setActive(true)
         }
@@ -150,10 +159,11 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         streamingViable = mode.wantsStreaming
         if mode.wantsRecording {
             do {
+                startupStage = "recording.attach"
                 let observer = ScreenRecordingOrientationObserver()
                 recordingOrientation = observer
                 try source.addStreamOutput(observer, type: .screen, sampleHandlerQueue: sampleQueue)
-                let recording = try ScreenRecordingSession(orientation: observer.timeline) { [weak self] message in
+                let recording = try ScreenRecordingSession(orientation: observer.timeline, policy: recordingPolicy) { [weak self] message in
                     guard let self, self.state.phase != .stopping else { return }
                     if let capture = self.capture { self.recording?.detach(from: capture) }
                     self.update(self.state.phase, message)
@@ -162,14 +172,17 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                 self.recording = recording
                 try recording.attach(to: source)
             } catch {
+                logFailure(error, stage: "recording.attach")
                 guard mode.wantsStreaming else { throw error }
                 update(.starting, "本地錄製無法啟動；將繼續嘗試推流。")
             }
         }
         if mode.wantsStreaming {
+            startupStage = "pipeline.prepare"
             do { try await preparePublishing(source: source, filter: filter, size: size) }
             catch is CancellationError { throw CancellationError() }
             catch {
+                logFailure(error, stage: startupStage)
                 streamingViable = false
                 await stopPublishing()
                 guard let recording, !recording.terminal else { throw error }
@@ -177,7 +190,9 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             }
         }
         try Task.checkCancellation()
+        startupStage = "capture.start"
         try await source.startCapture()
+        startupStage = "capture.running"
         try Task.checkCancellation()
         guard state.transition(.streaming, for: token) else { throw CancellationError() }
         update(.streaming, nil)
@@ -186,9 +201,12 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                 do { try await startPublishing() }
                 catch is CancellationError { }
                 catch {
+                    logFailure(error, stage: publishingStage)
+                    let stage = publishingStage
+                    publishingStage = "failed"
                     let code = (error as NSError).code
                     // 清理工作另開 Task，避免等待自己。
-                    Task { await self.publishingFailed("推流啟動失敗（錯誤碼 \(code)）。") }
+                    Task { await self.publishingFailed("推流啟動失敗（\(stage)，錯誤碼 \(code)），詳細原因請查看日誌。") }
                 }
             }
         }
@@ -196,7 +214,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             while !Task.isCancelled {
                 guard let self else { return }
                 let queues = self.pump.map { "video{\($0.video.summary)} audio{\($0.audio.summary)} mic{\($0.mic.summary)}" } ?? "sampleQueues=none"
-                sendlog(message: "[CaptureSource] backend=screenCaptureKit session=\(token) mode=\(self.mode.rawValue) phase=\(self.state.phase.rawValue) \(queues)")
+                sendlog(message: "[CaptureSource] backend=screenCaptureKit session=\(token) mode=\(self.mode.rawValue) capturePhase=\(self.state.phase.rawValue) publishPhase=\(self.publishingStage) \(queues)")
                 do { try await Task.sleep(nanoseconds: 5_000_000_000) } catch { return }
             }
         }
@@ -228,6 +246,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         case 2: video.bitRateMode = .variable
         default: video.bitRateMode = .average
         }
+        startupStage = "pipeline.videoSettings"
         try await stream.setVideoSettings(video)
         await stream.setBitRateStrategy(StreamVideoAdaptiveBitRateStrategy(mamimumVideoBitrate: video.bitRate))
         await conn.setReconnectEnabled(true)
@@ -239,6 +258,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         var audio = await stream.audioSettings
         audio.bitRate = AudioCodecSettings.recommendedRtmpBitrate
         audio.format = AudioCodecSettings.recommendedRtmpFormat
+        startupStage = "pipeline.audioSettings"
         try await stream.setAudioSettings(audio)
         var mixing = CaptureMediaPipeline.audioSettings(from: await pipeline.mixer.audioMixerSettings, microphone: filter.isMicrophoneEnabled)
         mixing.tracks[0]?.volume = Float(defaults.object(forKey: "appVolume") as? Double ?? 1)
@@ -252,6 +272,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         try Task.checkCancellation()
         let pump = ScreenSamplePump(mixer: pipeline.mixer)
         self.pump = pump
+        startupStage = "pipeline.sampleOutputs"
         try source.addStreamOutput(pump, type: .screen, sampleHandlerQueue: sampleQueue)
         try source.addStreamOutput(pump, type: .audio, sampleHandlerQueue: sampleQueue)
         if filter.isMicrophoneEnabled { try source.addStreamOutput(pump, type: .microphone, sampleHandlerQueue: sampleQueue) }
@@ -259,14 +280,29 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     private func startPublishing() async throws {
         guard let conn = connection, let stream = output else { throw CancellationError() }
         try Task.checkCancellation()
+        publishingStage = "rtmp.connect"
+        logStage()
         _ = try await conn.connect(url)
         try Task.checkCancellation()
+        publishingStage = "rtmp.publish"
+        logStage()
         _ = try await stream.publish(key)
         try Task.checkCancellation()
+        publishingStage = "published"
+        logStage()
         publishingChanged(true)
+    }
+    private func logStage() {
+        sendlog(message: "[CaptureSource] session=\(state.id?.uuidString ?? "none") mode=\(mode.rawValue) publishPhase=\(publishingStage)")
+    }
+    private func logFailure(_ error: Error, stage: String) {
+        let detail = CaptureErrorDiagnostics.describe(error, secrets: [url, key])
+        sendlog(message: "[CaptureError] session=\(state.id?.uuidString ?? "none") mode=\(mode.rawValue) stage=\(stage) \(detail)")
     }
     private func publishingFailed(_ message: String) async {
         guard state.id != nil, state.phase != .stopping, !cleaningPublishing else { return }
+        publishingStage = "failed"
+        logStage()
         cleaningPublishing = true
         streamingViable = false
         publishingTask?.cancel()
@@ -301,12 +337,14 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         Task { @MainActor [weak self] in
             guard let self, let current = self.capture, ObjectIdentifier(current) == identity,
                   self.state.phase != .stopping else { return }
+            self.logFailure(error, stage: "capture.delegateStop")
             await self.finish(message: "系統已停止畫面分享（錯誤碼 \(code)）。")
         }
     }
     func stop() async { await finish(message: nil) }
     private func finish(message: String?) async {
         guard let token = state.id, state.phase != .stopping else { return }
+        sendlog(message: "[CaptureSource] session=\(token) stopping publishPhase=\(publishingStage)")
         state.stopping(); update(.stopping, nil)
         operation?.cancel(); diagnostics?.cancel()
         // 等待啟動中的 await 結束，避免停止後又建立擷取或 RTMP 連線。

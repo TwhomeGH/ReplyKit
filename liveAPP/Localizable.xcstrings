@@ -1,6 +1,1659 @@
 {
   "sourceLanguage" : "zh-Hant",
   "strings" : {
+  "logs.fileChanged": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "日誌檔案已裁切或重建，已重新定位。"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Log file was trimmed or replaced; position reset."
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ログが整理・再作成されたため、位置を更新しました。"
+        }
+      }
+    }
+  },
+  "logs.searchLimit": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "已顯示前 500 筆結果，請縮小搜尋範圍。"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Showing the first 500 matches. Refine your search."
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "最初の500件を表示しています。検索条件を絞ってください。"
+        }
+      }
+    }
+  },
+  "logs.searchDone": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "搜尋完成，符合筆數："
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Search complete. Matches:"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "検索完了。一致件数："
+        }
+      }
+    }
+  },
+  "logs.clear": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "清除主日誌檔案"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Clear main log file"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "メインログを消去"
+        }
+      }
+    }
+  },
+  "logs.clearOverlay": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "清除子母錯誤疊加層"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Clear PiP error overlay"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "PiPエラー表示を消去"
+        }
+      }
+    }
+  },
+  "logs.older": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "較早紀錄"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Older"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "以前"
+        }
+      }
+    }
+  },
+  "logs.newer": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "較新紀錄"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Newer"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "以後"
+        }
+      }
+    }
+  },
+  "logs.searchFile": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "搜尋完整檔案"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Search entire file"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ファイル全体を検索"
+        }
+      }
+    }
+  },
+  "logs.following": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "顯示最新紀錄；篩選目前頁面"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Following latest; filters apply to this page"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "最新を表示中・絞り込みは現在のページに適用"
+        }
+      }
+    }
+  },
+  "logs.history": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "歷史閱讀中；篩選目前頁面"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Reading history; filters apply to this page"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "履歴を表示中・絞り込みは現在のページに適用"
+        }
+      }
+    }
+  },
+  "logs.close": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "關閉"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Close"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "閉じる"
+        }
+      }
+    }
+  },
+  "logs.clearConfirm": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "確定清除主 log.txt？已刪除的歷史無法復原。"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Clear the main log.txt? Deleted history cannot be restored."
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "メインのlog.txtを消去しますか？削除した履歴は復元できません。"
+        }
+      }
+    }
+  },
+  "logs.resumeFilters": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "正在查看前後文，點此恢復篩選"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Viewing context. Restore filters"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "前後の内容を表示中・絞り込みに戻る"
+        }
+      }
+    }
+  },
+
+  "logs.level.info": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "資訊"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Info"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "情報"
+        }
+      }
+    }
+  },
+  "logs.level.success": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "成功"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Success"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "成功"
+        }
+      }
+    }
+  },
+  "logs.level.warning": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "警告"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Warning"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "警告"
+        }
+      }
+    }
+  },
+  "logs.level.error": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "錯誤"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Error"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "エラー"
+        }
+      }
+    }
+  },
+  "logs.app": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "App 日誌"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "App"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "アプリ"
+        }
+      }
+    }
+  },
+  "logs.external": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "外部日誌"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "External"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "外部"
+        }
+      }
+    }
+  },
+  "logs.both": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "全部來源"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Both"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "両方"
+        }
+      }
+    }
+  },
+  "logs.search": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "搜尋訊息或 session"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Search message or session"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "メッセージ・sessionを検索"
+        }
+      }
+    }
+  },
+  "logs.level": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "等級"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Level"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "レベル"
+        }
+      }
+    }
+  },
+  "logs.source": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "模組"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Module"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "モジュール"
+        }
+      }
+    }
+  },
+  "logs.all": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "全部"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "All"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "すべて"
+        }
+      }
+    }
+  },
+  "logs.issues": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "警告與錯誤"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Warnings and errors"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "警告とエラー"
+        }
+      }
+    }
+  },
+  "logs.copy": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "複製篩選原文"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Copy filtered original text"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "絞り込み結果の原文をコピー"
+        }
+      }
+    }
+  },
+  "logs.latest": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "↓ 回到最新"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "↓ Latest"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "↓ 最新へ"
+        }
+      }
+    }
+  },
+
+  "recording.orientation.title": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "錄影方向修正"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Recording orientation"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "録画の向き補正"
+        }
+      }
+    }
+  },
+  "recording.orientation.automatic": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "自動"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Automatic"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "自動"
+        }
+      }
+    }
+  },
+  "recording.orientation.none": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "不修正"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Keep original"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "補正しない"
+        }
+      }
+    }
+  },
+  "recording.orientation.left": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "向左轉 90°"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Rotate left 90°"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "左に90°回転"
+        }
+      }
+    }
+  },
+  "recording.orientation.right": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "向右轉 90°"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Rotate right 90°"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "右に90°回転"
+        }
+      }
+    }
+  },
+  "recording.orientation.halfTurn": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "旋轉 180°"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Rotate 180°"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "180°回転"
+        }
+      }
+    }
+  },
+  "recording.orientation.help": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "只影響新錄影；手動方向以原始畫面為準，於停止錄製後套用，不影響推流。"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Applies to new recordings only. Manual rotation uses the original pixels and is applied after recording stops; streaming is unchanged."
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "新しい録画のみに適用します。手動回転は元の映像を基準に録画停止後に適用され、配信には影響しません。"
+        }
+      }
+    }
+  },
+  "recording.orientation.kept": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "已保留系統原始錄影，未修正方向。"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Original recording preserved without orientation correction."
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "向きを補正せず、元の録画を保存しました。"
+        }
+      }
+    }
+  },
+  "home.capture": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "擷取與開始"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Capture and start"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "キャプチャと開始"
+        }
+      }
+    }
+  },
+  "home.streaming": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "推流設定"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Streaming settings"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "配信設定"
+        }
+      }
+    }
+  },
+  "home.noEndpoint": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "尚未設定推流位址"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Streaming URL not set"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "配信URL未設定"
+        }
+      }
+    }
+  },
+  "home.noKey": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "尚未設定金鑰"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Stream key not set"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ストリームキー未設定"
+        }
+      }
+    }
+  },
+  "home.keySet": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "串流金鑰已設定"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Stream key set"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ストリームキー設定済み"
+        }
+      }
+    }
+  },
+  "home.editEndpoint": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "編輯位址與金鑰"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Edit URL and key"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "URLとキーを編集"
+        }
+      }
+    }
+  },
+  "home.encoding": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "進階編碼設定"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Advanced encoding"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "詳細エンコード設定"
+        }
+      }
+    }
+  },
+  "home.fixedCodec": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ScreenCaptureKit 測試路徑固定使用 H.264；編碼設定尚未接入。"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "The ScreenCaptureKit test path uses H.264; encoding settings are not yet supported."
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ScreenCaptureKitのテスト経路はH.264固定です。エンコード設定は未対応です。"
+        }
+      }
+    }
+  },
+  "home.replayControls": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ReplayKit 畫面控制"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ReplayKit picture controls"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ReplayKit映像操作"
+        }
+      }
+    }
+  },
+  "home.pause": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "暫停畫面"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Pause picture"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "映像を一時停止"
+        }
+      }
+    }
+  },
+  "home.direction": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "畫面方向"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Picture orientation"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "映像の向き"
+        }
+      }
+    }
+  },
+  "home.landscape": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "橫向"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Landscape"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "横向き"
+        }
+      }
+    }
+  },
+  "home.portrait": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "直向"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Portrait"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "縦向き"
+        }
+      }
+    }
+  },
+  "home.lockDetection": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "設備方向鎖定偵測"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Detect orientation lock"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "画面回転ロック検出"
+        }
+      }
+    }
+  },
+  "home.permissions": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "權限檢查"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Permissions"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "権限確認"
+        }
+      }
+    }
+  },
+  "home.networkPermission": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "檢查本地網路權限"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Check local network permission"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ローカルネットワーク権限を確認"
+        }
+      }
+    }
+  },
+  "home.micPermission": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "檢查麥克風權限"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Check microphone permission"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "マイク権限を確認"
+        }
+      }
+    }
+  },
+  "home.bitrate": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "推流碼率"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Streaming bitrate"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "配信ビットレート"
+        }
+      }
+    }
+  },
+  "home.nextStart": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "碼率變更於下次開始推流時生效。"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Bitrate changes apply the next time streaming starts."
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ビットレートの変更は次回の配信開始時に適用されます。"
+        }
+      }
+    }
+  },
+  "home.hideKey": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "隱藏串流金鑰"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Hide stream key"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ストリームキーを隠す"
+        }
+      }
+    }
+  },
+  "home.showKey": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "顯示串流金鑰"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Show stream key"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ストリームキーを表示"
+        }
+      }
+    }
+  },
+  "capture.library": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "本地錄影"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Local recordings"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ローカル録画"
+        }
+      }
+    }
+  },
+  "capture.source": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "螢幕擷取方式"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Capture source"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "キャプチャ方式"
+        }
+      }
+    }
+  },
+  "capture.experimental": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ScreenCaptureKit（測試中）"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ScreenCaptureKit (experimental)"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ScreenCaptureKit（テスト中）"
+        }
+      }
+    }
+  },
+  "capture.mode": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "工作模式"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Mode"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "動作モード"
+        }
+      }
+    }
+  },
+  "capture.status": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "目前狀態"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Current status"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "現在の状態"
+        }
+      }
+    }
+  },
+  "capture.stopping": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "正在停止與儲存…"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Stopping and saving…"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "停止・保存中…"
+        }
+      }
+    }
+  },
+  "capture.stop": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "停止擷取"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Stop capture"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "キャプチャを停止"
+        }
+      }
+    }
+  },
+  "capture.publishing": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "推流中"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Streaming"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "配信中"
+        }
+      }
+    }
+  },
+  "capture.mode.stream": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "只推流"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Stream only"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "配信のみ"
+        }
+      }
+    }
+  },
+  "capture.mode.record": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "只錄製"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Record only"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "録画のみ"
+        }
+      }
+    }
+  },
+  "capture.mode.streamAndRecord": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "推流並錄製"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Stream and record"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "配信と録画"
+        }
+      }
+    }
+  },
+  "capture.start.stream": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "開始直播"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Start streaming"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "配信開始"
+        }
+      }
+    }
+  },
+  "capture.start.record": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "開始錄製"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Start recording"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "録画開始"
+        }
+      }
+    }
+  },
+  "capture.start.streamAndRecord": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "開始直播並錄製"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Start streaming and recording"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "配信と録画を開始"
+        }
+      }
+    }
+  },
+  "capture.phase.idle": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "尚未開始"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Not started"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "未開始"
+        }
+      }
+    }
+  },
+  "capture.phase.selecting": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "請選擇要分享的畫面"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Choose content to share"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "共有する画面を選択"
+        }
+      }
+    }
+  },
+  "capture.phase.starting": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "正在啟動擷取"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Starting capture"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "キャプチャ開始中"
+        }
+      }
+    }
+  },
+  "capture.phase.streaming": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "擷取中"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Capturing"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "キャプチャ中"
+        }
+      }
+    }
+  },
+  "capture.phase.stopping": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "正在停止擷取"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Stopping capture"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "キャプチャ停止中"
+        }
+      }
+    }
+  },
+
     "common.resetDefaults" : {
       "localizations" : {
         "en" : {

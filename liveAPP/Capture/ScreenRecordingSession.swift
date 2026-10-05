@@ -11,14 +11,16 @@ import UIKit
     private(set) var terminal = false
     private var output: SCRecordingOutput?
     private let orientation: RecordingOrientationTimeline
+    private let policy: RecordingOrientationPolicy
     private var nativeFinished = false
     private var correction: Task<Void, Never>?
     private var progress: Task<Void, Never>?
     private var started = false
     private var detached = false
     private let failed: @MainActor (String) -> Void
-    init(orientation: RecordingOrientationTimeline, failed: @escaping @MainActor (String) -> Void) throws {
+    init(orientation: RecordingOrientationTimeline, policy: RecordingOrientationPolicy, failed: @escaping @MainActor (String) -> Void) throws {
         self.orientation = orientation
+        self.policy = policy
         id = try RecordingLibrary.shared.create().id
         self.failed = failed
         super.init()
@@ -88,6 +90,11 @@ import UIKit
             guard let self, !self.terminal, !self.nativeFinished else { return }
             self.nativeFinished = true
             self.progress?.cancel(); self.progress = nil
+            if self.policy == .none {
+                sendlog(message: "[RecordingOrientation] id=\(self.id) policy=none skipped")
+                self.complete(.ready, message: AppLanguage.localized("recording.orientation.kept"))
+                return
+            }
             self.report(.finishing, message: "正在確認並修正影片方向。")
             self.correction = Task { @MainActor [self] in
                 let background = UIApplication.shared.beginBackgroundTask(withName: "RecordingOrientation") { [weak self] in
@@ -95,9 +102,9 @@ import UIKit
                 }
                 defer { if background != .invalid { UIApplication.shared.endBackgroundTask(background) } }
                 let snapshot = orientation.snapshot()
-                sendlog(message: "[RecordingOrientation] id=\(id) changes=\(snapshot.events.count) missing=\(snapshot.missing) reliable=\(snapshot.reliable)")
+                sendlog(message: "[RecordingOrientation] id=\(id) policy=\(policy.rawValue) changes=\(snapshot.events.count) missing=\(snapshot.missing) reliable=\(snapshot.reliable)")
                 do {
-                    let message = try await RecordingOrientationCorrector.correct(url: RecordingLibrary.shared.fileURL(for: id), timeline: orientation)
+                    let message = try await RecordingOrientationCorrector.correct(url: RecordingLibrary.shared.fileURL(for: id), timeline: orientation, policy: policy)
                     sendlog(message: "[RecordingOrientation] id=\(id) \(message)")
                     complete(.ready, message: message)
                 } catch {

@@ -38,7 +38,7 @@ func setUserDefault<T>(_ value: T, forKey key: String) {
 
 func getUserDefault<T>(forKey key: String) -> T? {
 #if os(iOS)
-    
+
     let defaults = userDefaults
     switch T.self {
     case is Float.Type:
@@ -93,7 +93,7 @@ class BitrateManager: ObservableObject {
             bitrate = saved
             multiplier = saved / base
 
-            
+
         } else {
             bitrate = base * multiplier
             saveBitrate()
@@ -104,7 +104,7 @@ class BitrateManager: ObservableObject {
     func saveBitrate() {
         setUserDefault(bitrate, forKey: "bitRate")
         setUserDefault(multiplier, forKey: "bitRateMultiplier")
-        
+
     }
 
     func updateStreamBitrate() {
@@ -112,7 +112,7 @@ class BitrateManager: ObservableObject {
 
         // multiplier 變動時更新實際 bitrate
         bitrate = base * multiplier
-        
+
         saveBitrate()
         notifyStream()
 
@@ -591,7 +591,7 @@ struct LiveVolumeView: View {
                         onEditingChanged: { editing in
 
                     if !editing {
-                        
+
 
 
 #if os(iOS)
@@ -779,7 +779,7 @@ enum RotateDirection: Int, Codable, CaseIterable, Identifiable, CustomStringConv
 
     var id: Int { rawValue }
 
-    
+
     var description: String {
         switch self {
         case .portrait: return "直向"
@@ -889,7 +889,7 @@ class GPUOutputConfig: Identifiable, ObservableObject, Codable {
             logger.debug("無配置！GPUOutConfig")
             return
         }
-        
+
         if let data = try? JSONEncoder().encode(config) {
             UserDefaults.standard.set(data, forKey: userDefaultsSelectKey)
         }
@@ -945,7 +945,7 @@ struct LogSettingsView: View {
     var body: some View {
         NavigationView {
             Form {
-                
+
                 LogSettingView()
 
                 NavigationLink("關於與建置資訊") {
@@ -1048,7 +1048,7 @@ struct LogSettingsView: View {
                         step:0.1
 
                     )
-                    
+
 
                     Text("建議值: 14.0"
                     )
@@ -1394,492 +1394,9 @@ enum LogMode: Int, CaseIterable, Identifiable {
 
 // MARK: Log 顯示 UIViewRepresentable
 
-struct LogTextView: UIViewRepresentable {
-
-    @ObservedObject var logModel: LogModel
-
-    @Binding var isNearBottom: Bool
-    @Binding var coordinatorHolder: Coordinator?
-
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-    final class Coordinator: NSObject, UITextViewDelegate {
-
-        var textView: UITextView?
-
-        var currentLineCount = 0
-        let maxLines = 3000
-
-        var hasInitialLoad = false
-
-
-        var userIsInteracting = false
-
-        var isVisible = true
-
-        var onNearBottomChanged: ((Bool) -> Void)?
-
-
-
-        private var lastNearBottom: Bool?
-
-        var isOK = false
-
-        var scrollWorkItem: DispatchWorkItem?
-        private let scrollDelay: TimeInterval = 0.2
-
-
-        private func trimTextStorageIfNeeded(_ tv: UITextView) {
-            guard currentLineCount > maxLines else { return }
-            let excess = currentLineCount - maxLines
-            let storage = tv.textStorage
-            let nsString = storage.string as NSString
-
-            // 計算前 excess 行的字元範圍
-            var deleteEnd = 0
-            var lineStart = 0
-            for _ in 0..<excess {
-                let range = nsString.lineRange(for: NSRange(location: lineStart, length: 0))
-                deleteEnd = range.upperBound
-                lineStart = range.upperBound
-                if lineStart >= nsString.length { break }
-            }
-
-            guard deleteEnd > 0 else { return }
-            storage.replaceCharacters(in: NSRange(location: 0, length: deleteEnd), with: "")
-            currentLineCount = maxLines
-        }
-        
-
-
-
-        private var appendQueue = [LogItem]()
-
-        private var appendWorkItem: DispatchWorkItem?
-
-        func appendMessages(_ newMessages: [LogItem]) {
-            guard isVisible, !newMessages.isEmpty else { return }
-
-            appendQueue.append(contentsOf: newMessages)
-
-            // 延遲批量 append，避免每條都操作 UITextView
-            if appendWorkItem == nil {
-                let workItem = DispatchWorkItem { [weak self] in
-                    guard let self = self, let tv = self.textView, tv.window != nil else {
-                        self?.appendWorkItem = nil
-                        return
-                    }
-
-                    let pendingMessages = self.appendQueue
-                    self.appendQueue.removeAll()
-
-                    var appendedText = ""
-                    for msg in pendingMessages {
-                        self.currentLineCount += 1
-                        appendedText += "\(self.currentLineCount): \(msg.message)\n"
-                    }
-
-                    guard !appendedText.isEmpty else {
-                        self.appendWorkItem = nil
-                        return
-                    }
-
-                    var attributes: [NSAttributedString.Key: Any] = [:]
-                    if let font = tv.font {
-                        attributes[.font] = font
-                    }
-                    if let textColor = tv.textColor {
-                        attributes[.foregroundColor] = textColor
-                    }
-                    tv.textStorage.append(NSAttributedString(string: appendedText, attributes: attributes))
-                    tv.layoutIfNeeded()
-
-                    self.trimTextStorageIfNeeded(tv)
-
-                    if self.shouldAutoScroll {
-                        self.scrollToBottomUsingRange(animated: false)
-                    }
-
-                    self.appendWorkItem = nil
-                }
-
-                appendWorkItem = workItem
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: workItem)
-
-            }
-        }
-
-
-        private func canUpdateUI() -> Bool {
-            guard
-                let tv = textView,
-                tv.window != nil,
-                !userIsInteracting
-            else {
-                return false
-            }
-            return true
-        }
-
-        var shouldAutoScroll = true
-
-        func scrollViewDidScroll(_ scrollView: UIScrollView) {
-            let visibleHeight =
-                scrollView.bounds.height
-                - scrollView.adjustedContentInset.top
-                - scrollView.adjustedContentInset.bottom
-
-            let offsetY = scrollView.contentOffset.y
-            let contentHeight = scrollView.contentSize.height
-
-            //logger.debug("offSET:\(offsetY) + \(visibleHeight) CH:\(contentHeight*0.75)")
-            shouldAutoScroll =
-            offsetY + visibleHeight >= contentHeight * 0.75
-
-
-            if lastNearBottom != shouldAutoScroll {
-                lastNearBottom = shouldAutoScroll
-                onNearBottomChanged?(shouldAutoScroll)
-            }
-        }
-
-        // 判斷是否滾動
-            func scrollIfNeeded() {
-                guard let tv = textView ,canUpdateUI() else { return }
-
-                tv.layoutIfNeeded()
-
-                if shouldAutoScroll {
-                    scrollToBottomUsingRange()
-                }
-
-            }
-
-
-        func scrollToBottomAfterCATransaction(animated: Bool = false) {
-            guard textView != nil else { return }
-
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-
-            CATransaction.setCompletionBlock { [weak self] in
-                guard let self = self else { return }
-                self.scrollToBottomUsingRange(animated: animated)
-            }
-
-
-            CATransaction.commit()
-        }
-
-        func scrollToBottomUsingRange(animated: Bool = true) {
-            guard let tv = textView, tv.window != nil else { return }
-
-            // 確保 layout / contentSize 是最新的
-            tv.layoutIfNeeded()
-
-            let length = tv.textStorage.length
-            guard length > 0 else { return }
-
-            // 捲到最後一個字元
-            let range = NSRange(location: length - 1, length: 1)
-            tv.scrollRangeToVisible(range)
-
-            if animated {
-                // scrollRangeToVisible 本身不支援 animated
-                // 這裡補一個平滑動畫（可選）
-                UIView.animate(withDuration: 0.15) {
-                    tv.layoutIfNeeded()
-                }
-            }
-        }
-
-
-
-
-
-        func cancelPendingWork() {
-            appendWorkItem?.cancel()
-            appendWorkItem = nil
-            appendQueue.removeAll()
-        }
-
-        func clearText() {
-            cancelPendingWork()
-            currentLineCount = 0
-            if let tv = textView {
-                tv.text = ""
-            }
-        }
-
-        func textViewDidChangeSelection(_ textView: UITextView) {
-
-            guard let range = textView.selectedTextRange else {
-                userIsInteracting = false
-                return
-            }
-
-            // 只有「有選取範圍」才算互動
-            userIsInteracting = !range.isEmpty
-        }
-
-
-
-
-
-
-
-
-        func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
-            logger.debug("Get change scroll")
-
-            userIsInteracting = true
-
-        }
-        func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
-            logger.debug("Get change scrollend")
-
-            if !decelerate {
-                userIsInteracting = false
-                //updateNearBottom()
-            }
-        }
-
-
-    }
-
-
-    func makeUIView(context: Context) -> UITextView {
-
-        let textStorage = NSTextStorage()
-        let layoutManager = NSLayoutManager()
-        let textContainer = NSTextContainer(size: .zero)
-
-        layoutManager.addTextContainer(textContainer)
-        textStorage.addLayoutManager(layoutManager)
-
-        let textView = UITextView(
-            frame: .zero,
-            textContainer: textContainer
-        )
-
-        textView.isEditable = false
-        textView.isSelectable = true
-        textView.backgroundColor = UIColor.systemBackground
-        textView.font = UIFont.monospacedSystemFont(ofSize: 13, weight: .regular)
-        textView.textColor = UIColor.label
-        textView.textContainerInset = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
-        textView.alwaysBounceVertical = true
-        textView.isScrollEnabled = true
-        textView.showsVerticalScrollIndicator = true
-
-        textView.layoutManager.allowsNonContiguousLayout = true
-
-        textView.delegate = context.coordinator
-        context.coordinator.textView = textView
-
-        // 🔑 關鍵：把 nearBottom 回傳給 SwiftUI
-        context.coordinator.onNearBottomChanged = { value in
-                self.isNearBottom = value
-
-        }
-
-        self.coordinatorHolder = context.coordinator
-
-
-
-
-
-
-
-        return textView
-    }
-
-
-
-    func updateUIView(_ uiView: UITextView, context: Context) {
-        context.coordinator.textView = uiView
-
-        guard !context.coordinator.hasInitialLoad else { return }
-
-        let messages = logModel.messages
-        guard !messages.isEmpty else { return }
-
-        // 🔹 先 append 現有訊息
-        context.coordinator.appendMessages(messages)
-
-        context.coordinator.hasInitialLoad = true
-    }
-
-}
-
-
-
-
-
-
-
 struct LogView: View {
-    @EnvironmentObject var logModel: LogModel
-    @Environment(\.scenePhase) private var scenePhase
-
-
-    @AppStorage("logMode",store:userDefaults) private var logMode = 1
-    @State private var showLogSettings = false
-    @State private var coordinator: LogTextView.Coordinator?
-
-
-    @State private var isNearBottom = false
-
-
-    var logC: LogMode {
-        LogMode(rawValue: logMode) ?? .app
-    }
-
-    var body: some View {
-
-        VStack {
-
-            Text("\(AppLanguage.localized("main.log_mode"))：\(logMode) 使用:\(logC.description)")
-
-            HStack {
-                Text("切換日誌模式：")
-                    .font(.caption)
-                    .foregroundColor(.gray)
-
-                Button("App日誌") {
-                    logMode = 1
-                    LPConfig.shared.logMode=logMode
-
-                    CFNotificationCenterPostNotification(cfCenter, CFNotificationName("logMode" as CFString), nil, nil, true)
-                }
-
-                Button("外部日誌") {
-                    logMode = 0
-                    LPConfig.shared.logMode=logMode
-
-                    CFNotificationCenterPostNotification(cfCenter, CFNotificationName("logMode" as CFString), nil, nil, true)
-
-
-                }    
-
-                Button("App + 外部日誌") {
-                    logMode = 2
-                    LPConfig.shared.logMode=logMode
-                    CFNotificationCenterPostNotification(cfCenter, CFNotificationName("logMode" as CFString), nil, nil, true)
-
-                }
-            }
-
-            Text("目前訊息數：\(logModel.messages.count)")
-                .font(.caption)
-                .foregroundColor(.gray)
-
-
-            VStack {
-                Button("\(AppLanguage.localized("main.settings"))") {
-                    showLogSettings = true
-                }
-                .padding()
-                .background(Color.green)
-                .foregroundColor(.white)
-                .cornerRadius(8)
-            }
-            .sheet(isPresented: $showLogSettings) {
-                LogSettingsView()
-            }
-
-            HStack {
-                Button("清除日誌") {
-                    logModel.clearLogs()
-                    coordinator?.clearText()
-                    AppLogPersister.shared.clear()
-                    if let containerURL =
-                        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.nuclear.liveAPP") {
-                        let logURL = containerURL.appendingPathComponent("log.txt")
-                        do {
-                            try "".write(to: logURL, atomically: true, encoding: .utf8)
-                            sendlog(message: "✅ log.txt 已清空")
-                        } catch {
-                            sendlog(message: "❌ 無法清空 log.txt：\(error)")
-                        }
-                    }
-                }
-
-                Button("清除子母錯誤疊加層") {
-                    LPConfig.shared.isReconnecting = false
-                    LPConfig.shared.reconnectStatus = ""
-                    PIPService.shared.clearAdOverlay()
-                    sendlog(message: "子母錯誤疊加層已清除")
-                }
-            }
-            
-
-            ZStack(alignment: .bottomTrailing) {
-
-
-                LogTextView(
-                    logModel: logModel,
-
-                    isNearBottom: $isNearBottom, coordinatorHolder: $coordinator
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .onReceive(logModel.newMessages) { newItems in
-                    guard let coordinator = coordinator else { return }
-                    // 交給 Coordinator 處理 append + 滾動
-                    DispatchQueue.main.async {
-                        coordinator.appendMessages(newItems)
-                    }
-
-                }
-                .onAppear {
-                    guard let coordinator = coordinator else { return }
-                    coordinator.shouldAutoScroll = true
-                    coordinator.isVisible = true
-
-                }
-                .onDisappear {
-                    guard let coordinator = coordinator else { return }
-                    coordinator.isVisible = false
-                    coordinator.shouldAutoScroll = false
-                    coordinator.cancelPendingWork()
-                }
-                .onChange(of: scenePhase) { newPhase in
-                    if newPhase == .background {
-                        logModel.clearLogs()
-                        coordinator?.clearText()
-                    }
-                }
-
-
-
-
-
-
-                if !isNearBottom {
-                    Button {
-                        coordinator?.scrollToBottomUsingRange()
-
-                    } label: {
-                        Text("↓ Jump to bottom")
-                            .font(.caption)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(.ultraThinMaterial)
-                            .clipShape(Capsule())
-                    }
-                    .padding(16)
-                }
-            }
-
-
-        }
-    }
-
+    var body: some View { FileLogView() }
 }
-
-
 
 struct AnimatedButton: View {
     var title: String
@@ -1942,7 +1459,7 @@ private struct StreamKeyField: View {
                 Image(systemName: revealed ? "eye.slash" : "eye")
             }
             .buttonStyle(.borderless)
-            .accessibilityLabel(revealed ? "隱藏串流金鑰" : "顯示串流金鑰")
+            .accessibilityLabel(revealed ? AppLanguage.localized("home.hideKey") : AppLanguage.localized("home.showKey"))
         }
         .onDisappear { revealed = false }
         .onChange(of: scenePhase) { phase in
@@ -2236,7 +1753,7 @@ enum H264Profile: String, CaseIterable, Identifiable {
     case AutoBaseline = "AutoBaseline"
     case AutoMain = "AutoMain"
     case AutoHigh = "AutoHigh"
-    
+
     case constrainedBaseline = "ConstrainedBaseline"
     case constrainedHigh = "ConstrainedHigh"
     case extended = "Extended"
@@ -2267,7 +1784,7 @@ enum HEVCProfile: String, CaseIterable, Identifiable {
     @State private var showLocalAlert = false
 
     @State private var micStatus = "不知道"
-    
+
     @AppStorage("logAppBackground",store:userDefaults) private var logAppBackground = false
 
 
@@ -2323,7 +1840,7 @@ enum HEVCProfile: String, CaseIterable, Identifiable {
     init() {
         _ = userDefaults
 
-        
+
 
         if rtmpURL.isEmpty && rtmpKey.isEmpty {
             rtmpURL="rtmp://192.168.0.102/live"
@@ -2367,7 +1884,7 @@ enum HEVCProfile: String, CaseIterable, Identifiable {
 #endif
 
 
-    
+
     @State var lockDetect=false
 
 
@@ -2404,8 +1921,8 @@ enum HEVCProfile: String, CaseIterable, Identifiable {
                     Text("松鼠推流").font(.largeTitle.bold())
                     if geometry.size.width >= 850 && !dynamicTypeSize.isAccessibilitySize {
                         HStack(alignment: .top, spacing: 20) {
-                            captureCard.frame(maxWidth: .infinity)
-                            settingsCards.frame(maxWidth: .infinity)
+                            captureCard.frame(width: max(0, (min(geometry.size.width, 1200) - 52) / 2), alignment: .topLeading)
+                            settingsCards.frame(width: max(0, (min(geometry.size.width, 1200) - 52) / 2), alignment: .topLeading)
                         }
                     } else {
                         captureCard
@@ -2413,15 +1930,16 @@ enum HEVCProfile: String, CaseIterable, Identifiable {
                     }
                 }
                 .padding(16)
-                .frame(maxWidth: 1200)
-                .frame(maxWidth: .infinity)
+                .frame(width: min(geometry.size.width, 1200), alignment: .topLeading)
+                .frame(maxWidth: .infinity, alignment: .top)
+                .transaction { $0.animation = nil }
             }
         }
         .sheet(isPresented: $showForm) { FormView() }
     }
 
     private var captureCard: some View {
-        GroupBox("擷取與開始") {
+        GroupBox(AppLanguage.localized("home.capture")) {
             VStack(alignment: .leading, spacing: 16) {
 #if os(iOS)
                     CaptureSelectionView()
@@ -2447,7 +1965,7 @@ enum HEVCProfile: String, CaseIterable, Identifiable {
                             }
                         }
                     }) {
-                        Text(captureBackend == CaptureBackend.screenCaptureKit.rawValue ? (CaptureWorkMode(rawValue: captureWorkMode) ?? .stream).startTitle : "開始直播")
+                        Text(captureBackend == CaptureBackend.screenCaptureKit.rawValue ? AppLanguage.localized("capture.start." + (CaptureWorkMode(rawValue: captureWorkMode) ?? .stream).rawValue) : AppLanguage.localized("capture.start.stream"))
                             .font(.headline)
                             .foregroundColor(.white)
                             .padding()
@@ -2469,7 +1987,7 @@ enum HEVCProfile: String, CaseIterable, Identifiable {
                         StreamBtnMac.rtmpKey = rtmpKey
 
                     }) {
-                        Text("開始直播")
+                        Text(AppLanguage.localized("capture.start.stream"))
                             .font(.headline)
                             .foregroundColor(.white)
                             .padding()
@@ -2488,15 +2006,15 @@ enum HEVCProfile: String, CaseIterable, Identifiable {
     private var settingsCards: some View {
         VStack(alignment: .leading, spacing: 16) {
             if needsStreamingSettings {
-                GroupBox("推流設定") {
+                GroupBox(AppLanguage.localized("home.streaming")) {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text(rtmpURL.isEmpty ? "尚未設定推流位址" : rtmpURL)
+                        Text(rtmpURL.isEmpty ? AppLanguage.localized("home.noEndpoint") : rtmpURL)
                             .font(.subheadline)
                             .privacySensitive()
                             .textSelection(.enabled)
-                        Label(rtmpKey.isEmpty ? "尚未設定金鑰" : "串流金鑰已設定", systemImage: "key")
+                        Label(rtmpKey.isEmpty ? AppLanguage.localized("home.noKey") : AppLanguage.localized("home.keySet"), systemImage: "key")
                             .foregroundStyle(.secondary)
-                        Button("編輯位址與金鑰") { showForm = true }
+                        Button(AppLanguage.localized("home.editEndpoint")) { showForm = true }
                             .buttonStyle(.bordered)
                         Divider()
                         bitrateControls
@@ -2505,9 +2023,9 @@ enum HEVCProfile: String, CaseIterable, Identifiable {
                     .padding(.vertical, 8)
                 }
                 GroupBox {
-                    DisclosureGroup("進階編碼設定") {
+                    DisclosureGroup(AppLanguage.localized("home.encoding")) {
                         if usesScreenCaptureKit {
-                            Text("ScreenCaptureKit 測試路徑固定使用 H.264；編碼設定尚未接入。")
+                            Text(AppLanguage.localized("home.fixedCodec"))
                                 .font(.caption).foregroundStyle(.secondary)
                         } else {
                             VStack(alignment: .leading, spacing: 12) {
@@ -2541,21 +2059,21 @@ enum HEVCProfile: String, CaseIterable, Identifiable {
             }
             if !usesScreenCaptureKit {
                 GroupBox {
-                    DisclosureGroup("ReplayKit 畫面控制") {
+                    DisclosureGroup(AppLanguage.localized("home.replayControls")) {
                         VStack(alignment: .leading, spacing: 12) {
-                            Toggle("暫停畫面", isOn: $PauseStream)
+                            Toggle(AppLanguage.localized("home.pause"), isOn: $PauseStream)
                                 .onChange(of: PauseStream) { paused in
                                     notifyReplayKit(paused ? "PauseStream" : "ResumeStream")
                                 }
                                 .onAppear { if PauseStream { notifyReplayKit("PauseStream") } }
                             HStack {
-                                Text("畫面方向")
+                                Text(AppLanguage.localized("home.direction"))
                                 Spacer()
-                                Button("橫向") { notifyReplayKit("orientationV") }
-                                Button("直向") { notifyReplayKit("orientationH") }
+                                Button(AppLanguage.localized("home.landscape")) { notifyReplayKit("orientationV") }
+                                Button(AppLanguage.localized("home.portrait")) { notifyReplayKit("orientationH") }
                             }
 #if os(iOS)
-                            Toggle("設備方向鎖定偵測", isOn: $lockDetect)
+                            Toggle(AppLanguage.localized("home.lockDetection"), isOn: $lockDetect)
                                 .onChange(of: lockDetect) { enabled in
                                     if enabled {
                                         StableLockRotationDetector.shared.debugMode = true
@@ -2570,15 +2088,15 @@ enum HEVCProfile: String, CaseIterable, Identifiable {
                 }
             }
             GroupBox {
-                DisclosureGroup("權限檢查") {
+                DisclosureGroup(AppLanguage.localized("home.permissions")) {
                     VStack(alignment: .leading, spacing: 12) {
-                        Button("檢查本地網路權限") {
+                        Button(AppLanguage.localized("home.networkPermission")) {
                             permissionManager.requestPermission { _ in showLocalAlert = true }
                         }
                         .alert(isPresented: $showLocalAlert) {
                             Alert(title: Text("本地網路權限"), message: Text(permissionManager.status), dismissButton: .default(Text("好")))
                         }
-                        Button("檢查麥克風權限") { checkMicrophonePermission() }
+                        Button(AppLanguage.localized("home.micPermission")) { checkMicrophonePermission() }
                             .alert(isPresented: $showAlert) {
                                 Alert(title: Text("麥克風權限"), message: Text(micStatus), dismissButton: .default(Text("好")))
                             }
@@ -2590,7 +2108,7 @@ enum HEVCProfile: String, CaseIterable, Identifiable {
 
     private var bitrateControls: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("推流碼率：\(manager.multiplier * 100) kbps").font(.headline)
+            Text("\(AppLanguage.localized("home.bitrate"))：\(manager.multiplier * 100) kbps").font(.headline)
             Slider(value: Binding(
                 get: { Double(manager.multiplier) },
                 set: { manager.multiplier = Int($0) }
@@ -2600,14 +2118,14 @@ enum HEVCProfile: String, CaseIterable, Identifiable {
                     manager.updateStreamBitrate()
                 }
             }
-            .accessibilityLabel("推流碼率")
+            .accessibilityLabel(AppLanguage.localized("home.bitrate"))
             HStack {
                 Text("1000 kbps")
                 Spacer()
                 Text("20000 kbps")
             }.font(.caption).foregroundStyle(.secondary)
             if usesScreenCaptureKit {
-                Text("碼率變更於下次開始推流時生效。")
+                Text(AppLanguage.localized("home.nextStart"))
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
@@ -2646,9 +2164,9 @@ struct ContentView: View {
 
     @Environment(\.scenePhase) private var scenePhase
 
-    
+
     @EnvironmentObject var logModel: LogModel
-   
+
     @StateObject private var pageState = PageState()
 
     @AppStorage("BacklogTime",store:userDefaults) private var logTime = false
@@ -2744,7 +2262,7 @@ struct ContentView: View {
 
                 sendlog(message: "正在App中！")
 
-                
+
 
                 if pageState.onAudioPage {
                     if onAudioPage == false {
@@ -2778,7 +2296,7 @@ struct ContentView: View {
 
 
                         CFNotificationCenterPostNotification(cfCenter, CFNotificationName("onlogPage" as CFString), nil, nil, true)
-                        
+
                     }
 
 

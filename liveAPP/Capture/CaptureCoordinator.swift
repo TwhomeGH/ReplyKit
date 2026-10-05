@@ -77,6 +77,7 @@ import ScreenCaptureKit
     @ObservedObject private var capture = CaptureCoordinator.shared
     @AppStorage("captureWorkMode", store: userDefaults) private var workMode = CaptureWorkMode.stream.rawValue
     @ObservedObject private var library = RecordingLibrary.shared
+    @AppStorage("recordingOrientationPolicy", store: userDefaults) private var recordingPolicy = RecordingOrientationPolicy.automatic.rawValue
     @State private var anotherCapture = false
     @State private var showingRecordings = false
 
@@ -89,7 +90,7 @@ import ScreenCaptureKit
             backendPicker
             if isScreenCaptureKit { screenCaptureKitOptions }
             Button { showingRecordings = true } label: {
-                Label("本地錄影", systemImage: "folder")
+                Label(AppLanguage.localized("capture.library"), systemImage: "folder")
             }
             .buttonStyle(.bordered)
             if let message = capture.errorMessage {
@@ -106,11 +107,12 @@ import ScreenCaptureKit
     /// 擷取來源選擇；不可用時附上原因，方便直接從畫面判斷為何變灰。
     private var backendPicker: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Picker("螢幕擷取方式", selection: $backend) {
+            Picker(AppLanguage.localized("capture.source"), selection: $backend) {
                 Text("ReplayKit").tag(CaptureBackend.replayKit.rawValue)
-                Text("ScreenCaptureKit（測試中）").tag(CaptureBackend.screenCaptureKit.rawValue)
+                Text(AppLanguage.localized("capture.experimental")).tag(CaptureBackend.screenCaptureKit.rawValue)
                     .disabled(!capture.screenCaptureSupported)
             }
+            .pickerStyle(.menu)
             .disabled(controlsDisabled)
             if let reason = capture.screenCaptureUnavailableReason {
                 Label(reason, systemImage: "info.circle")
@@ -134,21 +136,31 @@ import ScreenCaptureKit
             Text("測試版使用系統全螢幕擷取；自訂 GPU 畫布、浮水印與進階音訊處理請改用 ReplayKit。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Picker("工作模式", selection: $workMode) {
-                ForEach(CaptureWorkMode.allCases) { Text($0.title).tag($0.rawValue) }
+            Picker(AppLanguage.localized("capture.mode"), selection: $workMode) {
+                ForEach(CaptureWorkMode.allCases) { Text(AppLanguage.localized("capture.mode." + $0.rawValue)).tag($0.rawValue) }
             }
+            .pickerStyle(.menu)
             .disabled(controlsDisabled)
             if selectedWorkMode.wantsRecording {
+                Picker(AppLanguage.localized("recording.orientation.title"), selection: $recordingPolicy) {
+                    ForEach(RecordingOrientationPolicy.allCases) { policy in
+                        Text(AppLanguage.localized(policy.titleKey)).tag(policy.rawValue)
+                    }
+                }
+                .pickerStyle(.menu)
+                .disabled(controlsDisabled)
+                Text(AppLanguage.localized("recording.orientation.help"))
+                    .font(.caption).foregroundStyle(.secondary)
                 Text("本地錄影保存系統擷取的畫面與聲音，不含浮水印、進階音訊處理或推流音量調整；只錄製不需 RTMP 設定。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            GroupBox("目前狀態") {
+            GroupBox(AppLanguage.localized("capture.status")) {
                 statusLine.frame(maxWidth: .infinity, alignment: .leading)
             }
             if capture.isBusy {
                 Button { capture.stop() } label: {
-                    Label(capture.phase == .stopping ? "正在停止與儲存…" : "停止擷取", systemImage: "stop.circle")
+                    Label(capture.phase == .stopping ? AppLanguage.localized("capture.stopping") : AppLanguage.localized("capture.stop"), systemImage: "stop.circle")
                         .frame(maxWidth: .infinity)
                 }
                     .buttonStyle(.borderedProminent)
@@ -161,8 +173,8 @@ import ScreenCaptureKit
     /// 狀態分行顯示，避免窄螢幕與大字體擠在同一列。
     private var statusLine: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(capture.phase.title)
-            if capture.isPublishing { Text("推流中").foregroundStyle(.green) }
+            Text(AppLanguage.localized("capture.phase." + capture.phase.rawValue))
+            if capture.isPublishing { Text(AppLanguage.localized("capture.publishing")).foregroundStyle(.green) }
             if let item = library.recordings.first, capture.isBusy, !item.phase.isTerminal {
                 Text("· \(item.phase.title) \(Int(item.duration)) 秒 · \(ByteCountFormatter.string(fromByteCount: item.bytes, countStyle: .file))")
                     .foregroundStyle(.secondary)

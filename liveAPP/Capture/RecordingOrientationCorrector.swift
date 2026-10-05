@@ -18,17 +18,18 @@ enum RecordingOrientationCorrector {
         default: return .identity
         }
     }
-    static func correct(url: URL, timeline: RecordingOrientationTimeline) async throws -> String {
+    static func correct(url: URL, timeline: RecordingOrientationTimeline, policy: RecordingOrientationPolicy = .automatic) async throws -> String {
         try Task.checkCancellation()
+        if policy == .none { return AppLanguage.localized("recording.orientation.kept") }
         let snapshot = timeline.snapshot()
-        guard snapshot.reliable else { return "未取得可靠的影格方向，保留系統原始錄影。" }
+        guard policy != .automatic || snapshot.reliable else { return "未取得可靠的影格方向，保留系統原始錄影。" }
         let asset = AVURLAsset(url: url)
         guard let original = try await asset.loadTracks(withMediaType: .video).first else {
             throw NSError(domain: "RecordingOrientation", code: 1)
         }
         let existing = try await original.load(.preferredTransform)
         // 系統若已寫入矩陣，不能再重複套用附件方向。
-        guard existing.isIdentity else { return "系統已提供影片方向矩陣，保留原有方向。" }
+        guard policy != .automatic || existing.isIdentity else { return "系統已提供影片方向矩陣，保留原有方向。" }
         let size = try await original.load(.naturalSize)
         guard size.width.isFinite, size.height.isFinite, size.width > 0, size.height > 0 else {
             throw NSError(domain: "RecordingOrientation", code: 6)
@@ -40,7 +41,14 @@ enum RecordingOrientationCorrector {
             throw NSError(domain: "RecordingOrientation", code: 7)
         }
         let videoStart = videoRange.start.seconds
-        let events = snapshot.events.filter { $0.seconds < videoRange.duration.seconds }
+        let events: [RecordingOrientationEvent]
+        if policy == .automatic {
+            events = snapshot.events.filter { $0.seconds < videoRange.duration.seconds }.map {
+                RecordingOrientationEvent(seconds: $0.seconds, orientation: policy.outputOrientation(for: $0.orientation))
+            }
+        } else {
+            events = [RecordingOrientationEvent(seconds: 0, orientation: policy.outputOrientation(for: 1))]
+        }
         guard let first = events.first else { return "沒有可套用的方向時間範圍，保留原始錄影。" }
         if events.count == 1 && first.orientation == 1 { return "影格方向已正確，無需轉正。" }
         let composition = AVMutableComposition()

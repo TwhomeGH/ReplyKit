@@ -40,6 +40,11 @@ extension Notification.Name {
 struct LogItem: Identifiable, Hashable {
     let id = UUID()
     let message: String
+    let presentation: LogPresentation
+    init(message: String) {
+        self.message = message
+        presentation = LogPresentation(message)
+    }
 }
 
 
@@ -123,6 +128,16 @@ final class LogBuffer {
 final class AppLogPersister {
     static let shared = AppLogPersister()
     private let queue = DispatchQueue(label: "liveApp.logPersister", qos: .utility)
+    private let historyReader = LogFileReader()
+    func historyPage(start: Int? = nil, generation: Int? = nil) async throws -> LogFilePage {
+        try await withCheckedThrowingContinuation { continuation in
+            queue.async {
+                self.flushPending()
+                do { continuation.resume(returning: try self.historyReader.page(url: self.logURL, start: start, expectedGeneration: generation)) }
+                catch { continuation.resume(throwing: error) }
+            }
+        }
+    }
     private let logFileName = "log.txt"
     private let maxLogFileLines = 5000
     private let trimMargin = 2000
@@ -360,6 +375,7 @@ final class AppLogPersister {
     }
 
     private func truncateFile() {
+        historyReader.invalidate()
         if let handle = writeHandle {
             do {
                 try handle.truncate(atOffset: 0)
@@ -377,6 +393,7 @@ final class AppLogPersister {
     }
 
     private func trimNow() {
+        historyReader.invalidate()
         guard let handle = try? FileHandle(forReadingFrom: logURL),
               let currentData = try? handle.readToEnd()
         else { return }
@@ -1132,7 +1149,7 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
 
                         // 釋放非關鍵記憶體，降低被 kill 風險
                         PIPService.shared.releaseNonCriticalMemory()
-                        logModel.clearLogs()
+                        // 日誌頁以檔案為準；背景不清除可見歷史。
                         // 進入背景前把 pending log 批次落盤，避免被系統暫停/終止時遺失最後一筆
                         AppLogPersister.shared.flushNow()
 

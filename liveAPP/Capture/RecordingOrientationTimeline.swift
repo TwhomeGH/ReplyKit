@@ -36,3 +36,22 @@ final class RecordingOrientationTimeline: @unchecked Sendable {
         return (events, !invalid && !events.isEmpty, missing)
     }
 }
+
+/// 手動方向以原始錄影像素為基準，設定在開始擷取時固定。
+enum RecordingOrientationPolicy: String, CaseIterable, Identifiable, Sendable {
+    case automatic, none, left, right, halfTurn
+    var id: String { rawValue }
+    var titleKey: String { "recording.orientation." + rawValue }
+    func outputOrientation(for source: Int) -> Int {
+        switch self {
+        case .none: return 1
+        case .left: return 8
+        case .right: return 6
+        case .halfTurn: return 3
+        case .automatic:
+            // SCStream 附件描述來源方向；輸出需套用反向旋轉。
+            // 鏡射與 180 度為自反，只有 90／270 度需要互換。
+            return source == 6 ? 8 : (source == 8 ? 6 : source)
+        }
+    }
+}

@@ -20,6 +20,66 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.05 12:06 日誌頁改以主檔案分頁讀取歷史
+
+**類型**: 改進 · **檔案**: `liveAPP/FileLogView.swift`、`liveAPP/LogFileReader.swift`、`liveAPP/liveAPPApp.swift`
+
+### 修改 - 統一檔案歷史與最新內容入口
+
+- 以主 log.txt 為準，每頁 200 行，支援較早／較新、回到最新與檔案行號。
+- 保留本次 App 執行期間的閱讀位置與篩選；移除背景清空歷史行為及舊記憶體顯示入口。
+- 新增完整檔案搜尋、進度、取消與結果前後文；最多 500 筆結果，單頁讀取上限 1 MiB。
+- 清空需確認，索引在裁切／替換時失效；沿用既有檔案保留上限。
+- 檔案追加、裁切、中文跨區塊及空檔案核心檢查通過，實機互動待驗收。
+
+**相關文件**: [日誌頁](log-view.md)
+
+---
+
+## 2026.10.05 09:35 改善日誌頁分類、篩選與閱讀操作
+
+**類型**: 改進 · **檔案**: `liveAPP/ContentView.swift`、`liveAPP/LogPresentation.swift`、`liveAPP/liveAPPApp.swift`
+
+### 修改 - 等級色彩與模組標籤
+
+- 加入等級／模組篩選、關鍵字與 session 搜尋及篩選原文複製。
+- 以文字與符號搭配紅／橙／綠顏色，保留文字選取和批次追加。
+- 將自動追尾門檻改為距底部 60 點，選取與拖曳期間不強制捲動。
+- 新增三語工具列及分類測試；實機閱讀、配色與大量日誌待驗收。
+
+**相關文件**: [日誌頁](log-view.md)
+
+---
+
+## 2026.10.05 09:31 補足 ScreenCaptureKit 推流失敗診斷
+
+**類型**: 改進 · **檔案**: `liveAPP/Capture/ScreenCaptureSource.swift`、`liveAPP/Capture/CaptureErrorDiagnostics.swift`
+
+### 修改 - 分開擷取與發布狀態並保留錯誤原因
+
+- 以 session 串接 RTMP connect／publish 階段、發布成功與失敗，避免將擷取中誤認為推流成功。
+- 記錄錯誤型別、domain／code、描述、原因及底層錯誤鏈；先遮蔽已知金鑰、網址與憑證參數。
+- 補充選擇器、音訊設定、管線建立、錄影掛載及系統停止擷取的失敗階段。
+- 加入診斷遮蔽、錯誤鏈、具名錯誤與長度限制測試；原錯誤碼 5 仍需新日誌重現定位。
+
+---
+
+## 2026.10.05 09:28 修正錄影左右方向、加入方向選項並穩定主頁切換
+
+**類型**: 修復／改進 · **檔案**: `liveAPP/Capture/`、`liveAPP/ContentView.swift`、`liveAPP/Localizable.xcstrings`
+
+### 修改 - 依實測修正方向並提供選擇
+
+- 自動模式交換來源方向 6／8 的輸出映射，修正範例影片旋轉後上下顛倒。
+- 新增不修正、左右 90° 與 180°，在開始擷取時固定；手動方向以原始像素為基準。
+- 固定主頁雙欄寬度與頂部對齊，取消切換的隱含動畫，選擇器明確採選單樣式。
+- 主頁主要控制、擷取模式與方向選項加入繁中／英文／日文資源。
+- 補充自動／手動策略核心測試；Apple SDK 匯出與實機版面仍待回歸。
+
+**相關文件**: [ScreenCaptureKit](screencapturekit-integration.md)、[主頁操作](home-layout.md)
+
+---
+
 ## 2026.10.05 修正 TTS 配置選檔流程並核對 TODO
 
 **類型**: 修復 · **檔案**: `liveAPP/TTSSettingsView.swift`、`TODO.md`

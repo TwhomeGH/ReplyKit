@@ -200,3 +200,23 @@ Windows 執行 12 項擷取核心測試與 3 項錄影檔案管理測試，合�
 四項 Foundation 時間軸測試於 Windows 通過；新增 iOS 專用八方向矩陣測試，待 Apple SDK 執行。Windows 的 Swift 語法解析不代表 AVFoundation 匯出已經通過實機驗證。
 
 參考：[videoOrientation](https://developer.apple.com/documentation/screencapturekit/scstreamframeinfo/videoorientation)、[AVFoundation 影片方向處理](https://developer.apple.com/library/archive/qa/qa1744/_index.html)。
+
+## 本地錄影方向選擇
+
+在「擷取與開始」選擇 ScreenCaptureKit 與包含錄製的工作模式，即可設定錄影方向：自動、不修正、向左轉 90°、向右轉 90° 或 180°。設定在開始擷取時固定，下一次錄製才會採用變更。
+
+- 自動：依來源附件套用反向旋轉；此次影片驗證發現左右四分之一圈方向相反，已交換 6／8 的輸出映射。既有系統矩陣仍保留，缺少可靠附件時不強制旋轉。
+- 不修正：直接保留原生輸出，不執行方向匯出。
+- 手動：以原始像素為基準指定固定方向，取代方向附件及既有顯示矩陣，不是疊加在自動結果上。
+
+本設定只影響新錄製檔案的停止後處理，不修改既有檔案或 RTMP 推流。固定方向仍使用 passthrough；自動模式包含方向變化時才重新編碼。
+
+本次範例 `82949D9C-CD98-46E5-A98C-1F05DBA79AC6.mp4` 的原始影格需向左旋轉，但檔案矩陣導致顛倒。方向策略已有核心測試；完整 Apple SDK 匯出、左右橫向與途中轉向仍需實機回歸。
+
+## 推流失敗診斷
+
+`capturePhase=streaming` 只代表擷取中，不代表 RTMP 發布成功。`publishPhase` 分別記錄 `idle`、`rtmp.connect`、`rtmp.publish`、`published`、`failed`。佇列 accepted 表示樣本已進入佇列，不能證明編碼或伺服器接收成功。
+
+`[CaptureError]` 包含 session、mode、stage、Swift 錯誤型別、具名錯誤、NSError domain／code、描述、失敗原因、建議及最多四層 NSUnderlyingError 鏈。RTMP 錯誤的描述可包含伺服器狀態碼。日誌不傾印 userInfo／RTMP arguments；已知金鑰、網址與常見憑證參數經遮蔽，單筆內容上限 4096 字元。
+
+排查時提供同一 session 從 `rtmp.connect` 至失敗的紀錄。只有錯誤碼 5 的舊紀錄無法補回已被省略的原因；需使用新版本重現。
