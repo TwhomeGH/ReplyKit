@@ -101,16 +101,16 @@ import UIKit
                     Task { @MainActor in self?.correction?.cancel() }
                 }
                 defer { if background != .invalid { UIApplication.shared.endBackgroundTask(background) } }
-                let snapshot = orientation.snapshot()
-                sendlog(message: "[RecordingOrientation] id=\(id) policy=\(policy.rawValue) changes=\(snapshot.events.count) missing=\(snapshot.missing) reliable=\(snapshot.reliable)")
+                let snapshot = self.orientation.snapshot()
+                sendlog(message: "[RecordingOrientation] id=\(self.id) policy=\(self.policy.rawValue) changes=\(snapshot.events.count) missing=\(snapshot.missing) reliable=\(snapshot.reliable)")
                 do {
-                    let message = try await RecordingOrientationCorrector.correct(url: RecordingLibrary.shared.fileURL(for: id), timeline: orientation, policy: policy)
-                    sendlog(message: "[RecordingOrientation] id=\(id) \(message)")
-                    complete(.ready, message: message)
+                    let message = try await RecordingOrientationCorrector.correct(url: RecordingLibrary.shared.fileURL(for: self.id), timeline: self.orientation, policy: self.policy)
+                    sendlog(message: "[RecordingOrientation] id=\(self.id) \(message)")
+                    self.complete(.ready, message: message)
                 } catch {
                     let code = (error as NSError).code
-                    sendlog(message: "[RecordingOrientation] id=\(id) correctionFailed=\(code)")
-                    complete(.ready, message: "方向修正未完成（錯誤碼 \(code)），已保留原始錄影，方向可能尚未轉正。")
+                    sendlog(message: "[RecordingOrientation] id=\(self.id) correctionFailed=\(code)")
+                    self.complete(.ready, message: "方向修正未完成（錯誤碼 \(code)），已保留原始錄影，方向可能尚未轉正。")
                 }
             }
         }

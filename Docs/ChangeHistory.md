@@ -20,6 +20,18 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.05 17:44 修正錄影收尾閉包的明確 self 存取
+
+**類型**: 修復 · **檔案**: `liveAPP/Capture/ScreenRecordingSession.swift`
+
+### 修改 - 明確標示非同步工作捕獲語意
+
+- 為方向收尾 Task 內的 orientation、id、policy 與 complete 補上 self，修正 CI 回報的 Swift 6 捕獲語意警告。
+- 保留既有強捕獲、背景到期取消與原片保留行為。
+- Swift 語法與差異格式檢查通過；完整 Apple SDK 型別檢查待 CI 驗證。
+
+---
+
 ## 2026.10.05 16:59 修正日誌併發與舊版 iOS 集合相容性警告
 
 **類型**: 修復 · **檔案**: `liveAPP/liveAPPApp.swift`、`liveAPP/FileLogView.swift`、`liveAPP/Capture/RecordingOrientationCorrector.swift`
