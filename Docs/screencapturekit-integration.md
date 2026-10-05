@@ -236,3 +236,9 @@ CaptureAudio 日誌以 session 串接 capture.begin、audioActivated、stopBegin
 詳細資訊直接讀取檔案：時長、大小、編碼尺寸、方向矩陣套用後的顯示尺寸、標稱 FPS、影像軌估計碼率、整檔平均碼率及各軌編碼 FourCC。整檔平均以檔案位元數除以時長，包含音訊與封裝；不等同影像軌碼率。標稱 FPS 不代表逐幀量測結果。
 
 資訊按需讀取，以檔案大小與修改時間辨識快取，最多保留 32 份。完整碼率分析由使用者觸發，直接傳入錄影 URL，不必再次選檔。分析頁僅清理自己建立的相簿匯入副本，不將本地錄影或外部來源列為暫存檔。
+
+### 外部播放中的收尾保護與握手追蹤
+
+實機日誌顯示 otherAudio 在停止擷取後仍為 true，切換回 playback 後才變為 false。收尾因此新增保護：當其他音訊仍在播放，跳過 category 還原，記錄 `restore.deferredOtherAudioPlaying`。不安排延遲還原；目前混音 playAndRecord session 會保留，後續音訊功能需要時再配置，仍需實機驗證播放與資源行為。
+
+`CaptureTransport` 現在轉送經遮蔽的 TCP connecting／connected、C0C1、S0S1、Waiting for S2、Response、Connect success／timed out 等底層事件。所有事件帶同一 session，方便判斷逾時停在哪一層；這項改動補足觀測能力，不代表已修復 RTMP 連線根因。

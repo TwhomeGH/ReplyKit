@@ -230,11 +230,17 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         let conn = RTMPConnection()
         let stream = RTMPStream(connection: conn)
         connection = conn; output = stream
+        let logSession = state.id?.uuidString ?? "none"
+        let logSecrets = [url, key]
         await conn.setOnLog { event in
-            // 只轉送管線快照；其他 RTMP 事件可能包含推流路徑／金鑰。
-            if event.message.hasPrefix("VideoQueue") {
-                sendlog(message: "[ScreenCaptureKit] \(event.message) \(event.detail ?? "")")
-            }
+            // 只放行連線生命週期與佇列摘要，不開啟高頻封包或完整命令參數輸出。
+            let prefixes = ["VideoQueue", "TCP ", "State:", "S0 version", "S0S1 received",
+                            "Waiting for S2", "Response:", "Connect ", "Command error",
+                            "Command timeout", "Socket recv", "Close requested", "Reconnect",
+                            "Reconnecting", "Keepalive", "Liveness watchdog", "Output continuity"]
+            guard prefixes.contains(where: { event.message.hasPrefix($0) }) else { return }
+            let detail = CaptureErrorDiagnostics.sanitize(event.message + " " + (event.detail ?? ""), secrets: logSecrets)
+            sendlog(message: "[CaptureTransport] session=\(logSession) \(detail)")
         }
         try Task.checkCancellation()
         var video = await stream.videoSettings
@@ -354,6 +360,13 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         let session = AVAudioSession.sharedInstance()
         guard session.category == .playAndRecord, session.categoryOptions.contains(.mixWithOthers) else {
             logAudioSession("restore.skippedSessionChanged")
+            return
+        }
+        // 實機紀錄顯示：即使兩邊都允許混音，切換 category 仍可能令外部影片暫停。
+        // 有其他音訊時不切換、不 deactivate／reactivate；擷取已停止，後續由 PiP/TTS
+        // 真正需要音訊時再設定 session。此處也不排程延遲還原，避免稍後再打斷播放。
+        if session.isOtherAudioPlaying {
+            logAudioSession("restore.deferredOtherAudioPlaying")
             return
         }
         let compatible = priorCategory == .playback || priorCategory == .playAndRecord || priorCategory == .multiRoute

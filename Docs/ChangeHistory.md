@@ -20,6 +20,19 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.05 18:38 外部音訊播放時跳過還原並開放 RTMP 握手診斷
+
+**類型**: 修復／診斷 · **檔案**: `liveAPP/Capture/ScreenCaptureSource.swift`
+
+### 修改 - 依實機時序避免收尾切換音訊 category
+
+- 其他音訊仍在播放時保留現有混音 session，不立即或延遲切換 category，也不重新啟用／停用；後續交由真正需要音訊的功能管理。
+- 新增 restore.deferredOtherAudioPlaying 紀錄；此策略暫時保留 playAndRecord 設定，並非完整還原原 category。
+- 放行遮蔽後的 TCP、RTMP 握手、connect 回應與重連事件，補足先前只轉送 VideoQueue 的缺口。
+- 目前可確認 1936 明確指定且連線 15 秒逾時，尚不能據此判定網路或伺服器根因。
+
+---
+
 ## 2026.10.05 17:44 修正錄影收尾閉包的明確 self 存取
 
 **類型**: 修復 · **檔案**: `liveAPP/Capture/ScreenRecordingSession.swift`
