@@ -12,12 +12,24 @@ private struct SelectedCaptureFilter: @unchecked Sendable { let filter: SCConten
 private struct CapturedSample: @unchecked Sendable { let buffer: CMSampleBuffer }
 
 /// 回呼只交付樣本，消費端各自保序；總排隊預算 14 MiB，不含消費端/GPU/編碼器。
+/// 另含閒置 keep-alive：ScreenCaptureKit 只在畫面變化時給幀，閒置時重播最後一格，
+/// 讓視訊時間軸持續前進、關鍵幀週期不斷，避免播放器在 PTS 大跳或長空窗後卡住。
 @available(iOS 27.0, *)
 private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Sendable {
     let video = CaptureMailbox<CapturedSample>(budget: 12 * 1024 * 1024)
     let audio = CaptureMailbox<CapturedSample>(budget: 1024 * 1024)
     let mic = CaptureMailbox<CapturedSample>(budget: 1024 * 1024)
     private var workers: [Task<Void, Never>] = []
+    // 閒置 keep-alive：只在沒有真實幀時、以較低頻率補格；不干擾真實幀。
+    private static let keepAliveFPS: Int32 = 15
+    private static let keepAliveInterval = 1.0 / Double(keepAliveFPS)
+    private let keepAliveLock = NSLock()
+    private var lastCompleteSample: CMSampleBuffer?
+    private var lastRealFrameAt: TimeInterval = 0
+    private var lastEmittedPTS = CMTime.invalid
+    private var keepAliveSent = 0
+    private var keepAliveTimer: DispatchSourceTimer?
+
     init(mixer: MediaMixer, probe: ScreenAudioProbe, rotateLeft: Bool) throws {
         let rotator = try rotateLeft ? ScreenStreamVideoRotator() : nil
         super.init()
@@ -41,7 +53,57 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                 }
             })
         }
+        startKeepAlive()
     }
+
+    var keepAliveSummary: String {
+        keepAliveLock.lock(); defer { keepAliveLock.unlock() }
+        return "sent=\(keepAliveSent)"
+    }
+
+    private func startKeepAlive() {
+        let timer = DispatchSource.makeTimerSource(
+            queue: DispatchQueue(label: "capture.screencapturekit.keepalive", qos: .utility))
+        timer.schedule(deadline: .now() + Self.keepAliveInterval,
+                       repeating: Self.keepAliveInterval,
+                       leeway: .milliseconds(5))
+        timer.setEventHandler { [weak self] in self?.emitKeepAliveIfIdle() }
+        keepAliveLock.lock(); keepAliveTimer = timer; keepAliveLock.unlock()
+        timer.resume()
+    }
+
+    /// 只有在「距上次真實幀已超過一個間隔」時才補一格；有真實幀時完全不動。
+    private func emitKeepAliveIfIdle() {
+        let now = ProcessInfo.processInfo.systemUptime
+        keepAliveLock.lock()
+        let cached = lastCompleteSample
+        let idle = now - lastRealFrameAt
+        keepAliveLock.unlock()
+        guard let cached, idle >= Self.keepAliveInterval * 1.2 else { return }
+        guard let repeatSample = makeRepeat(from: cached) else { return }
+        keepAliveLock.lock(); keepAliveSent += 1; keepAliveLock.unlock()
+        video.offer(CapturedSample(buffer: repeatSample), bytes: 1)
+    }
+
+    /// 以最後一格的真實像素重建新 sample（新 PTS、單調遞增），不複製像素。
+    private func makeRepeat(from sample: CMSampleBuffer) -> CMSampleBuffer? {
+        guard let image = CMSampleBufferGetImageBuffer(sample),
+              let format = sample.formatDescription else { return nil }
+        keepAliveLock.lock()
+        let base = lastEmittedPTS.isValid ? lastEmittedPTS : CMSampleBufferGetPresentationTimeStamp(sample)
+        let pts = CMTimeAdd(base, CMTime(value: 1, timescale: Self.keepAliveFPS))
+        lastEmittedPTS = pts
+        keepAliveLock.unlock()
+        var timing = CMSampleTimingInfo(
+            duration: CMTime(value: 1, timescale: Self.keepAliveFPS),
+            presentationTimeStamp: pts, decodeTimeStamp: .invalid)
+        var out: CMSampleBuffer?
+        let status = CMSampleBufferCreateReadyWithImageBuffer(
+            allocator: kCFAllocatorDefault, imageBuffer: image,
+            formatDescription: format, sampleTiming: &timing, sampleBufferOut: &out)
+        return status == noErr ? out : nil
+    }
+
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard CMSampleBufferIsValid(sampleBuffer), CMSampleBufferDataIsReady(sampleBuffer) else { return }
         let sample = CapturedSample(buffer: sampleBuffer)
@@ -51,13 +113,24 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                   let raw = attachments.first?[.status] as? Int,
                   SCFrameStatus(rawValue: raw) == .complete,
                   let image = sampleBuffer.imageBuffer else { return }
+            keepAliveLock.lock()
+            lastCompleteSample = sampleBuffer
+            lastRealFrameAt = ProcessInfo.processInfo.systemUptime
+            let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+            if !lastEmittedPTS.isValid || CMTimeCompare(pts, lastEmittedPTS) > 0 { lastEmittedPTS = pts }
+            keepAliveLock.unlock()
             video.offer(sample, bytes: CVPixelBufferGetDataSize(image))
         case .audio: audio.offer(sample, bytes: CMSampleBufferGetTotalSampleSize(sampleBuffer))
         case .microphone: mic.offer(sample, bytes: CMSampleBufferGetTotalSampleSize(sampleBuffer))
         @unknown default: break
         }
     }
+
     func finish() async {
+        keepAliveLock.lock()
+        keepAliveTimer?.cancel(); keepAliveTimer = nil
+        lastCompleteSample = nil
+        keepAliveLock.unlock()
         video.finish(); audio.finish(); mic.finish()
         for worker in workers { worker.cancel() }
         for worker in workers { await worker.value }
@@ -235,7 +308,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         diagnostics = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                let queues = self.pump.map { "video{\($0.video.summary)} audio{\($0.audio.summary)} mic{\($0.mic.summary)}" } ?? "sampleQueues=none"
+                let queues = self.pump.map { "video{\($0.video.summary)} audio{\($0.audio.summary)} mic{\($0.mic.summary)} keepAlive{\($0.keepAliveSummary)}" } ?? "sampleQueues=none"
                 sendlog(message: "[CaptureSource] backend=screenCaptureKit session=\(token) mode=\(self.mode.rawValue) capturePhase=\(self.state.phase.rawValue) publishPhase=\(self.publishingStage) \(queues)")
                 if let mixer = self.pipeline?.mixer {
                     let health = await mixer.audioPipelineDiagnostics()

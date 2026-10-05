@@ -287,6 +287,25 @@ operation 回填合成的 Connect.Failed，病因被掩蓋。
 
 ---
 
+## 2026.10.06 04:26 推流閒置 keep-alive 幀泵（重播最後一格）
+
+**類型**: 新增 · **檔案**: `liveAPP/Capture/ScreenCaptureSource.swift`
+
+### 問題 - 畫面靜止時 ScreenCaptureKit 不送視訊
+
+SC 只在畫面有變化時產生 `.complete` 幀；閒置時沒有視訊封包，留下大 PTS 缺口，部分播放器在畫面恢復時卡住或 seek。
+
+### 修改 - 閒置時以 15fps 重播最後一格
+
+- `ScreenSamplePump` 快取最後一格 `.complete` 的 CMSampleBuffer（保留像素、不複製）。
+- Timer 每 1/15 秒檢查：距上次真實幀超過一個間隔才補一格；有真實幀時完全不動作。
+- 補格以新、單調遞增的 PTS 重建 sample（`CMSampleBufferCreateReadyWithImageBuffer`），並走同一旋轉 worker。
+- `[CaptureSource]` 診斷新增 `keepAlive{sent=…}`。
+
+**相關文件**: [screencapturekit-integration.md](Docs/screencapturekit-integration.md)
+
+---
+
 ## 2026.10.06 04:20 修正推流左轉畫面尺寸與多軌混音無輸出（HaishinKit fork）
 
 **類型**: 修復 · **檔案**: `liveAPP/Capture/ScreenCaptureSource.swift`, `Package.resolved`, HaishinKit fork（`AudioMixerSettings.swift`／`AudioMixerByMultiTrack.swift`／`AudioPipelineDiagnostics.swift`）
