@@ -18,6 +18,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     let audio = CaptureMailbox<CapturedSample>(budget: 1024 * 1024)
     let mic = CaptureMailbox<CapturedSample>(budget: 1024 * 1024)
     private var workers: [Task<Void, Never>] = []
+    private var loggedFrameSize = CGSize.zero
     init(mixer: MediaMixer, probe: ScreenAudioProbe, rotateLeft: Bool) throws {
         let compositor = try ScreenStreamVideoRotator(rotateLeft: rotateLeft, overlay: ScreenOverlayComposer())
         super.init()
@@ -51,6 +52,11 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                   let raw = attachments.first?[.status] as? Int,
                   SCFrameStatus(rawValue: raw) == .complete,
                   let image = sampleBuffer.imageBuffer else { return }
+            let frameSize = CGSize(width: CVPixelBufferGetWidth(image), height: CVPixelBufferGetHeight(image))
+            if frameSize != loggedFrameSize {
+                loggedFrameSize = frameSize
+                sendlog(message: "[CaptureFrame] size=\(Int(frameSize.width))x\(Int(frameSize.height))")
+            }
             video.offer(sample, bytes: CVPixelBufferGetDataSize(image))
         case .audio: audio.offer(sample, bytes: CMSampleBufferGetTotalSampleSize(sampleBuffer))
         case .microphone: mic.offer(sample, bytes: CMSampleBufferGetTotalSampleSize(sampleBuffer))
@@ -170,7 +176,14 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             logAudioSession("capture.audioActivated")
         }
         let config = SCStreamConfiguration()
-        config.width = Int(size.width); config.height = Int(size.height)
+        // SC 擷取緩衝的寬高與輸出設定是轉置的（與 ReplayKit 相同）：左轉時以「轉置」尺寸擷取，
+        // 旋轉後剛好對上輸出畫布 size（否則來源是橫的、畫面內容被塞成直的）。
+        let rotateLeft = defaults.object(forKey: "screenStreamRotateLeft") as? Bool ?? true
+        if rotateLeft {
+            config.width = Int(size.height); config.height = Int(size.width)
+        } else {
+            config.width = Int(size.width); config.height = Int(size.height)
+        }
         config.capturesAudio = true
         // 以下皆為 macOS/macCatalyst 專用（iOS 標記為不可用），iOS 一概不設定：
         // pixelFormat / minimumFrameInterval / queueDepth / captureMicrophone /

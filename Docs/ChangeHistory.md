@@ -287,6 +287,30 @@ operation 回填合成的 Connect.Failed，病因被掩蓋。
 
 ---
 
+## 2026.10.06 06:13 修正 SC 疊加上下顛倒與擷取來源轉置
+
+**類型**: 修復 · **檔案**: `liveAPP/Capture/ScreenStreamVideoRotator.swift`, `liveAPP/Capture/ScreenCaptureSource.swift`
+
+### 問題
+
+- 輸出疊加（時間層）上下顛倒。
+- 畫布已是 1920×1080，但畫面內容仍是直的（直的來源被塞進橫畫布）。
+
+### 根因
+
+- 疊加：`CGContext` 已翻轉 CTM 後再 `draw`，會把圖片連同座標一起上下顛倒（重複翻轉）。
+- 內容：SC 擷取緩衝的寬高與輸出設定是轉置的（同 ReplayKit），先前以未轉置尺寸擷取，來源是橫的、內容被塞成直的。
+
+### 修改
+
+- 疊加：移除 CTM 翻轉，改把 `OverlayAnchor` 的左上 y 換算到左下再 `draw`。
+- 擷取：左轉時以轉置尺寸設定 `SCStreamConfiguration.width/height`。
+- 新增 `[CaptureFrame] size=WxH` 診斷（首幀／尺寸變化時輸出）。
+
+**相關文件**: [screencapturekit-integration.md](Docs/screencapturekit-integration.md)
+
+---
+
 ## 2026.10.06 05:13 移除 SC 推流閒置 keep-alive 幀泵
 
 **類型**: 修復 · **檔案**: `liveAPP/Capture/ScreenCaptureSource.swift`

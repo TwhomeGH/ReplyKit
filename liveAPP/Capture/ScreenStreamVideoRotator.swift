@@ -85,10 +85,10 @@ final class ScreenStreamVideoRotator: @unchecked Sendable {
             space: CGColorSpaceCreateDeviceRGB(),
             bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
         ) else { return }
-        // CGContext 預設左下原點，翻成左上讓 OverlayAnchor.origin 直接可用。
-        ctx.translateBy(x: 0, y: CGFloat(h))
-        ctx.scaleBy(x: 1, y: -1)
-        ctx.draw(layer.image, in: CGRect(origin: layer.origin, size: layer.size))
+        // CGContext 原點在左下；OverlayAnchor.origin 是左上座標，把 y 換算到左下即可，
+        // 不要再翻轉 CTM（翻 CTM 會連同 draw 的圖片一起上下顛倒）。
+        let y = CGFloat(h) - layer.origin.y - layer.size.height
+        ctx.draw(layer.image, in: CGRect(x: layer.origin.x, y: y, width: layer.size.width, height: layer.size.height))
     }
 
     private func check(_ status: Int32) throws {
