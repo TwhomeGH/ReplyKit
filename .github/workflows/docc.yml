@@ -60,8 +60,31 @@ jobs:
           rm -rf site
           xcrun docc process-archive transform-for-static-hosting "$ARCHIVE" \
             --output-path site --hosting-base-path ReplyKit
-          # 讓 / 自動導向文件首頁。
-          printf '<meta http-equiv="refresh" content="0; url=./documentation/liveapp/">' > site/index.html
+          touch site/.nojekyll
+
+          # 找出實際模組目錄（優先 liveapp），DocC 不會自動給根目錄轉址。
+          MODULE=""
+          for candidate in liveapp liveAPP; do
+            if [ -d "site/documentation/$candidate" ]; then MODULE="$candidate"; break; fi
+          done
+          if [ -z "$MODULE" ]; then
+            MODULE=$(find site/documentation -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -1 | xargs -r basename)
+          fi
+          echo "DocC module: ${MODULE:-<none>}"
+
+          if [ -n "$MODULE" ]; then
+            printf '<meta http-equiv="refresh" content="0; url=./documentation/%s/">' "$MODULE" > site/index.html
+          fi
+
+          {
+            echo "### DocC 站台結構"
+            echo "- App URL: ${{ github.server_url }}/${{ github.repository }} → Pages: https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY##*/}/"
+            echo "- module: ${MODULE:-<none>}"
+            echo "- site/documentation: $( (cd site/documentation 2>/dev/null && ls) | tr '\n' ' ' )"
+            echo '```'
+            (cd site && find . -maxdepth 2 -type d | sort)
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Package DocC site (zip for download)
         run: |
