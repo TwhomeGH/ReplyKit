@@ -27,6 +27,20 @@
 - 底層新增雙模組 DocC workflow，建置與部署待實跑。
 
 
+## 2026.10.06 23:11 補上未版控的 DocC catalog（App 文件來源）
+
+**類型**: 修復 · **檔案**: `liveAPP/Documentation.docc/liveAPP.md`
+
+### 問題
+
+- `liveAPP/Documentation.docc` 一直未被版控（untracked）。pbxproj 加上引用後，CI 的 `CompileDocumentation` 找不到該目錄，`docc convert` 失敗：`No documentation directory exists at '.../liveAPP/Documentation.docc'`。
+
+### 修改
+
+- 將 `liveAPP/Documentation.docc/liveAPP.md` 納入版控；此後 `docbuild` 應能產生 `documentation/liveapp`。
+
+---
+
 ## 2026.10.06 22:23 接上 App 的 DocC catalog（project.pbxproj）
 
 **類型**: 修復 · **檔案**: `liveAPP.xcodeproj/project.pbxproj`
