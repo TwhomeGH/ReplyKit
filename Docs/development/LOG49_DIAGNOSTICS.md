@@ -13,7 +13,8 @@
 - VideoHealthModel / AudioHealthModel 由 Socket videoHealth / audioHealth 更新，屬 ReplayKit 擴展資料；歷史上限 120 筆，未接 ScreenCaptureKit。
 - AppLogPersister.shared 使用序列佇列寫入 Documents/log.txt；多視窗不等於多個檔案寫入器。CaptureCoordinator 也是單例，但每視窗的 View 與生命週期工作仍可能重複。
 - 上述鎖定版本 AudioCaptureUnit.output 使用預設無界 AsyncStream，並 clone PCM 後 yield；消費停止時存在累積風險。尚未以 Allocations 確認實際保留物件。
-- 鎖定版本 MediaMixer.stopRunning 缺少 videoIO.finish；目前底層 HEAD 已加入。App 尚未更新鎖定版本，本次不混入全部底層更新。
+- 鎖定版本 MediaMixer.stopRunning 缺少 videoIO.finish;
+- 目前底層 HEAD 已加入。App 尚未更新鎖定版本，本次不混入全部底層更新。
 
 ## 本次改動
 
