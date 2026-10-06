@@ -57,6 +57,12 @@ jobs:
           test -n "$ARCHIVE"
           cp -R "$ARCHIVE" DocumentationArtifacts/
           echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+          {
+            echo "### docbuild 摘要（診斷 App 模組是否被建置）"
+            echo '```'
+            grep -Ei "docbuild|catalog|symbol graph|error:|warning:|liveAPP|livedoc" DocumentationArtifacts/docbuild.log | head -80 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Transform for static hosting
         run: |
@@ -86,6 +92,7 @@ jobs:
             echo "- Pages 根網址：https://${OWNER}.github.io/${REPO}/"
             echo "- module: ${MODULE:-<none>}"
             echo "- site/documentation: $( (cd site/documentation 2>/dev/null && ls) | tr '\n' ' ' )"
+            echo "- site/data/documentation: $( (cd site/data/documentation 2>/dev/null && ls) | tr '\n' ' ' )"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Package documentation artifact (zip)
