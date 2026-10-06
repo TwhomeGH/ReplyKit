@@ -40,6 +40,24 @@
 - 更新功能索引與 TODO，App 套件鎖定／統一診斷 UI 仍待接入。
 - 底層新增雙模組 DocC workflow，建置與部署待實跑。
 
+## 2026.10.07 05:02 DocC 模組根目錄轉址修正
+
+**類型**: 修復 · **檔案**: `Scripts/docc_postprocess.py`
+
+### 問題
+
+- DocC 模組頁實際在 `<module>/documentation/<topic>/`，直接開 `<module>/`（例如 `/ReplyKit/liveAPP/`）會顯示「找不到頁面」；首頁連結因此導向錯誤位置。
+
+### 修改
+
+- `docc_postprocess.py` 新增 `write_module_redirects()`：偵測每個模組的 `documentation/<topic>`，把 `<module>/index.html` 改寫為轉址到內容頁；首頁只列有內容的模組。
+
+### 驗證
+
+- 本機以模擬站台驗證轉址與首頁連結正確；需 CI 部署後確認 `/ReplyKit/liveAPP/` 等可正常渲染。
+
+---
+
 ## 2026.10.07 00:20 修正 HaishinKit fork 重複 DocC catalog 並更新 pin
 
 **類型**: 修復 · **檔案**: `Package.resolved`（root 與 xcodeproj）

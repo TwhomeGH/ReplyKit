@@ -3,7 +3,9 @@
 用途（CI 內、在 `docc process-archive transform-for-static-hosting` 之後執行）：
 1. 修正 hosting base path：DocC 轉出的 SPA 可能仍以根目錄參照資產（`baseUrl = "/"`、
    `src="/js/..."`），在多模組子路徑託管時會 404 而頁面空白；此時補上 `/<base>/<module>/` 前綴。
-2. 產生根目錄 `index.html`，列出各模組連結。
+2. 模組根目錄轉址：每個模組 archive 的內容頁在 `<module>/documentation/<topic>/`，
+   直接開 `<module>/` 會顯示「找不到頁面」；把 `<module>/index.html` 改寫為轉址到內容頁。
+3. 產生根目錄 `index.html`，列出各模組連結。
 
 以 `python Scripts/docc_postprocess.py --site site --base ReplyKit` 執行。
 """
@@ -25,6 +27,18 @@ def module_dirs(site):
     return sorted(p for p in site.iterdir() if p.is_dir() and not p.name.startswith("."))
 
 
+def module_topic(module_dir):
+    """回傳模組內唯一的文件目錄名（如 `liveapp`），沒有則 None。
+
+    DocC 的內容路由是 `documentation/<模組小寫名>`；一個模組 archive 只會有一個。
+    """
+    docdir = module_dir / "documentation"
+    if not docdir.is_dir():
+        return None
+    topics = sorted(p.name for p in docdir.iterdir() if p.is_dir())
+    return topics[0] if topics else None
+
+
 def patch_base_path(site, base):
     """若 SPA 外殼仍以根目錄參照資產，補上 /<base>/<module>/ 前綴；回傳修正檔數。"""
     patched = 0
@@ -41,13 +55,32 @@ def patch_base_path(site, base):
     return patched
 
 
-def write_home(site, template_path=DEFAULT_TEMPLATE):
+def write_module_redirects(site):
+    """把每個模組的 index.html 改為轉址到 <module>/documentation/<topic>/。
+
+    回傳「有內容」的模組名（沒有文件的模組不會列入首頁）。
+    """
+    modules = []
+    for module in module_dirs(site):
+        topic = module_topic(module)
+        if not topic:
+            continue
+        modules.append(module.name)
+        (module / "index.html").write_text(
+            '<!doctype html><meta charset="utf-8">'
+            '<meta http-equiv="refresh" content="0; url=./documentation/%s/">'
+            '<link rel="canonical" href="./documentation/%s/">'
+            "<title>%s</title>" % (topic, topic, module.name),
+            encoding="utf-8",
+        )
+    return modules
+
+
+def write_home(site, modules, template_path=DEFAULT_TEMPLATE):
     """以模板產生根目錄首頁，列出各模組。"""
-    modules = [m.name for m in module_dirs(site)]
     links = "".join('<li><a href="./%s/">%s</a></li>' % (m, m) for m in modules)
     template = Path(template_path).read_text(encoding="utf-8")
     (site / "index.html").write_text(template.replace(MODULE_PLACEHOLDER, links), encoding="utf-8")
-    return modules
 
 
 def main():
@@ -59,7 +92,8 @@ def main():
 
     site = Path(args.site)
     patched = patch_base_path(site, args.base)
-    modules = write_home(site, args.template)
+    modules = write_module_redirects(site)
+    write_home(site, modules, args.template)
     print("base-path patched %d html；模組：%s" % (patched, ", ".join(modules) or "<none>"))
 
 
