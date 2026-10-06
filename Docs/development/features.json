@@ -69,11 +69,11 @@
   {
     "id": "diagnostics.transport",
     "name": "RTMP 傳送與 chunk 可觀測性",
-    "summary": "編碼、訊息入列、socket 完成、伺服器 ACK 必須分開。",
+    "summary": "底層新增 RTMPConnection.transportDiagnostics()；區分本機成功完成、失敗批次、待送量與耗時。尚未更新 App 鎖定套件。",
     "replaykit": "已有部分日誌／吞吐統計",
     "screencapturekit": "已有部分日誌／吞吐統計",
-    "ui": "尚無統一 RTMP 明細頁",
-    "verification": "待補：成功與失敗傳送計數、結構化快照；不能以 totalBytesOut 證明伺服器收到。",
+    "ui": "統一 RTMP 明細頁待接入；底層 API 文件見 HaishinKit 的 RTMP_TRANSPORT_DIAGNOSTICS.md。",
+    "verification": "底層語法檢查通過；Apple SDK 與傳送錯誤／重連實測待驗證。影音分類、chunk 數及 ACK 尚未提供。",
     "files": [
       "ReplyKIT/BitRateStrategy.swift",
       "liveAPP/Capture/CaptureStreamTelemetry.swift"
