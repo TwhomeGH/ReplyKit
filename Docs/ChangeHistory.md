@@ -27,6 +27,24 @@
 - 底層新增雙模組 DocC workflow，建置與部署待實跑。
 
 
+## 2026.10.06 22:23 接上 App 的 DocC catalog（project.pbxproj）
+
+**類型**: 修復 · **檔案**: `liveAPP.xcodeproj/project.pbxproj`
+
+### 問題
+
+- `xcodebuild docbuild` 只產生相依套件（`haishinkit` 等）的模組文件；`liveAPP/Documentation.docc` 雖在 App 的檔案系統同步資料夾內，但 DocC 未將其視為 documentation catalog，故沒有 `documentation/liveapp` 頁面。
+
+### 修改
+
+- 為 `Documentation.docc` 加入明確的 `PBXFileReference`（`lastKnownFileType = folder.documentationcatalog`）與 `PBXBuildFile`，放進 `liveAPP` target 的 Sources 階段，並掛進主 group。
+
+### 驗證
+
+- 需 CI（macOS）確認 `docbuild` 產生 `documentation/liveapp`；若 pbxproj 格式導致建置失敗，revert 此 commit（獨立一顆）。
+
+---
+
 ## 2026.10.06 21:58 DocC workflow 合併並修正 shell 與路徑
 
 **類型**: 修復 · **檔案**: `.github/workflows/documentation.yml`, `.github/workflows/docc.yml`（刪除）, `Docs/development/README.md`
