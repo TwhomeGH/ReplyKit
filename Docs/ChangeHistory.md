@@ -27,6 +27,21 @@
 - 底層新增雙模組 DocC workflow，建置與部署待實跑。
 
 
+## 2026.10.06 23:55 修正 DocC 子路徑空白頁並加入回饋連結
+
+**類型**: 修復 · **檔案**: `.github/workflows/documentation.yml`, `Scripts/docc_postprocess.py`
+
+### 問題
+
+- 多模組各自 `transform-for-static-hosting` 到 `site/<Module>` 後，SPA 仍以**根目錄**參照資產（`baseUrl = "/"`、`src="/js/…"`），在 `/<repo>/<Module>/` 被託管時一律 404，頁面空白。
+
+### 修改
+
+- `--hosting-base-path` 改帶前導斜線（`/$BASE/$MODULE`）。
+- 新增 `Scripts/docc_postprocess.py`：若 SPA 仍以根目錄參照，補上 `/<repo>/<module>/` 前綴；並產生根目錄 `index.html`（列出各模組，附 Discord／Twitch 回饋連結）。
+
+---
+
 ## 2026.10.06 23:26 DocC 每模組輸出與根目錄首頁
 
 **類型**: 修復 · **檔案**: `.github/workflows/documentation.yml`
