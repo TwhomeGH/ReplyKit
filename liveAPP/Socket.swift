@@ -1232,6 +1232,11 @@ class SocketServer:ObservableObject, @unchecked Sendable {
                 }
                 logTo("Updated UserVol APP:\(formatLinearVolumeForLog(dict.appVol)) Mic:\(formatLinearVolumeForLog(dict.micVol)) Persist:\(dict.persist)")
 
+            case "streamDiagnostics":
+                let snapshot = try decoder.decode(StreamDiagnosticsSnapshot.self, from: data)
+                guard snapshot.schemaVersion == 1, snapshot.source == "ReplayKit" else { return }
+                Task { @MainActor in StreamDiagnosticsModel.shared.record(snapshot) }
+
             case "videoHealth":
                 let dict = try decoder.decode(VideoHealthPayload.self, from: data)
                 // 新版窗口彙總優先；舊版單值相容（min/max 用單值）

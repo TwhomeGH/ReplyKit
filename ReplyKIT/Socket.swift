@@ -1066,6 +1066,15 @@ class SocketClient : @unchecked Sendable {
     }
 
     // MARK: 公開供外部發送自定義訊息
+    /// 診斷每五秒一筆；使用既有序列 queue，不排入可無限累積的歷史。
+    func sendStreamDiagnostics(_ snapshot: StreamDiagnosticsSnapshot) {
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        queue.async { [weak self] in
+            guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+            self?.sendPayload(object)
+        }
+    }
+
     func sendPayload(_ payload: [String: Any]) {
         sendPayload(payload, completion: nil)
     }

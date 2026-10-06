@@ -2,6 +2,10 @@ import Foundation
 
 /// 單次推流的可觀測狀態。格式來自編碼器、封包來自 RTMP 統計，不能用設定值代替成功證據。
 struct CaptureStreamTelemetry: Equatable, Sendable {
+    /// 本機擷取摘要每五秒更新；與 RTMP 封包統計分開，避免誤認已送達伺服器。
+    var pipelineSampledAt: Date?
+    var sourceQueues: String?
+    var mixerAudio: String?
     var stage = "idle"
     var failed = false
     var encoderFormat: String?

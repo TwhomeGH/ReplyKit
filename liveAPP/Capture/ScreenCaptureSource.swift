@@ -83,6 +83,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     private let publishingChanged: @MainActor (Bool) -> Void
     private var pipeline: CaptureMediaPipeline?
     private var audioProbe: ScreenAudioProbe?
+    private var streamDiagnosticsProbe: StreamDiagnosticsProbe?
     private var telemetry = CaptureStreamTelemetry()
     private let telemetryChanged: @MainActor (CaptureStreamTelemetry) -> Void
     private var recording: ScreenRecordingSession?
@@ -246,15 +247,27 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             }
         }
         diagnostics = Task { [weak self] in
+            var sampleCount = 0
             while !Task.isCancelled {
                 guard let self else { return }
                 let queues = self.pump.map { "video{\($0.video.summary)} audio{\($0.audio.summary)} mic{\($0.mic.summary)}" } ?? "sampleQueues=none"
                 sendlog(message: "[CaptureSource] backend=screenCaptureKit session=\(token) mode=\(self.mode.rawValue) capturePhase=\(self.state.phase.rawValue) publishPhase=\(self.publishingStage) \(queues)")
+                self.telemetry.sourceQueues = queues
+                self.telemetry.pipelineSampledAt = Date()
+                sampleCount += 1
+                if sampleCount % 6 == 1 { self.logResources(stage: "sampling") }
                 if let mixer = self.pipeline?.mixer {
                     let health = await mixer.audioPipelineDiagnostics()
                     let tracks = health.tracks.map { "track=\($0.trackId) converted=\($0.outputFrames) noData=\($0.resampleNoDataCount) buffered=\($0.ringBufferCounts) overflow=\($0.overflowDroppedSamples) gap=\($0.skipInsertedSamples)" }.joined(separator: " | ")
+                    self.telemetry.mixerAudio = "mixed=\(health.mixerOutputFrames) ready=\(health.mixerReady) channels=\(health.outputChannels) \(self.audioProbe?.summary() ?? "probe=none")"
                     sendlog(message: "[CaptureAudioPipeline] session=\(token) mixed=\(health.mixerOutputFrames) ready=\(health.mixerReady) error=\(health.lastError ?? "none") channels=\(health.outputChannels) rms=\(health.outputChannelRMS) \(self.audioProbe?.summary() ?? "probe=none") \(tracks)")
                 }
+                if let probe = self.streamDiagnosticsProbe, let stream = self.output, let connection = self.connection {
+                    let snapshot = await probe.snapshot(source: "ScreenCaptureKit", stream: stream, connection: connection)
+                    guard !Task.isCancelled else { return }
+                    StreamDiagnosticsModel.shared.record(snapshot)
+                }
+                self.telemetryChanged(self.telemetry)
                 do { try await Task.sleep(nanoseconds: 5_000_000_000) } catch { return }
             }
         }
@@ -330,6 +343,9 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         let probe = ScreenAudioProbe(session: logSession)
         audioProbe = probe
         await pipeline.mixer.addOutput(probe)
+        let diagnosticsProbe = StreamDiagnosticsProbe()
+        streamDiagnosticsProbe = diagnosticsProbe
+        await pipeline.mixer.addOutput(diagnosticsProbe)
         await pipeline.mixer.addOutput(stream)
         await pipeline.mixer.startRunning()
         try Task.checkCancellation()
@@ -402,15 +418,25 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             try? capture.removeStreamOutput(pump, type: .audio)
             try? capture.removeStreamOutput(pump, type: .microphone)
         }
+        logResources(stage: "pump.finish.begin")
         await pump?.finish(); pump = nil
+        logResources(stage: "pump.finish.end")
         if let output {
+            logResources(stage: "rtmp.close.begin")
             _ = try? await output.close()
+            logResources(stage: "rtmp.close.end")
             await pipeline?.mixer.removeOutput(output)
         }
         if let audioProbe { await pipeline?.mixer.removeOutput(audioProbe) }
         self.audioProbe = nil
+        if let streamDiagnosticsProbe { await pipeline?.mixer.removeOutput(streamDiagnosticsProbe) }
+        streamDiagnosticsProbe = nil
+        logResources(stage: "mixer.stop.begin")
         await pipeline?.mixer.stopRunning()
+        logResources(stage: "mixer.stop.end")
+        logResources(stage: "connection.close.begin")
         _ = try? await connection?.close()
+        logResources(stage: "connection.close.end")
         output = nil; connection = nil; pipeline = nil
     }
     nonisolated func stream(_ stream: SCStream, didStopWithError error: Error) {
@@ -475,6 +501,13 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             sendlog(message: "[CaptureAudio] session=\(token) event=routeChange reason=\(reason.map(String.init) ?? "unknown")")
         }
         audioObservers = [interruption, route]
+    }
+    /// 每三十秒及收尾 await 邊界記錄本程序用量；不代表廣播擴展用量。
+    private func logResources(stage: String) {
+        let memory = DeviceInfo.memoryBreakdown
+        let values = String(format: "footprintMB=%.1f compressedMB=%.1f residentMB=%.1f availableMB=%.1f",
+                            memory.footprintMB, memory.compressedMB, memory.residentMB, memory.availableMB)
+        sendlog(message: "[CaptureResources] session=\(state.id?.uuidString ?? "none") stage=\(stage) \(values)")
     }
     func stop() async { await finish(message: nil) }
     private func finish(message: String?) async {

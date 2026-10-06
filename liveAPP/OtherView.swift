@@ -24,6 +24,7 @@ struct DataPoint: Identifiable {
 final class VideoHealthModel: ObservableObject {
     static let shared = VideoHealthModel()
 
+    @Published private(set) var lastUpdatedAt: Date?
     @Published private(set) var latestStatus: String = "waiting"
     @Published private(set) var inputHistory: [DataPoint] = []
     @Published private(set) var processedHistory: [DataPoint] = []
@@ -73,6 +74,7 @@ final class VideoHealthModel: ObservableObject {
         let id = dataPointCounter
         let now = Date()
 
+        lastUpdatedAt = now
         latestStatus = status
         inputHistory.append(DataPoint(id: id, time: now, value: inputFPSAvg))
         processedHistory.append(DataPoint(id: id, time: now, value: processedFPSAvg))
@@ -98,6 +100,7 @@ final class VideoHealthModel: ObservableObject {
 final class AudioHealthModel: ObservableObject {
     static let shared = AudioHealthModel()
 
+    @Published private(set) var lastUpdatedAt: Date?
     @Published private(set) var latestStatus: String = "waiting"
     @Published private(set) var appFPSHistory: [DataPoint] = []
     @Published private(set) var micFPSHistory: [DataPoint] = []
@@ -163,6 +166,7 @@ final class AudioHealthModel: ObservableObject {
         let id = dataPointCounter
         let now = Date()
 
+        lastUpdatedAt = now
         latestStatus = status
         appFPSHistory.append(DataPoint(id: id, time: now, value: appInputFPSAvg))
         micFPSHistory.append(DataPoint(id: id, time: now, value: micInputFPSAvg))
@@ -530,6 +534,7 @@ struct DeviceView: View {
     let cpuInfo = SystemCPU()
     let diskIO = SystemDiskIO()
     @ObservedObject private var laManager = StreamActivityManager.shared
+    @ObservedObject private var capture = CaptureCoordinator.shared
     @ObservedObject private var videoHealth = VideoHealthModel.shared
     @ObservedObject private var audioHealth = AudioHealthModel.shared
 
@@ -735,11 +740,28 @@ struct DeviceView: View {
                 Text("GPU: \(DeviceInfo.cpuName)")
             }
 
+            StreamDiagnosticsSections()
+
+            if capture.streamTelemetry.pipelineSampledAt != nil {
+                Section("ScreenCaptureKit 本機管線") {
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        let age = max(0, context.date.timeIntervalSince(capture.streamTelemetry.pipelineSampledAt ?? .distantPast))
+                        Text("來源：主 App · 距更新 \(Int(age)) 秒" + (age > 15 ? " · 資料已過期" : ""))
+                            .foregroundStyle(age > 15 ? Color.orange : Color.secondary)
+                    }
+                    Text(capture.streamTelemetry.sourceQueues ?? "尚未取得來源佇列").font(.caption)
+                    Text(capture.streamTelemetry.mixerAudio ?? "尚未取得混音資料").font(.caption)
+                    Text("來源與混音計數不代表 RTMP 已送出；下方圖表來自 ReplayKit 擴展。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+
             Section(
                 header:
                     Label("Video Pipeline", systemImage: "waveform.path.ecg")
             ) {
-                Text("狀態: \(videoHealth.latestStatus)")
+                pipelineFreshness(videoHealth.lastUpdatedAt)
+                Text("最後回報狀態: \(videoHealth.latestStatus)")
                     .foregroundColor(videoHealth.latestStatus == "healthy" ? .green : .orange)
 
                 Chart {
@@ -818,7 +840,8 @@ struct DeviceView: View {
                 header:
                     Label("Audio Pipeline", systemImage: "waveform")
             ) {
-                Text("狀態: \(audioHealth.latestStatus)")
+                pipelineFreshness(audioHealth.lastUpdatedAt)
+                Text("最後回報狀態: \(audioHealth.latestStatus)")
                     .foregroundColor(audioHealth.latestStatus == "healthy" ? .green : .orange)
 
                 Text("每秒音訊 buffer 數；每個 buffer 包含多個取樣。")
@@ -979,6 +1002,7 @@ struct DeviceView: View {
             }
         }
         .onAppear {
+            sampleTimer?.invalidate()
             sample()
             let t = Timer(timeInterval: 1.0, repeats: true) { [self] _ in
                 sample()
@@ -996,6 +1020,20 @@ struct DeviceView: View {
             appWriteHistory.removeAll()
             dataPointCounter = 0
             prevAppWriteBytes = 0
+        }
+    }
+
+    /// 不把歷史 healthy 視為目前正常；兩張圖各自顯示最後收到資料的時間。
+    private func pipelineFreshness(_ updatedAt: Date?) -> some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            if let updatedAt {
+                let age = max(0, context.date.timeIntervalSince(updatedAt))
+                Text("來源：ReplayKit 擴展 · 距更新 \(Int(age)) 秒" + (age > 15 ? " · 資料已過期" : ""))
+                    .font(.caption).foregroundStyle(age > 15 ? Color.orange : Color.secondary)
+            } else {
+                Text("來源：ReplayKit 擴展 · 尚未收到資料")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
     }
 

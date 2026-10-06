@@ -1,5 +1,19 @@
 # 變更歷史
 
+## 2026.10.07 03:41 設備資訊接入雙來源串流格式與 RTMP 傳輸診斷
+
+- ReplayKit 經 Socket、ScreenCaptureKit 直接更新共用快照，每五秒取樣並顯示過期狀態。
+- 顯示 Mixer 實測格式、編碼設定、影片產出與入列事件、Socket 完成／失敗計數。
+- 實際壓縮格式、chunk 與 ACK 未提供，保持未知；詳見 [接入說明](development/STREAM_DIAGNOSTICS.md)。
+- 新增快照相容與舊資料隔離測試，iOS 建置及實機驗收待執行。
+
+## 2026.10.07 03:29 加強擷取停滯與記憶體診斷及單視窗防呆
+
+- 明確關閉多視窗，裝置頁避免重複取樣計時器。
+- 區分 ReplayKit 圖表與 ScreenCaptureKit 本機摘要，顯示資料過期時間。
+- 增加低頻記憶體及收尾 await 階段日誌；尚未宣稱修復記憶體增長。
+- 調查與驗收：[log-49 診斷](development/LOG49_DIAGNOSTICS.md)。
+
 <!--
 新增紀錄請複製以下範本，貼到最上面（最新在上），並填寫內容：
 
@@ -25,7 +39,6 @@
 - 底層 checkout 新增 transportDiagnostics()，修正傳送失敗計數及舊 completion 隔離。
 - 更新功能索引與 TODO，App 套件鎖定／統一診斷 UI 仍待接入。
 - 底層新增雙模組 DocC workflow，建置與部署待實跑。
-
 
 ## 2026.10.07 00:20 修正 HaishinKit fork 重複 DocC catalog 並更新 pin
 
@@ -231,7 +244,6 @@
 - 提供初始 DocC 目錄與手動建置 workflow，Apple SDK 文件建置待實跑。
 
 **相關文件**：[開發索引](development/README.md)
-
 
 ## 2026.10.06 03:07 加入推流 AAC 碼率選項
 

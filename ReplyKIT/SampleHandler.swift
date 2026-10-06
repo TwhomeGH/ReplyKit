@@ -117,6 +117,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     private var micAddVolume: Float = 1.0
 
     // MARK: 推流物件 RTMP
+    private var streamDiagnosticsProbe: StreamDiagnosticsProbe?
+    private var streamDiagnosticsTask: Task<Void, Never>?
     private var rtmpConnection :RTMPConnection?
     private var rtmpStream : RTMPStream!
 
@@ -1785,6 +1787,21 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 await self.configureVideo_init()
                 await self.configureAudio()
                 await self.configureMediaMixer()
+                let diagnosticsProbe = StreamDiagnosticsProbe()
+                self.streamDiagnosticsProbe = diagnosticsProbe
+                await self.mediaMixer.addOutput(diagnosticsProbe)
+                self.streamDiagnosticsTask?.cancel()
+                let diagnosticsStream = self.rtmpStream!
+                let diagnosticsConnection = self.rtmpConnection!
+                self.streamDiagnosticsTask = Task {
+                    while !Task.isCancelled {
+                        let snapshot = await diagnosticsProbe.snapshot(source: "ReplayKit", stream: diagnosticsStream, connection: diagnosticsConnection)
+                        guard !Task.isCancelled else { return }
+                        SocketClient.shared.sendStreamDiagnostics(snapshot)
+                        do { try await Task.sleep(nanoseconds: 5_000_000_000) } catch { return }
+                    }
+                }
+
                 await Task.yield()
 
                 sendlog(message:"✅ MediaMixer 配置完成")
@@ -1911,6 +1928,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             reconnectAttempt = 0
             isReconnecting = false
 
+            streamDiagnosticsTask?.cancel()
+            streamDiagnosticsTask = nil
+            if let streamDiagnosticsProbe { await mediaMixer.removeOutput(streamDiagnosticsProbe) }
+            streamDiagnosticsProbe = nil
             SocketClient.shared.sendStreamEnd()
 
             isSessionReady = false
