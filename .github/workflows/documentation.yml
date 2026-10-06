@@ -10,6 +10,8 @@ on:
       - 'liveAPP/Documentation.docc/**'
       - 'liveAPP/**/*.swift'
       - 'SharedCapture/**/*.swift'
+      - 'liveAPP.xcodeproj/**'
+      - 'Package.resolved'
       - '.github/workflows/documentation.yml'
 
 permissions:
