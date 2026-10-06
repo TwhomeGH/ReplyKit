@@ -15,30 +15,9 @@ from pathlib import Path
 # SPA 外殼中以根目錄參照的資產路徑；命中的 `="/<key>` 會補上模組前綴。
 _ROOT_ASSET = re.compile(r'="/(js/|css/|favicon|index\.json|metadata\.json|data/)')
 
-HOME = """<!doctype html>
-<html lang="zh-Hant"><head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ReplyKit 文件</title>
-<style>
-body{{font:15px/1.7 -apple-system,"Segoe UI","Microsoft JhengHei",sans-serif;
-max-width:760px;margin:56px auto;padding:0 24px;color:#111827;background:#fff}}
-a{{color:#2563eb}} code{{background:#f3f4f6;padding:2px 6px;border-radius:6px}}
-li{{margin:6px 0}} h2{{margin-top:1.6em}} .muted{{color:#6b7280;font-size:13px}}
-</style>
-</head><body>
-<h1>ReplyKit 文件</h1>
-<p>由 <code>xcodebuild docbuild</code> 產生的 DocC 模組文件：</p>
-<ul>
-{links}</ul>
-<h2>回饋與社群</h2>
-<ul>
-<li><a href="https://discord.com/invite/jud4UE6wuq">Discord 群</a>：問題回報與討論</li>
-<li><a href="https://www.twitch.tv/coffeelatte0709">Twitch 直播</a>：開發／日常／遊戲追蹤</li>
-</ul>
-<p class="muted">遇到問題時，附上執行環境與相關資訊有助於回報與排查。</p>
-</body></html>
-"""
+# 首頁模板（純 HTML 檔，不寫死在程式或 workflow 裡）與模組清單佔位符。
+DEFAULT_TEMPLATE = Path(__file__).resolve().parent / "docc_home.html"
+MODULE_PLACEHOLDER = "{{module_list}}"
 
 
 def module_dirs(site):
@@ -62,11 +41,12 @@ def patch_base_path(site, base):
     return patched
 
 
-def write_home(site):
-    """產生根目錄首頁，列出各模組。"""
+def write_home(site, template_path=DEFAULT_TEMPLATE):
+    """以模板產生根目錄首頁，列出各模組。"""
     modules = [m.name for m in module_dirs(site)]
-    links = "".join('<li><a href="./%s/">%s</a></li>\n' % (m, m) for m in modules)
-    (site / "index.html").write_text(HOME.format(links=links), encoding="utf-8")
+    links = "".join('<li><a href="./%s/">%s</a></li>' % (m, m) for m in modules)
+    template = Path(template_path).read_text(encoding="utf-8")
+    (site / "index.html").write_text(template.replace(MODULE_PLACEHOLDER, links), encoding="utf-8")
     return modules
 
 
@@ -74,11 +54,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--site", required=True, help="轉出的站台目錄")
     parser.add_argument("--base", required=True, help="Pages 的 repo 子路徑（如 ReplyKit）")
+    parser.add_argument("--template", default=str(DEFAULT_TEMPLATE), help="首頁模板 HTML")
     args = parser.parse_args()
 
     site = Path(args.site)
     patched = patch_base_path(site, args.base)
-    modules = write_home(site)
+    modules = write_home(site, args.template)
     print("base-path patched %d html；模組：%s" % (patched, ", ".join(modules) or "<none>"))
 
 

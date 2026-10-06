@@ -13,6 +13,7 @@ on:
       - 'liveAPP.xcodeproj/**'
       - 'Package.resolved'
       - 'Scripts/docc_postprocess.py'
+      - 'Scripts/docc_home.html'
       - '.github/workflows/documentation.yml'
 
 permissions:
