@@ -12,6 +12,7 @@ on:
       - 'SharedCapture/**/*.swift'
       - 'liveAPP.xcodeproj/**'
       - 'Package.resolved'
+      - 'Scripts/docc_postprocess.py'
       - '.github/workflows/documentation.yml'
 
 permissions:
