@@ -44,9 +44,9 @@
 
 ## DocC 建置
 
-macOS Xcode 使用 Product → Build Documentation。另提供手動觸發的 DocC documentation workflow，使用專案既有 xcode-27 runner，產出 doccarchive、App revision、Package.resolved 與建置日誌，不自動發布網站。
+macOS Xcode 使用 Product → Build Documentation。另提供 DocC documentation workflow（`.github/workflows/documentation.yml`：手動觸發，或 push 到 main 且動到 `.docc`／Swift 時執行），使用專案既有 xcode-27 runner，產出 doccarchive、App revision、Package.resolved 與建置日誌，並部署到 GitHub Pages。
 
-目前只有 App 的初始文件目錄。HaishinKit 自己的 DocC、完整跨模組連結與詳細 API 文件覆蓋仍需後續補齊；本次未執行 Apple SDK docbuild，workflow 的首次成功產物仍待確認。Windows 的宣告搜尋不需要 Xcode。
+**目前 `xcodebuild docbuild` 只產出 HaishinKit（相依套件）的模組文件**——App 的 `liveAPP/Documentation.docc` 目錄尚未加入 Xcode 專案，`docbuild` 因此不為 App target 產生模組頁。要讓 App 自身有文件，需把該 `.docc` 目錄加入 `liveAPP` target。Windows 的宣告搜尋不需要 Xcode。
 
 ## 文件（DocC）
 
@@ -67,4 +67,4 @@ xcodebuild docbuild -scheme liveAPP -destination 'generic/platform=iOS' \
 
 `.doccarchive` 是用 `swift-docc-render` 做前端渲染的靜態站，直接開 `index.html` 即可。可在 CI 加一個 job 產出並發佈，再由開發索引連過去。純 Swift、不依賴 Apple 框架的 package（例如可跨平台的部分）才可能在 Windows 用 `swift package generate-documentation` 產出。
 
-本專案已提供 `.github/workflows/docc.yml`：在 `xcode-27` runner 建置 DocC、`docc process-archive transform-for-static-hosting` 轉成靜態站、打包 `docc-site.zip` artifact，並部署到 GitHub Pages。要啟用線上瀏覽，請到 repo **Settings → Pages → Source 選「GitHub Actions」**；之後網址為 `https://<owner>.github.io/ReplyKit/`。平時也可下載 `docc-site.zip` 解壓離線開啟（DocC 會產生含 `:` 的符號檔名，故以 zip 打包）。
+本專案已提供 `.github/workflows/documentation.yml`：在 `xcode-27` runner 建置 DocC、`docc process-archive transform-for-static-hosting` 轉成靜態站、打包 `documentation-<sha>.zip`（docarchive＋日誌＋revision；DocC 會產生含 `:` 的符號檔名，故以 zip 打包），並部署到 GitHub Pages。要啟用線上瀏覽，請到 repo **Settings → Pages → Source 選「GitHub Actions」**；之後網址為 `https://<owner>.github.io/ReplyKit/`，根目錄會自動轉址到實際模組目錄。

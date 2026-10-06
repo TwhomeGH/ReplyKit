@@ -1,7 +1,7 @@
-name: DocC Documentation
+name: DocC documentation
 
-# 在 macOS runner 產生 Apple DocC 文件（Windows 無法，見 Docs/development/README.md）。
-# 產出 .doccarchive → 轉為可靜態託管的站台，上傳 artifact 並部署到 GitHub Pages。
+# 在 macOS runner 產生 Apple DocC、保存 doccarchive／revision／日誌，並部署到 GitHub Pages。
+# Windows 無 Apple SDK 無法產生 DocC，詳見 Docs/development/README.md。
 on:
   workflow_dispatch:
   push:
@@ -10,7 +10,7 @@ on:
       - 'liveAPP/Documentation.docc/**'
       - 'liveAPP/**/*.swift'
       - 'SharedCapture/**/*.swift'
-      - '.github/workflows/docc.yml'
+      - '.github/workflows/documentation.yml'
 
 permissions:
   contents: read
@@ -22,36 +22,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  documentation:
     runs-on: xcode-27
+    timeout-minutes: 40
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
+          persist-credentials: false
           fetch-depth: 0
 
-      - name: Verify Xcode 27 and install Metal toolchain
+      - name: Install Metal toolchain
         run: |
           set -euo pipefail
-          xcodebuild -version
           # Xcode 26 起 Metal 編譯器改為需另外下載；缺它會使 .metal 編譯失敗。
           xcodebuild -downloadComponent metalToolchain
 
-      - name: Build DocC archive
+      - name: Build App documentation
         run: |
           set -euo pipefail
-          xcodebuild docbuild \
-            -scheme liveAPP \
+          mkdir -p DocumentationArtifacts
+          git rev-parse HEAD > DocumentationArtifacts/app-revision.txt
+          cp Package.resolved DocumentationArtifacts/Package.resolved
+          xcodebuild -skipPackagePluginValidation -skipMacroValidation docbuild \
+            -project liveAPP.xcodeproj -scheme liveAPP \
             -destination 'generic/platform=iOS' \
-            -derivedDataPath build \
-            -skipPackagePluginValidation -skipMacroValidation \
-            CODE_SIGNING_ALLOWED=NO
-          ARCHIVE=$(find build -name '*.doccarchive' | head -1)
-          echo "DocC archive: $ARCHIVE"
+            -derivedDataPath /tmp/replykit-docc \
+            -clonedSourcePackagesDirPath /tmp/replykit-docc-packages \
+            -onlyUsePackageVersionsFromResolvedFile \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee DocumentationArtifacts/docbuild.log
+          ARCHIVE=$(find /tmp/replykit-docc -name '*.doccarchive' -type d -print -quit)
           test -n "$ARCHIVE"
+          cp -R "$ARCHIVE" DocumentationArtifacts/
           echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
 
       - name: Transform for static hosting
@@ -62,7 +66,7 @@ jobs:
             --output-path site --hosting-base-path ReplyKit
           touch site/.nojekyll
 
-          # 找出實際模組目錄（優先 liveapp），DocC 不會自動給根目錄轉址。
+          # 找出實際模組目錄（優先 liveapp），DocC 不會自動產生根目錄轉址。
           MODULE=""
           for candidate in liveapp liveAPP; do
             if [ -d "site/documentation/$candidate" ]; then MODULE="$candidate"; break; fi
@@ -71,36 +75,36 @@ jobs:
             MODULE=$(find site/documentation -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -1 | xargs -r basename)
           fi
           echo "DocC module: ${MODULE:-<none>}"
-
           if [ -n "$MODULE" ]; then
             printf '<meta http-equiv="refresh" content="0; url=./documentation/%s/">' "$MODULE" > site/index.html
           fi
 
           {
             echo "### DocC 站台結構"
-            echo "- App URL: ${{ github.server_url }}/${{ github.repository }} → Pages: https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY##*/}/"
+            OWNER=$(printf '%s' "${GITHUB_REPOSITORY_OWNER:-owner}" | tr '[:upper:]' '[:lower:]')
+            REPO="${GITHUB_REPOSITORY#*/}"
+            echo "- Pages 根網址：https://${OWNER}.github.io/${REPO}/"
             echo "- module: ${MODULE:-<none>}"
             echo "- site/documentation: $( (cd site/documentation 2>/dev/null && ls) | tr '\n' ' ' )"
-            echo '```'
-            (cd site && find . -maxdepth 2 -type d | sort)
-            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Package DocC site (zip for download)
+      - name: Package documentation artifact (zip)
+        if: always()
         run: |
           set -euo pipefail
-          # DocC 會產生含 ':' 的符號檔名（如 makebounds(_:).json），
-          # actions/upload-artifact 不接受此類路徑；打包成單一 zip 上傳即可。
-          # GitHub Pages 那條用 tar，內含檔名不受影響。
-          rm -f docc-site.zip
-          (cd site && zip -qr ../docc-site.zip .)
+          # doccarchive 內含 ':' 檔名（如 makebounds(_:).json），upload-artifact 不接受，
+          # 故整包壓成單一 zip 上傳。
+          if [ -d DocumentationArtifacts ]; then
+            (cd DocumentationArtifacts && zip -qr "../documentation-${GITHUB_SHA}.zip" .)
+          fi
 
-      - name: Upload DocC site artifact
-        uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v7
+        if: always()
         with:
-          name: docc-site
-          path: docc-site.zip
-          if-no-files-found: error
+          name: documentation-${{ github.sha }}
+          path: documentation-${{ github.sha }}.zip
+          retention-days: 14
+          if-no-files-found: warn
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
@@ -108,7 +112,7 @@ jobs:
           path: site
 
   deploy:
-    needs: build
+    needs: documentation
     runs-on: ubuntu-latest
     environment:
       name: github-pages

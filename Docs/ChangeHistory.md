@@ -20,6 +20,34 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.06 21:52 記錄底層傳送診斷接口與接入待辦
+
+- 底層 checkout 新增 transportDiagnostics()，修正傳送失敗計數及舊 completion 隔離。
+- 更新功能索引與 TODO，App 套件鎖定／統一診斷 UI 仍待接入。
+- 底層新增雙模組 DocC workflow，建置與部署待實跑。
+
+
+## 2026.10.06 21:58 DocC workflow 合併並修正 shell 與路徑
+
+**類型**: 修復 · **檔案**: `.github/workflows/documentation.yml`, `.github/workflows/docc.yml`（刪除）, `Docs/development/README.md`
+
+### 問題
+
+- 新增的 `docc.yml` 與既有 `documentation.yml` 重複建置 DocC。
+- 步驟摘要使用 bash 4 專屬的 `${VAR,,}`，在 runner 的 bash 3.2 觸發 `bad substitution` 而中斷。
+- DocC 轉出的模組只有 `haishinkit`（App 的 `.docc` 未加入 Xcode 專案），卻寫死轉址到 `liveapp`，導致 Pages 404。
+
+### 修改
+
+- 刪除 `docc.yml`，改在既有 `documentation.yml` 一次完成：建置、保存 revision／Package.resolved／日誌、轉靜態站、打包 zip、部署 GitHub Pages。
+- 摘要改用 `tr` 轉小寫（相容 bash 3.2）；根目錄轉址改為動態偵測模組目錄（優先 liveapp，否則取第一個）。
+- 下載 artifact 改為 `documentation-<sha>.zip`（DocC 含 `:` 檔名，故以 zip 打包）。
+- `Docs/development/README.md` 更新說明，並註明 App 文件需把 `.docc` 目錄加入 target。
+
+**相關文件**: [development/README.md](Docs/development/README.md)
+
+---
+
 ## 2026.10.06 21:34 修正 DocC artifact 上傳（含冒號檔名）
 
 **類型**: 修復 · **檔案**: `.github/workflows/docc.yml`, `Docs/development/README.md`
