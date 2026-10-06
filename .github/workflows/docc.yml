@@ -63,11 +63,20 @@ jobs:
           # 讓 / 自動導向文件首頁。
           printf '<meta http-equiv="refresh" content="0; url=./documentation/liveapp/">' > site/index.html
 
+      - name: Package DocC site (zip for download)
+        run: |
+          set -euo pipefail
+          # DocC 會產生含 ':' 的符號檔名（如 makebounds(_:).json），
+          # actions/upload-artifact 不接受此類路徑；打包成單一 zip 上傳即可。
+          # GitHub Pages 那條用 tar，內含檔名不受影響。
+          rm -f docc-site.zip
+          (cd site && zip -qr ../docc-site.zip .)
+
       - name: Upload DocC site artifact
         uses: actions/upload-artifact@v7
         with:
           name: docc-site
-          path: site
+          path: docc-site.zip
           if-no-files-found: error
 
       - name: Upload Pages artifact

@@ -20,6 +20,22 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.06 21:34 修正 DocC artifact 上傳（含冒號檔名）
+
+**類型**: 修復 · **檔案**: `.github/workflows/docc.yml`, `Docs/development/README.md`
+
+### 問題
+
+- DocC workflow 在 `actions/upload-artifact` 失敗：DocC 會產生含 `:` 的符號檔名（如 `makebounds(_:).json`），上傳器不接受此類路徑（NTFS 不相容）。
+
+### 修改
+
+- 下載用 artifact 改為先 `zip` 整個 `site` 再上傳 `docc-site.zip`（單一檔，內含檔名不受限）；GitHub Pages 那條走 tar，不受影響。
+
+**相關文件**: [development/README.md](Docs/development/README.md)
+
+---
+
 ## 2026.10.06 21:27 檔案檢視 Markdown 排版與提示框
 
 **類型**: 優化 · **檔案**: `Scripts/changelog/assets/markdown.js`、`highlight.js`、`file.*`、`Docs/development/README.md`
