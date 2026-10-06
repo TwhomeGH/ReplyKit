@@ -20,6 +20,25 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.06 21:24 檔案檢視語法上色與 DocC CI
+
+**類型**: 優化 · **檔案**: `Scripts/changelog/assets/file.*`, `Scripts/changelog/devindex.py`, `.github/workflows/docc.yml`, `Docs/development/README.md`
+
+### 問題
+
+- 檔案檢視只有統一白字，沒有語法上色，難以快速閱讀。
+- DocC 文件需要 macOS，但專案沒有對應的 CI 產出流程。
+
+### 修改
+
+- 檔案檢視加入**零依賴**的 Swift／Markdown 語法上色：伺服器把每行代碼包進 `.code`，前端逐行掃描字串、註釋（含跨行）、數字、屬性／前置、關鍵字、型別與函式；深淺色各有色票。
+- 行號改為 `.no` 連結、行容器 `.ln`，修正原本 `#src span` 會讓巢狀 token 變區塊的問題。
+- 新增 `.github/workflows/docc.yml`：於 `xcode-27` 建 DocC、`transform-for-static-hosting`、上傳 `docc-site` artifact 並部署 GitHub Pages。
+
+**相關文件**: [development/README.md](Docs/development/README.md)
+
+---
+
 ## 2026.10.06 21:18 開發索引 API 掃描強化與 DocC 說明
 
 **類型**: 優化 · **檔案**: `Scripts/changelog/devindex.py`, `Scripts/changelog/assets/dev.*`, `Docs/development/README.md`

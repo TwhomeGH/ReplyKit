@@ -195,10 +195,11 @@ def snapshot():
 
 
 def _file_page(repo, name, line):
-    """組出檔案檢視頁（含行號與目標行）。"""
+    """組出檔案檢視頁（含行號、目標行與語法上色用的 .code 容器）。"""
     source = safe_file(repo, name).read_text(encoding="utf-8", errors="replace")
     content = "".join(
-        '<span id="L%d"><a href="#L%d">%5d</a>%s</span>' % (i, i, i, html.escape(text))
+        '<span class="ln" id="L%d"><a class="no" href="#L%d">%5d</a>'
+        '<span class="code">%s</span></span>' % (i, i, i, html.escape(text))
         for i, text in enumerate(source.splitlines(), 1)
     )
     return assets.render(

@@ -1,4 +1,4 @@
-/* 檔案檢視頁：行號、行跳轉、目標行高亮。主題與共用元件在 theme.css。 */
+/* 檔案檢視頁：行號、行跳轉、目標行高亮與語法上色。主題與共用元件在 theme.css。 */
 .appbar .spacer { flex: 1 }
 .appbar #jump { width: 92px }
 .wrap { height: calc(100vh - 53px); overflow: auto }
@@ -7,12 +7,29 @@
   font: 13px/1.55 ui-monospace, Consolas, "Courier New", monospace;
   white-space: pre; min-width: max-content;
 }
-#src span { display: block; padding: 0 16px 0 0 }
-#src span:hover { background: var(--line2) }
-#src span:target, #src span.hit { background: rgba(245, 158, 11, .24) }
-#src a {
+#src .ln { display: block; padding: 0 16px 0 0 }
+#src .ln:hover { background: var(--line2) }
+#src .ln:target, #src .ln.hit { background: rgba(245, 158, 11, .24) }
+#src .no {
   color: var(--mut); text-decoration: none; display: inline-block;
   width: 4.6em; text-align: right; margin-right: 14px; user-select: none;
 }
-#src a:hover { color: var(--accent) }
+#src .no:hover { color: var(--accent) }
+
+/* 語法上色：深色預設，淺色主題再覆寫。 */
+.tok-k { color: #c586c0 } /* 關鍵字 */
+.tok-t { color: #4ec9b0 } /* 型別 */
+.tok-f { color: #dcdcaa } /* 函式 */
+.tok-s { color: #ce9178 } /* 字串 */
+.tok-c { color: #6a9955 } /* 註釋 */
+.tok-n { color: #b5cea8 } /* 數字 */
+.tok-a { color: #d7ba7d } /* 屬性／前置 */
+:root[data-theme="light"] .tok-k { color: #af00db }
+:root[data-theme="light"] .tok-t { color: #267f99 }
+:root[data-theme="light"] .tok-f { color: #795e26 }
+:root[data-theme="light"] .tok-s { color: #a31515 }
+:root[data-theme="light"] .tok-c { color: #008000 }
+:root[data-theme="light"] .tok-n { color: #098658 }
+:root[data-theme="light"] .tok-a { color: #795e26 }
+
 @media (max-width: 640px) { .appbar #name { max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap } }

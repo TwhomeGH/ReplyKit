@@ -1,0 +1,87 @@
+name: DocC Documentation
+
+# 在 macOS runner 產生 Apple DocC 文件（Windows 無法，見 Docs/development/README.md）。
+# 產出 .doccarchive → 轉為可靜態託管的站台，上傳 artifact 並部署到 GitHub Pages。
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'liveAPP/Documentation.docc/**'
+      - 'liveAPP/**/*.swift'
+      - 'SharedCapture/**/*.swift'
+      - '.github/workflows/docc.yml'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: docc
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: xcode-27
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Verify Xcode 27 and install Metal toolchain
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          # Xcode 26 起 Metal 編譯器改為需另外下載；缺它會使 .metal 編譯失敗。
+          xcodebuild -downloadComponent metalToolchain
+
+      - name: Build DocC archive
+        run: |
+          set -euo pipefail
+          xcodebuild docbuild \
+            -scheme liveAPP \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            -skipPackagePluginValidation -skipMacroValidation \
+            CODE_SIGNING_ALLOWED=NO
+          ARCHIVE=$(find build -name '*.doccarchive' | head -1)
+          echo "DocC archive: $ARCHIVE"
+          test -n "$ARCHIVE"
+          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+
+      - name: Transform for static hosting
+        run: |
+          set -euo pipefail
+          rm -rf site
+          xcrun docc process-archive transform-for-static-hosting "$ARCHIVE" \
+            --output-path site --hosting-base-path ReplyKit
+          # 讓 / 自動導向文件首頁。
+          printf '<meta http-equiv="refresh" content="0; url=./documentation/liveapp/">' > site/index.html
+
+      - name: Upload DocC site artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: docc-site
+          path: site
+          if-no-files-found: error
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
