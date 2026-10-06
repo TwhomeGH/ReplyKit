@@ -34,7 +34,7 @@ li{{margin:6px 0}} h2{{margin-top:1.6em}} .muted{{color:#6b7280;font-size:13px}}
 <h2>回饋與社群</h2>
 <ul>
 <li><a href="https://discord.com/invite/jud4UE6wuq">Discord 群</a>：問題回報與討論</li>
-<li><a href="https://www.twitch.tv/coffeelatte0709">Twitch 直播</a>：開發／遊戲追蹤</li>
+<li><a href="https://www.twitch.tv/coffeelatte0709">Twitch 直播</a>：開發／日常／遊戲追蹤</li>
 </ul>
 <p class="muted">遇到問題時，附上執行環境與相關資訊有助於回報與排查。</p>
 </body></html>
