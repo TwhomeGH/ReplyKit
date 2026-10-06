@@ -1,0 +1,132 @@
+[
+  {
+    "id": "capture.backends",
+    "name": "雙擷取來源與工作模式",
+    "summary": "保留 ReplayKit；ScreenCaptureKit 支援推流、錄製及兩者並行。",
+    "replaykit": "既有廣播擴展",
+    "screencapturekit": "iOS 27 實機路徑",
+    "ui": "主頁 → 擷取與開始",
+    "verification": "核心測試與實機驗收分開追蹤，見 TODO。",
+    "files": [
+      "liveAPP/Capture/CaptureCoordinator.swift",
+      "SharedCapture/CaptureLease.swift"
+    ],
+    "docs": [
+      "Docs/screencapturekit-integration.md"
+    ]
+  },
+  {
+    "id": "stream.audio-bitrate",
+    "name": "AAC 推流音訊碼率",
+    "summary": "共用自動／128／96／64 kbps；下次開播套用。",
+    "replaykit": "已讀取共用偏好",
+    "screencapturekit": "已讀取共用偏好",
+    "ui": "音訊設定 → 推流音訊碼率",
+    "verification": "解析及語法已檢查；各碼率實機播放待驗證。",
+    "files": [
+      "SharedCapture/StreamAudioBitrate.swift",
+      "liveAPP/Setting.swift",
+      "ReplyKIT/SampleHandler.swift"
+    ],
+    "docs": [
+      "Docs/screencapturekit-integration.md"
+    ]
+  },
+  {
+    "id": "diagnostics.connect",
+    "name": "RTMP connect 失敗診斷",
+    "summary": "底層 Connect diagnostic 事件包含握手、chunk 組裝、AMF 與 transaction 配對。",
+    "replaykit": "onLog 保留 always 事件",
+    "screencapturekit": "onLog 放行 Connect 前綴",
+    "ui": "日誌頁；ScreenCaptureKit 主頁另有連線階段",
+    "verification": "程式接線已核對；裝置產物需查 BuildInfo。",
+    "files": [
+      "ReplyKIT/SampleHandler.swift",
+      "liveAPP/Capture/ScreenCaptureSource.swift",
+      "liveAPP/Capture/CaptureStreamTelemetry.swift"
+    ],
+    "docs": [
+      "Docs/screencapturekit-integration.md"
+    ]
+  },
+  {
+    "id": "diagnostics.audio",
+    "name": "音訊來源、混音與 RTMP 產出",
+    "summary": "來源 accepted、Mixer 產出與 RTMP 訊息產出是不同階段。",
+    "replaykit": "既有 AHealth 與 Socket 轉送；RTMP 摘要受日誌開關影響",
+    "screencapturekit": "新增 ASBD、PCM 可讀性與 Mixer 交付診斷",
+    "ui": "日誌頁；ScreenCaptureKit 主頁顯示格式與封包取樣",
+    "verification": "無聲根因仍須新實機樣本；尚未統一結構化快照。",
+    "files": [
+      "liveAPP/Capture/ScreenAudioProbe.swift",
+      "liveAPP/Capture/CaptureStreamTelemetry.swift",
+      "ReplyKIT/SampleHandler.swift"
+    ],
+    "docs": [
+      "Docs/screencapturekit-integration.md"
+    ]
+  },
+  {
+    "id": "diagnostics.transport",
+    "name": "RTMP 傳送與 chunk 可觀測性",
+    "summary": "編碼、訊息入列、socket 完成、伺服器 ACK 必須分開。",
+    "replaykit": "已有部分日誌／吞吐統計",
+    "screencapturekit": "已有部分日誌／吞吐統計",
+    "ui": "尚無統一 RTMP 明細頁",
+    "verification": "待補：成功與失敗傳送計數、結構化快照；不能以 totalBytesOut 證明伺服器收到。",
+    "files": [
+      "ReplyKIT/BitRateStrategy.swift",
+      "liveAPP/Capture/CaptureStreamTelemetry.swift"
+    ],
+    "docs": [
+      "Docs/screencapturekit-integration.md"
+    ]
+  },
+  {
+    "id": "capture.rotation",
+    "name": "ScreenCaptureKit 推流固定左轉",
+    "summary": "推流像素旋轉與原生錄影收尾方向分別控制。",
+    "replaykit": "既有 GPU 管線",
+    "screencapturekit": "已有左轉／不旋轉選項",
+    "ui": "主頁擷取設定",
+    "verification": "像素測試需 Apple 環境；實機方向與資源驗收見 TODO。",
+    "files": [
+      "liveAPP/Capture/ScreenStreamVideoRotator.swift",
+      "liveAPP/Capture/RecordingOrientationCorrector.swift"
+    ],
+    "docs": [
+      "Docs/screencapturekit-integration.md"
+    ]
+  },
+  {
+    "id": "diagnostics.video-load",
+    "name": "影片處理負載",
+    "summary": "輸入／處理 FPS、GPU 耗時與丟幀用於定位效能問題。",
+    "replaykit": "既有 VHealth 與 Socket 轉送",
+    "screencapturekit": "尚未完整對齊 ReplayKit 的負載指標",
+    "ui": "現有日誌與健康事件；統一診斷頁待補",
+    "verification": "需區分 App 與廣播擴展的程序用量。",
+    "files": [
+      "ReplyKIT/SampleHandler.swift",
+      "liveAPP/Capture/ScreenCaptureSource.swift"
+    ],
+    "docs": [
+      "Docs/av-pipeline.md"
+    ]
+  },
+  {
+    "id": "build.identity",
+    "name": "建置產物版本資訊",
+    "summary": "辨認實際 App 與套件 revision；不同於本機 checkout。",
+    "replaykit": "共用建置來源",
+    "screencapturekit": "共用建置來源",
+    "ui": "關於頁、啟動日誌",
+    "verification": "使用者已確認實機啟動建置資訊有效。",
+    "files": [
+      "liveAPP/BuildInformation.swift"
+    ],
+    "docs": [
+      "Docs/version.md"
+    ]
+  }
+]

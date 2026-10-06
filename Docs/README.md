@@ -5,6 +5,10 @@
 - 新增**修復紀錄** → 執行 `python Scripts/change_log.py`（或雙擊 `Scripts/change_log.cmd`）開本機網頁 GUI，或直接寫進 [ChangeHistory.md](ChangeHistory.md)
 - 新增**主題文件** → 在下面對應分類加一行連結
 
+## 開發索引入口
+
+執行 `Scripts/change_log.cmd`，點「功能／API／近期改動索引」。[使用方式與維護規則](development/README.md)涵蓋功能接入狀態、Git 版本與 DocC 文件。
+
 ## 變更與開發紀錄
 
 | 文件 | 說明 |

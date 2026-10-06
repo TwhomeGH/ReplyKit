@@ -20,6 +20,37 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.06 18:48 變更歷史工具拆模組並重做開發索引與深色模式
+
+**類型**: 重構 · **檔案**: `Scripts/change_log.py`, `Scripts/dev_index.py`, `Scripts/changelog/*`, `Scripts/changelog/assets/*`
+
+### 問題
+
+- `change_log.py` 把解析、CLI、HTTP 與整頁 HTML/CSS/JS 全塞在一個檔（600+ 行），隨功能增加愈難維護、可讀性差。
+- 開發索引沒有深色模式；API 宣告與檔案檢視頁顯示生硬（純 `<pre>`、無行號跳轉/高亮、無導覽）。
+
+### 修改
+
+- 拆成 `Scripts/changelog/` 套件：storage／devindex／server／cli／assets；`change_log.py`、`dev_index.py` 改為相容入口薄殼。
+- 網頁資產移出 Python 字串，放到 `changelog/assets/`（`theme.css` 加上 index／dev／file 三組）；`assets.py` 提供讀取與 `{{key}}` 模板替換。
+- 深色模式：共用 `theme.css` 色票 + `theme.js`（跟隨系統偏好、記在 localStorage）。
+- 開發索引：API 註釋以 markdown 呈現、來源篩選、功能卡片與鎖定套件版面重整。
+- 檔案檢視：行號就地跳轉與高亮、行號輸入、複製路徑、返回保留瀏覽位置。
+- 每個模組補 docstring／註解；更新 `Docs/development/README.md` 與測試（新增 `/assets` 服務檢查）。
+
+**相關文件**: [development/README.md](Docs/development/README.md)
+
+---
+
+## 2026.10.06 13:31 新增開發功能與 API 索引
+
+- 原有變更工具新增功能接入、API 宣告、文件全文搜尋與近期 Git 改動入口。
+- 加入功能清單、鎖定套件與 checkout 版本顯示、唯讀原始碼行號跳轉及 CI 驗證。
+- 提供初始 DocC 目錄與手動建置 workflow，Apple SDK 文件建置待實跑。
+
+**相關文件**：[開發索引](development/README.md)
+
+
 ## 2026.10.06 03:07 加入推流 AAC 碼率選項
 
 - 音訊設定提供自動、128、96、64 kbps；預設自動，下次開播生效。

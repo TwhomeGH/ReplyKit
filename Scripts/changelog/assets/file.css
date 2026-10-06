@@ -1,0 +1,18 @@
+/* 檔案檢視頁：行號、行跳轉、目標行高亮。主題與共用元件在 theme.css。 */
+.appbar .spacer { flex: 1 }
+.appbar #jump { width: 92px }
+.wrap { height: calc(100vh - 53px); overflow: auto }
+#src {
+  margin: 0; padding: 6px 0 40px;
+  font: 13px/1.55 ui-monospace, Consolas, "Courier New", monospace;
+  white-space: pre; min-width: max-content;
+}
+#src span { display: block; padding: 0 16px 0 0 }
+#src span:hover { background: var(--line2) }
+#src span:target, #src span.hit { background: rgba(245, 158, 11, .24) }
+#src a {
+  color: var(--mut); text-decoration: none; display: inline-block;
+  width: 4.6em; text-align: right; margin-right: 14px; user-select: none;
+}
+#src a:hover { color: var(--accent) }
+@media (max-width: 640px) { .appbar #name { max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap } }
