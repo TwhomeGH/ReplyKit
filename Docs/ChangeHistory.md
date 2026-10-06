@@ -27,6 +27,25 @@
 - 底層新增雙模組 DocC workflow，建置與部署待實跑。
 
 
+## 2026.10.07 00:20 修正 HaishinKit fork 重複 DocC catalog 並更新 pin
+
+**類型**: 修復 · **檔案**: `Package.resolved`（root 與 xcodeproj）
+
+### 問題
+
+- fork 的 `HaishinKit`／`RTMPHaishinKit` 各自有 `Docs.docc` 與 `Documentation.docc` 兩個 catalog，Xcode 27 報 `Each target may contain only a single documentation catalog`，使 `docbuild` 失敗（BUILD DOCUMENTATION FAILED）。
+
+### 修改
+
+- fork（`HaishinKitFixSwfit`，commit `f04e19e2`）：保留上游內容較完整的 `Docs.docc`，把新診斷的 Topics／`VideoPipelineDiagnostics.md` 併入，刪除 `Documentation.docc`（兩個 target）。
+- 本 repo：`Package.resolved` 兩份 pin 更新至 `f04e19e2`。
+
+### 驗證
+
+- 需 CI 確認 `docbuild` 成功、站台含 `liveAPP` 等模組且頁面正常渲染。
+
+---
+
 ## 2026.10.06 23:55 修正 DocC 子路徑空白頁並加入回饋連結
 
 **類型**: 修復 · **檔案**: `.github/workflows/documentation.yml`, `Scripts/docc_postprocess.py`
