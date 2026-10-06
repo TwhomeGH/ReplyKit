@@ -27,6 +27,21 @@
 - 底層新增雙模組 DocC workflow，建置與部署待實跑。
 
 
+## 2026.10.06 23:26 DocC 每模組輸出與根目錄首頁
+
+**類型**: 修復 · **檔案**: `.github/workflows/documentation.yml`
+
+### 問題
+
+- `xcodebuild docbuild` 會為每個有 catalog 的模組各產生一個 `.doccarchive`；先前只取 `find … | head -1` 的第一個（通常是 HaishinKit），導致站台永遠只有 `haishinkit`，即使 App 的 catalog 已被建置。
+
+### 修改
+
+- 改為列出**所有** `.doccarchive`，逐一 `docc process-archive transform-for-static-hosting` 到 `site/<Module>`（`--hosting-base-path <repo>/<Module>`）。
+- 產生根目錄 `index.html` 列出各模組連結（仿 HaishinKit 的 docc home 設計），不再寫死單一轉址。
+
+---
+
 ## 2026.10.06 23:11 補上未版控的 DocC catalog（App 文件來源）
 
 **類型**: 修復 · **檔案**: `liveAPP/Documentation.docc/liveAPP.md`
