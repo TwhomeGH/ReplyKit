@@ -12,10 +12,16 @@
   <strong id="name">{{title}}</strong>
   <span class="muted">{{repo}}</span>
   <span class="spacer"></span>
+  <button id="mode" hidden>原始碼</button>
   <input id="jump" type="number" min="1" placeholder="行號" aria-label="跳到行號">
   <button id="copy" title="複製路徑">複製路徑</button>
   <button id="theme" aria-label="切換深淺色" title="切換深/淺色">🌙</button>
 </header>
-<div class="wrap"><pre id="src" data-repo="{{repo}}" data-path="{{path}}" data-line="{{line}}">{{content}}</pre></div>
+<div class="wrap">
+  <pre id="src" data-repo="{{repo}}" data-path="{{path}}" data-line="{{line}}">{{content}}</pre>
+  <article id="rendered" class="rendered" hidden></article>
+</div>
+<script src="/assets/highlight.js"></script>
+<script src="/assets/markdown.js"></script>
 <script src="/assets/file.js"></script>
 </body></html>

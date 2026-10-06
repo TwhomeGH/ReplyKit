@@ -20,7 +20,7 @@
 | `changelog/cli.py` | 命令列（add／list／show／serve） |
 | `changelog/assets.py` + `changelog/assets/` | 網頁資產載入與檔案 |
 
-網頁樣式與行為全在 `Scripts/changelog/assets/`：`theme.css`（色票與共用元件，含深／淺色）、`index.*`（變更歷史）、`dev.*`（開發索引）、`file.*`（檔案檢視）。改版面或配色只需動這些資產，不必改 Python。各頁右上角可切換深／淺色（存在 localStorage，並跟隨系統偏好）。開發索引的 API 宣告註釋以 markdown 呈現，檔案檢視支援行號就地跳轉與高亮，不需重載。
+網頁樣式與行為全在 `Scripts/changelog/assets/`：`theme.css`（色票與共用元件，含深／淺色）、`index.*`（變更歷史）、`dev.*`（開發索引）、`file.*`（檔案檢視）、`highlight.js`（語法上色）、`markdown.js`（Markdown 渲染）。改版面或配色只需動這些資產，不必改 Python。各頁右上角可切換深／淺色（存在 localStorage，並跟隨系統偏好）。開發索引的 API 宣告註釋以 markdown 呈現，檔案檢視支援行號就地跳轉與高亮，不需重載。開啟 `.md` 檔時**預設以排版檢視呈現**（標題、清單、表格、程式碼區塊與 `> [!TIP]` 之類提示框），可一鍵切回原始碼；文件內的相對連結會改寫為站內檔案檢視連結。
 
 ## 各資料的責任
 

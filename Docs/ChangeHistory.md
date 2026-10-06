@@ -20,6 +20,25 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.06 21:27 檔案檢視 Markdown 排版與提示框
+
+**類型**: 優化 · **檔案**: `Scripts/changelog/assets/markdown.js`、`highlight.js`、`file.*`、`Docs/development/README.md`
+
+### 問題
+
+- 開啟 `.md` 檔只能看原始文字，沒有排版；也沒有 `> [!TIP]` 之類提示框。
+
+### 修改
+
+- 新增零依賴 Markdown 渲染（`markdown.js`）：標題、巢狀清單、表格、程式碼區塊（沿用語法上色）、引言，以及 GitHub 提示框 `> [!NOTE]／[!TIP]／[!IMPORTANT]／[!WARNING]／[!CAUTION]`。
+- 抽出共用語法上色到 `highlight.js`（來源逐行與程式碼區塊共用）。
+- 檔案檢視開啟 `.md` 時**預設排版**，可一鍵切回原始碼；文件內相對連結改寫為站內檔案檢視連結。
+- `Docs/development/README.md` 更新資產與檢視說明。
+
+**相關文件**: [development/README.md](Docs/development/README.md)
+
+---
+
 ## 2026.10.06 21:24 檔案檢視語法上色與 DocC CI
 
 **類型**: 優化 · **檔案**: `Scripts/changelog/assets/file.*`, `Scripts/changelog/devindex.py`, `.github/workflows/docc.yml`, `Docs/development/README.md`

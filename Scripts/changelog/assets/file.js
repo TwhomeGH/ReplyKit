@@ -1,74 +1,16 @@
-/* 檔案檢視：行號、行跳轉、目標行高亮，以及 Swift／Markdown 語法上色（純前端、零依賴）。 */
+/* 檔案檢視：行號、行跳轉、目標行高亮；Swift 上色；Markdown 預設排版檢視（可切回原始碼）。 */
 (function () {
   const src = document.getElementById("src");
   if (!src) return;
-
-  const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
-  const span = (cls, text) => (cls ? `<span class="tok-${cls}">${esc(text)}</span>` : esc(text));
-
-  const SWIFT_KEYWORDS = new Set(
-    ("func var let class struct enum protocol extension init deinit subscript typealias associatedtype " +
-      "import if else guard switch case default for while repeat return break continue throw throws rethrow " +
-      "try catch defer do in where as is some any await async actor static self Self super nil true false " +
-      "public private internal fileprivate open final override mutating nonmutating lazy weak unowned " +
-      "indirect convenience required dynamic inout").split(/\s+/));
-
-  /* Swift 逐字掃描：處理字串、註釋（含跨行）、數字、屬性/前置、關鍵字、型別與函式呼叫。 */
-  function highlightSwift(line, state) {
-    let out = "", i = 0;
-    const n = line.length;
-    while (i < n) {
-      if (state.block) {
-        const end = line.indexOf("*/", i);
-        if (end === -1) { out += span("c", line.slice(i)); i = n; break; }
-        out += span("c", line.slice(i, end + 2)); i = end + 2; state.block = false; continue;
-      }
-      const c = line[i];
-      if (c === "/" && line[i + 1] === "/") { out += span("c", line.slice(i)); break; }
-      if (c === "/" && line[i + 1] === "*") {
-        const end = line.indexOf("*/", i + 2);
-        if (end === -1) { out += span("c", line.slice(i)); state.block = true; break; }
-        out += span("c", line.slice(i, end + 2)); i = end + 2; continue;
-      }
-      if (c === '"') {
-        let j = i + 1;
-        while (j < n) { if (line[j] === "\\") { j += 2; continue; } if (line[j] === '"') { j++; break; } j++; }
-        out += span("s", line.slice(i, j)); i = j; continue;
-      }
-      if (c === "@" || c === "#") {
-        const m = line.slice(i).match(/^[@#][A-Za-z_]\w*/);
-        if (m) { out += span("a", m[0]); i += m[0].length; continue; }
-      }
-      if (/[0-9]/.test(c) && !/[A-Za-z0-9_]/.test(line[i - 1] || "")) {
-        const m = line.slice(i).match(/^0[xX][0-9A-Fa-f_]+|^0[bB][01_]+|^\d[\d_.eExX]*/);
-        out += span("n", m[0]); i += m[0].length; continue;
-      }
-      if (/[A-Za-z_]/.test(c)) {
-        const m = line.slice(i).match(/^[A-Za-z_]\w*/)[0];
-        const isCall = /^\s*\(/.test(line.slice(i + m.length));
-        const cls = SWIFT_KEYWORDS.has(m) ? "k" : (/^[A-Z]/.test(m) ? "t" : (isCall ? "f" : ""));
-        out += span(cls, m); i += m.length; continue;
-      }
-      const m = line.slice(i).match(/^[^\sA-Za-z0-9_@#"/]+|\s+/);
-      if (m) { out += esc(m[0]); i += m[0].length; } else { out += esc(c); i += 1; }
-    }
-    return out;
-  }
-
-  /* Markdown 輕量上色：標題、引言、行內程式碼與連結。 */
-  function highlightMarkdown(line) {
-    if (/^\s{0,3}#{1,6}\s/.test(line)) return span("k", line);
-    if (/^\s{0,3}>\s?/.test(line)) return span("c", line);
-    return esc(line)
-      .replace(/`([^`]+)`/g, '<span class="tok-s">`$1`</span>')
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<span class="tok-t">$1</span>($2)');
-  }
-
+  const rendered = document.getElementById("rendered");
+  const modeBtn = document.getElementById("mode");
+  const jump = document.getElementById("jump");
   const isMarkdown = /\.(md|markdown)$/i.test(src.dataset.path || "");
+
+  // 1) 原始碼逐行上色（Markdown 也用於「原始碼」模式）。
   const state = { block: false };
   src.querySelectorAll(".code").forEach((el) => {
-    const text = el.textContent;
-    el.innerHTML = isMarkdown ? highlightMarkdown(text) : highlightSwift(text, state);
+    el.innerHTML = isMarkdown ? HL.markdownLine(el.textContent) : HL.swift(el.textContent, state);
   });
 
   const lines = src.querySelectorAll(".ln");
@@ -91,14 +33,12 @@
     highlight(line);
   }
 
-  // 行號連結改為就地捲動（不整頁重載）。
   src.addEventListener("click", (e) => {
     const a = e.target.closest ? e.target.closest("a.no") : null;
     const href = a && a.getAttribute("href");
     if (href && href.indexOf("#L") === 0) { e.preventDefault(); go(parseInt(href.slice(2), 10), true); }
   });
 
-  const jump = document.getElementById("jump");
   if (jump) {
     jump.max = total;
     jump.addEventListener("keydown", (e) => {
@@ -113,11 +53,49 @@
     setTimeout(() => { e.currentTarget.textContent = "複製路徑"; }, 1500);
   });
 
-  // 「返回索引」盡量回到上一個頁面（保留瀏覽位置）。
   document.getElementById("back")?.addEventListener("click", (e) => {
     if (history.length > 1) { e.preventDefault(); history.back(); }
   });
 
-  window.addEventListener("hashchange", () => highlight(fromHash()));
-  highlight(fromHash());
+  window.addEventListener("hashchange", () => { if (!src.hidden) highlight(fromHash()); });
+
+  // 2) Markdown：排版檢視（預設）＋可切回原始碼。
+  function resolveHref(href) {
+    if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith("#") || href.startsWith("/")) return href;
+    const repo = src.dataset.repo || "app";
+    const [clean, ...rest] = href.split("#");
+    const base = (src.dataset.path || "").split("/").slice(0, -1);
+    for (const seg of clean.split("/")) {
+      if (seg === "" || seg === ".") continue;
+      if (seg === "..") { base.pop(); continue; }
+      base.push(seg);
+    }
+    const anchor = rest.length ? "#" + rest.join("#") : "";
+    return "/development/file?" + new URLSearchParams({ repo, path: base.join("/") }).toString() + anchor;
+  }
+
+  function setMode(mode) {
+    const renderedMode = mode === "rendered";
+    src.hidden = renderedMode;
+    if (rendered) rendered.hidden = !renderedMode;
+    if (jump) jump.hidden = renderedMode;
+    if (modeBtn) modeBtn.textContent = renderedMode ? "原始碼" : "排版";
+  }
+
+  if (isMarkdown && rendered && modeBtn) {
+    const raw = Array.from(src.querySelectorAll(".code")).map((el) => el.textContent).join("\n");
+    rendered.innerHTML = window.renderMarkdown(raw, resolveHref);
+    // 文件內的 #L 行號連結：切回原始碼模式再跳行（就地，不重載）。
+    rendered.addEventListener("click", (e) => {
+      const a = e.target.closest ? e.target.closest("a") : null;
+      const href = a && a.getAttribute("href");
+      if (href && href.startsWith("#L")) { e.preventDefault(); setMode("source"); go(parseInt(href.slice(2), 10), true); }
+    });
+    modeBtn.hidden = false;
+    let mode = "rendered";
+    setMode(mode);
+    modeBtn.addEventListener("click", () => { mode = mode === "rendered" ? "source" : "rendered"; setMode(mode); });
+  } else {
+    highlight(fromHash());
+  }
 })();
