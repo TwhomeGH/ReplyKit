@@ -77,7 +77,8 @@ function render() {
         `</dl><h3>程式與文件</h3><div class="files">${links(r.files)}${links(r.docs)}</div></article>`;
     } else if (tab === "symbols") {
       out += `<article class="card"><h2><a href="${esc(r.url)}">${esc(r.name)}</a></h2>` +
-        `<div class="meta"><span class="kind">${esc(kindOf(r.name))}</span>${esc(r.repo)} · ${esc(r.file)}:${r.line}</div>` +
+        `<div class="meta"><span class="kind">${esc(r.kind || kindOf(r.name))}</span>${esc(r.repo)} · ${esc(r.file)}:${r.line}</div>` +
+        (r.signature ? `<pre class="sig">${esc(r.signature)}</pre>` : "") +
         `<div class="doc">${r.comment ? mdDoc(r.comment) : '<p class="muted">尚無相鄰 /// 文件註釋</p>'}</div></article>`;
     } else if (tab === "documents") {
       out += `<article class="card"><h2><a href="${esc(r.url)}">${esc(r.name)}</a></h2>` +

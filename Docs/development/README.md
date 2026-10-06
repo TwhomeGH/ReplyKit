@@ -47,3 +47,22 @@
 macOS Xcode 使用 Product → Build Documentation。另提供手動觸發的 DocC documentation workflow，使用專案既有 xcode-27 runner，產出 doccarchive、App revision、Package.resolved 與建置日誌，不自動發布網站。
 
 目前只有 App 的初始文件目錄。HaishinKit 自己的 DocC、完整跨模組連結與詳細 API 文件覆蓋仍需後續補齊；本次未執行 Apple SDK docbuild，workflow 的首次成功產物仍待確認。Windows 的宣告搜尋不需要 Xcode。
+
+## 文件（DocC）
+
+這裡的「API 宣告」是**文字掃描**（收錄 func／型別／存取修飾的屬性／init，含多行簽名與相鄰 `///` 註釋），目的是在本機快速定位，不是 Swift AST，也不含呼叫關係。
+
+真正的 Apple DocC（`.doccarchive`）**無法在 Windows 產生**：
+
+- `docc` 工具鏈官方只隨 macOS 與 Linux 的 Swift 發佈（Windows 需自行從原始碼編譯）。
+- 更關鍵的是符號圖（symbol graph）需要 Swift 編譯器**型別檢查**原始碼，而本 App 依賴 `AVFoundation`／`UIKit`／`ScreenCaptureKit` 等 **Apple 專屬框架**，Windows 的 Swift 沒有這些 SDK；`.xcodeproj` 也只能在 macOS／Xcode 建置。
+
+要在 Mac 或 CI（macOS runner）產生：
+
+```
+xcodebuild docbuild -scheme liveAPP -destination 'generic/platform=iOS' \
+  -derivedDataPath build
+# 產物：build/Build/Products/Debug-iphoneos/liveAPP.doccarchive
+```
+
+`.doccarchive` 是用 `swift-docc-render` 做前端渲染的靜態站，直接開 `index.html` 即可。可在 CI 加一個 job 產出並發佈，再由開發索引連過去。純 Swift、不依賴 Apple 框架的 package（例如可跨平台的部分）才可能在 Windows 用 `swift package generate-documentation` 產出。

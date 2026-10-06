@@ -20,6 +20,25 @@
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
 
+## 2026.10.06 21:18 開發索引 API 掃描強化與 DocC 說明
+
+**類型**: 優化 · **檔案**: `Scripts/changelog/devindex.py`, `Scripts/changelog/assets/dev.*`, `Docs/development/README.md`
+
+### 問題
+
+- API 宣告只收單行、只有 func／型別；屬性、init、多行簽名都漏掉，且名稱顯示為整行。
+- 文件沒說清楚為何本機無法產生 DocC。
+
+### 修改
+
+- `scan_symbols` 改為：收錄 func／型別／extension／init／subscript 與「具存取修飾」的 var/let，附種類、名稱、多行簽名，註釋允許 `@屬性`／`#條件` 穿插。
+- 開發索引卡片顯示種類標籤與等寬簽名（新增 `.sig` 樣式）。
+- `Docs/development/README.md` 新增「文件（DocC）」段落：說明 DocC 無法在 Windows 產生（Apple SDK／.xcodeproj），以及 macOS/CI 以 `xcodebuild docbuild` 產出。
+
+**相關文件**: [development/README.md](Docs/development/README.md)
+
+---
+
 ## 2026.10.06 18:48 變更歷史工具拆模組並重做開發索引與深色模式
 
 **類型**: 重構 · **檔案**: `Scripts/change_log.py`, `Scripts/dev_index.py`, `Scripts/changelog/*`, `Scripts/changelog/assets/*`

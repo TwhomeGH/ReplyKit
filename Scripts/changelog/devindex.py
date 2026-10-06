@@ -80,10 +80,92 @@ def validate():
     return catalog
 
 
-# 宣告行：修飾詞 + func/struct/class/enum/protocol/actor/extension 等。
+# 宣告掃描用的詞彙（純文字比對，非 Swift AST）。
+_ACCESS = r"(?:public|private|internal|fileprivate|open)"
+_MODIFIERS = (r"(?:public|private|internal|fileprivate|open|final|static|class|"
+              r"nonisolated|override|mutating|convenience|required|dynamic|lazy|weak|unowned|indirect)")
+
+# 函式／型別／擴充等一定會收錄。
 _DECL_RE = re.compile(
-    r"^\s*(?:(?:public|private|internal|fileprivate|open|final|static|class|nonisolated|override|mutating)\s+)*"
-    r"(?:func|struct|class|enum|protocol|actor|extension|typealias)\s+")
+    r"^\s*(?:" + _MODIFIERS + r"\s+)*(?:" + _ACCESS + r"\s+)?"
+    r"(func|struct|class|enum|protocol|actor|extension|typealias|init|subscript)\b")
+# 屬性只在本行具存取修飾詞時收錄，避免把函式內的區域 var/let 當成 API。
+_PROP_RE = re.compile(
+    r"^\s*(?:" + _MODIFIERS + r"\s+)*" + _ACCESS + r"\s*"
+    r"(?:\([^)]*\)\s*)?"  # 例如 private(set)
+    r"(var|let)\b")
+_NAME_RE = re.compile(
+    r"\b(?:func|struct|class|enum|protocol|actor|extension|typealias|var|let)\s+"
+    r"([A-Za-z_][A-Za-z0-9_.]*)")
+_KIND_OF_KEYWORD = {
+    "func": "func", "struct": "struct", "class": "class", "enum": "enum",
+    "protocol": "protocol", "actor": "actor", "extension": "extension",
+    "typealias": "typealias", "init": "init", "subscript": "subscript",
+    "var": "property", "let": "property",
+}
+
+
+def _decl_keyword(line):
+    """行首是否為宣告；回傳關鍵字（func／struct／var…）或 None。"""
+    match = _DECL_RE.match(line) or _PROP_RE.match(line)
+    return match.group(1) if match else None
+
+
+def _collect_signature(lines, start):
+    """從 start 行往下收集到括號收合，回傳 (簽名, 下一行索引)，用於呈現多行簽名。"""
+    parts = []
+    depth = 0
+    for index in range(start, min(start + 30, len(lines))):
+        line = lines[index]
+        parts.append(line.strip())
+        depth += line.count("(") - line.count(")") + line.count("[") - line.count("]")
+        if depth <= 0:
+            return " ".join(part for part in parts if part), index + 1
+    return " ".join(part for part in parts if part), min(start + 30, len(lines))
+
+
+def _symbol_name(keyword, signature):
+    """從簽名取出可讀名稱（init／subscript 直接回關鍵字）。"""
+    if keyword in ("init", "subscript"):
+        return keyword
+    match = _NAME_RE.search(signature)
+    return match.group(1) if match else ""
+
+
+def scan_symbols(text, repo, name):
+    """掃描相鄰 /// 文件註釋與宣告，回傳符號清單（含種類、名稱、多行簽名）。
+
+    註釋與宣告之間允許屬性（@…）與條件編譯（#…）行；其餘非空行視為中斷註釋。
+    """
+    lines = text.splitlines()
+    symbols = []
+    doc = []
+    index = 0
+    while index < len(lines):
+        stripped = lines[index].strip()
+        if stripped.startswith("///"):
+            doc.append(stripped[3:].strip())
+            index += 1
+            continue
+        keyword = _decl_keyword(stripped)
+        if keyword:
+            signature, following = _collect_signature(lines, index)
+            body = signature.split("{", 1)[0].strip()
+            if keyword in ("var", "let", "typealias"):
+                body = body.split("=", 1)[0].strip()
+            symbols.append({
+                "name": _symbol_name(keyword, body) or body, "signature": body,
+                "kind": _KIND_OF_KEYWORD[keyword], "repo": repo, "file": name,
+                "line": index + 1, "comment": "\n".join(doc).strip(),
+                "url": link(repo, name, index + 1),
+            })
+            doc = []
+            index = following
+            continue
+        if stripped and not stripped.startswith(("@", "#", "//")):
+            doc = []
+        index += 1
+    return symbols
 
 
 def snapshot():
@@ -105,17 +187,7 @@ def snapshot():
                 data["documents"].append({"name": name, "repo": repo, "url": link(repo, name),
                                           "text": text[:100000]})
                 continue
-            comments = []
-            for number, line in enumerate(text.splitlines(), 1):
-                if line.strip().startswith("///"):
-                    comments.append(line.strip()[3:].strip())
-                    continue
-                # 文字掃描提供定位，不冒充 Swift AST 或完整呼叫關係。
-                if _DECL_RE.match(line):
-                    data["symbols"].append({"name": line.strip(), "repo": repo, "file": name,
-                        "line": number, "comment": " ".join(comments), "url": link(repo, name, number)})
-                if line.strip():
-                    comments = []
+            data["symbols"].extend(scan_symbols(text, repo, name))
     lock = json.loads((ROOT / "Package.resolved").read_text(encoding="utf-8"))
     data["lockedPackages"] = [{"identity": p["identity"], "revision": p["state"].get("revision")}
                               for p in lock["pins"]]
