@@ -112,7 +112,8 @@
 4. **`AppDelegate` 不存在問題**：因為專案使用 SwiftUI `@main` App 結構，沒有 `AppDelegate`；所有初始化在 `liveAPPApp.init()` 中完成。
 
 **運作流程**:
-```
+
+```swift
 App 進背景 → beginSocketBackgroundWindow() 取得短背景窗口
   → scheduleSocketRefresh() 排程 BGAppRefreshTask（最早約 15 分鐘，實際由系統決定）
   → 若系統執行 handler
@@ -124,7 +125,6 @@ App 回前景 → cancelAll() + endSocketBackgroundWindow()
 ```
 
 **2026-08 補充**：正式接上 `beginSocketBackgroundWindow()`（此前 `.background` 只排程、未啟動短窗口）；Info.plist 補上 `fetch` background mode（BGAppRefreshTask 所需，`processing` 為舊型別殘留）；`scheduleSocketRefresh()` 於 PiP 活躍時跳過排程、`stopPiP()` 在背景狀態下補排程；handler 改在背景佇列執行。詳見 pip-performance-improvements.md Section 41。
-
 
 ---
 
@@ -143,7 +143,7 @@ TabView（`UIKitAdaptableTabView` → `UITab.setImage:` → diffable data source
 **必須在 main**，便以 `_dispatch_sync_f_slow` **同步**跳回 main 而卡住（鎖仍握著）。同一時間主執行緒在 runloop
 observer（`NSRunLoop.flushObservers` → `UpdateGroup.begin()`）要拿**同一把** movable lock。兩者互等：
 
-```
+```swift
 thread #7(背景): 握著 movable lock ──等──> main (applySnapshot 同步)
 main           : 等 movable lock   ──等──> thread #7
                     ↑ 循環等待 = 死鎖 → scene-update watchdog 0x8BADF00D 砍掉 App

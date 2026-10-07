@@ -14,3 +14,5 @@ jobs:
           fetch-depth: 50
       - name: Validate feature links and index behavior
         run: python3 Scripts/test_dev_index.py
+      - name: Check Markdown blank lines (MD012)
+        run: git ls-files -z -- "*.md" | xargs -0 npx --yes markdownlint-cli@0.44.0 --config md012.markdownlint.json
