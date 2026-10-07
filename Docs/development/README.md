@@ -68,3 +68,7 @@ xcodebuild docbuild -scheme liveAPP -destination 'generic/platform=iOS' \
 `.doccarchive` 是用 `swift-docc-render` 做前端渲染的靜態站，直接開 `index.html` 即可。可在 CI 加一個 job 產出並發佈，再由開發索引連過去。純 Swift、不依賴 Apple 框架的 package（例如可跨平台的部分）才可能在 Windows 用 `swift package generate-documentation` 產出。
 
 本專案已提供 `.github/workflows/documentation.yml`：在 `xcode-27` runner 建置 DocC、`docc process-archive transform-for-static-hosting` 轉成靜態站、打包 `documentation-<sha>.zip`（docarchive＋日誌＋revision；DocC 會產生含 `:` 的符號檔名，故以 zip 打包），並部署到 GitHub Pages。要啟用線上瀏覽，請到 repo **Settings → Pages → Source 選「GitHub Actions」**；之後網址為 `https://<owner>.github.io/ReplyKit/`，根目錄會自動轉址到實際模組目錄。
+
+## 主頁維護入口
+
+主頁第一批已按責任拆檔，請先看 [主頁模組說明](HOME_MODULES.md)，再定位排版、RTMP 表單或廣播操作。

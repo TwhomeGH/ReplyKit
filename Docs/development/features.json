@@ -128,5 +128,23 @@
     "docs": [
       "Docs/version.md"
     ]
+  },
+  {
+    "id": "ui.home-modules",
+    "name": "主頁模組入口",
+    "summary": "第一批保持行為拆檔，主頁狀態與卡片組合分開。",
+    "replaykit": "沿用原廣播按鈕與控制事件",
+    "screencapturekit": "沿用共享 CaptureCoordinator",
+    "ui": "主頁及頂層分頁",
+    "verification": "搬移內容比對與語法檢查通過；CI／實機驗收待執行。",
+    "files": [
+      "liveAPP/ContentView.swift",
+      "liveAPP/Home/HomeView.swift",
+      "liveAPP/Home/HomeView+Cards.swift",
+      "liveAPP/Home/StreamConfigurationForm.swift"
+    ],
+    "docs": [
+      "Docs/development/HOME_MODULES.md"
+    ]
   }
 ]

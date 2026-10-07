@@ -79,7 +79,13 @@ class StreamConfigManager: ObservableObject {
     private let configsKey = "streamConfigs"
     private let activeKey = "activeStreamConfigID"
 
-    init() {
+    private let storage: UserDefaults
+    private let endpointStorage: UserDefaults
+
+    /// 注入儲存區供測試隔離；正式環境仍沿用原配置庫與共享端點偏好。
+    init(storage: UserDefaults = .standard, endpointStorage: UserDefaults? = userDefaults) {
+        self.storage = storage
+        self.endpointStorage = endpointStorage ?? .standard
         load()
     }
 
@@ -107,6 +113,17 @@ class StreamConfigManager: ObservableObject {
         }
     }
 
+    /// 明確保存草稿並套用正式端點；選取或離開編輯畫面不呼叫此入口。
+    func saveAndActivate(_ config: StreamConfig) {
+        if let index = configs.firstIndex(where: { $0.id == config.id }) {
+            configs[index] = config
+        } else { configs.append(config) }
+        activeConfigID = config.id
+        save()
+        endpointStorage.set(config.rtmpURL, forKey: "rtmpURL")
+        endpointStorage.set(config.streamKey, forKey: "rtmpKey")
+    }
+
     func setActiveConfig(_ config: StreamConfig) {
         activeConfigID = config.id
         save()
@@ -119,17 +136,17 @@ class StreamConfigManager: ObservableObject {
     // MARK: - Persistence
     private func save() {
         if let data = try? JSONEncoder().encode(configs) {
-            UserDefaults.standard.set(data, forKey: configsKey)
+            storage.set(data, forKey: configsKey)
         }
-        UserDefaults.standard.set(activeConfigID?.uuidString, forKey: activeKey)
+        storage.set(activeConfigID?.uuidString, forKey: activeKey)
     }
 
     private func load() {
-        if let data = UserDefaults.standard.data(forKey: configsKey),
+        if let data = storage.data(forKey: configsKey),
            let decoded = try? JSONDecoder().decode([StreamConfig].self, from: data) {
             configs = decoded
         }
-        if let idString = UserDefaults.standard.string(forKey: activeKey),
+        if let idString = storage.string(forKey: activeKey),
            let uuid = UUID(uuidString: idString) {
             activeConfigID = uuid
         }
