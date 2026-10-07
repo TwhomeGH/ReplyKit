@@ -41,6 +41,7 @@ struct StreamDiagnosticsSections: View {
                         detail("編碼器交付影格累計", value.encodedVideoFrames.map(String.init))
                         detail("RTMP 影片入列事件累計", value.videoMessagesQueued.map(String.init))
                         detail("Mixer PCM 實測", value.mixerAudio)
+                        detail("混音輸出取樣率", value.mixerAudioSampleRate.map { String(format: "%.0f Hz", $0) })
                         detail("音訊編碼設定", value.audioSettings)
                         detail("實際音訊編碼輸出格式", nil)
                         detail("連線世代", value.generation.map(String.init))

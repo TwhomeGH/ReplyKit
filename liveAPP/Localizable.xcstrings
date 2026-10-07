@@ -1,6 +1,293 @@
 {
   "sourceLanguage" : "zh-Hant",
   "strings" : {
+  "encoding.codec": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "編碼格式"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Video codec"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "映像コーデック"
+        }
+      }
+    }
+  },
+  "encoding.sckH264": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ScreenCaptureKit 推流使用 H.264；Profile 設定與 ReplayKit 共用。"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ScreenCaptureKit streaming uses H.264 and shares the Profile setting with ReplayKit."
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ScreenCaptureKit の配信は H.264 を使用し、Profile 設定は ReplayKit と共通です。"
+        }
+      }
+    }
+  },
+  "encoding.hevcUnverified": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "HEVC 為既有設定清單，本次尚未查詢裝置支援能力。"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "HEVC lists existing settings; device support has not been queried."
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "HEVC は既存の設定一覧です。デバイスの対応状況は未確認です。"
+        }
+      }
+    }
+  },
+  "encoding.conditions": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "查詢尺寸／模式："
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Query size / mode:"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "照会サイズ／モード："
+        }
+      }
+    }
+  },
+  "encoding.lowLatency": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "低延遲"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Low latency"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "低遅延"
+        }
+      }
+    }
+  },
+  "encoding.standard": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "一般模式"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Standard mode"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "標準モード"
+        }
+      }
+    }
+  },
+  "encoding.referenceSize": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "未完整指定輸出尺寸；上述為參考尺寸，不是目前擷取尺寸。"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Output size is not fully specified; this is a reference size, not the current capture size."
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "出力サイズが未指定のため参考サイズです。現在のキャプチャサイズではありません。"
+        }
+      }
+    }
+  },
+  "encoding.unverified": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "未確認支援"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Support unverified"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "対応未確認"
+        }
+      }
+    }
+  },
+  "encoding.loading": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "正在查詢編碼器…"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Querying encoder…"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "エンコーダーを照会中…"
+        }
+      }
+    }
+  },
+  "encoding.busy": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "擷取期間暫停能力查詢，請停止擷取後再查詢。"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Capability queries are paused during capture. Stop capture to query again."
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "キャプチャ中は照会を停止しています。終了後に再照会してください。"
+        }
+      }
+    }
+  },
+  "encoding.unavailable": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "未取得可用清單，保留原設定；可稍後重新查詢。"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "No supported list is available. Your setting is retained; try again later."
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "対応一覧を取得できません。設定は保持されます。後で再照会してください。"
+        }
+      }
+    }
+  },
+  "encoding.scope": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "清單為此模式的編碼器回報值；不保證所有 FPS、碼率與尺寸組合均可用。AutoLevel 由系統決定 Level，實際開播仍需驗證。"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Options are reported by this encoder mode, not a guarantee for every FPS, bitrate and size combination. AutoLevel lets the system choose the level; encoding is validated at stream startup."
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "一覧はこのモードの対応値です。全 FPS・ビットレート・サイズの組み合わせを保証しません。AutoLevel はシステムが決定し、配信開始時に検証します。"
+        }
+      }
+    }
+  },
+  "encoding.refresh": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "重新查詢裝置能力"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Refresh encoder capabilities"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "対応状況を再照会"
+        }
+      }
+    }
+  },
+
   "audio.bitrate.title": {
     "localizations": {
       "zh-Hant": {

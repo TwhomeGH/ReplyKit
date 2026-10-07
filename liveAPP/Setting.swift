@@ -946,7 +946,7 @@ struct LogSettingView:View {
                     .foregroundColor(.secondary)
                     .padding(.bottom, 5)
 
-            Text("Socket運行情況:\(socket.isStopping ? "停止" : "運行中" ) ")
+            Text("Socket 狀態：\(socket.listenerStatus)")
 
             Button("Socket服務器停止"){
                 socket.stop()

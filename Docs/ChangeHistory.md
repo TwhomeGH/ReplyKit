@@ -1,5 +1,31 @@
 # 變更歷史
 
+## 2026.10.07 20:55 模組檔名統一使用底線
+
+- 將三個模組檔名的加號改為底線，同步更新原始碼註釋、模組文件與功能索引。
+- 僅調整檔名及引用，程式行為不變。
+
+## 2026.10.07 20:27 Socket 恢復入口與通知生命週期修正
+
+- Darwin 回呼改為服務佇列上的弱參考 block；移除裸 observer 指標及 deinit 非同步 stop。
+- 統一恢復判斷，保留 ready／setup／waiting；停止不被通知推翻，端口切換與占用另行處理。
+- 重試合併並使用單調時間冷卻；停止使舊排程及等待 ready 失效，拒絕舊 listener 的晚到連線。
+- 修正狀態註釋及 UI 顯示，新增恢復策略測試。Apple 通知／Network 整合驗收仍待完成。
+- 文件：[Socket 模組與恢復設計](development/SOCKET_MODULES.md)。
+
+## 2026.10.07 20:12 Socket 註釋與輔助模組整理
+
+- 拆出 listener 日誌表示、JSONValue 模型與音量日誌格式，補充收送佇列及生命週期註釋。
+- JSON null 與 UserDefaults 值轉換分離；非有限音量值明示無效，新增邊界測試。
+- 維護入口：[Socket 模組說明](development/SOCKET_MODULES.md)。
+
+## 2026.10.07 18:12 第二批編碼模組與診斷欄位契約
+
+- 拆出編碼卡片與 VideoToolbox 能力查詢；移除固定 FPS 的 H.264 Level 推算，ReplayKit／ScreenCaptureKit 推流共用設定解析。
+- 保留使用者新增註釋，修正健康指標單位；混音取樣率數值接入共用快照與設備資訊，延遲預留欄位不補零。
+- 新增設定遷移與舊訊息相容測試，Apple CI／實機驗收待完成。
+- 文件：[編碼選項與健康指標](development/ENCODING_CAPABILITIES.md)。
+
 ## 2026.10.07 13:42 修正主頁配置保存與初始化副作用
 
 - RTMP 編輯改為草稿，明確保存並套用；取消或離開不覆寫原配置。

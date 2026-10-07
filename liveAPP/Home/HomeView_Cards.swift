@@ -92,40 +92,7 @@ extension homeView {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 8)
                 }
-                GroupBox {
-                    DisclosureGroup(AppLanguage.localized("home.encoding")) {
-                        if usesScreenCaptureKit {
-                            Text(AppLanguage.localized("home.fixedCodec"))
-                                .font(.caption).foregroundStyle(.secondary)
-                        } else {
-                            VStack(alignment: .leading, spacing: 12) {
-                            Picker("編碼格式", selection: $videoCodec) {
-                                Text("H264").tag("H264")
-                                Text("HEVC").tag("HEVC")
-                            }
-                            .pickerStyle(.segmented)
-
-                            if videoCodec == "H264" {
-                                Picker("H264配置", selection: selectedProfile) {
-                                    ForEach(H264Profile.allCases) { profile in
-                                        Text(profile.rawValue).tag(profile)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                                Text("當前選擇:  \(selectedProfile.wrappedValue.rawValue)")
-                            } else {
-                                Picker("HEVC配置", selection: selectedHEVCProfile) {
-                                    ForEach(HEVCProfile.allCases) { profile in
-                                        Text(profile.rawValue).tag(profile)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                                Text("當前選擇: HEVC \(selectedHEVCProfile.wrappedValue.rawValue)")
-                            }
-                            }.padding(.top, 8)
-                        }
-                    }
-                }
+                EncodingSettingsView(usesScreenCaptureKit: usesScreenCaptureKit)
             }
             if !usesScreenCaptureKit {
                 GroupBox {

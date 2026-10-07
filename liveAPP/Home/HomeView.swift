@@ -4,7 +4,7 @@ import Combine
 import os
 import Foundation
 
-/// 主頁狀態與響應式排版入口；卡片見 HomeView+Cards.swift。
+/// 主頁狀態與響應式排版入口；卡片見 HomeView_Cards.swift。
 /// 保留型別名稱與 property wrapper 所有權，避免改變視圖生命週期。
 @MainActor struct homeView:View{
 #if os(iOS)
@@ -21,29 +21,6 @@ import Foundation
     @State var micStatus = "未知狀態"
 
     @AppStorage("logAppBackground",store:userDefaults) private var logAppBackground = false
-
-
-    @AppStorage("h264level",store: userDefaults) var h264level: String = "AutoHigh"
-
-    @AppStorage("videoCodec",store: userDefaults) var videoCodec: String = "H264"
-    @AppStorage("hevcLevel",store: userDefaults) var hevcLevel: String = "Main"
-
-    // 封裝成 Binding
-    /// 將保存的 H.264 字串轉為 Picker Binding，保留原本無效值後備選項。
-    var selectedProfile: Binding<H264Profile> {
-        Binding<H264Profile>(
-            get: { H264Profile(rawValue: h264level) ?? .main },
-            set: { h264level = $0.rawValue }
-        )
-    }
-
-    /// 將保存的 HEVC 字串轉為 Picker Binding。
-    var selectedHEVCProfile: Binding<HEVCProfile> {
-        Binding<HEVCProfile>(
-            get: { HEVCProfile(rawValue: hevcLevel) ?? .main },
-            set: { hevcLevel = $0.rawValue }
-        )
-    }
 
 
     @AppStorage("rtmpURL",store: userDefaults) var rtmpURL: String = ""

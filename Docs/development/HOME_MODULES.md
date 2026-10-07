@@ -7,7 +7,7 @@
 | ContentView.swift | 頂層分頁、環境注入及原本的頁面／前背景通知 |
 | Navigation/AppPage.swift | 分頁識別與 PageState |
 | Home/HomeView.swift | homeView 的狀態、Binding、權限提示及響應式排版 |
-| Home/HomeView+Cards.swift | 擷取、串流、編碼、ReplayKit 操作及權限卡片組合 |
+| Home/HomeView_Cards.swift | 擷取、串流、編碼、ReplayKit 操作及權限卡片組合 |
 | Home/StreamConfigurationForm.swift | RTMP 配置表單與私有 StreamKeyField |
 | Home/BroadcastButton.swift | 系統廣播選擇器與既有 Coordinator |
 | Home/BitrateManager.swift | 碼率偏好保存與擴展通知 |
@@ -43,3 +43,7 @@ StateObject、共享 Coordinator、系統廣播按鈕、金鑰揭露狀態、onA
 - 碼率由倍率單一推導，1–20 Mbps、100 kbps 步進；非正值後備為 6 Mbps，初始化不寫偏好，編輯完成才保存。
 - 廣播擴展成功解析由 Coordinator 快取；失敗每五秒最多重試一次，避免 updateUIView 重複掃描和日誌。
 - 新增 HomeConfigurationTests，使用獨立 UserDefaults suite 驗證空白草稿不覆寫、套用新增配置、ID 保留及碼率邊界。Apple 測試尚待 CI 執行。
+
+## 第二批：編碼設定
+
+編碼卡片移到 EncodingSettingsView，查詢服務為 H264EncoderCapabilities，兩種來源共用 SharedCapture/H264EncodingProfile。HomeView 不再持有編碼 Binding。詳細契約見 [編碼選項與健康指標](ENCODING_CAPABILITIES.md)。

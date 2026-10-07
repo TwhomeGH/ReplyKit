@@ -1247,7 +1247,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     }
 
 
-    func profileLevelString(width: Int, height: Int) -> String {
+    /// 將共用偏好轉成 VideoToolbox ProfileLevel；H.264 Level 由系統或明確選項決定。
+    func profileLevelString() -> String {
         let config = RPConfig.shared.state
         if config.videoCodec == "HEVC" {
             switch config.hevcLevel {
@@ -1261,28 +1262,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 return kVTProfileLevel_HEVC_Main_AutoLevel as String
             }
         }
-        switch config.h264level {
-        case "Baseline":
-            return h264ProfileLevel(forWidth: width, height: height, fps: 60, profile: .baseline)
-        case "Main":
-            return h264ProfileLevel(forWidth: width, height: height, fps: 60, profile: .main)
-        case "High":
-            return h264ProfileLevel(forWidth: width, height: height, fps: 60, profile: .high)
-        case "AutoBaseline":
-            return kVTProfileLevel_H264_Baseline_AutoLevel as String
-        case "AutoMain":
-            return kVTProfileLevel_H264_Main_AutoLevel as String
-        case "AutoHigh":
-            return kVTProfileLevel_H264_High_AutoLevel as String
-        case "ConstrainedBaseline":
-            return kVTProfileLevel_H264_ConstrainedBaseline_AutoLevel as String
-        case "ConstrainedHigh":
-            return kVTProfileLevel_H264_ConstrainedHigh_AutoLevel as String
-        case "Extended":
-            return kVTProfileLevel_H264_Extended_AutoLevel as String
-        default:
-            return kVTProfileLevel_H264_Main_AutoLevel as String
-        }
+        return H264EncodingProfile.resolve(config.h264level)
     }
 
     // MARK: 套用所有視訊設定 主要用於初始化或重新配置視訊流
@@ -1290,8 +1270,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         guard let target = stream ?? rtmpStream else { return }
         var videoSettings = await target.videoSettings
 
-        let profilelvl = profileLevelString(width: width, height: height)
+        let profilelvl = profileLevelString()
         videoSettings.profileLevel = profilelvl
+        // Baseline 不使用 CABAC；切換回其他 Profile 時清除先前覆寫值。
+        videoSettings.h264EntropyMode = profilelvl.contains("Baseline") ? "cavlc" : nil
         videoSettings.scalingMode = .letterbox
 
         if setSize {
@@ -1985,51 +1967,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     var ReplyKitH = 0
 
     /// 根據解析度與幀率選擇對應 H.264 High Profile Level
-
-    enum H264Profile: String {
-        case baseline = "Baseline"
-        case main = "Main"
-        case high = "High"
-    }
-
-    /// 根據解析度、幀率與 Profile 選擇 H.264 Level
-    func h264ProfileLevel(forWidth width: Int, height: Int, fps: Int, profile: H264Profile) -> String {
-        // 計算宏塊數
-        let macroblockWidth = (width + 15) / 16
-        let macroblockHeight = (height + 15) / 16
-        let mbPerFrame = macroblockWidth * macroblockHeight
-
-        switch profile {
-        case .baseline:
-            switch mbPerFrame {
-            case 0..<1620: return kVTProfileLevel_H264_Baseline_3_0 as String
-            case 1620..<3600:
-                return fps <= 30 ? kVTProfileLevel_H264_Baseline_3_1 as String : kVTProfileLevel_H264_Baseline_3_2 as String
-            case 3600..<8192: return fps <= 30 ? kVTProfileLevel_H264_Baseline_4_0 as String : kVTProfileLevel_H264_Baseline_4_1 as String
-            default: return kVTProfileLevel_H264_Baseline_4_2 as String
-            }
-
-        case .main:
-            switch mbPerFrame {
-            case 0..<1620: return kVTProfileLevel_H264_Main_3_0 as String
-            case 1620..<3600:
-                return fps <= 30 ? kVTProfileLevel_H264_Main_3_1 as String : kVTProfileLevel_H264_Main_3_2 as String
-            case 3600..<8192: return fps <= 30 ? kVTProfileLevel_H264_Main_4_0 as String : kVTProfileLevel_H264_Main_4_1 as String
-            default: return kVTProfileLevel_H264_Main_4_2 as String
-            }
-
-        case .high:
-            switch mbPerFrame {
-            case 0..<1620: return kVTProfileLevel_H264_High_3_0 as String
-            case 1620..<3600:
-                return fps <= 30 ? kVTProfileLevel_H264_High_3_1 as String : kVTProfileLevel_H264_High_3_2 as String
-            case 3600..<8192: return fps <= 30 ? kVTProfileLevel_H264_High_4_0 as String : kVTProfileLevel_H264_High_4_1 as String
-            case 8192..<8704: return kVTProfileLevel_H264_High_4_2 as String
-            case 8704..<36864: return kVTProfileLevel_H264_High_5_0 as String
-            default: return fps <= 60 ? kVTProfileLevel_H264_High_5_1 as String : kVTProfileLevel_H264_High_5_2 as String
-            }
-        }
-    }
 
     // MARK: - Video Configuration 可能未使用
     private func configureVideoUnsafe(dims: CMVideoDimensions) {

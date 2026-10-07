@@ -23,6 +23,8 @@ struct DataPoint: Identifiable {
 
 final class VideoHealthModel: ObservableObject {
     static let shared = VideoHealthModel()
+    /// 最近收到的完整訊息，保留可選量測及其 nil 語意；只在主佇列更新。
+    @Published private(set) var latestPayload: SocketServer.VideoHealthPayload?
 
     @Published private(set) var lastUpdatedAt: Date?
     @Published private(set) var latestStatus: String = "waiting"
@@ -47,8 +49,9 @@ final class VideoHealthModel: ObservableObject {
                 processedFPSAvg: Double, processedFPSMin: Double, processedFPSMax: Double,
                 droppedFPSAvg: Double,
                 latencyAvg: Double, latencyMax: Double, latencyP95: Double,
-                timeoutDelta: Double) {
+                timeoutDelta: Double, payload: SocketServer.VideoHealthPayload? = nil) {
         DispatchQueue.main.async {
+            self.latestPayload = payload
             self.appendOnMain(
                 status: status,
                 inputFPSAvg: inputFPSAvg,
@@ -99,6 +102,8 @@ final class VideoHealthModel: ObservableObject {
 
 final class AudioHealthModel: ObservableObject {
     static let shared = AudioHealthModel()
+    /// 最近收到的完整訊息；未提供的取樣率／延遲不轉成零。
+    @Published private(set) var latestPayload: SocketServer.AudioHealthPayload?
 
     @Published private(set) var lastUpdatedAt: Date?
     @Published private(set) var latestStatus: String = "waiting"
@@ -135,8 +140,9 @@ final class AudioHealthModel: ObservableObject {
                 skipInsertedPerSec: Double, overflowDroppedPerSec: Double,
                 resampleNoDataPerSec: Double, mixerOutputFPS: Double,
                 appRMS: Double, micRMS: Double,
-                outChannels: Int, outCh0RMS: Double, outCh1RMS: Double) {
+                outChannels: Int, outCh0RMS: Double, outCh1RMS: Double, payload: SocketServer.AudioHealthPayload? = nil) {
         DispatchQueue.main.async {
+            self.latestPayload = payload
             self.appendOnMain(
                 status: status,
                 appInputFPSMin: appInputFPSMin, appInputFPSAvg: appInputFPSAvg, appInputFPSMax: appInputFPSMax,

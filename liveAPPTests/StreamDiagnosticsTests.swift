@@ -3,6 +3,26 @@ import Testing
 @testable import liveAPP
 
 struct StreamDiagnosticsTests {
+    @Test func healthMessagesWithoutNewFieldsRemainCompatible() throws {
+        let video = try JSONDecoder().decode(SocketServer.VideoHealthPayload.self,
+            from: Data(#"{"status":"healthy","timeoutDelta":0}"#.utf8))
+        #expect(video.latencyExceedCount == nil)
+        #expect(video.latencyThresholdMs == nil)
+        let audio = try JSONDecoder().decode(SocketServer.AudioHealthPayload.self,
+            from: Data(#"{"status":"healthy"}"#.utf8))
+        #expect(audio.sampleRate == nil)
+        #expect(audio.totalLatencyMs == nil)
+    }
+
+    @Test func mixerRateIsOptionalAndSurvivesRoundTrip() throws {
+        var value = StreamDiagnosticsSnapshot(source: "ReplayKit", session: UUID(), phase: "publishing")
+        let old = try JSONDecoder().decode(StreamDiagnosticsSnapshot.self, from: JSONEncoder().encode(value))
+        #expect(old.mixerAudioSampleRate == nil)
+        value.mixerAudioSampleRate = 48000
+        let decoded = try JSONDecoder().decode(StreamDiagnosticsSnapshot.self, from: JSONEncoder().encode(value))
+        #expect(decoded.mixerAudioSampleRate == 48000)
+    }
+
     @Test func roundTripPreservesUnknownAndGeneration() throws {
         var value = StreamDiagnosticsSnapshot(source: "ReplayKit", session: UUID(), phase: "publishing")
         value.generation = 12

@@ -13,6 +13,8 @@ struct StreamDiagnosticsSnapshot: Codable, Sendable {
     var phase: String
     var mixerVideo: String?
     var mixerAudio: String?
+    /// 混音輸出 PCM 實測取樣率（Hz），不是來源或編碼設定；未收到 buffer 為 nil。
+    var mixerAudioSampleRate: Double?
     var videoSettings: String?
     var audioSettings: String?
     var encodedVideoFrames: UInt64?
@@ -34,6 +36,7 @@ final class StreamDiagnosticsProbe: MediaMixerOutput, @unchecked Sendable {
     private let lock = NSLock()
     private var video: String?
     private var audio: String?
+    private var audioSampleRate: Double?
     private var lastVideoTime = -Double.infinity
     private var lastAudioTime = -Double.infinity
 
@@ -64,6 +67,7 @@ final class StreamDiagnosticsProbe: MediaMixerOutput, @unchecked Sendable {
         guard now - lastAudioTime >= 1 else { return }
         lastAudioTime = now
         let a = buffer.format.streamDescription.pointee
+        audioSampleRate = a.mSampleRate.isFinite && a.mSampleRate > 0 ? a.mSampleRate : nil
         audio = "\(Self.fourCC(a.mFormatID)) · \(a.mSampleRate) Hz · \(a.mChannelsPerFrame) ch · \(a.mBitsPerChannel) bit · interleaved=\(buffer.format.isInterleaved)"
     }
 
@@ -73,9 +77,9 @@ final class StreamDiagnosticsProbe: MediaMixerOutput, @unchecked Sendable {
     }
 
     /// 在鎖內複製文字後才進入 await，避免阻塞影音回呼。
-    private func formats() -> (String?, String?) {
+    private func formats() -> (String?, String?, Double?) {
         lock.lock(); defer { lock.unlock() }
-        return (video, audio)
+        return (video, audio, audioSampleRate)
     }
 
     /// 由單一週期工作呼叫。傳輸計數依 generation 重設，不能跨重連累加。
@@ -89,6 +93,7 @@ final class StreamDiagnosticsProbe: MediaMixerOutput, @unchecked Sendable {
         var result = StreamDiagnosticsSnapshot(source: source, session: session, phase: phase)
         result.mixerVideo = formats.0
         result.mixerAudio = formats.1
+        result.mixerAudioSampleRate = formats.2
         result.videoSettings = "\(video.profileLevel) · \(Int(video.videoSize.width))×\(Int(video.videoSize.height)) · \(video.bitRate / 1000) kbps"
         result.audioSettings = "\(audio.format.rawValue) · \(audio.bitRate / 1000) kbps"
         result.encodedVideoFrames = pipeline.encoder?.events["encoderDelivered"]?.count

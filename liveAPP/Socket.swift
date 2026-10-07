@@ -1,81 +1,37 @@
 import Foundation
 import Network
+import Darwin
 import os
 import UIKit
 
 
-//let logger = Logger(subsystem: "nuclear.liveAPP", category: "SocketServer")
 
-extension NWListener.State {
-    var stateString: String {
-        switch self {
-        case .setup:
-            return "setup"
-        case .waiting(let error):
-            return "waiting (\(error))"
-        case .ready:
-            return "ready"
-        case .failed(let error):
-            return "failed (\(error))"
-        case .cancelled:
-            return "cancelled"
-        @unknown default:
-            return "unknown"
-        }
-    }
-}
-
-extension SocketServer.JSONValue {
-    var rawValue: Any? {
-        switch self {
-        case .string(let v): return v
-        case .int(let v): return v
-        case .double(let v): return v
-        case .bool(let v): return v
-        case .object(let v):
-            return v.mapValues { $0.rawValue }
-        case .array(let v):
-            return v.map { $0.rawValue }
-        case .null:
-            return nil
-        }
-    }
-}
-
-private func formatLinearVolumeForLog(_ value: Float) -> String {
-    let linear = Double(value)
-    guard linear > 0 else {
-        return "0.00000000 (0%, muted)"
-    }
-
-    let decibels = 20 * log10(linear)
-    return String(
-        format: "%.8f (%.8f%%, %.2f dB)",
-        linear,
-        linear * 100,
-        decibels
-    )
-}
-
+/// 主 App 的換行分隔 JSON Socket 服務，負責 listener、連線生命週期與訊息分派。
+/// 連線及收送緩衝主要由 queue 管理；@unchecked Sendable 並不代表所有狀態已隔離。
 class SocketServer:ObservableObject, @unchecked Sendable {
 
     // MARK: - Properties
 
     static let shared = SocketServer()
 
+    /// 單一連線接收緩衝上限（bytes）；超限時嘗試換行重新同步，否則關閉連線。
     static let maxBufferSize = 1_048_576
+    /// 同時接受的連線數上限。
     static let maxConnections = 10
 
     private var receiveBuffers: [ObjectIdentifier: Data] = [:]
+    /// 各連線已消耗的緩衝位置，避免逐行移除 Data 造成大量複製。
     private var receiveOffsets: [ObjectIdentifier: Int] = [:]
 
     private var listener: NWListener?
+    /// 切換端口時的候選 listener，就緒後才取代現有服務。
     private var pendingListener: NWListener?
     @Published private(set) var listeningPort: UInt16?
     @Published private(set) var listenerStatus = "尚未啟動"
     @Published private(set) var portError: String?
     @Published private(set) var isApplyingPort = false
 
+    /// 將 listener 摘要發布到主佇列供 UI 顯示，不用此字串判斷網路狀態。
     private func publishListenerState(_ status: String, port: UInt16? = nil) {
         DispatchQueue.main.async {
             self.listenerStatus = status
@@ -83,6 +39,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// 將端口占用轉為可操作提示，其餘錯誤保留系統說明。
     private func listenerErrorMessage(_ error: Error, port: UInt16) -> String {
         if let networkError = error as? NWError,
            case .posix(.EADDRINUSE) = networkError {
@@ -91,15 +48,20 @@ class SocketServer:ObservableObject, @unchecked Sendable {
         return "端口 \(port) 無法監聽：\(error.localizedDescription)"
     }
 
+    /// 安裝接收與狀態回呼；忽略已被替換的 listener 回報。
     private func configureListener(_ target: NWListener, port: UInt16) {
-        target.newConnectionHandler = { [weak self] connection in
-            self?.handleNewConnection(connection)
+        target.newConnectionHandler = { [weak self, weak target] connection in
+            guard let self, let target, self.listener === target, self.wantsRunning else {
+                connection.cancel()
+                return
+            }
+            self.handleNewConnection(connection)
         }
         target.stateUpdateHandler = { [weak self, weak target] state in
             guard let self, let target, self.listener === target else { return }
             switch state {
             case .ready:
-                self.isStopping = false
+                self.currentRestartKey = nil
                 self.publishListenerState("監聽中", port: port)
                 self.logTo("SocketServer ready on port \(port)")
             case .failed(let error):
@@ -109,20 +71,22 @@ class SocketServer:ObservableObject, @unchecked Sendable {
                 target.cancel()
                 self.listener = nil
                 self.publishListenerState(message)
-                if case .posix(.EADDRINUSE) = error { return }
+                if case .posix(.EADDRINUSE) = error { self.recoveryBlocked = true; return }
                 self.scheduleRestart()
             case .waiting(let error):
                 self.publishListenerState("等待網路：\(error.localizedDescription)")
             case .cancelled:
                 self.listener = nil
                 self.publishListenerState("已停止")
+                self.requestRecovery(reason: "listenerCancelled")
             default:
                 break
             }
         }
     }
 
-    // Candidate listener must be ready before replacing the working service.
+    /// 嘗試切換監聽端口，若 listener 尚未就緒則等待；若失敗則保留現有服務。
+    /// - Parameter port: 要切換的端口號，必須在 1024–65535 範圍內。
     @MainActor
     func applyPort(_ port: UInt16) {
         guard !isApplyingPort else { return }
@@ -141,6 +105,9 @@ class SocketServer:ObservableObject, @unchecked Sendable {
         isApplyingPort = true
         portError = nil
         queue.async { [self] in
+            self.wantsRunning = true
+            self.recoveryBlocked = false
+            DispatchQueue.main.async { [weak self] in self?.isStopping = false }
             if self.listener?.state == .ready, self.listener?.port?.rawValue == port {
                 DispatchQueue.main.async { self.isApplyingPort = false }
                 return
@@ -153,7 +120,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
                     guard let self, let candidate, self.pendingListener === candidate else { return }
                     switch state {
                     case .ready:
-                        // Check capture again because binding is asynchronous.
+                        // 綁定是非同步操作，切換前再次確認沒有擷取工作。
                         DispatchQueue.main.async {
                             let canSwitch = !UIScreen.main.isCaptured
                             self.queue.async {
@@ -166,14 +133,16 @@ class SocketServer:ObservableObject, @unchecked Sendable {
                                 self.currentRestartKey = nil
                                 self.stopInternal()
                                 SocketPortSettings.save(port)
+                                self.requestedPort = port
                                 self.listener = candidate
                                 self.configureListener(candidate, port: port)
-                                self.isStopping = false
                                 self.publishListenerState("監聽中", port: port)
                                 self.logTo("SocketServer switched to port \(port)")
                                 DispatchQueue.main.async { self.isApplyingPort = false }
                             }
                         }
+                    case .cancelled:
+                        self.finishPortAttempt("端口切換已取消。")
                     case .failed(let error):
                         self.finishPortAttempt(self.listenerErrorMessage(error, port: port))
                     default:
@@ -191,10 +160,13 @@ class SocketServer:ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// 結束端口切換嘗試，清理候選 listener 並更新 UI 狀態。
+    /// - Parameter message: 要顯示的錯誤訊息。
     private func finishPortAttempt(_ message: String) {
         pendingListener?.stateUpdateHandler = nil
         pendingListener?.cancel()
         pendingListener = nil
+        requestRecovery(reason: "portAttemptEnded")
         DispatchQueue.main.async {
             self.portError = message
             self.isApplyingPort = false
@@ -210,6 +182,8 @@ class SocketServer:ObservableObject, @unchecked Sendable {
                           )
     private let queueKey = DispatchSpecificKey<Void>()
 
+    /// 已在服務佇列時直接執行，否則非同步排入；呼叫端不能假設返回時工作已完成。
+    /// - Parameter block: 要執行的工作區塊。
     func performOnQueue(_ block: @escaping () -> Void) {
         if DispatchQueue.getSpecific(key: queueKey) != nil {
             block()
@@ -218,176 +192,196 @@ class SocketServer:ObservableObject, @unchecked Sendable {
         }
     }
 
-    private var currentRestartKey: String?
+    // MARK: - 恢復狀態
+    // 以下狀態僅在服務 queue 讀寫。
 
-    @Published private(set) var isStopping = false
+    /// 目前待執行的恢復識別碼；nil 表示沒有排程。
+    /// 工作開始、服務就緒或資源清理時清除，使不再匹配的舊排程失效。
+    private var currentRestartKey: UUID?
 
-    private var lastRestartTime: Date?
+    /// 是否要求服務運作；明確啟動或套用端口時設為 true，停止時設為 false。
+    /// 不代表 listener 已就緒，被動恢復要求不會改變此值。
+    private var wantsRunning = false
 
-    private func scheduleRestart(delay: TimeInterval = 1.5) {
-        guard !isStopping else { return }
+    /// 是否阻擋自動恢復，例如端口被占用；明確啟動重試或套用端口時解除。
+    private var recoveryBlocked = false
 
-        if let last = lastRestartTime, Date().timeIntervalSince(last) < 3.0 {
-            logTo("Restart skipped to avoid rapid restart")
-            return
+    /// 下次建立 listener 使用的端口；啟動時選定，成功切換端口後更新。
+    private var requestedPort: UInt16 = SocketPortSettings.port
+
+    /// 最近一次建立 listener 嘗試的系統 uptime（秒），用於計算重試冷卻時間。
+    /// nil 表示尚未嘗試；不使用可能被校時改變的日曆時間。
+    private var lastListenerAttempt: TimeInterval?
+
+    /// 服務生命週期識別碼；停止或成功切換端口的資源清理時更新，
+    /// 使先前等待 listener 就緒的工作失效。
+    private var lifecycleGeneration = UUID()
+
+    /// 最近一次記錄擴展恢復提示的系統 uptime（秒），僅用於日誌節流。
+    /// 負無限大讓第一筆提示立即記錄，不控制實際恢復是否執行。
+    private var lastRecoveryHintTime = -Double.infinity
+
+    // MARK: - 通知註冊
+
+    /// Darwin 通知註冊成功後取得的 token；nil 表示未成功註冊。
+    /// 初始化時保存，析構時用於取消註冊。
+    private var recoveryNotificationToken: Int32?
+
+    // MARK: - UI 狀態
+    // 初始化後的更新派送至主佇列。
+
+    /// 是否明確停用服務；供 UI 觀察，不參與恢復決策。
+    /// false 不代表監聽成功，實際監聽摘要應查看 listenerStatus。
+    @Published private(set) var isStopping = true
+
+    /// 將 Network 狀態轉為可測試的恢復決策輸入；未知狀態保守保留。
+    private var recoveryState: SocketRecoveryPolicy.ListenerState {
+        guard let listener else { return .missing }
+
+        switch listener.state {
+            case .setup: return .starting
+            case .waiting: return .waiting
+            case .ready: return .ready
+            case .failed: return .failed
+            case .cancelled: return .cancelled
+            @unknown default: return .waiting
         }
-        lastRestartTime = Date()
+    }
 
-        let restartKey = "restart_\(UUID().uuidString)"
-        currentRestartKey = restartKey
+    /// 唯一被動恢復入口；不改變啟停意圖，不清除健康連線。
+    private func requestRecovery(reason: String, minimumDelay: TimeInterval = 0) {
+        dispatchPrecondition(condition: .onQueue(queue))
+        let action = SocketRecoveryPolicy.action(state: recoveryState, wantsRunning: wantsRunning,
+            blocked: recoveryBlocked, changingPort: pendingListener != nil,
+            retryScheduled: currentRestartKey != nil)
+        if reason == "extensionHint" {
+            let now = ProcessInfo.processInfo.systemUptime
+            if now - lastRecoveryHintTime >= 3 {
+                lastRecoveryHintTime = now
+                logTo("Socket recovery hint state=\(recoveryState) action=\(action)")
+            }
+        }
+        guard action == .schedule else { return }
+        let delay = SocketRecoveryPolicy.delay(now: ProcessInfo.processInfo.systemUptime,
+                                               lastAttempt: lastListenerAttempt, minimum: minimumDelay)
+        let key = UUID()
+        currentRestartKey = key
+        logTo("Socket recovery scheduled reason=\(reason) delay=\(String(format: "%.2f", delay))s")
         queue.asyncAfter(deadline: .now() + delay) { [weak self] in
-            guard let self else { return }
-            guard self.currentRestartKey == restartKey else { return }
-            self.logTo("Restarting SocketServer...")
-            self.stopInternal()
-            self.start()
+            guard let self, self.currentRestartKey == key else { return }
+            self.currentRestartKey = nil
+            let action = SocketRecoveryPolicy.action(state: self.recoveryState,
+                wantsRunning: self.wantsRunning, blocked: self.recoveryBlocked,
+                changingPort: self.pendingListener != nil, retryScheduled: false)
+            guard action == .schedule else { return }
+            self.createListener()
         }
     }
 
-    // MARK: - C callback
-    private static let sockerRestartCallback: CFNotificationCallback = {
- _,
- observer,
- _,
-        _,
-        _ in
-        guard let observer else { return }
-
-        let mySelf = Unmanaged<SocketServer>.fromOpaque(observer).takeUnretainedValue()
-
-
-        mySelf.start()
-        mySelf.logTo("Socket服務器可能已失效重建中!")
-
+    /// listener 失敗後延後恢復；重複要求合併，冷卻時間到仍會執行。
+    private func scheduleRestart(delay: TimeInterval = 1.5) {
+        requestRecovery(reason: "listenerFailure", minimumDelay: delay)
     }
 
-
+    /// 註冊相容的 Darwin 通知名稱；通知只要求檢查服務，不是強制重啟或 App 喚醒保證。
+    /// notify 的 block 指定在服務 queue 執行，以 weak self 避免懸空的 observer 指標。
     init() {
         queue.setSpecific(key: queueKey, value: ())
-
-        CFNotificationCenterAddObserver(
-            CFNotificationCenterGetDarwinNotifyCenter(),
-            UnsafeRawPointer(Unmanaged.passUnretained(self).toOpaque()),
-            SocketServer.sockerRestartCallback,
-            "liveAPP.SocketRestart" as CFString,
-            nil,
-            .deliverImmediately
-        )
-
+        var token: Int32 = 0
+        let status = notify_register_dispatch("liveAPP.SocketRestart", &token, queue) { [weak self] _ in
+            self?.requestRecovery(reason: "extensionHint")
+        }
+        if status == NOTIFY_STATUS_OK {
+            recoveryNotificationToken = token
+        } else {
+            logTo("Socket recovery notification registration failed status=\(status)")
+        }
     }
 
-    // MARK: - Deinit Socket Server
+    /// 同步撤銷通知與資源，不從 deinit 排入依賴 self 的非同步清理工作。
     deinit {
-
+        if let token = recoveryNotificationToken { notify_cancel(token) }
+        keepaliveTimer?.setEventHandler {}
+        keepaliveTimer?.cancel()
+        listener?.stateUpdateHandler = nil
+        listener?.newConnectionHandler = nil
         listener?.cancel()
-
-        CFNotificationCenterRemoveObserver(
-            CFNotificationCenterGetDarwinNotifyCenter(),
-            UnsafeRawPointer(Unmanaged.passUnretained(self).toOpaque()),
-            CFNotificationName("liveAPP.SocketRestart" as CFString),
-            nil
-        )
-        
-        logTo("Socket Server deinit is Call CleanUP")
-        stop()
-
+        pendingListener?.stateUpdateHandler = nil
+        pendingListener?.newConnectionHandler = nil
+        pendingListener?.cancel()
+        for connection in connections.values {
+            connection.stateUpdateHandler = nil
+            connection.cancel()
+        }
     }
 
-
+    /// 用於表示閒置原因的枚舉
+    /// 包含自啟動以來未有客戶端連線以及最後一個客戶端斷開連線兩種情況。
     enum IdleReason {
+        /// 自啟動以來未有客戶端連線
         case noClientSinceStart
+        /// 最後一個客戶端斷開連線
         case lastClientDisconnected
     }
 
-
+    /// 是否允許通知聊天室訊息；若為 false，僅在 App 前景時接收訊息。
     var isNotifyApp:Bool {
         return userDefaults?.bool(forKey: "isNotifyChat") ?? false
     }
 
+    /// 同步讀取服務佇列內的 listener 狀態；不以 UI 字串或 isStopping 判定 ready。
     var isRunning: Bool {
-        guard let listener else {
-            return false
-        }
-
-        switch listener.state {
-        case .ready:
-            return true
-        default:
-            return false
-        }
+        if DispatchQueue.getSpecific(key: queueKey) != nil { return listener?.state == .ready }
+        return queue.sync { listener?.state == .ready }
     }
 
-    func cleanupStaleListener() {
-        guard let listener = self.listener else {
-            isStopping = true
-            return
-        }
-        switch listener.state {
-        case .ready:
-            isStopping = false
-        case .waiting:
-            logTo("listener 狀態 waiting，保留等待")
-            isStopping = false
-        case .failed(let error):
-            logTo("listener 狀態 failed: \(error)")
-            listener.stateUpdateHandler = nil
-            listener.cancel()
-            self.listener = nil
-            isStopping = true
-        case .cancelled:
-            logTo("listener 狀態 cancelled")
-            listener.stateUpdateHandler = nil
-            listener.cancel()
-            self.listener = nil
-            isStopping = true
-        default:
-            logTo("listener 狀態非 ready，清理中")
-            listener.stateUpdateHandler = nil
-            listener.cancel()
-            self.listener = nil
-            isStopping = true
-        }
-    }
-
-
-    
-    // MARK: - start
+    /// 明確啟用或重試服務；重複呼叫保留 ready／setup／waiting。
+    /// 變更現有監聽端口請使用 applyPort，不在 start 中破壞現有服務。
     func start(port: UInt16 = SocketPortSettings.port) {
-        if DispatchQueue.getSpecific(key: queueKey) == nil {
-            queue.async { [weak self] in
-                self?.start(port: port)
-            }
-            return
+        performOnQueue { [weak self] in
+            guard let self else { return }
+            guard port > 0 else { self.logTo("Socket start rejected: port=0"); return }
+            self.wantsRunning = true
+            self.recoveryBlocked = false
+            self.requestedPort = self.listener?.port?.rawValue ?? port
+            DispatchQueue.main.async { [weak self] in self?.isStopping = false }
+            self.requestRecovery(reason: "explicitStart")
         }
+    }
 
-        cleanupStaleListener()
-
-        guard !isRunning else {
-            logTo("SocketServer already running")
-            return
-        }
-
+    /// 僅在統一恢復入口允許時建立 listener；不清空其他仍存活的連線。
+    private func createListener() {
+        dispatchPrecondition(condition: .onQueue(queue))
+        listener?.stateUpdateHandler = nil
+        listener?.newConnectionHandler = nil
+        listener?.cancel()
+        listener = nil
+        let port = requestedPort
+        lastListenerAttempt = ProcessInfo.processInfo.systemUptime
         do {
-            let newListener = try NWListener(using: .tcp, on: NWEndpoint.Port(rawValue: port)!)
+            guard let endpoint = NWEndpoint.Port(rawValue: port) else { return }
+            let newListener = try NWListener(using: .tcp, on: endpoint)
             listener = newListener
-            isStopping = false
             configureListener(newListener, port: port)
             publishListenerState("啟動中")
-            listener?.start(queue: queue)
-
-            logTo("SocketServer started on port \(port)")
-
+            newListener.start(queue: queue)
+            logTo("SocketServer starting on port \(port)")
         } catch {
             logTo("SocketServer start failed: \(error)")
             publishListenerState(listenerErrorMessage(error, port: port))
-            if let networkError = error as? NWError,
-               case .posix(.EADDRINUSE) = networkError { return }
+            if let error = error as? NWError, case .posix(.EADDRINUSE) = error {
+                recoveryBlocked = true
+                return
+            }
             scheduleRestart()
         }
-
-
     }
 
+    /// 記錄日誌訊息
+    /// - Parameter
+    ///  - mes : 訊息內容
+    ///  - title : 訊息標題，若為 nil 則僅記錄訊息內容
+    /// - Note: 此方法會將訊息內容與標題組合後記錄到日誌中，並在必要時進行格式化。
     func logTo(_ mes:String,title:String? = nil){
         if let title {
             sendlog(title:title,message: "\(mes)")
@@ -397,26 +391,27 @@ class SocketServer:ObservableObject, @unchecked Sendable {
 
     }
 
+    /// 被動確認服務可用；明確停止後不啟動，setup／waiting 時保留 listener。
     func ensureRunning() {
-        performOnQueue { [weak self] in
-            guard let self else { return }
-            guard let lis = self.listener, lis.state == .ready else {
-                self.logTo("Listener not ready (state: \(self.listener?.state.stateString ?? "nil")), restarting")
-
-                self.stopInternal()
-                self.start()
-                return
-            }
-        }
+        performOnQueue { [weak self] in self?.requestRecovery(reason: "healthCheck") }
     }
 
     // MARK: - Handle New Connection
-    // 識別實際收到訊息的連線；遠端端點不代表已驗證的使用者或裝置身分。
-    // ObjectIdentifier 僅在物件存活期間唯一，搭配端點及建立／移除日誌追蹤。
+    /// 識別實際收到訊息的連線；遠端端點不代表已驗證的使用者或裝置身分。
+    /// ObjectIdentifier 僅在物件存活期間唯一，搭配端點及建立／移除日誌追蹤。
+    ///
+    /// - Parameter connection: 接收訊息的實際連線。
+    /// - Returns: 程序內識別碼及遠端端點，供關聯日誌使用。
     private func connectionLogContext(_ connection: NWConnection) -> String {
         return "連線=\(ObjectIdentifier(connection))｜遠端=\(connection.endpoint)"
     }
 
+    /// 處理新的連線請求
+    /// - Parameter connection: 新的網路連線
+    /// - Note: 此方法會檢查當前連線數量，若超過最大限制則拒絕新連線。若接受新連線，會將其加入管理列表並啟動接收循環。
+    /// 由 listener 的 newConnectionHandler 在服務佇列呼叫，不要求事先已有其他連線。
+    /// - Warning: 此方法在多線程環境下可能需要額外的同步機制，以確保 connections 與 lastReceiveTimes 的正確性。
+    /// 接受連線、安裝狀態回呼並啟動接收；受 maxConnections 限制。
     private func handleNewConnection(_ connection: NWConnection) {
         let id = ObjectIdentifier(connection)
 
@@ -432,7 +427,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
         if connections.count == 1 {
             startKeepaliveTimer()
         }
-        
+
         logTo("New connection added. \(connectionLogContext(connection))｜Total connections: \(self.connections.count)")
 
         connection.stateUpdateHandler = { [weak self] state in
@@ -448,7 +443,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
                 }
 
 
-      
+
             case .failed(let error):
                 self.logTo("Connection failed: \(error.localizedDescription)｜\(self.connectionLogContext(connection))")
                 self.removeConnection(connection)
@@ -482,6 +477,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
     // 所有狀態存取因此被同一條序列 queue 序列化，無跨執行緒 race。
     // 注意：re-arm 必須經由 queue.async，避免 NWConnection 在資料已緩衝時
     // 同步觸發 completion handler 造成 unbounded recursion（見 Docs/nw-recursion.md）。
+    /// 接收換行分隔 JSON，保留不完整尾段；再次接收改排佇列以避免同步遞迴。
     private func startReceiveLoop(for connection: NWConnection) {
         let id = ObjectIdentifier(connection)
         guard connections[id] != nil else { return }
@@ -555,29 +551,45 @@ class SocketServer:ObservableObject, @unchecked Sendable {
             }
         }
     }
-    
 
+
+    /// 透過 SocketServer 發送 RTMP 設定的調試訊息。
     func debugRTMP() {
         let rtmpPayload: [String: Any] = GetRTMPConfig()
-        
+
+        // 將字典轉換為 JSON 資料
         queueSend(dictionary: rtmpPayload)
 
     }
 
+    /// 用於訊息節流的屬性，記錄上次訊息接收的時間。
     private var lastMessageTime: Date = .distantPast
+    /// 訊息節流的時間間隔，單位為秒。
     private let messageThrottleInterval: TimeInterval = 0.05
 
 
-
+    /// 透過 SocketServer 接收字典資料，並在必要時進行訊息節流。
+    /// - Parameter dictionary: 要接收的字典資料。
+    /// - Note: 此方法會將字典資料轉換為 JSON 格式，並在接收前檢查上次訊息接收時間，以避免過於頻繁的訊息傳輸。
+    /// - Important: 請確保在呼叫此方法時，SocketServer 已經啟動並且有可用的連線，否則資料可能無法成功接收。
+    /// - Warning: 此方法在多線程環境下可能需要額外的同步機制，以確保 lastMessageTime 的正確性。
+    /// - Type: - Parameter dictionary: 要接收的字典資料。
     struct TypePayload: Codable {
+        /// 資料類型，例如 "log"、"config"、"message" 等。
         let type:String
     }
+
+    /// 透過 SocketServer 接收字典資料，並在必要時進行訊息節流。
     struct StreamEnded: Codable {
+        /// 表示直播已結束的訊息結構，包含一個標題和訊息內容。
         let Message:String
     }
 
+    /// 透過 SocketServer 接收字典資料，並在必要時進行訊息節流。
     struct BatchRequest: Codable {
+        /// 批次請求的類型，例如 "log"、"config"、"message" 等。
         let requests: [String]
+        /// 可選的資料欄位，可能包含額外的資訊，例如請求的來源、時間戳記等。
         let data: [String: String?]?
 
     }
@@ -589,23 +601,44 @@ class SocketServer:ObservableObject, @unchecked Sendable {
 
 
     // MARK: - AdOverlay and ChatMessage Structs 廣告用日誌與聊天室訊息
+
+    /// 用於表示廣告覆蓋的結構，包含使用者、文字、圖示 URL 以及是否使用 TTS 的屬性。
+    /// 此結構可用於在直播中顯示廣告訊息，並可選擇是否使用文字轉語音（TTS）功能。
     struct AdOverlay: Codable {
+        /// 可選的使用者名稱，若無則為 nil。
         let user: String?
+        /// 廣告文字內容。
         let text:String
+        /// 可選的圖示 URL，若無則為 nil。
         let iconURL:String?
+        /// 是否使用文字轉語音（TTS）功能。
         let useTTS:Bool
     }
 
+    /// 用於表示聊天室訊息的結構，包含使用者、訊息內容以及相關屬性。
     struct ChatMessage: Codable {
+
+        /// 是否使用文字轉語音（TTS）功能。
         let useTTS: Bool
+        /// 使用者名稱，表示訊息的發送者。
         let user:String
+        /// 訊息內容，表示使用者發送的文字訊息。
         let message:String
+        /// 可選的使用者頭像 URL，若無則為 nil。
         let img:String?
+        /// 可選的禮物圖片 URL，若無則為 nil。
         let giftImg:String?
+        /// 是否為主要訊息，若無則為 nil。
         var isMain:Bool?
+        /// 可選的使用者數量，若無則為 nil。此屬性可能用於表示聊天室中同一使用者的訊息數量。
         let userNum: Int?
+        /// 可選的使用者列表，若無則為 nil。此屬性可能用於表示聊天室中同一使用者的訊息列表。
         let userList: [String]?
 
+        /// 初始化聊天室訊息結構
+        /// - Parameter decoder: 解碼器
+        /// - Returns: 初始化後的 ChatMessage 實例
+        /// - Throws: 解碼錯誤
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             useTTS = try container.decodeIfPresent(Bool.self, forKey: .useTTS) ?? true
@@ -624,74 +657,186 @@ class SocketServer:ObservableObject, @unchecked Sendable {
             }
         }
     }
+
+    /// 用於表示日誌訊息的結構，包含標題與訊息內容。
     struct SLogMessage:Codable {
+        /// 標題，通常用於描述日誌的來源或類型。
         let title:String
+        /// 訊息內容，包含日誌的詳細資訊。
         let message:String
     }
+
+    /// 用於表示日誌批次的結構，包含多條日誌條目以及可選的音訊音量資訊。
     struct LogBatchPayload: Codable {
+        /// 多條日誌條目。
         let entries: [String]
+        /// 可選的應用程式音量資訊。
         let appVol: Float?
+        /// 可選的麥克風音量資訊。
         let micVol: Float?
     }
+
+    /// 用於表示用戶偏好設定的結構，包含鍵和值類型。
     struct UPSet:Codable {
+        /// 用戶偏好設定的鍵。
         let key:String
+        /// 用戶偏好設定的值類型，例如 "String"、"Int"、"Bool" 等。
         let ValueType:String
     }
 
+    /// AudioLive 用於表示音訊直播的配置，包含應用程式音量、麥克風音量以及持久化設定。
     struct AudioLive:Codable {
+        /// 應用程式音量，範圍通常在 0.0 到 1.0 之間。
         var appVol:Float
+        /// 麥克風音量，範圍通常在 0.0 到 1.0 之間。
         var micVol:Float
+        /// 是否將音訊直播設定持久化保存。
         var persist:Bool = false
     }
 
-    struct VideoHealthPayload: Codable {
+    /// VideoHealthPayload 用於表示視訊健康狀態的結構，包含各種視訊處理指標。
+    struct VideoHealthPayload: Codable, Sendable {
+
+        /// 視訊健康狀態的描述，例如 "正常"、"異常" 等。
         let status: String
+
         // 新版（窗口彙總）：min/avg/max
+        /// 輸入幀率的最小值。
         let inputFPSMin: Double?
+        /// 輸入幀率的平均值。
         let inputFPSAvg: Double?
+        /// 輸入幀率的最大值。
         let inputFPSMax: Double?
+
+        /// 處理後幀率的最小值。
         let processedFPSMin: Double?
+        /// 處理後幀率的平均值。
         let processedFPSAvg: Double?
+        /// 處理後幀率的最大值。
         let processedFPSMax: Double?
+        /// 丟失幀率的平均值。
         let droppedFPSAvg: Double?
+        /// GPU 完成耗時平均值（毫秒），不是推流端到端延遲。
         let latencyAvg: Double?
+        /// GPU 完成耗時最大值（毫秒）。
         let latencyMax: Double?
+        /// GPU 完成耗時第 95 百分位（毫秒）。
         let latencyP95: Double?
+
+        /// 預留 GPU 完成耗時超標的視窗內幀數；傳送端尚未量測，nil 表示未提供。
+        /// 啟用時須附 latencyThresholdMs、latencySampleCount、latencyWindowSeconds。
+        /// 不能以 timeoutDelta 代替，也不能據此判定網路延遲。
+        let latencyExceedCount: Int?
+        /// 視窗內判斷超標的毫秒閾值；目前尚未提供。
+        let latencyThresholdMs: Double?
+        /// 視窗內量測的幀數，供計算超標比例。
+        let latencySampleCount: Int?
+        /// 量測視窗長度（秒），不是整場直播累計。
+        let latencyWindowSeconds: Double?
+
+
+        /// 彙總視窗內 Metal 逾時次數增量，不是百分比。
         let timeoutDelta: Int
+
         // 舊版單值相容欄位
+
+        /// 輸入幀率。舊版相容支持用
+        /// - 注意:可能在未來版本會移除
+        /// - 此屬性可能是給即時動態監控使用，應考慮其更新頻率與性能影響。
         let inputFPS: Double?
+
+        /// 處理後幀率。舊版相容支持用
+        /// - 注意:可能在未來版本會移除
+        /// - 此屬性可能是給即時動態監控使用，應考慮其更新頻率與性能影響。
         let processedFPS: Double?
+
+        /// 丟失幀率。舊版相容支持用
+        /// - 注意:可能在未來版本會移除
+        /// - 此屬性可能是給即時動態監控使用，應考慮其更新頻率與性能影響。
         let droppedFPS: Double?
     }
 
-    struct AudioHealthPayload: Codable {
+    /// AudioHealthPayload 用於表示音訊健康狀態的結構，包含各種音訊處理指標。
+    struct AudioHealthPayload: Codable, Sendable {
+        /// 音訊健康狀態的描述，例如 "正常"、"異常" 等。
         let status: String
+
+        /// 保留的未分階段取樣率欄位，目前傳送端不提供。
+        /// 新資料使用 StreamDiagnosticsSnapshot.mixerAudioSampleRate（混音輸出 Hz）。
+        let sampleRate: Double?
+
+        /// 視窗內每秒應用程式音訊 buffer 到達次數的最小值，不是 Hz 取樣率。
+        /// 回呼頻率取決於 buffer 的 sample 數，不能用影片 60 FPS 判斷健康。
         let appInputFPSMin: Double?
+
+        /// 應用程式輸入音訊的平均幀率。
         let appInputFPSAvg: Double?
+        /// 應用程式輸入音訊的最大幀率。
         let appInputFPSMax: Double?
+
+        /// 麥克風輸入音訊的最小幀率。
         let micInputFPSMin: Double?
+        /// 麥克風輸入音訊的平均幀率。
         let micInputFPSAvg: Double?
+        /// 麥克風輸入音訊的最大幀率。
         let micInputFPSMax: Double?
+        /// 應用程式輸入音訊的最大間隔時間（毫秒）。
         let appGapMaxMs: Double?
+
+        /// 對齊丟失音訊的每秒數量。
         let alignDroppedPerSec: Double?
+        /// 對齊插入音訊的每秒數量。
         let alignInsertedPerSec: Double?
+        /// 對齊觸發音訊的每秒數量。
         let alignFirePerSec: Double?
+        /// 對齊差異的最大樣本數。
         let alignDiffMaxSamples: Double?
+        /// 跳過插入音訊的每秒數量。
         let skipInsertedPerSec: Double?
+
+        /// 音訊溢出丟失的每秒數量。
         let overflowDroppedPerSec: Double?
+        /// 音訊重採樣無資料的每秒數量。
         let resampleNoDataPerSec: Double?
+        /// mixer 音訊 buffer 每秒輸出次數，不是取樣率。
         let mixerOutputFPS: Double?
+
+        /// 保留舊提案欄位，目前沒有端到端量測，nil 表示未提供。
+        /// 不應將來源 PTS 與本機時間相減，或加總不同音軌耗時填入。
+        let totalLatencyMs: Double?
+
+        /// 應用程式音訊的 RMS 值。
         let appRMS: Double?
+        /// 麥克風音訊的 RMS 值。
         let micRMS: Double?
+
+        /// 輸出通道數量。
         let outChannels: Int?
+        /// 輸出通道 0 的 RMS 值。
+        /// 此屬性用於追蹤輸出通道 0 的 RMS 值，可能會在音訊處理過程中動態更新。
         let outCh0RMS: Double?
+
+        /// 輸出通道 1 的 RMS 值。
+        /// 此屬性用於追蹤輸出通道 1 的 RMS 值，可能會在音訊處理過程中動態更新。
         let outCh1RMS: Double?
     }
 
+    /// AudiencePayload 用於表示觀眾資訊的結構，包含觀眾人數和觀眾名單。
     struct AudiencePayload: Codable {
+        /// 觀眾人數，可能為 nil 表示未知或未提供。
         let userNum: Int?
+        /// 觀眾名單，可能為 nil 表示未知或未提供。
         let userList: [String]?
 
+        /// CodingKeys 枚舉定義了 AudiencePayload 的編碼和解碼鍵，對應 JSON 中的鍵名稱。
+        enum CodingKeys: String, CodingKey {
+            case userNum
+            case userList
+        }
+
+        /// 從 JSON 解碼器初始化 AudiencePayload。
+        /// - Parameter decoder: JSON 解碼器
+        /// - Throws: 解碼錯誤
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             userList = try container.decodeIfPresent([String].self, forKey: .userList)
@@ -705,44 +850,14 @@ class SocketServer:ObservableObject, @unchecked Sendable {
         }
     }
 
-
-    enum JSONValue: Codable {
-        case string(String)
-        case int(Int)
-        case double(Double)
-        case bool(Bool)
-        case object([String: JSONValue])
-        case array([JSONValue])
-        case null
-
-        init(from decoder: Decoder) throws {
-            let container = try decoder.singleValueContainer()
-            if let v = try? container.decode(Bool.self) { self = .bool(v); return }
-            if let v = try? container.decode(Int.self) { self = .int(v); return }
-            if let v = try? container.decode(Double.self) { self = .double(v); return }
-            if let v = try? container.decode(String.self) { self = .string(v); return }
-            if let v = try? container.decode([String: JSONValue].self) { self = .object(v); return }
-            if let v = try? container.decode([JSONValue].self) { self = .array(v); return }
-            self = .null
-        }
-
-        func encode(to encoder: Encoder) throws {
-            var container = encoder.singleValueContainer()
-            switch self {
-            case .string(let v): try container.encode(v)
-            case .int(let v): try container.encode(v)
-            case .double(let v): try container.encode(v)
-            case .bool(let v): try container.encode(v)
-            case .object(let v): try container.encode(v)
-            case .array(let v): try container.encode(v)
-            case .null: try container.encodeNil()
-            }
-        }
-    }
-
-
-
-    
+    /// 渲染聊天室訊息，並在需要時發送系統通知。
+    /// - Parameters:
+    ///  - user: 發送訊息的使用者名稱。
+    ///  - msg: 聊天室訊息內容。
+    ///  - img: 可選的使用者頭像 URL。
+    ///  - giftImg: 可選的禮物圖片 URL。
+    ///  - isMain: 指示訊息是否來自主要聊天室，預設為 true。
+    ///
     func renderChatMessage(
         user: String,
         msg: String,
@@ -781,6 +896,10 @@ class SocketServer:ObservableObject, @unchecked Sendable {
 
     }
 
+    /// 更新觀眾資訊，並在有變更時標記 PIP 覆蓋層為需要重新渲染。
+    /// - Parameters:
+    ///  - userNum: 觀眾人數，若為 nil 則不更新。
+    ///  - userList: 觀眾名單，若為 nil 則不更新。
     private func updateAudienceInfo(
         userNum: Int?,
         userList: [String]?
@@ -862,7 +981,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
             "allowFrameReordering":userDefaults?.object(forKey:"allowFrameReordering") as? Bool ?? false,
 
             "h264useCAVLC":userDefaults?.object(forKey:"h264useCAVLC") as? Bool ?? false,
-            
+
             "useEnhancedRTMP":userDefaults?.object(forKey:"useEnhancedRTMP") as? Bool ?? true,
             "isOringinAudio": (userDefaults?.object(forKey: "isOringinAudio") as? Bool) ?? true,
 
@@ -872,7 +991,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
             "hevcLevel": userDefaults?
                 .object(forKey: "hevcLevel") as? String ?? "Main",
             "BitRateMode": min(userDefaults?.object(forKey: "BitRateMode") as? Int ?? 0, 2),
-                
+
 
             "videoBuffer": userDefaults?.object(forKey: "BufferCount") as? Int ?? -1,
 
@@ -888,14 +1007,14 @@ class SocketServer:ObservableObject, @unchecked Sendable {
 
 
             "Rotate": userDefaults?.object(forKey: "Rotate") as? Int ?? 90 ,
-            
+
             "RotateOriginal":userDefaults?.object(forKey: "RotateOriginal") as? Bool ?? false ,
-            
+
             "enableEchoFix" : userDefaults?.object(forKey: "enableEchoFix") as? Bool ?? false,
             "enableNoiseFix": userDefaults?.object(forKey: "enableNoiseFix") as? Bool ?? false,
             "enableAGCFix" : userDefaults?.object(forKey: "enableAGCFix") as? Bool ?? false,
             "enableMetalAudio": userDefaults?.object(forKey: "enableMetalAudio") as? Bool ?? false,
-            
+
 
 
             "appVolume": userDefaults?.object(forKey: "appVolume") as? Double ?? 1.0,
@@ -958,7 +1077,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
 
         // 每次請求RTMP都重置直播狀態
         StreamStarting()
-        
+
         var CPayloadKey = payload
 
         if let key = payload["rtmpKey"] as? String {
@@ -991,7 +1110,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
         LPConfig.shared.onLogPage = onlogPage
         LPConfig.shared.enableLog = enableLog
         LPConfig.shared.SocketLog = enableSocketLog
-        
+
 
         let payload: [String: Any] = [
             "type": "logConfig",
@@ -1042,6 +1161,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
     let encoder = JSONEncoder()
     let decoder = JSONDecoder()
 
+    /// 解析完整單行訊息的 type，再交由類型分派；不是 TCP 封包邊界。
     private func handleReceivedData(_ data: Data, from connection: NWConnection) {
         queue.async { [weak self] in
             guard let self else { return }
@@ -1057,15 +1177,16 @@ class SocketServer:ObservableObject, @unchecked Sendable {
 
 
 
+    /// 分派協定訊息至設定、日誌、聊天室及診斷入口；各 UI 模型自行處理更新佇列。
     private func handleDecodedPayload(data: Data, type: String, connection: NWConnection) {
         do {
-            
+
 
             switch type {
-            
+
             case "AdOverlay":
                 let dict = try decoder.decode(AdOverlay.self, from: data)
-                
+
                 let user = (dict.user?.isEmpty == false) ? dict.user! : "贊助訊息"
 
                 let text = dict.text
@@ -1074,7 +1195,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
 
                 logTo("收到廣告訊息:\(user) - \(text) Icon:\(String(describing: iconURL)) TTS:\(useTTS)")
 
-                
+
                 if isNotifyApp {
                     let (cleanBody, inlineImages, _) = PIPServiceMessages.extractAllImageURLs(from: text, placeholder: "")
                     postSystemNotification(title: user, body: cleanBody, imageURL: iconURL ?? "", inlineImages: inlineImages)
@@ -1125,7 +1246,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
                     logTo("訊息是空的 不需要更新子母_StreamMessage")
                     return
                 }
-                
+
 
                 renderChatMessage(user: user, msg: msg, img: img, giftImg: giftImg, isMain: isMain)
 
@@ -1230,7 +1351,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
                 Task { @MainActor in
                     LiveVolumeModel.shared.updateVolumes(mic: dict.micVol, app: dict.appVol, persist: dict.persist)
                 }
-                logTo("Updated UserVol APP:\(formatLinearVolumeForLog(dict.appVol)) Mic:\(formatLinearVolumeForLog(dict.micVol)) Persist:\(dict.persist)")
+                logTo("Updated UserVol APP:\(AudioLogFormatting.linearVolume(dict.appVol)) Mic:\(AudioLogFormatting.linearVolume(dict.micVol)) Persist:\(dict.persist)")
 
             case "streamDiagnostics":
                 let snapshot = try decoder.decode(StreamDiagnosticsSnapshot.self, from: data)
@@ -1256,7 +1377,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
                     processedFPSAvg: processedAvg, processedFPSMin: processedMin, processedFPSMax: processedMax,
                     droppedFPSAvg: droppedAvg,
                     latencyAvg: latencyAvg, latencyMax: latencyMax, latencyP95: latencyP95,
-                    timeoutDelta: Double(dict.timeoutDelta)
+                    timeoutDelta: Double(dict.timeoutDelta), payload: dict
                 )
 
             case "audioHealth":
@@ -1282,12 +1403,12 @@ class SocketServer:ObservableObject, @unchecked Sendable {
                     micRMS: dict.micRMS ?? 0,
                     outChannels: dict.outChannels ?? 0,
                     outCh0RMS: dict.outCh0RMS ?? 0,
-                    outCh1RMS: dict.outCh1RMS ?? 0
+                    outCh1RMS: dict.outCh1RMS ?? 0, payload: dict
                 )
 
             case "settings":
                 let dict = try decoder.decode([String: JSONValue].self, from: data)
-                if let key = dict["key"]?.rawValue as? String, let valueAny = dict["value"]?.rawValue {
+                if let key = dict["key"]?.propertyListValue as? String, let valueAny = dict["value"]?.propertyListValue {
                     let safeValueStr = String(describing: safeJSONValue(valueAny))
                     logTo("Updated UserDefaults: \(key) = \(safeValueStr)")
                     userDefaults?.set(valueAny, forKey: key)
@@ -1317,7 +1438,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
                 let batch = try decoder.decode(LogBatchPayload.self, from: data)
                 if let appVol = batch.appVol, let micVol = batch.micVol {
                     if appVol > 0.0 || micVol > 0.0 {
-                        logTo("[Volume] recv app=\(formatLinearVolumeForLog(appVol)) mic=\(formatLinearVolumeForLog(micVol))")
+                        logTo("[Volume] recv app=\(AudioLogFormatting.linearVolume(appVol)) mic=\(AudioLogFormatting.linearVolume(micVol))")
                         Task { @MainActor in
                             LiveVolumeModel.shared.updateVolumes(mic: micVol, app: appVol)
                         }
@@ -1384,12 +1505,14 @@ class SocketServer:ObservableObject, @unchecked Sendable {
     private var sendingFlags: [ObjectIdentifier: Bool] = [:]
 
 
+    /// 將 Encodable 轉為 JSON；失敗回傳 nil，尚未加入傳輸換行。
     private func encodedData<T: Encodable>(_ payload: T) -> Data? {
         try? encoder.encode(payload)
     }
 
 
     // MARK: 群播
+    /// 編碼一次後排入各連線的傳送佇列；返回不代表已送達。
     func queueSend(payload: some Encodable) {
         guard let data = encodedData(payload) else { return }
         queue.async { [weak self] in
@@ -1400,6 +1523,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// 序列化 JSON 字典後群播；不相容的 Foundation 值使整筆略過。
     func queueSend(dictionary: [String: Any]) {
         guard let data = try? JSONSerialization.data(withJSONObject: dictionary, options: []) else { return }
         queue.async { [weak self] in
@@ -1410,6 +1534,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// 為指定連線排入待送資料，僅在沒有傳送工作時啟動消費。
     private func enqueue(_ data: Data, to conn: NWConnection) {
         let id = ObjectIdentifier(conn)
         queue.async {
@@ -1424,6 +1549,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// 一次送出一筆並追加換行，完成回呼後續送；完成不代表對端已處理訊息。
     private func sendNextPayload(for conn: NWConnection) {
         let id = ObjectIdentifier(conn)
 
@@ -1609,16 +1735,19 @@ class SocketServer:ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// 明確停止並使所有排程恢復失效；後續通知不能重新啟動服務。
     func stop() {
         performOnQueue { [weak self] in
             guard let self else { return }
-            self.isStopping = true
+            self.wantsRunning = false
+            DispatchQueue.main.async { [weak self] in self?.isStopping = true }
             self.stopInternal()
         }
     }
 
 
     // MARK: - Suspend / Resume
+    /// 關閉現有客戶端與保活 timer，保留 listener 及允許恢復的意圖；不是 stop。
     func suspend() {
         logTo("SocketServer 暫停（釋放連線但保留 listener）")
         queue.async { [weak self] in
@@ -1627,6 +1756,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
                 conn.stateUpdateHandler = nil
                 conn.cancel()
             }
+            self.stopKeepaliveTimer()
             self.connections.removeAll()
             self.receiveBuffers.removeAll()
             self.receiveOffsets.removeAll()
@@ -1637,21 +1767,12 @@ class SocketServer:ObservableObject, @unchecked Sendable {
         }
     }
 
-    func resume() {
-        logTo("SocketServer 恢復（重新監聽）")
-        performOnQueue { [weak self] in
-            guard let self else { return }
-            guard let lis = self.listener, lis.state == .ready else {
-                self.logTo("Listener not ready, starting fresh")
-                self.start()
-                return
-            }
-        }
-    }
+    /// 明確恢復服務；已有 listener 時保留它，與 start 共用恢復判斷。
+    func resume() { start() }
 
-    /// 開始直播前清理可能殘留的連線狀態，避免 extension 連到髒資料
+    /// 開始直播前清理失效連線；保留 ready／preparing 的連線。
     func prepareForBroadcast() {
-        logTo("SocketServer 準備直播：清理舊連線與緩衝")
+        logTo("SocketServer 準備直播：清理失效連線，保留健康連線")
         performOnQueue { [weak self] in
             guard let self else { return }
             self.clearStaleBroadcastConnections()
@@ -1676,14 +1797,10 @@ class SocketServer:ObservableObject, @unchecked Sendable {
                     return
                 }
                 self.clearStaleBroadcastConnections()
-                if self.listener?.state != .ready {
-                    self.logTo("Listener not ready before broadcast (state: \(self.listener?.state.stateString ?? "nil")), restarting")
-                    self.stopInternal()
-                    self.start()
-                }
+                self.start()
 
                 let deadline = DispatchTime.now() + timeout
-                self.waitForReady(deadline: deadline, continuation: continuation)
+                self.waitForReady(deadline: deadline, generation: self.lifecycleGeneration, continuation: continuation)
             }
         }
     }
@@ -1725,12 +1842,15 @@ class SocketServer:ObservableObject, @unchecked Sendable {
         logTo("Cleared \(staleIDs.count) stale broadcast connections")
     }
 
+    /// 在服務佇列輪詢 ready；停止／切換端口使舊世代失效，或於期限到達時回傳 false。
     private func waitForReady(
         deadline: DispatchTime,
+        generation: UUID,
         continuation: CheckedContinuation<Bool, Never>
     ) {
         dispatchPrecondition(condition: .onQueue(queue))
 
+        guard wantsRunning, lifecycleGeneration == generation else { continuation.resume(returning: false); return }
         if listener?.state == .ready {
             logTo("SocketServer listener ready for broadcast")
             continuation.resume(returning: true)
@@ -1748,12 +1868,15 @@ class SocketServer:ObservableObject, @unchecked Sendable {
                 continuation.resume(returning: false)
                 return
             }
-            self.waitForReady(deadline: deadline, continuation: continuation)
+            self.waitForReady(deadline: deadline, generation: generation, continuation: continuation)
         }
     }
 
-    func stopInternal() {
+    /// 服務 queue 上完整釋放資源；不改變啟停意圖，端口切換也會使用。
+    private func stopInternal() {
+        dispatchPrecondition(condition: .onQueue(queue))
         currentRestartKey = nil
+        lifecycleGeneration = UUID()
         if pendingListener != nil {
             finishPortAttempt("服務已停止，請重新套用端口。")
         }
@@ -1764,6 +1887,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
         }
 
         listener?.stateUpdateHandler = nil
+        listener?.newConnectionHandler = nil
         listener?.cancel()
 
         listener = nil
@@ -1783,6 +1907,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
 
 
     // MARK: - Utils
+    /// 遞迴轉換 Date／URL／Data 供傳送或日誌使用；不是任意型別的完整 JSON 驗證器。
     private func safeJSONValue(_ value: Any) -> Any {
         switch value {
         case let date as Date:
@@ -1800,6 +1925,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// 清除主 App 顯示的重連狀態，不直接建立網路連線。
     private func resetReconnectState() {
         LPConfig.shared.isReconnecting = false
         LPConfig.shared.reconnectAttempt = 0

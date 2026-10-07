@@ -1638,6 +1638,7 @@ class SocketClient : @unchecked Sendable {
             if let error = error {
                 self.logTo("Socket receive error: \(error), closing connection")
 
+                // 接收失敗只提供恢復提示；不要求主 App 拆除其他健康連線，也不保證喚醒 App。
                 CFNotificationCenterPostNotification(
                     CFNotificationCenterGetDarwinNotifyCenter(),
                     CFNotificationName("liveAPP.SocketRestart" as CFString),

@@ -310,7 +310,9 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         video.allowFrameReordering = false
         video.scalingMode = .letterbox
         video.expectedFrameRate = 60
-        video.profileLevel = kVTProfileLevel_H264_High_AutoLevel as String
+        video.profileLevel = H264EncodingProfile.resolve(defaults.string(forKey: "h264level") ?? "AutoHigh")
+        // 與 ReplayKit 相同：Baseline 必須使用 CAVLC。
+        video.h264EntropyMode = video.profileLevel.contains("Baseline") ? "cavlc" : nil
         switch defaults.integer(forKey: "BitRateMode") {
         case 1: video.bitRateMode = .constant
         case 2: video.bitRateMode = .variable

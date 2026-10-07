@@ -58,7 +58,7 @@ struct SocketConnectionSettingsView: View {
                 }
                 Text("已儲存端口：\(Int(SocketPortSettings.port))")
                 if socket.listeningPort == nil {
-                    Button("重試啟動") { socket.ensureRunning() }
+                    Button("重試啟動") { socket.start() }
                         .disabled(socket.isApplyingPort)
                 }
             }

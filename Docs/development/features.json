@@ -140,11 +140,46 @@
     "files": [
       "liveAPP/ContentView.swift",
       "liveAPP/Home/HomeView.swift",
-      "liveAPP/Home/HomeView+Cards.swift",
+      "liveAPP/Home/HomeView_Cards.swift",
       "liveAPP/Home/StreamConfigurationForm.swift"
     ],
     "docs": [
       "Docs/development/HOME_MODULES.md"
+    ]
+  },
+  {
+    "id": "stream.h264-capabilities",
+    "name": "H.264 裝置編碼選項",
+    "summary": "查詢 ProfileLevel，共用設定解析並保留未知診斷值。",
+    "replaykit": "共用解析與混音取樣率快照",
+    "screencapturekit": "H.264 推流共用解析；本地錄影獨立",
+    "ui": "主頁 → 編碼設定；設備資訊 → 串流格式與 RTMP 傳輸",
+    "verification": "語法與核心相容測試已新增；Apple CI／實機待驗收",
+    "files": [
+      "SharedCapture/H264EncodingProfile.swift",
+      "liveAPP/Home/H264EncoderCapabilities.swift",
+      "liveAPP/Home/EncodingSettingsView.swift"
+    ],
+    "docs": [
+      "Docs/development/ENCODING_CAPABILITIES.md"
+    ]
+  },
+  {
+    "id": "socket.support-modules",
+    "name": "Socket 資料與日誌輔助模組",
+    "summary": "Socket 純資料輔助與統一恢復決策；停止意圖、通知生命週期及端口切換分開管理。",
+    "replaykit": "沿用換行 JSON 協定",
+    "screencapturekit": "無新增擷取路徑",
+    "ui": "Socket 設定與日誌",
+    "verification": "純函數與恢復決策已在 Windows 執行；Apple 通知／Network 整合待驗收。",
+    "files": [
+      "liveAPP/Networking/NWListenerState_Log.swift",
+      "liveAPP/Networking/SocketServer_JSONValue.swift",
+      "liveAPP/Audio/AudioLogFormatting.swift",
+      "liveAPP/Networking/SocketRecoveryPolicy.swift"
+    ],
+    "docs": [
+      "Docs/development/SOCKET_MODULES.md"
     ]
   }
 ]
