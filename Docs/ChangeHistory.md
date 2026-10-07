@@ -1,5 +1,10 @@
 # 變更歷史
 
+## 2026.10.07 21:11 修正 Socket 通知 API 模組匯入
+
+- Socket.swift 明確匯入 DarwinNotify，修正 notify_register_dispatch、NOTIFY_STATUS_OK 與 notify_cancel 在 Apple CI 找不到名稱的編譯錯誤。
+- 保留既有恢復策略；Windows 語法檢查不涵蓋 Apple SDK 名稱解析，修正需由 Apple CI 重新驗證。
+
 ## 2026.10.07 20:55 模組檔名統一使用底線
 
 - 將三個模組檔名的加號改為底線，同步更新原始碼註釋、模組文件與功能索引。
