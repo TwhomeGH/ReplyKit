@@ -1,8 +1,14 @@
 # 變更歷史
 
+## 2026.10.08 02:14 改用系統標頭橋接 Socket 通知 API
+
+- 移除無法解析的 DarwinNotify 匯入；新增 liveAPP_Bridging_Header.h，從系統 notify.h 匯入通知函數與常數。
+- 僅設定主 App Debug／Release 的 SWIFT_OBJC_BRIDGING_HEADER；保留原本通知與恢復行為。
+- 已核對設定範圍與標頭路徑；完整 Apple SDK 編譯及 DocC 建置仍須重跑 CI 驗證。
+
 ## 2026.10.07 21:11 修正 Socket 通知 API 模組匯入
 
-- Socket.swift 明確匯入 DarwinNotify，修正 notify_register_dispatch、NOTIFY_STATUS_OK 與 notify_cancel 在 Apple CI 找不到名稱的編譯錯誤。
+- 曾嘗試在 Socket.swift 匯入 DarwinNotify；後續 Apple CI 確認該模組無法解析，此嘗試未修復編譯，已由下述 bridging header 修正取代。
 - 保留既有恢復策略；Windows 語法檢查不涵蓋 Apple SDK 名稱解析，修正需由 Apple CI 重新驗證。
 
 ## 2026.10.07 20:55 模組檔名統一使用底線

@@ -38,3 +38,7 @@ Darwin 通知不含已驗證的呼叫者，也不保證喚醒被系統暫停的 
 ## 驗證界線
 
 恢復純決策已在 Windows 編譯並實際執行，另加入 Swift Testing 回歸案例。Network.framework 與 Darwin 通知的真實交錯仍需 Apple CI／實機驗證；不能將語法解析當成 iOS 整合測試通過。
+
+## 系統通知 API 的建置入口
+
+主 App 的 Debug／Release 使用 `liveAPP/liveAPP_Bridging_Header.h` 匯入系統 `<notify.h>`。Swift 由橋接標頭取得 `notify_register_dispatch`、`notify_cancel` 與 `NOTIFY_STATUS_OK`，不使用 `import DarwinNotify`。Apple 文件中的分類名稱不代表 SDK 提供同名 Swift 模組。擴展維持原本的 Core Foundation 通知發送方式。
