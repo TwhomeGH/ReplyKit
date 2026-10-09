@@ -1,5 +1,24 @@
 # 變更歷史
 
+## 2026.10.10 07:30 Socket listener 等待/拒絕連線診斷
+
+**類型**: 優化 · **檔案**: `liveAPP/Socket.swift`
+
+### 問題
+
+- 排查「Socket 連不進來」時，`NWListener` 的 `.waiting`（尚未可接受連線）狀態與「收到連線卻被丟棄」都沒有落檔，log 只看得到 `starting/ready`，無法判斷當下 listener 是否真的可連。
+
+### 修改
+
+- `configureListener`：`.waiting` 狀態補 `logTo("SocketServer waiting …")`。
+- `newConnectionHandler`：因 listener 已替換或 `wantsRunning=false` 而拒絕連線時補 `logTo`。
+
+### 待驗證
+
+- 需裝置重現後提供新 log：確認是否出現 `.waiting`，以及是否有「收到連線但拒絕」。
+
+---
+
 ## 2026.10.08 02:14 改用系統標頭橋接 Socket 通知 API
 
 - 移除無法解析的 DarwinNotify 匯入；新增 liveAPP_Bridging_Header.h，從系統 notify.h 匯入通知函數與常數。

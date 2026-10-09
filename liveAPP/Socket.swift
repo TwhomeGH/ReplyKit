@@ -52,6 +52,8 @@ class SocketServer:ObservableObject, @unchecked Sendable {
     private func configureListener(_ target: NWListener, port: UInt16) {
         target.newConnectionHandler = { [weak self, weak target] connection in
             guard let self, let target, self.listener === target, self.wantsRunning else {
+                // 有連線進來卻被丟棄時必須留痕，否則只見「連不進來」無從排查。
+                self?.logTo("Socket 收到連線但拒絕（listener 已替換或 wantsRunning=false）")
                 connection.cancel()
                 return
             }
@@ -74,6 +76,8 @@ class SocketServer:ObservableObject, @unchecked Sendable {
                 if case .posix(.EADDRINUSE) = error { self.recoveryBlocked = true; return }
                 self.scheduleRestart()
             case .waiting(let error):
+                // 這是最容易「看起來在監聽、其實連不進來」的狀態：必須落檔才查得到。
+                self.logTo("SocketServer waiting (尚未可接受連線)：\(error.localizedDescription)")
                 self.publishListenerState("等待網路：\(error.localizedDescription)")
             case .cancelled:
                 self.listener = nil
