@@ -1070,6 +1070,9 @@ struct liveAPPApp: App {
         // 註冊 BGTaskScheduler 處理常式
         BackgroundTaskManager.shared.registerTasks()
 
+        // 週期把記憶體明細寫入日誌，供追查 footprint 成長來源
+        MemorySampler.shared.start()
+
         // 預先初始化 BroadcastButton 的 RPSystemBroadcastPickerView，避免首次使用時指向錯誤
         let bundleID = (Bundle.main.bundleIdentifier ?? "nuclear.liveAPP") + ".ReplyKIT"
         let ext = userDefaults?.string(forKey: "broadcastExtension") ?? bundleID

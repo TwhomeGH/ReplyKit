@@ -1,5 +1,29 @@
 # 變更歷史
 
+## 2026.10.10 08:05 週期記憶體明細取樣（追查 footprint 爬升）
+
+**類型**: 優化 · **檔案**: `liveAPP/MemorySampler.swift`（新）、`liveAPP/liveAPPApp.swift`
+
+### 問題
+
+- log-51（ReplayKit 廣播、PiP 開）顯示主 App footprint 由 192MB 單調爬升到 314MB（約 +6~7MB/分），顯為累積；但日誌只有 `[LiveActivity] mem=` 與 `[CaptureResources]` 的總量與少數欄位，無法定性「誰在漲」。
+
+### 修改
+
+- 新增 `MemorySampler`：每 30 秒輸出一行 `[Memory] footprint/internal/compressed/external/reusable/purgeable/resident/avail | urlCacheMem/urlCacheDisk`，於 `liveAPPApp.init()` 啟動；純觀測、不改狀態。
+
+### PiP 快取檢查結論
+
+- `PiPImageCache`（圖片）：NSCache `countLimit=20`、`totalCostLimit=20MB`，且 in-flight／pending／queue 於完成時清除 → 正常。
+- `PIPMetalRenderer.textTextureCache`：字典以「文字全字串」為 key、**無上限且 `clearTextCache()` 從未被呼叫**；但整個 `PIPMetalRenderer` 目前**無人使用（dead code）**，故非本次洩漏來源（已記錄，待日後清理）。
+- `LayerPool`／pixel buffer pool：pool 大小有界、buffer 重用 → 正常。
+
+### 待驗證
+
+- 需裝置重現後看 `[Memory]` 逐行：確認是 internal 還是 compressed 在漲，搭配 `urlCache` 等欄位定位實際累積來源。
+
+---
+
 ## 2026.10.10 07:40 放寬 RTMP 命令逾時（修正 createStream requestTimedOut）
 
 **類型**: 修復 · **檔案**: `Package.resolved`、`liveAPP.xcodeproj/.../Package.resolved`、fork `RTMPHaishinKit/Sources/RTMP/RTMPConnection.swift`
