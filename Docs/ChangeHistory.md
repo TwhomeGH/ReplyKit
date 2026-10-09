@@ -1,5 +1,21 @@
 # 變更歷史
 
+## 2026.10.10 07:40 放寬 RTMP 命令逾時（修正 createStream requestTimedOut）
+
+**類型**: 修復 · **檔案**: `Package.resolved`、`liveAPP.xcodeproj/.../Package.resolved`、fork `RTMPHaishinKit/Sources/RTMP/RTMPConnection.swift`
+
+### 問題
+
+- 推流到 Restream 時偶發 `Command timeout cmd=createStream` → `publish: failed with requestTimedOut`；TCP／handshake／`connect` 皆成功，只有 `createStream` 逾時。
+- 逾時值 `RTMPConnection.defaultRequestTimeout = 3000ms`；失敗時序與 App 進入 `.inactive`（`正在離開App`）吻合——App 被系統暫停收包，伺服器回覆來不及在 3 秒內處理。
+
+### 修改
+
+- fork（`HaishinKitFixSwfit`，commit `51774900`）：`defaultRequestTimeout` 由 `3000` 放寬到 `8000` 毫秒；正常回覆仍在毫秒級，8 秒用於吸收短暫的前後景轉換。
+- 本 repo `Package.resolved` 兩份 pin 更新至 `51774900`。
+
+---
+
 ## 2026.10.10 07:30 Socket listener 等待/拒絕連線診斷
 
 **類型**: 優化 · **檔案**: `liveAPP/Socket.swift`
