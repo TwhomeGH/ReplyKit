@@ -1,5 +1,20 @@
 # 變更歷史
 
+## 2026.10.10 08:40 更新 HaishinKit fork（握手逾時測試改正）並更新 pin
+
+**類型**: 優化 · **檔案**: `Package.resolved`、`liveAPP.xcodeproj/.../Package.resolved`、fork `RTMPHaishinKit/Tests/RTMP/RTMPConnectionHandshakeTimeoutTests.swift`
+
+### 問題
+
+- fork CI 的 `等不到 S0S1：握手逾時並標明 waiting S0S1` 偶發失敗（`POSIXErrorCode(rawValue: 60)`）：測試 helper 以「固定 5 秒 deadline + 輪詢」判定本機 `NWListener` 是否 ready，CI 排程一擠壓即誤判；逾時又只丟合成的 `ETIMEDOUT`，看不到真正原因。
+
+### 修改
+
+- fork（`HaishinKitFixSwfit`，commit `2e2919af`）：測試 helper 改為**事件驅動**——listener `.ready` 立即回傳、`.failed` 回報真實 `NWError`、`.waiting` 記下真因；backstop 僅防無限等待且優先回報該真因。
+- 本 repo `Package.resolved` 兩份 pin 更新至 `2e2919af`。
+
+---
+
 ## 2026.10.10 08:05 週期記憶體明細取樣（追查 footprint 爬升）
 
 **類型**: 優化 · **檔案**: `liveAPP/MemorySampler.swift`（新）、`liveAPP/liveAPPApp.swift`
