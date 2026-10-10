@@ -1,5 +1,14 @@
 # 變更歷史
 
+## 2026.10.10 23:25 fork pin 前進至 07a4df41（不採回退策略）
+
+**類型**: 優化 · **檔案**: `Package.resolved` 兩份
+
+- 決定：不為低層 CI 暫時失敗而回退 pin。每個 fork revision 都會被建置／保存，新版本失敗時使用者仍可取用舊版，因此直接前進到修正後的 fork HEAD **`07a4df41`**（含 `requestTimeout` 8s、握手逾時測試事件驅動、推流診斷 close 原因／SetChunkSize raw／輸出 PTS 倒退、`close()` 協定修正）。
+- 此筆取代前一筆 23:05 的回退。
+
+---
+
 ## 2026.10.10 23:05 回退 fork pin 至 2e2919af（低層 CI 未過，先不動主 App）
 
 **類型**: 修正 · **檔案**: `Package.resolved` 兩份
