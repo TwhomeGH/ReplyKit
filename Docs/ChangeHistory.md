@@ -1,5 +1,17 @@
 # 變更歷史
 
+## 2026.10.10 23:05 回退 fork pin 至 2e2919af（低層 CI 未過，先不動主 App）
+
+**類型**: 修正 · **檔案**: `Package.resolved` 兩份
+
+### 內容
+
+- fork `7b2e222f` 把 `RTMPConnection.close()` 改成 `close(reason:)`，破壞了 `HaishinKit.NetworkConnection` 協定一致性（該協定要求 `func close() async throws`）→ macOS/iOS 編譯失敗。
+- 已在 fork 修正（`07a4df41`）：保留 `close()` 作為協定 witness（內部轉呼叫 `close(reason: "external")`），另新增 `public close(reason:)`。
+- 依「先等底層 CI 綠燈，再更新主 App pin」原則，主 App 的 `Package.resolved` **先回退到最後已知可用的 `2e2919af`**；待 fork `07a4df41` 的 macOS/iOS CI 通過後再更新。
+
+---
+
 ## 2026.10.10 22:20 補強推流診斷（close 原因、chunk 原始位元組、輸出 PTS 倒退）
 
 **類型**: 優化 · **檔案**: fork `RTMPHaishinKit/Sources/RTMP/RTMPConnection.swift`、`RTMPStream.swift`；本 repo `Package.resolved` 兩份 pin → `7b2e222f`
