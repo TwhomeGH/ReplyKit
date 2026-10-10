@@ -1,5 +1,19 @@
 # 變更歷史
 
+## 2026.10.10 21:05 推流輸出畫布政策（16:9 / 跟隨來源）與疊加層改以畫布為座標
+
+**類型**: 功能 · **檔案**: `liveAPP/Capture/StreamFramePolicy.swift`（新）、`ScreenStreamVideoRotator.swift`、`ScreenCaptureSource.swift`、`CaptureCoordinator.swift`
+
+### 內容
+
+- 新增 `StreamFramePolicy`：`.standard`（16:9 含黑邊，**預設**）、`.standardFill`（16:9 裁切填滿）、`.native`（跟隨來源比例），存於 `streamFramePolicy`。
+- GPU 影像階段（`ScreenStreamVideoRotator`）改為真正的「畫布合成器」：把（旋轉後）來源依 fit/fill 縮放、置中到輸出畫布、補黑底並裁到畫布；**疊加層一律以輸出畫布為座標系**（錨點＝畫布四角）。先前疊加畫在來源座標、黑邊由 encoder 事後補，兩個座標系不一致才會「疊加在內容上、進不了黑邊」。
+- 注意：`CIContext.render(_:to:)` 會把 image 的 extent 映射到整個緩衝，故必須「裁到畫布 + 疊黑底」讓 extent 恰等於畫布尺寸，否則被拉伸。
+- `ScreenCaptureSource.preparePublishing` 依政策設 `videoSettings.videoSize`（固定畫布為 1920×1080、native 沿用擷取尺寸）並傳入 pump/compositor。
+- 「擷取與開始」頁（SC 模式、推流）新增「輸出畫布」選單。
+
+---
+
 ## 2026.10.10 08:40 更新 HaishinKit fork（握手逾時測試改正）並更新 pin
 
 **類型**: 優化 · **檔案**: `Package.resolved`、`liveAPP.xcodeproj/.../Package.resolved`、fork `RTMPHaishinKit/Tests/RTMP/RTMPConnectionHandshakeTimeoutTests.swift`

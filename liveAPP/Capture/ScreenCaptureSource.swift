@@ -19,8 +19,10 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     let mic = CaptureMailbox<CapturedSample>(budget: 1024 * 1024)
     private var workers: [Task<Void, Never>] = []
     private var loggedFrameSize = CGSize.zero
-    init(mixer: MediaMixer, probe: ScreenAudioProbe, rotateLeft: Bool) throws {
-        let compositor = try ScreenStreamVideoRotator(rotateLeft: rotateLeft, overlay: ScreenOverlayComposer())
+    init(mixer: MediaMixer, probe: ScreenAudioProbe, rotateLeft: Bool,
+         canvas: CGSize? = nil, fills: Bool = false) throws {
+        let compositor = try ScreenStreamVideoRotator(rotateLeft: rotateLeft, overlay: ScreenOverlayComposer(),
+                                                      canvas: canvas, fills: fills)
         super.init()
         for (queue, track, isVideo) in [(video, UInt8(0), true), (audio, UInt8(0), false), (mic, UInt8(1), false)] {
             workers.append(Task {
@@ -304,7 +306,9 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         //（ReplayKit SampleHandler 的 encoderW/H = ODWidth/ODHeight）。SC 擷取緩衝的寬高
         // 本身與設定是轉置的，旋轉後剛好對上這個畫布；先前在此再交換會讓輸出變成 1080×1920（直的）。
         let rotateLeft = defaults.object(forKey: "screenStreamRotateLeft") as? Bool ?? true
-        video.videoSize = size
+        // 輸出畫布政策：預設 16:9（含黑邊）；native 沿用來源尺寸。
+        let framePolicy = StreamFramePolicy.current
+        video.videoSize = framePolicy.fixedCanvas ?? size
         video.bitRate = max(100_000, defaults.object(forKey: "bitRate") as? Int ?? 6_000_000)
         video.maxKeyFrameIntervalDuration = Int32(max(0, min(60, defaults.object(forKey: "KeyFrameInterval") as? Int ?? 2)))
         video.allowFrameReordering = false
@@ -351,8 +355,9 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         await pipeline.mixer.addOutput(stream)
         await pipeline.mixer.startRunning()
         try Task.checkCancellation()
-        sendlog(message: "[CaptureVideoRotation] session=\(logSession) policy=\(rotateLeft ? "left90" : "none")")
-        let pump = try ScreenSamplePump(mixer: pipeline.mixer, probe: probe, rotateLeft: rotateLeft)
+        sendlog(message: "[CaptureVideoRotation] session=\(logSession) rotate=\(rotateLeft ? "left90" : "none") frame=\(framePolicy.rawValue) canvas=\(framePolicy.fixedCanvas.map { "\(Int($0.width))x\(Int($0.height))" } ?? "source")")
+        let pump = try ScreenSamplePump(mixer: pipeline.mixer, probe: probe, rotateLeft: rotateLeft,
+                                        canvas: framePolicy.fixedCanvas, fills: framePolicy.fillsCanvas)
         self.pump = pump
         startupStage = "pipeline.sampleOutputs"
         try source.addStreamOutput(pump, type: .screen, sampleHandlerQueue: sampleQueue)

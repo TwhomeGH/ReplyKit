@@ -82,6 +82,7 @@ import ScreenCaptureKit
     @AppStorage("recordingOrientationPolicy", store: userDefaults) private var recordingPolicy = RecordingOrientationPolicy.automatic.rawValue
     @AppStorage(RecordingVideoCodec.storageKey, store: userDefaults) private var recordingCodec = RecordingVideoCodec.auto.rawValue
     @AppStorage("screenStreamRotateLeft", store: userDefaults) private var streamRotateLeft = true
+    @AppStorage(StreamFramePolicy.storageKey, store: userDefaults) private var framePolicy = StreamFramePolicy.standard.rawValue
     @State private var anotherCapture = false
     @State private var showingRecordings = false
 
@@ -148,6 +149,16 @@ import ScreenCaptureKit
             if selectedWorkMode.wantsStreaming {
                 Toggle(AppLanguage.localized("capture.stream.left90"), isOn: $streamRotateLeft)
                     .disabled(controlsDisabled)
+                Picker("輸出畫布", selection: $framePolicy) {
+                    ForEach(StreamFramePolicy.allCases) { policy in
+                        Text(policy.title).tag(policy.rawValue)
+                    }
+                }
+                .pickerStyle(.menu)
+                .disabled(controlsDisabled)
+                if let policy = StreamFramePolicy(rawValue: framePolicy) {
+                    Text(policy.detail).font(.caption).foregroundStyle(.secondary)
+                }
             }
             if selectedWorkMode.wantsRecording {
                 Picker(AppLanguage.localized("recording.orientation.title"), selection: $recordingPolicy) {
