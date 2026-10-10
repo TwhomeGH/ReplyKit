@@ -1,5 +1,21 @@
 # 變更歷史
 
+## 2026.10.10 22:20 補強推流診斷（close 原因、chunk 原始位元組、輸出 PTS 倒退）
+
+**類型**: 優化 · **檔案**: fork `RTMPHaishinKit/Sources/RTMP/RTMPConnection.swift`、`RTMPStream.swift`；本 repo `Package.resolved` 兩份 pin → `7b2e222f`
+
+### 動機
+
+- 直播偶發 `ECONNRESET`（對端重置）時無法分辨是誰要求關閉、是否本機送出異常。
+
+### 內容
+
+- `RTMPConnection.close(reason:)`：`reason` 寫進 `Close requested` 日誌。內部來源標註：`serverClose`（伺服器送 close 命令）、`stageTimeout`、`recvLoopEnded`／`recvLoopError`、`protocolError.s0|connectMessage|chunkType`；其餘為 `external`（呼叫端）。
+- SetChunkSize 診斷新增 `raw=<hex>`（確認伺服器 4 bytes 真值；先前解碼已確認符合大端規範）。
+- `publish throughput` 新增 `outputPTSAdvanced` 與 `ptsRegress{v=…,a=…}`（video/audio 輸出時間戳倒退累計），用來判斷「我們發的包時間戳是否亂序」。
+
+---
+
 ## 2026.10.10 21:05 推流輸出畫布政策（16:9 / 跟隨來源）與疊加層改以畫布為座標
 
 **類型**: 功能 · **檔案**: `liveAPP/Capture/StreamFramePolicy.swift`（新）、`ScreenStreamVideoRotator.swift`、`ScreenCaptureSource.swift`、`CaptureCoordinator.swift`
