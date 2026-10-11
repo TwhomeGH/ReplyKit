@@ -20,7 +20,7 @@
 | `changelog/cli.py` | 命令列（add／list／show／serve） |
 | `changelog/assets.py` + `changelog/assets/` | 網頁資產載入與檔案 |
 
-網頁樣式與行為全在 `Scripts/changelog/assets/`：`theme.css`（色票與共用元件，含深／淺色）、`index.*`（變更歷史）、`dev.*`（開發索引）、`file.*`（檔案檢視）、`highlight.js`（語法上色）、`markdown.js`（Markdown 渲染）。改版面或配色只需動這些資產，不必改 Python。各頁右上角可切換深／淺色（存在 localStorage，並跟隨系統偏好）。開發索引的 API 宣告註釋以 markdown 呈現，檔案檢視支援行號就地跳轉與高亮，不需重載。開啟 `.md` 檔時**預設以排版檢視呈現**（標題、清單、表格、程式碼區塊與 `> [!TIP]` 之類提示框），可一鍵切回原始碼；文件內的相對連結會改寫為站內檔案檢視連結。
+網頁樣式與行為全在 `Scripts/changelog/assets/`：`theme.css`（色票與共用元件，含深／淺色）、`index.*`（變更歷史）、`dev.*`（開發索引）、`file.*`（檔案檢視）、`highlight.js`（語法上色）、`markdown.js`（Markdown 渲染）。改版面或配色只需動這些資產，不必改 Python。各頁右上角可切換深／淺色（存在 localStorage，並跟隨系統偏好）。開發索引的 API 宣告註釋以 markdown 呈現，檔案檢視支援行號就地跳轉與高亮，不需重載。開發索引的「近期改動」分頁可展開每個提交或工作區變更、檢視其 unified diff（含語法上色）。開啟 `.md` 檔時**預設以排版檢視呈現**（標題、清單、表格、程式碼區塊與 `> [!TIP]` 之類提示框），可一鍵切回原始碼；文件內的相對連結會改寫為站內檔案檢視連結。
 
 ## 各資料的責任
 
@@ -28,7 +28,7 @@
 | --- | --- |
 | 功能／接入 | features.json：固定 ID、用途、兩種來源、UI、驗證狀態及檔案連結；人工維護 |
 | API 宣告 | 掃描 Swift 宣告及相鄰文件註釋，只作定位；不是編譯器解析，不能完整辨識條件編譯、跨行宣告或呼叫關係 |
-| 近期改動 | Git 最近 20 筆提交與未提交／未追蹤檔案；不推測變更的功能語意 |
+| 近期改動 | Git 最近 20 筆提交與未提交／未追蹤檔案；可展開檢視該提交或工作區的 unified diff（含語法上色），不推測變更的功能語意 |
 | 版本 | App HEAD、鎖定套件 revision、選填底層 HEAD；不是已安裝 App 的 BuildInfo |
 | DocC | 由 Xcode 編譯器與文件註釋產生；獨立於本機文字索引 |
 

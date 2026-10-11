@@ -28,6 +28,20 @@ class IndexTests(unittest.TestCase):
         self.assertTrue(data["lockedPackages"])
         self.assertTrue(any("StreamAudioBitrate" in symbol["name"] for symbol in data["symbols"]))
         self.assertTrue(data["repos"][0]["head"])
+        # 近期改動為結構化提交（hash／date／subject／files）
+        commits = data["repos"][0]["commits"]
+        self.assertIsInstance(commits, list)
+        self.assertTrue(all({"hash", "date", "subject", "files"} <= set(c) for c in commits))
+
+    def test_diff(self):
+        code, body, mime = dev_index.route("/development/diff", "repo=app&worktree=1")
+        self.assertEqual(code, 200)
+        payload = json.loads(body)
+        self.assertEqual({"diff", "truncated", "empty"}, set(payload))
+        self.assertIn("json", mime)
+        # 防護：無效提交與路徑穿越皆回 400
+        self.assertEqual(dev_index.route("/development/diff", "repo=app&hash=zzz")[0], 400)
+        self.assertEqual(dev_index.route("/development/diff", "repo=app&path=../secret")[0], 400)
 
     def test_http_integration(self):
         server = ThreadingHTTPServer(("127.0.0.1", 0), change_log.Handler)

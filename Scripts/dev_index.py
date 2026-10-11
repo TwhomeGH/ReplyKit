@@ -17,6 +17,7 @@ if sys.platform == "win32":
 from changelog.devindex import (  # noqa: E402,F401
     CATALOG,
     ROOT,
+    diff,
     files,
     git,
     link,

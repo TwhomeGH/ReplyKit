@@ -1,5 +1,20 @@
 # 變更歷史
 
+## 2026.10.11 01:10 開發索引：近期改動可展開檢視 diff（含語法上色）
+
+**類型**: 功能 · **檔案**: `Scripts/changelog/devindex.py`、`assets/dev.{js,css,html}`、`assets/theme.css`、`assets/file.css`、`Scripts/dev_index.py`、`Scripts/test_dev_index.py`、`Docs/development/README.md`
+
+### 內容
+
+- 開發索引「近期改動／版本」分頁：提交與未提交變更改為**可展開**，展開時即時抓取該提交（或工作區）的 unified diff，並以語法上色呈現（與檔案檢視共用色票）。
+- 後端 `devindex.py`：`git log` 改用 `%x1e`／`%x1f` 控制字元分隔的**結構化提交**（`_parse_commits`）；新增 `diff()`（`git show`／`git diff HEAD`；`_safe_pathspec` 防路徑穿越、`_REV_RE` 防提交注入、`MAX_DIFF` 截斷）與 `GET /development/diff` 路由；`git()` timeout 15→30 秒。
+- 前端 `dev.js`：新增 `commitCard`／`renderDiff`／`loadDiff`（含結果快取）與事件委派（提交標題、檔名、工作區差異鈕）。
+- 樣式：`dev.css` 新增提交卡片與 diff 樣式；`.tok-*` 語法色票自 `file.css` 移到 `theme.css`（檔案檢視與差異檢視共用）；`dev.html` 載入 `highlight.js`。
+- 相容入口 `Scripts/dev_index.py` 匯出 `diff`；`test_dev_index.py` 新增提交結構與 `/development/diff` 測試（含 400 防護）。
+- 已本機啟動工具、以瀏覽器驗證：展開 Swift 提交的 diff 產生 419 個語法上色 token（`tok-k/t/f/s/c/n/a`）。
+
+---
+
 ## 2026.10.10 23:25 fork pin 前進至 07a4df41（不採回退策略）
 
 **類型**: 優化 · **檔案**: `Package.resolved` 兩份
