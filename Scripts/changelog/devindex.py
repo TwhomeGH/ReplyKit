@@ -67,6 +67,9 @@ def link(repo, path, line=1):
 def validate():
     """CI 驗證穩定 ID、必要欄位與 App 文件／原始碼連結。"""
     catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
+    # 相容兩種形式：純陣列；或 { "labels": {...}, "features": [...] }。
+    if isinstance(catalog, dict):
+        catalog = catalog.get("features") or []
     seen = set()
     for feature in catalog:
         for field in ("id", "name", "summary", "replaykit", "screencapturekit", "ui", "verification", "files", "docs"):
