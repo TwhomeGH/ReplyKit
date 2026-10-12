@@ -1,5 +1,24 @@
 # 變更歷史
 
+## 2026.10.12 10:24 fork pin 前進至 c3a5e3d8（修正 RTMP 關閉死鎖）
+
+**類型**: 修正 · **檔案**: `Package.resolved` 兩份
+
+### 問題
+
+ScreenCaptureKit 推流在「App 進背景再回來（無 PiP 保活）」後，手動停止會卡在「正在停止」永不復原——狀態機停在 `.stopping`，`update(.idle)` 永遠不會被呼叫，UI 無法回到可再次啟動的狀態。
+
+### 根因
+
+底層 `RTMPConnection.close()` 的 `await socket?.drain()` 會一直等 `drainWaiters.finish()`，而唯一的釋放者是排在它**之後**的 `socket?.close()`。連線若已死透（App 被暫停後 socket 被系統拆掉），最後一次送出完成不會回報、`didSendChunk` 不觸發 → `drain()` 與 `close()` 互等卡死；連線關不掉、`finish()` 便走不到結尾，狀態永遠停在 `.stopping`。（實機 log 顯示連線早先已因 `recvLoopEnded` 嘗試關閉，卻沒走到 `state = disconnected`。）
+
+### 修改
+
+- fork（`c3a5e3d8`）：`RTMPSocket.drain()` 改為**有界**（預設 2 秒，逾時自行釋放等待者並記 `Socket drain timed out`）；`RTMPConnection.close()`／`RTMPStream.close()`／`deleteStream()`／`finishOutputConsumer()` 補步驟日誌，下次若仍卡住可直接看出卡在哪個 await。
+- 主 App：`Package.resolved` 兩份 pin 前進至 `c3a5e3d8`（`close()` 時序不再死鎖）。
+
+---
+
 ## 2026.10.11 01:10 開發索引：近期改動可展開檢視 diff（含語法上色）
 
 **類型**: 功能 · **檔案**: `Scripts/changelog/devindex.py`、`assets/dev.{js,css,html}`、`assets/theme.css`、`assets/file.css`、`Scripts/dev_index.py`、`Scripts/test_dev_index.py`、`Docs/development/README.md`
