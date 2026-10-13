@@ -1,5 +1,13 @@
 # 變更歷史
 
+## 2026.10.14 04:06 修正錄後壓縮測試巨集編譯與 DocC 重複收錄
+
+**類型**: 修正 · **檔案**: `RecordingCompressionTests.swift`、`liveAPP.xcodeproj/project.pbxproj`
+
+- 將修改狀態的 FPS 判斷先存為區域結果，再交給 `#expect`，避免巨集展開使用不可變接收者而無法編譯；保留原有斷言。
+- DocC 保留既有手動 Sources 設定，從同步資料夾自動收錄中排除，消除重複建置項目。
+- 完整 iOS 建置與測試結果仍需 CI 確認。
+
 ## 2026.10.14 02:46 ScreenCaptureKit 本地錄影加入可選錄後壓縮
 
 **類型**: 新增 · **功能 ID**: `recording.post-compression`

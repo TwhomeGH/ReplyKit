@@ -25,17 +25,23 @@ struct RecordingCompressionTests {
         let accepted = (0..<60).map { Double($0) / 60 }.filter { limiter.accepts(seconds: $0) }
         #expect(accepted.count == 30)
         #expect(accepted.first == 0)
-        #expect(!limiter.accepts(seconds: .nan))
-        #expect(!limiter.accepts(seconds: 0))
+        // mutating 呼叫先執行，避免 #expect 展開成不可變接收者。
+        let acceptsInvalidTime = limiter.accepts(seconds: .nan)
+        let acceptsEarlierTime = limiter.accepts(seconds: 0)
+        #expect(!acceptsInvalidTime)
+        #expect(!acceptsEarlierTime)
     }
 
     @Test func variableCadenceAndUnlimitedModeKeepOriginalTimes() {
         var limiter = RecordingFrameRateLimiter(limit: 30)
         let times = [0.0, 0.1, 0.8, 2.0]
-        #expect(times.filter { limiter.accepts(seconds: $0) } == times)
+        let accepted = times.filter { limiter.accepts(seconds: $0) }
+        #expect(accepted == times)
         var unlimited = RecordingFrameRateLimiter(limit: 0)
-        #expect(unlimited.accepts(seconds: 0))
-        #expect(unlimited.accepts(seconds: 0.001))
+        let acceptsFirst = unlimited.accepts(seconds: 0)
+        let acceptsNext = unlimited.accepts(seconds: 0.001)
+        #expect(acceptsFirst)
+        #expect(acceptsNext)
     }
 
     @Test func missingSettingsKeepCompressionOptIn() {
