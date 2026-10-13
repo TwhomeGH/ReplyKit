@@ -203,8 +203,9 @@ import ScreenCaptureKit
             }
             .pickerStyle(.menu)
             .disabled(controlsDisabled)
-            Text("HEVC 檔案較小、畫質較好；AV1 需裝置支援才會出現。方向變化多次時系統可能重新編碼。")
+            Text("系統錄製碼率由系統決定，選擇 HEVC 不保證檔案較小。AV1 需裝置支援。若需控制大小，可啟用錄後壓縮。")
                 .font(.caption).foregroundStyle(.secondary)
+            RecordingCompressionSettingsView().disabled(controlsDisabled)
         }
         #endif
     }

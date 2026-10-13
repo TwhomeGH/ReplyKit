@@ -1,5 +1,9 @@
 # 開發索引與 API 文件
 
+## 功能文件
+
+- [ScreenCaptureKit 本地錄影：錄後壓縮](RECORDING_COMPRESSION.md)
+
 ## 開啟方式
 
 雙擊 `Scripts/change_log.cmd`，點「功能／API／近期改動索引」。原有新增／修改變更紀錄功能保留。

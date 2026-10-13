@@ -12,6 +12,8 @@ import UIKit
     private var output: SCRecordingOutput?
     private let orientation: RecordingOrientationTimeline
     private let policy: RecordingOrientationPolicy
+    /// 開錄時固定設定；後續 UI 變更只影響下一次錄影。
+    private let compression: RecordingCompressionSettings
     private var nativeFinished = false
     private var correction: Task<Void, Never>?
     private var progress: Task<Void, Never>?
@@ -21,6 +23,7 @@ import UIKit
     init(orientation: RecordingOrientationTimeline, policy: RecordingOrientationPolicy, failed: @escaping @MainActor (String) -> Void) throws {
         self.orientation = orientation
         self.policy = policy
+        self.compression = RecordingCompressionSettings.load(from: userDefaults ?? .standard)
         id = try RecordingLibrary.shared.create().id
         self.failed = failed
         super.init()
@@ -97,27 +100,29 @@ import UIKit
             guard let self, !self.terminal, !self.nativeFinished else { return }
             self.nativeFinished = true
             self.progress?.cancel(); self.progress = nil
-            if self.policy == .none {
+            if self.policy == .none && !self.compression.enabled {
                 sendlog(message: "[RecordingOrientation] id=\(self.id) policy=none skipped")
                 self.complete(.ready, message: AppLanguage.localized("recording.orientation.kept"))
                 return
             }
-            self.report(.finishing, message: "正在確認並修正影片方向。")
+            self.report(.finishing, message: self.compression.enabled ? "正在壓縮並處理影片方向，請保持 App 在前景。" : "正在確認並修正影片方向。")
             self.correction = Task { @MainActor [self] in
-                let background = UIApplication.shared.beginBackgroundTask(withName: "RecordingOrientation") { [weak self] in
+                let background = UIApplication.shared.beginBackgroundTask(withName: "RecordingPostprocess") { [weak self] in
                     Task { @MainActor in self?.correction?.cancel() }
                 }
                 defer { if background != .invalid { UIApplication.shared.endBackgroundTask(background) } }
+                let startedAt = ContinuousClock.now
+                sendlog(message: "[RecordingPostprocess] id=\(self.id) compression=\(self.compression.enabled) hevc=\(self.compression.hevc) mbps=\(self.compression.megabits) longestEdge=\(self.compression.longestEdge) fpsLimit=\(self.compression.fpsLimit)")
                 let snapshot = self.orientation.snapshot()
                 sendlog(message: "[RecordingOrientation] id=\(self.id) policy=\(self.policy.rawValue) changes=\(snapshot.events.count) missing=\(snapshot.missing) reliable=\(snapshot.reliable)")
                 do {
-                    let message = try await RecordingOrientationCorrector.correct(url: RecordingLibrary.shared.fileURL(for: self.id), timeline: self.orientation, policy: self.policy)
-                    sendlog(message: "[RecordingOrientation] id=\(self.id) \(message)")
+                    let message = try await RecordingOrientationCorrector.correct(url: RecordingLibrary.shared.fileURL(for: self.id), timeline: self.orientation, policy: self.policy, compression: self.compression)
+                    sendlog(message: "[RecordingPostprocess] id=\(self.id) elapsed=\(startedAt.duration(to: .now)) \(message)")
                     self.complete(.ready, message: message)
                 } catch {
                     let code = (error as NSError).code
-                    sendlog(message: "[RecordingOrientation] id=\(self.id) correctionFailed=\(code)")
-                    self.complete(.ready, message: "方向修正未完成（錯誤碼 \(code)），已保留原始錄影，方向可能尚未轉正。")
+                    sendlog(message: "[RecordingPostprocess] id=\(self.id) elapsed=\(startedAt.duration(to: .now)) failed domain=\((error as NSError).domain) code=\(code) detail=\(error.localizedDescription)")
+                    self.complete(.ready, message: "錄後處理未完成：\(error.localizedDescription)（\(code)）。已保留原始錄影，方向或壓縮可能尚未套用。")
                 }
             }
         }

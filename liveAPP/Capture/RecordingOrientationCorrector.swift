@@ -18,18 +18,18 @@ enum RecordingOrientationCorrector {
         default: return .identity
         }
     }
-    static func correct(url: URL, timeline: RecordingOrientationTimeline, policy: RecordingOrientationPolicy = .automatic) async throws -> String {
+    static func correct(url: URL, timeline: RecordingOrientationTimeline, policy: RecordingOrientationPolicy = .automatic, compression: RecordingCompressionSettings? = nil) async throws -> String {
         try Task.checkCancellation()
-        if policy == .none { return AppLanguage.localized("recording.orientation.kept") }
+        if policy == .none { return try await finishWithoutCorrection(url: url, compression: compression, note: AppLanguage.localized("recording.orientation.kept")) }
         let snapshot = timeline.snapshot()
-        guard policy != .automatic || snapshot.reliable else { return "未取得可靠的影格方向，保留系統原始錄影。" }
+        guard policy != .automatic || snapshot.reliable else { return try await finishWithoutCorrection(url: url, compression: compression, note: "未取得可靠的影格方向，保留系統原始錄影。") }
         let asset = AVURLAsset(url: url)
         guard let original = try await asset.loadTracks(withMediaType: .video).first else {
             throw NSError(domain: "RecordingOrientation", code: 1)
         }
         let existing = try await original.load(.preferredTransform)
         // 系統若已寫入矩陣，不能再重複套用附件方向。
-        guard policy != .automatic || existing.isIdentity else { return "系統已提供影片方向矩陣，保留原有方向。" }
+        guard policy != .automatic || existing.isIdentity else { return try await finishWithoutCorrection(url: url, compression: compression, note: "系統已提供影片方向矩陣，保留原有方向。") }
         let size = try await original.load(.naturalSize)
         guard size.width.isFinite, size.height.isFinite, size.width > 0, size.height > 0 else {
             throw NSError(domain: "RecordingOrientation", code: 6)
@@ -49,8 +49,8 @@ enum RecordingOrientationCorrector {
         } else {
             events = [RecordingOrientationEvent(seconds: 0, orientation: policy.outputOrientation(for: 1))]
         }
-        guard let first = events.first else { return "沒有可套用的方向時間範圍，保留原始錄影。" }
-        if events.count == 1 && first.orientation == 1 { return "影格方向已正確，無需轉正。" }
+        guard let first = events.first else { return try await finishWithoutCorrection(url: url, compression: compression, note: "沒有可套用的方向時間範圍，保留原始錄影。") }
+        if events.count == 1 && first.orientation == 1 { return try await finishWithoutCorrection(url: url, compression: compression, note: "影格方向已正確，無需轉正。") }
         let composition = AVMutableComposition()
         let videoTracks = try await asset.loadTracks(withMediaType: .video)
         let audioTracks = try await asset.loadTracks(withMediaType: .audio)
@@ -65,10 +65,7 @@ enum RecordingOrientationCorrector {
             throw NSError(domain: "RecordingOrientation", code: 3)
         }
         let single = events.count == 1
-        let preset = single ? AVAssetExportPresetPassthrough : AVAssetExportPresetHighestQuality
-        guard let exporter = AVAssetExportSession(asset: composition, presetName: preset) else {
-            throw NSError(domain: "RecordingOrientation", code: 4)
-        }
+        var composedVideo: AVVideoComposition?
         if single {
             video.preferredTransform = transform(first.orientation, size: size)
         } else {
@@ -98,8 +95,17 @@ enum RecordingOrientationCorrector {
                 instructions.append(instruction)
             }
             videoComposition.instructions = instructions
-            exporter.videoComposition = videoComposition
+            composedVideo = videoComposition
         }
+        if let compression, compression.enabled {
+            return try await RecordingTranscoder.compress(url: url, asset: composition,
+                videoComposition: composedVideo, settings: compression)
+        }
+        let preset = single ? AVAssetExportPresetPassthrough : AVAssetExportPresetHighestQuality
+        guard let exporter = AVAssetExportSession(asset: composition, presetName: preset) else {
+            throw NSError(domain: "RecordingOrientation", code: 4)
+        }
+        exporter.videoComposition = composedVideo
         let temporary = url.deletingLastPathComponent().appendingPathComponent(UUID().uuidString + ".orientation.mp4")
         defer { try? FileManager.default.removeItem(at: temporary) }
         exporter.outputURL = temporary
@@ -111,6 +117,13 @@ enum RecordingOrientationCorrector {
         guard exporter.status == .completed else { throw exporter.error ?? NSError(domain: "RecordingOrientation", code: 5) }
         _ = try FileManager.default.replaceItemAt(url, withItemAt: temporary)
         return single ? "已依影格方向轉正（不重新編碼）。" : "已依方向變化轉正（重新編碼）。"
+    }
+    /// 無需轉正仍可壓縮；原始矩陣與音訊由轉碼器保留。
+    private static func finishWithoutCorrection(url: URL, compression: RecordingCompressionSettings?, note: String) async throws -> String {
+        guard let compression, compression.enabled else { return note }
+        let result = try await RecordingTranscoder.compress(url: url, asset: AVURLAsset(url: url), settings: compression)
+        return note.replacingOccurrences(of: "保留系統原始錄影", with: "沿用原有方向")
+            .replacingOccurrences(of: "保留原始錄影", with: "沿用原有方向") + " " + result
     }
 }
 #endif

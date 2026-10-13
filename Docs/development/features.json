@@ -188,6 +188,24 @@
       "docs": [
         "Docs/development/SOCKET_MODULES.md"
       ]
+    },
+    {
+      "id": "recording.post-compression",
+      "name": "本地錄影錄後壓縮",
+      "summary": "可選 HEVC／H.264、碼率、最長邊與 FPS 上限；與方向修正共用轉碼，失敗保留原檔。",
+      "replaykit": "未接入",
+      "screencapturekit": "新錄影收尾已接入；預設關閉",
+      "ui": "主頁 → 擷取與開始 → 本地錄影 → 錄後壓縮（SDR）",
+      "verification": "純邏輯測試已新增；Apple SDK 建置與實機驗收待完成。",
+      "files": [
+        "liveAPP/Capture/RecordingCompressionSettings.swift",
+        "liveAPP/Capture/RecordingTranscoder.swift",
+        "liveAPP/Capture/RecordingOrientationCorrector.swift",
+        "liveAPPTests/RecordingCompressionTests.swift"
+      ],
+      "docs": [
+        "Docs/development/RECORDING_COMPRESSION.md"
+      ]
     }
   ]
 }

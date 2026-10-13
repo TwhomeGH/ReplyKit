@@ -24,9 +24,9 @@ enum RecordingVideoCodec: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .auto: return "自動（裝置最佳）"
+        case .auto: return "自動（優先 HEVC）"
         case .h264: return "H.264（AVC，最相容）"
-        case .hevc: return "HEVC（H.265，較小）"
+        case .hevc: return "HEVC（H.265）"
         case .av1:  return "AV1"
         }
     }

@@ -1,5 +1,16 @@
 # 變更歷史
 
+## 2026.10.14 02:46 ScreenCaptureKit 本地錄影加入可選錄後壓縮
+
+**類型**: 新增 · **功能 ID**: `recording.post-compression`
+
+- 新增預設關閉的 SDR 錄後壓縮，可選 HEVC／H.264、1–40 Mbps、最長邊與 FPS 上限（預設 60）；開錄時固定設定。
+- Reader／Writer 與方向修正共用一次轉碼，AAC 保留；產物驗證且較小才替換，失敗保留原始錄影。
+- 更正「HEVC 必然較小」提示，補設定與耗時錯誤日誌、純邏輯測試、功能索引及使用文件。
+- 限制：不降低初次錄製 I/O；Apple SDK 建置及實機驗收仍待完成。
+
+**相關文件**: [錄後壓縮](development/RECORDING_COMPRESSION.md)
+
 ## 2026.10.12 10:24 fork pin 前進至 c3a5e3d8（修正 RTMP 關閉死鎖）
 
 **類型**: 修正 · **檔案**: `Package.resolved` 兩份
