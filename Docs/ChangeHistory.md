@@ -1,5 +1,51 @@
 # 變更歷史
 
+## 2026.10.15 00:04 修正語法問題 更正不可變參數修正為可變
+
+**類型**: 修復 · **檔案**: `liveAPP/Capture/SegmentedRecordingWriter.swift`
+
+### 問題 - liveAPP/Capture/SegmentedRecordingWriter.swift:236 cannot assign to value: 'url' is a 'let' constant
+
+`liveAPP/Capture/SegmentedRecordingWriter.swift:236` 'nil' cannot be assigned to type 'URL'
+
+- error: cannot assign to value: 'url' is a 'let' constant
+- error: 'nil' cannot be assigned to type 'URL'
+
+```swift
+guard writer.status == .completed, videoCount > 0 else { 
+   throw writer.error ?? error("片段未完整收尾，原檔保留供恢復。") 
+}
+
+guard var url else { throw error("缺少片段路徑。") }
+
+let asset = AVURLAsset(url: url)
+
+let duration = try await asset.load(.duration)
+        
+guard try await asset.load(.isPlayable), duration.seconds.isFinite, duration.seconds > 0,
+      !(try await asset.loadTracks(withMediaType: .video)).isEmpty else {
+    throw error("片段可播放性驗證失敗，檔案保留。")
+}
+        
+await report(phase: .ready, completedDuration: duration.seconds)
+        
+sendlog(message: "[SegmentedRecording] group=\(group) segment=\(number) completed dropped=\(dropped)")
+// 完成後清理
+self.writer = nil; video = nil; audio = nil; id = nil; url = nil
+```
+
+### 根因 - 在後續清理操作 試圖把 url清空
+
+但url被設為常數造成錯誤
+
+### 修改 - 更正為 let 為 var 可變參數
+
+```swift
+guard var url else { throw error("缺少片段路徑。") }
+```
+
+---
+
 ## 2026.10.14 13:46 新增可控分段錄製、即時混音與系統品質匯出
 
 **類型**: 新增 · **功能 ID**: `recording.segmented`、`recording.post-compression`

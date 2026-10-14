@@ -181,28 +181,41 @@ private actor SegmentedRecordingWriter {
         let file = await library.fileURL(for: item.id)
         url = file
         number += 1
+
         await library.identifySegment(item.id, group: group, number: number)
         let writer = try AVAssetWriter(outputURL: file, fileType: .mp4)
+        
         self.writer = writer
         writer.movieFragmentInterval = CMTime(seconds: 10, preferredTimescale: 600)
+        
         let size = settings.encoding.outputSize(CGSize(width: CVPixelBufferGetWidth(image), height: CVPixelBufferGetHeight(image)))
         var compression: [String: Any] = [AVVideoMaxKeyFrameIntervalDurationKey: 2, AVVideoAllowFrameReorderingKey: false]
+        
         if !settings.automaticBitrate { compression[AVVideoAverageBitRateKey] = settings.encoding.megabits * 1_000_000 }
+        
         let videoSettings: [String: Any] = [AVVideoCodecKey: settings.encoding.hevc ? AVVideoCodecType.hevc : .h264,
             AVVideoWidthKey: Int(size.width), AVVideoHeightKey: Int(size.height),
             AVVideoScalingModeKey: AVVideoScalingModeResizeAspect,
             AVVideoCompressionPropertiesKey: compression]
+        
         let audioSettings: [String: Any] = [AVFormatIDKey: kAudioFormatMPEG4AAC,
             AVSampleRateKey: 48000, AVNumberOfChannelsKey: 2, AVEncoderBitRateKey: 128000]
+        
         guard writer.canApply(outputSettings: videoSettings, forMediaType: .video),
               writer.canApply(outputSettings: audioSettings, forMediaType: .audio) else { throw error("裝置不支援所選錄製設定。") }
+        
         let video = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings, sourceFormatHint: sample.formatDescription)
         let audio = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings)
+        
         video.expectsMediaDataInRealTime = true; audio.expectsMediaDataInRealTime = true
+        
         guard writer.canAdd(video), writer.canAdd(audio) else { throw error("無法建立錄製軌道。") }
         writer.add(video); writer.add(audio)
+        
         self.video = video; self.audio = audio
+        
         guard writer.startWriting() else { throw writer.error ?? error("無法開始錄製。") }
+        
         start = sample.presentationTimeStamp
         writer.startSession(atSourceTime: start)
         lastVideo = .invalid; lastAudio = .invalid; videoCount = 0
@@ -223,16 +236,24 @@ private actor SegmentedRecordingWriter {
         }
         await writer.finishWriting()
         timeout.cancel()
+        
         guard writer.status == .completed, videoCount > 0 else { throw writer.error ?? error("片段未完整收尾，原檔保留供恢復。") }
-        guard let url else { throw error("缺少片段路徑。") }
+        
+        guard var url else { throw error("缺少片段路徑。") }
+        
         let asset = AVURLAsset(url: url)
+        
         let duration = try await asset.load(.duration)
+        
         guard try await asset.load(.isPlayable), duration.seconds.isFinite, duration.seconds > 0,
               !(try await asset.loadTracks(withMediaType: .video)).isEmpty else {
             throw error("片段可播放性驗證失敗，檔案保留。")
         }
+        
         await report(phase: .ready, completedDuration: duration.seconds)
+        
         sendlog(message: "[SegmentedRecording] group=\(group) segment=\(number) completed dropped=\(dropped)")
+        // 完成後清理
         self.writer = nil; video = nil; audio = nil; id = nil; url = nil
     }
     /// 更新檔案大小、時長與整次錄製的寫入端丟棄數。
