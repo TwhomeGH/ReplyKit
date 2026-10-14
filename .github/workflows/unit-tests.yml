@@ -100,6 +100,9 @@ jobs:
             -project liveAPP.xcodeproj -scheme liveAPP \
             -onlyUsePackageVersionsFromResolvedFile 2>&1 | tee TestResults/resolve.log
 
+      - name: Verify CI summary parser
+        run: python3 Scripts/test_ci_test_summary.py
+
       - name: Run liveAPP unit tests
         env:
           SIMULATOR_ID: ${{ steps.simulator.outputs.id }}

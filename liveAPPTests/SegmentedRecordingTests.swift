@@ -84,15 +84,66 @@ import Testing
             #expect(item.phase == .ready)
             let asset = AVURLAsset(url: library.fileURL(for: item.id))
             let track = try #require(try await asset.loadTracks(withMediaType: .audio).first)
-            let reader = try AVAssetReader(asset: asset)
-            let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
-            reader.add(output)
-            #expect(reader.startReading())
-            let first = try #require(output.copyNextSampleBuffer())
+            let decoded = try audibleStart(asset: asset, track: track)
             let expected = item.segmentNumber == 1 ? (crossesBoundary ? 59.99 : 59.5) : (crossesBoundary ? 0.0 : 0.5)
-            #expect(abs(first.presentationTimeStamp.seconds - expected) < 0.1)
-            reader.cancelReading()
+            // 驗證解碼後訊號的實際位置；第一個封包可能是填補或前置資料，不能代表聲音起點。
+            let actual = try #require(decoded.audiblePTS, "片段沒有解碼出有效音訊")
+            let delta = actual - expected
+            let audioRange = try await track.load(.timeRange)
+            let assetDuration = try await asset.load(.duration)
+            let videoTrack = try #require(try await asset.loadTracks(withMediaType: .video).first)
+            let videoRange = try await videoTrack.load(.timeRange)
+            let context = """
+                crossesBoundary=\(crossesBoundary) segment=\(item.segmentNumber ?? -1)
+                expectedSignalPTS=\(expected) actualSignalPTS=\(actual) deltaSeconds=\(delta)
+                firstDecodedPTS=\(String(describing: decoded.firstPTS)) detectionThreshold=0.01
+                audioRangeStart=\(audioRange.start.seconds) audioRangeDuration=\(audioRange.duration.seconds)
+                videoRangeStart=\(videoRange.start.seconds) videoRangeDuration=\(videoRange.duration.seconds)
+                assetDuration=\(assetDuration.seconds) phase=\(item.phase) message=\(item.message ?? "none")
+                """
+            #expect(abs(delta) < 0.1, Comment(rawValue: context))
         }
+    }
+
+    /// 解碼整條音軌尋找測試訊號；零值前置資料不算聲音，真實提前仍會使原時間斷言失敗。
+    /// - Returns: 第一批解碼 PTS，以及首個任一聲道絕對振幅超過 0.01 的時間；沒有訊號時為 nil。
+    private func audibleStart(asset: AVAsset, track: AVAssetTrack) throws -> (firstPTS: Double?, audiblePTS: Double?) {
+        let reader = try AVAssetReader(asset: asset)
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVSampleRateKey: 48000,
+            AVNumberOfChannelsKey: 2,
+            AVLinearPCMBitDepthKey: 32,
+            AVLinearPCMIsFloatKey: true,
+            AVLinearPCMIsBigEndianKey: false
+        ])
+        reader.add(output)
+        guard reader.startReading() else {
+            throw reader.error ?? NSError(domain: "RecordingTest", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "無法開始解碼音訊"])
+        }
+        defer { reader.cancelReading() }
+        var firstPTS: Double?
+        while let sample = output.copyNextSampleBuffer() {
+            if firstPTS == nil { firstPTS = sample.presentationTimeStamp.seconds }
+            let count = sample.numSamples
+            if count == 0 { continue }
+            let format = try #require(AVAudioFormat(commonFormat: .pcmFormatFloat32,
+                sampleRate: 48000, channels: 2, interleaved: true))
+            let pcm = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(count)))
+            pcm.frameLength = AVAudioFrameCount(count)
+            let status = CMSampleBufferCopyPCMDataIntoAudioBufferList(sample, at: 0,
+                frameCount: Int32(count), into: pcm.mutableAudioBufferList)
+            try #require(status == noErr)
+            let data = try #require(pcm.floatChannelData)[0]
+            for frame in 0..<count {
+                if abs(data[frame * 2]) > 0.01 || abs(data[frame * 2 + 1]) > 0.01 {
+                    return (firstPTS, sample.presentationTimeStamp.seconds + Double(frame) / 48000)
+                }
+            }
+        }
+        if let error = reader.error { throw error }
+        return (firstPTS, nil)
     }
 
     /// 建立固定尺寸、指定時間戳的測試畫面。

@@ -64,7 +64,7 @@ ANY_WARN_RE = re.compile(r"\bwarning:\s")
 
 TEST_START = re.compile(r"◇\s+Test\s+(.+?)\s+started")
 TEST_PASS = re.compile(r"[✔✓]\s+Test\s+(.+?)\s+passed")
-TEST_FAIL = re.compile(r"[✘✗]\s+Test\s+(.+?)\s+failed")
+TEST_FAIL = re.compile(r"[✘✗]\s+Test\s+(?!run\b)(.+?)(?:\s+with \d+ test cases)?\s+failed after")
 SUITE_PASS = re.compile(r"✔\s+Suite\s+(.+?)\s+passed")
 SUITE_FAIL = re.compile(r"✘\s+Suite\s+(.+?)\s+failed")
 RUN_DONE = re.compile(r"Test run with \d+ tests?.*?(passed|failed)")
@@ -79,7 +79,12 @@ class Finding:
         self.path, self.line, self.msg = path, line, msg
 
 
+ISSUE_RE = re.compile(r"[✘✗]\s+Test\s+(.+?)\s+recorded an issue(.*?) at (.+?):(\d+):(\d+):\s*(.*)")
+ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
 def parse(log_text: str):
+    """分開解析測試終態、斷言問題與 runner 診斷，不把問題行當成測試。"""
     errors: list[Finding] = []
     other_errors: list[str] = []
     warnings: "OrderedDict[str, dict]" = OrderedDict()
@@ -90,10 +95,40 @@ def parse(log_text: str):
     exec_line: str | None = None
     testing_failed_block: list[str] = []
 
+    issues = []
+    infrastructure = []
+    run_summary = None
+    active_issue = None
     lines = log_text.splitlines()
     in_failed_block = False
     for raw_line in lines:
-        line = raw_line.rstrip()
+        line = ANSI_RE.sub("", raw_line).replace("\u200b", "").rstrip()
+        run = RUN_DONE.search(line)
+        if run:
+            verdict = run.group(1)
+            run_summary = line.strip()
+            active_issue = None
+            continue
+        issue = ISSUE_RE.search(line)
+        if issue:
+            name, arguments, path, row, column, message = issue.groups()
+            active_issue = {"name": name, "arguments": arguments.strip(), "path": path,
+                            "line": row, "message": message, "details": []}
+            issues.append(active_issue)
+            if name not in tests_failed:
+                tests_failed.append(name)
+            continue
+        if active_issue is not None and line.lstrip().startswith("↳"):
+            active_issue["details"].append(line.strip())
+            continue
+        if active_issue is not None and raw_line.startswith(("    ", "\t")) and line.strip():
+            active_issue["details"].append(line.strip())
+            continue
+        active_issue = None
+        if "Failure collecting diagnostics" in line or "Timed out after 600.0 seconds" in line:
+            if line.strip() not in infrastructure:
+                infrastructure.append(line.strip())
+            continue
         if TESTING_FAILED.match(line):
             in_failed_block = True
             testing_failed_block.append(line.strip())
@@ -131,7 +166,9 @@ def parse(log_text: str):
             tests_passed.append(TEST_PASS.search(line).group(1))
             continue
         if TEST_FAIL.search(line):
-            tests_failed.append(TEST_FAIL.search(line).group(1))
+            name = TEST_FAIL.search(line).group(1)
+            if name not in tests_failed:
+                tests_failed.append(name)
             continue
         if SUITE_FAIL.search(line):
             suites_failed.append(SUITE_FAIL.search(line).group(1))
@@ -151,6 +188,9 @@ def parse(log_text: str):
             entry["count"] += 1
 
     return {
+        "issues": issues,
+        "infrastructure": infrastructure,
+        "run_summary": run_summary,
         "errors": errors,
         "other_errors": other_errors,
         "warnings": warnings,
@@ -212,7 +252,20 @@ def print_console(result) -> None:
         for name in result["suites_failed"]:
             print(col(f"  ✘ Suite {name}", "red"))
         console_endgroup()
-    if result["exec_line"]:
+    for issue in result["issues"]:
+        console_group(col(f"🔴 {issue['name']} {issue['arguments']}", "red", "bold"))
+        print(f"{issue['path']}:{issue['line']}: {issue['message']}")
+        for detail in issue["details"]:
+            print(col(detail, "yellow"))
+        console_endgroup()
+    if result["infrastructure"]:
+        console_group(col("🟠 Runner／診斷收集", "yellow", "bold"))
+        for detail in result["infrastructure"]:
+            print(detail)
+        console_endgroup()
+    if result["run_summary"]:
+        print(result["run_summary"])
+    elif result["exec_line"]:
         print(result["exec_line"])
 
 
@@ -222,7 +275,7 @@ def render_markdown(result) -> str:
     warn_total = warnings_total(result["warnings"])
     passed = len(result["tests_passed"])
     failed = len(result["tests_failed"])
-    ok = not errors and not other_errors and failed == 0 and not result["testing_failed"]
+    ok = not errors and not other_errors and failed == 0 and not result["testing_failed"] and result["verdict"] != "failed" and not result["infrastructure"] and not result["suites_failed"]
 
     out = []
     out.append("# CI 測試摘要")
@@ -232,7 +285,11 @@ def render_markdown(result) -> str:
     out.append(f"| 結果 | {'✅ 通過' if ok else '❌ 失敗'} |")
     out.append(f"| Compile errors | {len(errors) + len(other_errors)} |")
     out.append(f"| Warnings | {warn_total} ({len(result['warnings'])} unique) |")
-    out.append(f"| Tests | {passed} passed / {failed} failed |")
+    out.append(f"| 測試函式（依日誌辨識） | 🟢 {passed} 通過 / 🔴 {failed} 失敗 |")
+    out.append(f"| 斷言／拋錯問題 | {len(result['issues'])} |")
+    if result["run_summary"]:
+        out.append("")
+        out.append(result["run_summary"])
     out.append("")
 
     if errors or other_errors or result["testing_failed"]:
@@ -260,20 +317,34 @@ def render_markdown(result) -> str:
             out.append(f"| {entry['count']} | {safe_msg} | {locs} |")
         out.append("")
 
+    if result["infrastructure"]:
+        out.extend(["## 🟠 Runner／診斷收集", ""])
+        out.append("此區與測試斷言分開；診斷收集逾時不代表測試本身執行了 600 秒。")
+        out.append("")
+        for detail in result["infrastructure"]:
+            out.append("- " + detail)
+        out.append("")
     out.append("## 🧪 Tests")
     out.append("")
     if result["tests_failed"]:
-        out.append("**Failed:**")
+        out.extend(["### 🔴 失敗測試", ""])
         for name in result["tests_failed"]:
-            out.append(f"- ❌ {name}")
-        out.append("")
+            out.extend([f"#### {name}", ""])
+            matches = [issue for issue in result["issues"] if issue["name"] == name]
+            for issue in matches:
+                out.append(f"**{issue['arguments'] or '問題'}** — {issue['path']}:{issue['line']}")
+                out.extend(["", "~~~~text", issue["message"], *issue["details"], "~~~~", ""])
+            if not matches:
+                out.extend(["未取得斷言詳情，請查看 tests.log 或 xcresult。", ""])
     if result["tests_passed"]:
-        out.append(f"**Passed ({passed}):** " + ", ".join(result["tests_passed"]))
-        out.append("")
+        out.extend([f"<details><summary>🟢 通過測試（{passed}）</summary>", ""])
+        for name in result["tests_passed"]:
+            out.append("- " + name)
+        out.extend(["", "</details>", ""])
     if not result["tests_passed"] and not result["tests_failed"]:
-        out.append("_no test results (build failed before running)_")
+        out.append("_未取得測試結果，請查看編譯與 runner 區段。_")
         out.append("")
-    if result["exec_line"]:
+    if result["exec_line"] and not result["run_summary"]:
         out.append(result["exec_line"])
         out.append("")
 

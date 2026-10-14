@@ -1,5 +1,21 @@
 # 變更歷史
 
+## 2026.10.15 07:04 改善音訊時間驗證與 CI 失敗分類
+
+**類型**: 測試／工具 · **檔案**: `SegmentedRecordingTests.swift`、`Scripts/ci_test_summary.py`、`.github/workflows/unit-tests.yml`
+
+- 音訊時間測試改驗證解碼後測試訊號起點，保留 0.1 秒門檻與缺音失敗條件；不再假定首個 AAC 封包就是聲音起點，仍須 CI 驗證。
+- 問題紀錄、測試函式終態與整體 run 分開解析，避免把三個斷言問題及 run 結果誤算成多個失敗測試。
+- 摘要保留參數、斷言與實際數值；失敗獨立分塊，通過清單收合，runner 診斷收集逾時獨立顯示。
+- 新增解析器回歸測試並接入單元測試 workflow。
+
+## 2026.10.15 07:01 補充分段音訊時間戳測試診斷
+
+**類型**: 測試 · **檔案**: `liveAPPTests/SegmentedRecordingTests.swift`
+
+- 保留原本 0.1 秒時間差斷言，補實際／預期 PTS、片段序號、影音軌時間範圍及封包時長。
+- 本次失敗位於匯出音訊時間驗證，摘要沒有實際數值；根因仍待完整測試輸出確認，不將診斷補強視為音訊位移已修復。
+
 ## 2026.10.15 06:34 修正非交錯 PCM 的跨段音訊切分
 
 **類型**: 修復 · **檔案**: `SegmentedRecordingRouter.swift`、`RecordingPCMSlicer.swift`、`SegmentedRecordingTests.swift`
