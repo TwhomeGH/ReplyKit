@@ -18,6 +18,8 @@ import SwiftUI
 
 /// 設定、實測 Mixer 資料、編碼事件與傳輸完成分開呈現；缺值不轉成零。
 struct StreamDiagnosticsSections: View {
+    /// 由設備頁前景採樣提供時間，避免每個區塊各自啟動計時器。
+    let now: Date
     @ObservedObject private var model = StreamDiagnosticsModel.shared
     var body: some View {
         Section("串流格式與 RTMP 傳輸") {
@@ -28,8 +30,10 @@ struct StreamDiagnosticsSections: View {
             ForEach(["ReplayKit", "ScreenCaptureKit"], id: \.self) { source in
                 if let value = model.snapshots[source] {
                     DisclosureGroup(source) {
-                        TimelineView(.periodic(from: .now, by: 1)) { context in
-                            let age = max(0, context.date.timeIntervalSince(value.sampledAt))
+                        if source == "ScreenCaptureKit" {
+                            CapturePipelineStatusView(sampledAt: value.sampledAt, now: now)
+                        } else {
+                            let age = max(0, now.timeIntervalSince(value.sampledAt))
                             Text("距取樣 \(Int(age)) 秒" + (age > 15 ? " · 已過期，以下為歷史資料" : ""))
                                 .foregroundStyle(age > 15 ? Color.orange : Color.secondary)
                         }
@@ -67,5 +71,21 @@ struct StreamDiagnosticsSections: View {
             Text(label).font(.caption).foregroundStyle(.secondary)
             Text(value ?? "未提供").font(.caption).textSelection(.enabled)
         }
+    }
+}
+
+/// 兩個 ScreenCaptureKit 診斷入口共用生命週期；停止後凍結快照，不持續計算過期。
+struct CapturePipelineStatusView: View {
+    @ObservedObject private var capture = CaptureCoordinator.shared
+    let sampledAt: Date?
+    let now: Date
+
+    var body: some View {
+        let status = CapturePipelineStatus.resolve(phase: capture.phase,
+                                                  failed: capture.streamTelemetry.failed,
+                                                  sampledAt: sampledAt, now: now)
+        Text(status.text)
+            .font(.caption)
+            .foregroundStyle(status.isStale ? Color.orange : Color.secondary)
     }
 }

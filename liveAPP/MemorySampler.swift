@@ -1,13 +1,13 @@
 import Foundation
 
-/// 週期把記憶體明細寫入日誌，讓 footprint 的成長可以歸因（「誰在漲」）。
+/// 週期把記憶體明細寫入日誌，用來定位 footprint 成長的時間；無法單憑分類判定持有物件。
 ///
 /// 只讀取 `DeviceInfo.memoryBreakdown`（單次 `task_vm_info`）與幾個已知會累積的計數器，
 /// 不改動任何狀態，純觀測；用於追查像「廣播中 footprint 持續爬升」這類問題。
 ///
 /// 欄位：
 /// - footprint：jetsam 真正採計的實際佔用（該看的數字）。
-/// - internal／compressed：footprint = internal + compressed。
+/// - internal／compressed：獨立的 VM 分類，不能直接相加視為 footprint。
 /// - external：檔案映射（框架/靜態庫），多可回收，**不計入** footprint。
 /// - reusable／purgeable：可重用／可清除頁。
 /// - resident：實體駐留（含可回收），僅對照。

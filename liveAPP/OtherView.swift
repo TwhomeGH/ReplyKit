@@ -461,9 +461,11 @@ class SystemCPU {
         var size = mach_msg_type_number_t(MemoryLayout<host_cpu_load_info_data_t>.size / MemoryLayout<integer_t>.size)
         var cpuInfo = host_cpu_load_info()
 
+        let host = mach_host_self()
+        defer { mach_port_deallocate(mach_task_self_, host) }
         let result = withUnsafeMutablePointer(to: &cpuInfo) {
             $0.withMemoryRebound(to: integer_t.self, capacity: Int(size)) {
-                host_statistics(mach_host_self(),
+                host_statistics(host,
                                 HOST_CPU_LOAD_INFO,
                                 $0,
                                 &size)
@@ -477,12 +479,12 @@ class SystemCPU {
         let idle = cpuInfo.cpu_ticks.2
         let nice = cpuInfo.cpu_ticks.3
 
-        let deltaUser = user - prevUser
-        let deltaSystem = system - prevSystem
-        let deltaIdle = idle - prevIdle
-        let deltaNice = nice - prevNice
+        let deltaUser = user &- prevUser
+        let deltaSystem = system &- prevSystem
+        let deltaIdle = idle &- prevIdle
+        let deltaNice = nice &- prevNice
 
-        let total = deltaUser + deltaSystem + deltaIdle + deltaNice
+        let total = UInt64(deltaUser) + UInt64(deltaSystem) + UInt64(deltaIdle) + UInt64(deltaNice)
 
         prevUser = user
         prevSystem = system
@@ -504,6 +506,7 @@ final class SystemDiskIO {
     private var prevPageIns: natural_t = 0
     private var prevPageOuts: natural_t = 0
     private var firstSample = true
+    private var previousSampleTime: TimeInterval?
     private let pageSizeKB: Double = {
         let pagesize = Int(sysconf(_SC_PAGESIZE))
         return pagesize > 0 ? Double(pagesize) / 1024.0 : 16.0
@@ -512,13 +515,18 @@ final class SystemDiskIO {
     func rates() -> (pageInKBps: Double, pageOutKBps: Double) {
         var stats = vm_statistics()
         var count = mach_msg_type_number_t(MemoryLayout<vm_statistics_data_t>.size / MemoryLayout<integer_t>.size)
+        let host = mach_host_self()
+        defer { mach_port_deallocate(mach_task_self_, host) }
         let kr: kern_return_t = withUnsafeMutablePointer(to: &stats) {
             $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                host_statistics(mach_host_self(), HOST_VM_INFO, $0, &count)
+                host_statistics(host, HOST_VM_INFO, $0, &count)
             }
         }
         guard kr == KERN_SUCCESS else { return (0, 0) }
 
+        let now = ProcessInfo.processInfo.systemUptime
+        let elapsed = max(0.001, now - (previousSampleTime ?? now))
+        previousSampleTime = now
         if firstSample {
             firstSample = false
             prevPageIns = stats.pageins
@@ -526,19 +534,24 @@ final class SystemDiskIO {
             return (0, 0)
         }
 
-        let deltaIn = stats.pageins - prevPageIns
-        let deltaOut = stats.pageouts - prevPageOuts
+        let deltaIn = stats.pageins &- prevPageIns
+        let deltaOut = stats.pageouts &- prevPageOuts
         prevPageIns = stats.pageins
         prevPageOuts = stats.pageouts
 
-        return (Double(deltaIn) * pageSizeKB, Double(deltaOut) * pageSizeKB)
+        return (Double(deltaIn) * pageSizeKB / elapsed, Double(deltaOut) * pageSizeKB / elapsed)
     }
 }
 
 struct DeviceView: View {
 
-    let cpuInfo = SystemCPU()
-    let diskIO = SystemDiskIO()
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var isVisible = false
+    @State private var sampleDate = Date()
+    @State private var cpuInfo = SystemCPU()
+    @State private var diskIO = SystemDiskIO()
+    @State private var systemCPUText = "尚未取樣"
+    @State private var appCPUPercent = 0.0
     @ObservedObject private var laManager = StreamActivityManager.shared
     @ObservedObject private var capture = CaptureCoordinator.shared
     @ObservedObject private var videoHealth = VideoHealthModel.shared
@@ -560,7 +573,6 @@ struct DeviceView: View {
     @State private var appWriteHistory: [DataPoint] = []
     @State private var prevAppWriteBytes: UInt64 = 0
     @State private var dataPointCounter = 0
-    @State private var sampleTimer: Timer?
 
     @AppStorage("ReplyKitWidth",store: userDefaults) var ReplyKitW: Int = 0
     @AppStorage("ReplyKitHeight",store: userDefaults) var ReplyKitH: Int = 0
@@ -597,8 +609,8 @@ struct DeviceView: View {
                 header:
                     Label("CPU", systemImage: "cpu")
             ) {
-                if let usage = cpuInfo.usage() {
-                    Text("用戶: \(usage.user, specifier: "%.1f")%  系統: \(usage.system, specifier: "%.1f")%  閒置: \(usage.idle, specifier: "%.1f")%")
+                Group {
+                    Text(systemCPUText)
                         .font(.caption)
 
                     Chart {
@@ -614,7 +626,7 @@ struct DeviceView: View {
                     .frame(height: 120)
                 }
 
-                Text("App 使用率: \(DeviceInfo.cpuUsagePercent, specifier: "%.1f") %")
+                Text("App 使用率: \(appCPUPercent, specifier: "%.1f") %")
                 Text("處理器: \(DeviceInfo.cpuName)")
                 Text("核心數: \(DeviceInfo.cpuCount)")
                 Text("裝置代號: \(DeviceInfo.deviceCode)")
@@ -631,7 +643,7 @@ struct DeviceView: View {
                     .font(.caption)
                 Text("其中壓縮 compressed: \(memCompressedMB, specifier: "%.1f") MB")
                     .font(.caption)
-                Text("外部映射 external（檔案映射、可 evict、非你的資料）: \(memExternalMB, specifier: "%.1f") MB")
+                Text("外部映射 external（包含檔案映射）: \(memExternalMB, specifier: "%.1f") MB")
                     .font(.caption)
                     .foregroundColor(.secondary)
                 Text("其中可回收 reusable: \(memReusableMB, specifier: "%.1f") MB · 可清除 purgeable: \(memPurgeableMB, specifier: "%.1f") MB")
@@ -646,7 +658,7 @@ struct DeviceView: View {
                 Text("PIP 輸出影像池（估）: \(PIPService.shared.estimatedPixelBufferPoolMB, specifier: "%.1f") MB")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                Text("判斷壓力看「實際佔用」(footprint = internal + compressed)。external 是檔案映射(框架/靜態庫 code)，可被 evict 但「不在 footprint 內」，不可與 footprint 相減。")
+                Text("判斷 App 負擔以 footprint 為準；internal、compressed 與映射分類不是可直接加減的完整帳目。compressed 不代表已釋放，resident 也不等於 footprint。")
                     .font(.caption2)
                     .foregroundColor(.secondary)
 
@@ -753,15 +765,11 @@ struct DeviceView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             #endif
-            StreamDiagnosticsSections()
+            StreamDiagnosticsSections(now: sampleDate)
 
             if capture.streamTelemetry.pipelineSampledAt != nil {
                 Section("ScreenCaptureKit 本機管線") {
-                    TimelineView(.periodic(from: .now, by: 1)) { context in
-                        let age = max(0, context.date.timeIntervalSince(capture.streamTelemetry.pipelineSampledAt ?? .distantPast))
-                        Text("來源：主 App · 距更新 \(Int(age)) 秒" + (age > 15 ? " · 資料已過期" : ""))
-                            .foregroundStyle(age > 15 ? Color.orange : Color.secondary)
-                    }
+                    CapturePipelineStatusView(sampledAt: capture.streamTelemetry.pipelineSampledAt, now: sampleDate)
                     Text(capture.streamTelemetry.sourceQueues ?? "尚未取得來源佇列").font(.caption)
                     Text(capture.streamTelemetry.mixerAudio ?? "尚未取得混音資料").font(.caption)
                     Text("來源與混音計數不代表 RTMP 已送出；下方圖表來自 ReplayKit 擴展。")
@@ -1014,18 +1022,25 @@ struct DeviceView: View {
                     .foregroundColor(.orange)
             }
         }
-        .onAppear {
-            sampleTimer?.invalidate()
-            sample()
-            let t = Timer(timeInterval: 1.0, repeats: true) { [self] _ in
+        .onAppear { isVisible = true }
+        .task(id: isVisible && scenePhase == .active) {
+            guard isVisible && scenePhase == .active else { return }
+            // 恢復時重設差分基準，避免把背景期間的累計當作每秒速率。
+            cpuInfo = SystemCPU()
+            diskIO = SystemDiskIO()
+            _ = cpuInfo.usage()
+            sampleDate = Date()
+            prevAppWriteBytes = AppLogPersister.shared.totalWrittenBytes
+            sendlog(message: "[DeviceDiagnostics] sampling=start historyLimit=60")
+            defer { sendlog(message: "[DeviceDiagnostics] sampling=stop") }
+            while !Task.isCancelled {
                 sample()
+                do { try await Task.sleep(nanoseconds: 1_000_000_000) }
+                catch { return }
             }
-            RunLoop.main.add(t, forMode: .common)
-            sampleTimer = t
         }
         .onDisappear {
-            sampleTimer?.invalidate()
-            sampleTimer = nil
+            isVisible = false
             cpuHistory.removeAll()
             memoryHistory.removeAll()
             pageInHistory.removeAll()
@@ -1038,9 +1053,9 @@ struct DeviceView: View {
 
     /// 不把歷史 healthy 視為目前正常；兩張圖各自顯示最後收到資料的時間。
     private func pipelineFreshness(_ updatedAt: Date?) -> some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
+        Group {
             if let updatedAt {
-                let age = max(0, context.date.timeIntervalSince(updatedAt))
+                let age = max(0, sampleDate.timeIntervalSince(updatedAt))
                 Text("來源：ReplayKit 擴展 · 距更新 \(Int(age)) 秒" + (age > 15 ? " · 資料已過期" : ""))
                     .font(.caption).foregroundStyle(age > 15 ? Color.orange : Color.secondary)
             } else {
@@ -1058,6 +1073,7 @@ struct DeviceView: View {
         return "\(h)h \(m)m \(sec)s"
     }
 
+    /// 每次只採樣一次，歷史最多 60 筆；呼叫端負責前景與頁面可見性。
     private func sample() {
         dataPointCounter &+= 1
         let id = dataPointCounter
@@ -1072,8 +1088,14 @@ struct DeviceView: View {
         memAvailableMB = mem.availableMB
         memPeakMB = mem.residentPeakMB
         let now = Date()
+        let elapsed = max(0.001, now.timeIntervalSince(sampleDate))
+        sampleDate = now
+        if let usage = cpuInfo.usage() {
+            systemCPUText = String(format: "用戶: %.1f%%  系統: %.1f%%  閒置: %.1f%%", usage.user, usage.system, usage.idle)
+        }
         // EWMA 指數移動平均，α=0.4，不依賴歷史筆數
         let rawCPU = DeviceInfo.cpuUsagePercent
+        appCPUPercent = rawCPU
         let alpha = 0.4
         let smoothedCPU: Double
         if let last = cpuHistory.last?.value {
@@ -1089,7 +1111,7 @@ struct DeviceView: View {
         pageOutHistory.append(DataPoint(id: id, time: now, value: outKB))
 
         let currentBytes = AppLogPersister.shared.totalWrittenBytes
-        appWriteHistory.append(DataPoint(id: id, time: now, value: Double(currentBytes - prevAppWriteBytes) / 1024.0))
+        appWriteHistory.append(DataPoint(id: id, time: now, value: Double(currentBytes >= prevAppWriteBytes ? currentBytes - prevAppWriteBytes : 0) / 1024.0 / elapsed))
         prevAppWriteBytes = currentBytes
 
         if cpuHistory.count > maxHistory { cpuHistory.removeFirst() }

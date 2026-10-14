@@ -45,3 +45,35 @@ struct CaptureStreamTelemetryTests {
         #expect(state.audioPackets == nil)
     }
 }
+
+/// 停止後的歷史快照不應被誤報為仍在工作的管線逾時。
+struct CapturePipelineStatusTests {
+    @Test func stoppedSnapshotDoesNotAge() {
+        let timestamp = Date(timeIntervalSince1970: 100)
+        let first = CapturePipelineStatus.resolve(phase: .idle, failed: false, sampledAt: timestamp, now: timestamp)
+        let later = CapturePipelineStatus.resolve(phase: .idle, failed: false, sampledAt: timestamp, now: timestamp.addingTimeInterval(3600))
+        #expect(first == later)
+        #expect(!later.isStale)
+        #expect(later.text.contains("已停止"))
+    }
+
+    @Test func onlyActiveCaptureReportsStaleData() {
+        let timestamp = Date(timeIntervalSince1970: 100)
+        let now = timestamp.addingTimeInterval(16)
+        for phase in [CapturePhase.idle, .selecting, .starting, .stopping] {
+            #expect(!CapturePipelineStatus.resolve(phase: phase, failed: false, sampledAt: timestamp, now: now).isStale)
+        }
+        #expect(CapturePipelineStatus.resolve(phase: .streaming, failed: false, sampledAt: timestamp, now: now).isStale)
+        #expect(!CapturePipelineStatus.resolve(phase: .streaming, failed: false, sampledAt: timestamp, now: timestamp.addingTimeInterval(15)).isStale)
+    }
+
+    @Test func failedPublishCanLeaveRecordingActive() {
+        let now = Date()
+        let active = CapturePipelineStatus.resolve(phase: .streaming, failed: true, sampledAt: now, now: now)
+        let stopped = CapturePipelineStatus.resolve(phase: .idle, failed: true, sampledAt: now, now: now)
+        #expect(active.text.contains("擷取仍在運作"))
+        #expect(stopped.text.contains("擷取已結束"))
+        #expect(!stopped.isStale)
+        #expect(CapturePipelineStatus.resolve(phase: .idle, failed: false, sampledAt: nil, now: now).text.contains("尚未開始"))
+    }
+}

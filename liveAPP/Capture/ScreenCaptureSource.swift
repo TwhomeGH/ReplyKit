@@ -278,6 +278,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                 if sampleCount % 6 == 1 { self.logResources(stage: "sampling") }
                 if let mixer = self.pipeline?.mixer {
                     let health = await mixer.audioPipelineDiagnostics()
+                    guard !Task.isCancelled else { return }
                     let tracks = health.tracks.map { "track=\($0.trackId) converted=\($0.outputFrames) noData=\($0.resampleNoDataCount) buffered=\($0.ringBufferCounts) overflow=\($0.overflowDroppedSamples) gap=\($0.skipInsertedSamples)" }.joined(separator: " | ")
                     self.telemetry.mixerAudio = "mixed=\(health.mixerOutputFrames) ready=\(health.mixerReady) channels=\(health.outputChannels) \(self.audioProbe?.summary() ?? "probe=none")"
                     sendlog(message: "[CaptureAudioPipeline] session=\(token) mixed=\(health.mixerOutputFrames) ready=\(health.mixerReady) error=\(health.lastError ?? "none") channels=\(health.outputChannels) rms=\(health.outputChannelRMS) \(self.audioProbe?.summary() ?? "probe=none") \(tracks)")
@@ -287,6 +288,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                     guard !Task.isCancelled else { return }
                     StreamDiagnosticsModel.shared.record(snapshot)
                 }
+                guard !Task.isCancelled else { return }
                 self.telemetryChanged(self.telemetry)
                 do { try await Task.sleep(nanoseconds: 5_000_000_000) } catch { return }
             }
@@ -593,6 +595,8 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         sendlog(message: "[CaptureSource] session=\(token) stopping publishPhase=\(publishingStage)")
         state.stopping(); update(.stopping, nil)
         operation?.cancel(); diagnostics?.cancel()
+        // 等待跨 actor 的診斷查詢返回，避免停止後仍發布晚到快照。
+        await diagnostics?.value; diagnostics = nil
         // 等待啟動中的 await 結束，避免停止後又建立擷取或 RTMP 連線。
         await operation?.value; operation = nil
         publishingTask?.cancel()

@@ -1,5 +1,15 @@
 # 變更歷史
 
+## 2026.10.15 07:49 修正設備診斷採樣生命週期與停止狀態
+
+**類型**: 修復 · **檔案**: `OtherView.swift`、`StreamDiagnosticsView.swift`、`CaptureStreamTelemetry.swift`、`ScreenCaptureSource.swift`、`MemorySampler.swift`
+
+- ScreenCaptureKit 本機管線與 RTMP 診斷共用生命週期提示；停止後保留最後快照，不再累計過期秒數。推流失敗但錄影仍運作時分開顯示。
+- 設備頁只在可見且 App 位於前景時採樣，離頁／進背景取消工作；診斷區塊共用時間，新增 `[DeviceDiagnostics]` 採樣啟停日誌。
+- CPU 查詢移出畫面建構，採樣器狀態固定保存；host port 配對釋放，速率依實際間隔計算，恢復時重設基準。
+- 擷取收尾等待診斷工作結束，跨 actor 查詢返回後檢查取消，避免晚到快照。
+- 修正記憶體分類加總說明，新增停止／過期／推流失敗但擷取繼續的回歸測試。實機約 300 MB 的保留來源仍待驗證，本次不宣稱已修復全部記憶體增長。
+
 ## 2026.10.15 07:04 改善音訊時間驗證與 CI 失敗分類
 
 **類型**: 測試／工具 · **檔案**: `SegmentedRecordingTests.swift`、`Scripts/ci_test_summary.py`、`.github/workflows/unit-tests.yml`

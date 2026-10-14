@@ -56,3 +56,35 @@ struct CaptureStreamTelemetry: Equatable, Sendable {
         return audioPackets > 0 ? "packets" : "missing"
     }
 }
+
+/// 診斷快照的呈現狀態；過期只適用於仍在擷取的工作，不代表伺服器解碼結果。
+struct CapturePipelineStatus: Equatable {
+    let text: String
+    let isStale: Bool
+
+    /// 依擷取生命週期判斷顯示內容，保留停止前快照但不把它當成即時資料。
+    /// - Parameters:
+    ///   - phase: 主 App 擷取工作階段。
+    ///   - failed: 推流輸出是否已失敗；擷取仍可能因本地錄影繼續。
+    ///   - sampledAt: 快照時間；nil 表示尚無快照。
+    ///   - now: 前景採樣時間，供測試及所有診斷入口共用。
+    /// - Returns: 提示文字與是否需要過期警示。
+    static func resolve(phase: CapturePhase, failed: Bool, sampledAt: Date?, now: Date) -> Self {
+        switch phase {
+        case .idle:
+            return Self(text: failed ? "推流失敗 · 擷取已結束，保留最後資料" :
+                        (sampledAt == nil ? "尚未開始 · 尚無資料" : "已停止 · 以下為最後快照"), isStale: false)
+        case .selecting, .starting:
+            return Self(text: "正在啟動 · 等待本次工作資料", isStale: false)
+        case .stopping:
+            return Self(text: "正在停止 · 保留最後快照", isStale: false)
+        case .streaming:
+            guard let sampledAt else {
+                return Self(text: "擷取中 · 等待管線資料", isStale: false)
+            }
+            let age = max(0, now.timeIntervalSince(sampledAt))
+            let prefix = failed ? "推流失敗，擷取仍在運作" : "擷取中"
+            return Self(text: "\(prefix) · 距更新 \(Int(age)) 秒" + (age > 15 ? " · 資料已過期" : ""), isStale: age > 15)
+        }
+    }
+}
