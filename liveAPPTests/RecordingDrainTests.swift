@@ -53,4 +53,16 @@ struct RecordingDrainTests {
         #expect(values == [42])
     }
 
+    /// 大型視訊擠入時保留音訊，仍維持總容量限制與剩餘樣本的順序。
+    @Test func overloadPreservesHigherPriorityAudio() async {
+        let mailbox = CaptureMailbox<Int>(budget: 8, age: 60)
+        mailbox.offer(1, bytes: 2, priority: 1)
+        mailbox.offer(2, bytes: 6)
+        mailbox.offer(3, bytes: 6)
+        mailbox.finish(discardPending: false)
+        var values: [Int] = []
+        for await value in mailbox.stream() { values.append(value) }
+        #expect(values == [1, 3])
+    }
+
 }

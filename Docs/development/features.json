@@ -226,7 +226,7 @@
     {
       "id": "recording.segmented",
       "name": "可控分段錄製與即時音量",
-      "summary": "Mixer 共用音量；AVAssetWriter 直接編碼並獨立保存片段，可指定或自動碼率。",
+      "summary": "Mixer 共用音量；可指定碼率與畫布寬高，分段保留晚到音訊，群組顯示並支援手動或停止後合併。",
       "replaykit": "保留原路徑",
       "screencapturekit": "可選開啟；系統錄製仍為預設",
       "ui": "主頁 → 擷取與開始 → 可控分段錄製",
@@ -234,6 +234,10 @@
       "files": [
         "liveAPP/Capture/DirectRecordingSettings.swift",
         "liveAPP/Capture/SegmentedRecordingWriter.swift",
+        "liveAPP/Capture/SegmentedRecordingRouter.swift",
+        "liveAPP/Capture/RecordingGroup.swift",
+        "liveAPP/Capture/RecordingGroupMerger.swift",
+        "liveAPPTests/RecordingGroupTests.swift",
         "liveAPPTests/SegmentedRecordingTests.swift",
         "liveAPPTests/RecordingDrainTests.swift"
       ],

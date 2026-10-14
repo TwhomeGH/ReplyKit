@@ -3,9 +3,10 @@ import Foundation
 @preconcurrency import AVFoundation
 import HaishinKit
 
+/// 入列後不再修改的樣本引用；音訊先複製成獨立緩衝再移交。
 private struct RecordingSample: @unchecked Sendable { let buffer: CMSampleBuffer }
 
-/// Mixer 回呼只複製／入列；單一消費工作持有 Writer，佇列最多 48 MiB。
+/// Mixer 回呼只複製／入列；單一消費工作路由片段，佇列最多 48 MiB。
 /// 過載丟樣本並記錄計數，不能以無限佇列換取表面上的無丟幀。
 final class SegmentedRecordingSink: MediaMixerOutput, @unchecked Sendable {
 
@@ -27,6 +28,17 @@ final class SegmentedRecordingSink: MediaMixerOutput, @unchecked Sendable {
             do {
                 for await sample in mailbox.stream() { try await writer.append(sample.buffer) }
                 try await writer.finishSegment()
+                if settings.autoMerge {
+                    let group = await writer.group
+                    Task { @MainActor in
+                        guard library.recordings.filter({ $0.segmentGroup == group }).count >= 2 else { return }
+                        do { _ = try await library.merge(group: group) }
+                        catch {
+                            library.errorMessage = "自動合併未完成：" + error.localizedDescription
+                            sendlog(message: "[RecordingMerge] group=\(group) autoMergeFailed=\(error)")
+                        }
+                    }
+                }
             } catch {
                 mailbox.finish()
                 await writer.failed(error)
@@ -69,7 +81,7 @@ final class SegmentedRecordingSink: MediaMixerOutput, @unchecked Sendable {
             let sample,
             CMSampleBufferSetDataBufferFromAudioBufferList(sample, blockBufferAllocator: kCFAllocatorDefault,
                 blockBufferMemoryAllocator: kCFAllocatorDefault, flags: 0, bufferList: buffer.audioBufferList) == noErr else { return }
-        mailbox.offer(RecordingSample(buffer: sample), bytes: CMSampleBufferGetTotalSampleSize(sample))
+        mailbox.offer(RecordingSample(buffer: sample), bytes: CMSampleBufferGetTotalSampleSize(sample), priority: 1)
     }
 
     /// 先停止接收，再消費已入列的尾端樣本；不取消 writer 收尾。
@@ -80,16 +92,16 @@ final class SegmentedRecordingSink: MediaMixerOutput, @unchecked Sendable {
 }
 
 /// 每段是一個獨立 AVAssetWriter，確認完成後才把 manifest 標成可播放。
-private actor SegmentedRecordingWriter {
+actor RecordingSegmentWriter {
 
     /// 錄製設定，包含切段秒數與編碼選項。
     private let settings: DirectRecordingSettings
     /// 錄製檔案庫，負責 manifest 與檔案路徑。
     private let library: RecordingLibrary
     /// UUID，所有切段屬於同一組。
-    private let group = UUID()
-    /// 片段流水號；尚未建立時為 0，第一段建立時遞增為 1。
-    private var number = 0
+    private let group: UUID
+    /// 所屬群組中的片段序號，從 1 開始，由路由器分配。
+    private let number: Int
     /// 當前切段的寫入器。
     private var writer: AVAssetWriter?
     /// 當前切段的視訊軌道。
@@ -113,11 +125,23 @@ private actor SegmentedRecordingWriter {
     /// 本段最近的容量讀取錯誤，用來抑制連續重複日誌；成功讀取後清除。
     private var sizeReadError: String?
 
-    /// 整次錄製累計的寫入端丟棄數，切段不歸零。
+    /// 本段累計的寫入端丟棄數；每段使用獨立 Writer 與計數。
     /// 包含時間戳無效／倒退與輸入未就緒；不含 FPS 篩選、佇列丟棄或音訊轉換失敗。
     private var dropped = 0
     /// 本段成功寫入的視訊樣本數；每段歸零，用來拒絕空片段。
     private var videoCount = 0
+    /// 本段成功寫入的音訊樣本數與尾端，用來區分來源停送及寫入丟棄。
+    private var audioCount = 0
+    private var audioEnd: CMTime = .invalid
+    /// 每軌、每種原因分開計數；只在低頻進度與收尾時輸出。
+    private var dropReasons: [String: Int] = [:]
+
+    /// 累加寫入端丟棄原因，避免混淆音訊與視訊。
+    private func recordDrop(video: Bool, reason: String) {
+        dropped += 1
+        dropReasons[(video ? "video." : "audio.") + reason, default: 0] += 1
+    }
+
     /// 限制影格率的工具。
     private var limiter: RecordingFrameRateLimiter
 
@@ -125,7 +149,11 @@ private actor SegmentedRecordingWriter {
     /// - Parameters:
     ///   - settings: 本次錄製的固定設定快照。
     ///   - library: 在 MainActor 管理錄製紀錄的檔案庫。
-    init(settings: DirectRecordingSettings, library: RecordingLibrary) {
+    ///   - group: 所屬錄影場次。
+    ///   - number: 場次中的片段序號，從 1 開始。
+    init(settings: DirectRecordingSettings, library: RecordingLibrary, group: UUID, number: Int) {
+        self.group = group
+        self.number = number
         self.library = library
         self.settings = settings
         limiter = RecordingFrameRateLimiter(limit: settings.encoding.fpsLimit)
@@ -138,25 +166,22 @@ private actor SegmentedRecordingWriter {
         NSError(domain: "SegmentedRecording", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
     }
 
-    /// 依時間戳寫入樣本；遇分段邊界先收尾，再用該視訊樣本開新段。
+    /// 寫入路由器分配給本段的樣本；分段邊界由路由器管理。
     /// 首個視訊前的音訊會略過；一般輸入未就緒時丟棄，不無限等待。
     /// - Parameter sample: Mixer 輸出的視訊或 PCM 樣本。
     /// - Throws: 開檔、寫入、收尾或首幀等待失敗；等待被取消亦會拋錯。
     func append(_ sample: CMSampleBuffer) async throws {
         let isVideo = sample.imageBuffer != nil
         let pts = sample.presentationTimeStamp
-        guard pts.seconds.isFinite else { dropped += 1; return }
-        if isVideo, writer != nil, pts.seconds - start.seconds >= settings.segmentSeconds {
-            try await finishSegment()
-        }
+        guard pts.seconds.isFinite else { recordDrop(video: isVideo, reason: "invalidPTS"); return }
         if writer == nil {
             guard isVideo else { return }
             try await begin(sample)
         }
-        guard let writer, pts >= start else { dropped += 1; return }
+        guard let writer, pts >= start else { recordDrop(video: isVideo, reason: "beforeStart"); return }
         guard writer.status == .writing else { throw writer.error ?? error("編碼器已停止寫入。") }
         let previous = isVideo ? lastVideo : lastAudio
-        guard !previous.isValid || pts > previous else { dropped += 1; return }
+        guard !previous.isValid || pts > previous else { recordDrop(video: isVideo, reason: "nonMonotonic"); return }
         if isVideo && !limiter.accepts(seconds: pts.seconds) { return }
         guard let input = isVideo ? video : audio else { throw error("缺少編碼輸入軌道。") }
         if isVideo && videoCount == 0 {
@@ -166,12 +191,29 @@ private actor SegmentedRecordingWriter {
             }
             guard input.isReadyForMoreMediaData else { throw writer.error ?? error("片段首幀等待編碼器逾時。") }
         }
-        guard input.isReadyForMoreMediaData else { dropped += 1; return }
+        // 音訊短暫背壓時給編碼器有限的恢復機會；不讓無聲默默累積。
+        if !isVideo && !input.isReadyForMoreMediaData {
+            let deadline = ContinuousClock.now.advanced(by: .milliseconds(100))
+            while !input.isReadyForMoreMediaData && writer.status == .writing && ContinuousClock.now < deadline {
+                try await Task.sleep(nanoseconds: 2_000_000)
+            }
+        }
+        guard input.isReadyForMoreMediaData else { recordDrop(video: isVideo, reason: "notReady"); return }
         guard input.append(sample) else { throw writer.error ?? error("媒體樣本寫入失敗。") }
-        if isVideo { lastVideo = pts; videoCount += 1 } else { lastAudio = pts }
+        if isVideo {
+            lastVideo = pts
+            videoCount += 1
+        } else {
+            lastAudio = pts
+            audioCount += 1
+            audioEnd = sample.duration.isValid ? pts + sample.duration : pts
+        }
         if pts.seconds - lastReport >= 1 {
             lastReport = pts.seconds
             await report(phase: nil)
+            if Int(pts.seconds - start.seconds) % 5 == 0 {
+                sendlog(message: "[RecordingSegmentTiming] group=\(group) segment=\(number) videoLastPTS=\(lastVideo.seconds) audioEndPTS=\(audioEnd.seconds) drops=\(dropReasons)")
+            }
         }
     }
 
@@ -185,7 +227,6 @@ private actor SegmentedRecordingWriter {
         id = item.id
         let file = await library.fileURL(for: item.id)
         url = file
-        number += 1
         lastKnownBytes = 0
         sizeReadError = nil
 
@@ -195,7 +236,7 @@ private actor SegmentedRecordingWriter {
         self.writer = writer
         writer.movieFragmentInterval = CMTime(seconds: 10, preferredTimescale: 600)
         
-        let size = settings.encoding.outputSize(CGSize(width: CVPixelBufferGetWidth(image), height: CVPixelBufferGetHeight(image)))
+        let size = settings.canvas ?? settings.encoding.outputSize(CGSize(width: CVPixelBufferGetWidth(image), height: CVPixelBufferGetHeight(image)))
         var compression: [String: Any] = [AVVideoMaxKeyFrameIntervalDurationKey: 2, AVVideoAllowFrameReorderingKey: false]
         
         if !settings.automaticBitrate { compression[AVVideoAverageBitRateKey] = settings.encoding.megabits * 1_000_000 }
@@ -233,10 +274,13 @@ private actor SegmentedRecordingWriter {
 
     /// 完成片段並驗證可播放性；沒有寫入器時直接返回。
     /// 收尾等待 30 秒後要求取消寫入；驗證成功才標記 ready 並清除目前片段狀態。
+    /// - Parameter boundary: 舊段的結束 PTS；nil 使用實際已寫入樣本的尾端。
     /// - Throws: 寫入未完成、沒有視訊、資產讀取或可播放性驗證失敗。
-    func finishSegment() async throws {
+    func finishSegment(at boundary: CMTime? = nil) async throws {
         guard let writer else { return }
         await report(phase: .finishing)
+        if let boundary { writer.endSession(atSourceTime: boundary) }
+        sendlog(message: "[RecordingSegmentTiming] group=\(group) segment=\(number) videoCount=\(videoCount) audioCount=\(audioCount) videoLastPTS=\(lastVideo.seconds) audioEndPTS=\(audioEnd.seconds) tailGapSeconds=\(lastVideo.seconds - audioEnd.seconds) drops=\(dropReasons)")
         video?.markAsFinished(); audio?.markAsFinished()
         let timeout = Task {
             do { try await Task.sleep(nanoseconds: 30_000_000_000); writer.cancelWriting() } catch { }
@@ -267,7 +311,7 @@ private actor SegmentedRecordingWriter {
         self.id = nil
         self.url = nil
     }
-    /// 更新檔案大小、時長與整次錄製的寫入端丟棄數。
+    /// 更新檔案大小、時長與本段的寫入端丟棄數。
     /// - Parameters:
     ///   - phase: 要套用的階段；nil 保留原階段。
     ///   - completedDuration: 完成後讀取的資產秒數；nil 以最後視訊 PTS 減起點估算。

@@ -10,9 +10,22 @@ struct DirectRecordingSettings: Sendable {
     let automaticBitrate: Bool
     /// 每段目標秒數；以第一個超過邊界的視訊樣本切段。
     let segmentSeconds: Double
+    /// nil 沿用來源；固定畫布在旋轉後、疊加前套用，Writer 不再做最長邊縮放。
+    let canvas: CGSize?
+    /// true 裁切填滿；false 完整顯示並留邊。
+    let fillsCanvas: Bool
+    /// 停止後依群組合併，預設關閉且永遠保留原片段。
+    let autoMerge: Bool
     /// 讀取開錄設定；預設 HEVC、8 Mbps、最長邊 1920、60 FPS、120 秒分段。
     /// - Parameter defaults: 錄製偏好來源；不合法的分段秒數回退為 120。
     init(defaults: UserDefaults) {
+        let mode = defaults.string(forKey: "recordingCanvasMode") ?? "fixed"
+        let width = defaults.object(forKey: "recordingCanvasWidth") as? Int ?? 1920
+        let height = defaults.object(forKey: "recordingCanvasHeight") as? Int ?? 1080
+        canvas = mode == "native" ? nil : CGSize(width: max(2, min(3840, width / 2 * 2)),
+                                                 height: max(2, min(3840, height / 2 * 2)))
+        fillsCanvas = defaults.bool(forKey: "recordingCanvasFill")
+        autoMerge = defaults.bool(forKey: "recordingAutoMerge")
         automaticBitrate = defaults.bool(forKey: "directRecordingAutomaticBitrate")
         encoding = RecordingCompressionSettings(enabled: true,
             hevc: defaults.string(forKey: "directRecordingCodec") != "h264",
@@ -33,6 +46,11 @@ struct DirectRecordingSettingsView: View {
     @AppStorage("directRecordingEdge", store: userDefaults) private var edge = 1920
     @AppStorage("directRecordingFPS", store: userDefaults) private var fps = 60
     @AppStorage("recordingSegmentSeconds", store: userDefaults) private var segment = 120
+    @AppStorage("recordingCanvasMode", store: userDefaults) private var canvasMode = "fixed"
+    @AppStorage("recordingCanvasWidth", store: userDefaults) private var canvasWidth = 1920
+    @AppStorage("recordingCanvasHeight", store: userDefaults) private var canvasHeight = 1080
+    @AppStorage("recordingCanvasFill", store: userDefaults) private var canvasFill = false
+    @AppStorage("recordingAutoMerge", store: userDefaults) private var autoMerge = false
     var body: some View {
         Toggle("可控分段錄製（測試中）", isOn: $enabled)
         if enabled {
@@ -47,16 +65,35 @@ struct DirectRecordingSettingsView: View {
             if !automaticBitrate {
             Stepper("錄製平均碼率：\(mbps) Mbps", value: $mbps, in: 1...40)
             }
+            Toggle("停止後合併整場錄影（保留原片段）", isOn: $autoMerge)
+            Picker("錄影畫布", selection: $canvasMode) {
+                Text("固定寬高").tag("fixed")
+                Text("沿用來源比例").tag("native")
+            }
+            if canvasMode == "fixed" {
+                HStack {
+                    Text("寬")
+                    TextField("1920", value: $canvasWidth, format: .number).keyboardType(.numberPad)
+                    Text("高")
+                    TextField("1080", value: $canvasHeight, format: .number).keyboardType(.numberPad)
+                }
+                Button("設為 1920 × 1080（16:9）") { canvasWidth = 1920; canvasHeight = 1080 }
+                Toggle("裁切填滿畫布", isOn: $canvasFill)
+                Text("關閉裁切時完整顯示並留邊。寬高限制 2–3840 並取偶數；疊加層依此畫布定位。推流並錄製時共用此畫布。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if canvasMode == "native" {
             Picker("錄製最長邊", selection: $edge) {
                 Text("保留 Mixer 尺寸").tag(0)
                 ForEach([1280, 1920, 2560], id: \.self) { Text("\($0) px").tag($0) }
+            }
             }
             Picker("錄製 FPS 上限", selection: $fps) {
                 Text("不額外限制").tag(0)
                 Text("30").tag(30)
                 Text("60").tag(60)
             }
-            Text("直接編碼為 MP4，每段獨立保存；應用與麥克風音量即時套用。沿用推流畫布、左轉與疊加設定，不再執行系統錄影的方向修正或錄後壓縮。切段可能有短暫缺口，意外中止時最後片段仍需驗證。")
+            Text("直接編碼為 MP4，每段獨立保存；應用與麥克風音量即時套用。使用上方錄影畫布，沿用左轉與疊加設定，不再執行系統錄影的方向修正或錄後壓縮。切段可能有短暫缺口，意外中止時最後片段仍需驗證。")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }

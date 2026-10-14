@@ -82,4 +82,20 @@ struct RecordingCompressionTests {
         #expect(quality.multiPass)
     }
 
+    /// 固定畫布同時控制寬高；來源比例模式明確回傳 nil。
+    @Test func recordingCanvasValidatesBothDimensions() throws {
+        let name = "RecordingCanvas." + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let initial = DirectRecordingSettings(defaults: defaults)
+        #expect(initial.canvas == CGSize(width: 1920, height: 1080))
+        #expect(!initial.autoMerge)
+        defaults.set(1921, forKey: "recordingCanvasWidth")
+        defaults.set(0, forKey: "recordingCanvasHeight")
+        let bounded = DirectRecordingSettings(defaults: defaults)
+        #expect(bounded.canvas == CGSize(width: 1920, height: 2))
+        defaults.set("native", forKey: "recordingCanvasMode")
+        #expect(DirectRecordingSettings(defaults: defaults).canvas == nil)
+    }
+
 }

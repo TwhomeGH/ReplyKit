@@ -92,6 +92,8 @@ struct LocalRecording: Identifiable, Codable {
     /// 同一場可控錄製的群組與片段序號，舊紀錄為 nil。
     var segmentGroup: UUID?
     var segmentNumber: Int?
+    /// 合併產物所屬群組；與原始片段分開保存，不參與再次合併。
+    var mergedFromGroup: UUID?
     /// 轉碼暫存檔大小；完成前不可當作可播放產物。
     var compressedBytes: Int64?
     /// true 才表示壓縮產物通過驗證並取代原檔。

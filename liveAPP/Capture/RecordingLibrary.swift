@@ -8,6 +8,23 @@ import Photos
     static let shared = RecordingLibrary()
     @Published private(set) var recordings: [LocalRecording] = []
     @Published var errorMessage: String?
+    /// 正在合併的群組；跨視窗共用，用於禁止重複合併或刪除來源。
+    @Published private(set) var mergingGroups: Set<UUID> = []
+
+    /// 合併工作取得群組鎖；沒有可重入的同群組匯出。
+    func beginMerge(_ group: UUID) -> Bool {
+        mergingGroups.insert(group).inserted
+    }
+
+    /// 匯出完成或失敗時解除群組鎖。
+    func endMerge(_ group: UUID) { mergingGroups.remove(group) }
+
+    /// 將新產物關聯到來源群組，不修改原始片段。
+    func identifyMerged(_ id: UUID, group: UUID) throws {
+        guard let index = recordings.firstIndex(where: { $0.id == id }) else { return }
+        recordings[index].mergedFromGroup = group
+        try persist(recordings[index])
+    }
     private let directory: URL
     init(directory: URL? = nil) {
         self.directory = directory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -87,6 +104,9 @@ import Photos
     }
     func delete(_ item: LocalRecording) throws {
         guard item.phase.isTerminal else { return }
+        if let group = item.segmentGroup ?? item.mergedFromGroup, mergingGroups.contains(group) {
+            throw NSError(domain: "RecordingMerge", code: 1, userInfo: [NSLocalizedDescriptionKey: "此群組正在合併，請完成後再刪除。"])
+        }
         let file = fileURL(for: item.id)
         if FileManager.default.fileExists(atPath: file.path) { try FileManager.default.removeItem(at: file) }
         try FileManager.default.removeItem(at: manifestURL(item.id))
@@ -114,49 +134,80 @@ import Photos
     @State private var deleting: LocalRecording?
     @State private var saving: UUID?
     @State private var message: String?
+    /// 以群組彙整；單檔維持獨立項目，合併產物顯示於原群組內。
+    private var groups: [RecordingGroup] { RecordingGroup.make(library.recordings) }
+
+    @ViewBuilder
+    private func recordingRow(_ item: LocalRecording) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(item.created.formatted(date: .abbreviated, time: .standard))
+            if item.mergedFromGroup != nil { Text("整場合併影片（原片段保留）").font(.caption) }
+            if let number = item.segmentNumber { Text("分段錄影 \(item.segmentGroup?.uuidString.prefix(8) ?? "") · 第 \(number) 段").font(.caption) }
+            if item.phase == .interrupted {
+                Button("驗證並恢復可播放部分") {
+                    Task {
+                        do { try await library.recover(item) }
+                        catch { message = error.localizedDescription }
+                    }
+                }.buttonStyle(.borderless)
+            }
+            Text("\(item.phase.title) · \(Int(item.duration)) 秒")
+                .font(.caption)
+            Text(item.sizeSummary).font(.caption).foregroundStyle(.secondary)
+            if let error = item.message { Text(error).font(.caption).foregroundStyle(.secondary) }
+            if item.phase == .ready {
+                HStack {
+                    Button(AppLanguage.localized("recording.details")) { details = item }
+                    Button(AppLanguage.localized("recording.analyze")) { analyzing = item }
+                }.buttonStyle(.borderless)
+                HStack {
+                    Button("播放") { playing = item }
+                    ShareLink("分享／匯出", item: library.fileURL(for: item.id))
+                    Button(saving == item.id ? "儲存中…" : "存入照片") {
+                        saving = item.id
+                        Task {
+                            do { try await library.saveToPhotos(item); message = "已存入照片。" }
+                            catch { message = error.localizedDescription }
+                            saving = nil
+                        }
+                    }.disabled(saving != nil)
+                }.buttonStyle(.borderless)
+            }
+            if item.phase.isTerminal {
+                Button("刪除", role: .destructive) { deleting = item }
+                    .buttonStyle(.borderless).disabled(saving != nil || library.mergingGroups.contains(item.segmentGroup ?? item.mergedFromGroup ?? item.id))
+            }
+        }
+    }
+
     var body: some View {
         NavigationStack {
             List {
                 if library.recordings.isEmpty { Text("尚無本地錄影") }
                 if let error = library.errorMessage { Text(error).foregroundStyle(.red) }
-                ForEach(library.recordings) { item in
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(item.created.formatted(date: .abbreviated, time: .standard))
-                        if let number = item.segmentNumber { Text("分段錄影 \(item.segmentGroup?.uuidString.prefix(8) ?? "") · 第 \(number) 段").font(.caption) }
-                        if item.phase == .interrupted {
-                            Button("驗證並恢復可播放部分") {
+                ForEach(groups) { group in
+                    if group.isSegmented {
+                        DisclosureGroup {
+                            ForEach(group.items) { item in recordingRow(item) }
+                            Button(library.mergingGroups.contains(group.id) ? "合併中…" : "合併整場錄影") {
                                 Task {
-                                    do { try await library.recover(item) }
+                                    do { _ = try await library.merge(group: group.id); message = "合併完成，原片段已保留。" }
                                     catch { message = error.localizedDescription }
                                 }
-                            }.buttonStyle(.borderless)
+                            }
+                            .disabled(library.mergingGroups.contains(group.id) || !group.canMerge)
+                            .buttonStyle(.borderless)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(group.created.formatted(date: .abbreviated, time: .standard))
+                                Text("\(group.segmentCount) 段 · \(Int(group.duration)) 秒 · \(String(format: "%.1f", Double(group.bytes) / 1_000_000)) MB")
+                                    .font(.caption)
+                                Text(group.statusText)
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
                         }
-                        Text("\(item.phase.title) · \(Int(item.duration)) 秒")
-                            .font(.caption)
-                        Text(item.sizeSummary).font(.caption).foregroundStyle(.secondary)
-                        if let error = item.message { Text(error).font(.caption).foregroundStyle(.secondary) }
-                        if item.phase == .ready {
-                            HStack {
-                                Button(AppLanguage.localized("recording.details")) { details = item }
-                                Button(AppLanguage.localized("recording.analyze")) { analyzing = item }
-                            }.buttonStyle(.borderless)
-                            HStack {
-                                Button("播放") { playing = item }
-                                ShareLink("分享／匯出", item: library.fileURL(for: item.id))
-                                Button(saving == item.id ? "儲存中…" : "存入照片") {
-                                    saving = item.id
-                                    Task {
-                                        do { try await library.saveToPhotos(item); message = "已存入照片。" }
-                                        catch { message = error.localizedDescription }
-                                        saving = nil
-                                    }
-                                }.disabled(saving != nil)
-                            }.buttonStyle(.borderless)
-                        }
-                        if item.phase.isTerminal {
-                            Button("刪除", role: .destructive) { deleting = item }
-                                .buttonStyle(.borderless).disabled(saving != nil)
-                        }
+                    } else {
+                        ForEach(group.items) { item in recordingRow(item) }
                     }
                 }
             }

@@ -66,8 +66,10 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         }
     }
     func finish() async {
-        video.finish(); audio.finish(); mic.finish()
-        for worker in workers { worker.cancel() }
+        // 擷取停止後排空已接受的尾端樣本，避免清理階段額外截斷音訊。
+        video.finish(discardPending: false)
+        audio.finish(discardPending: false)
+        mic.finish(discardPending: false)
         for worker in workers { await worker.value }
         workers.removeAll()
     }
@@ -317,9 +319,14 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         }
         await pipeline.mixer.startRunning()
         let policy = StreamFramePolicy.current
+        let recordingSettings = DirectRecordingSettings(defaults: defaults)
+        let usesRecordingCanvas = mode.wantsRecording && directRecordingEnabled
+        let canvas = usesRecordingCanvas ? recordingSettings.canvas : policy.fixedCanvas
+        let fills = usesRecordingCanvas ? recordingSettings.fillsCanvas : policy.fillsCanvas
+        sendlog(message: "[CaptureCanvas] recording=\(usesRecordingCanvas) canvas=\(String(describing: canvas)) fills=\(fills) overlayCoordinates=canvas")
         let pump = try ScreenSamplePump(mixer: pipeline.mixer, probe: probe,
             rotateLeft: defaults.object(forKey: "screenStreamRotateLeft") as? Bool ?? true,
-            canvas: policy.fixedCanvas, fills: policy.fillsCanvas)
+            canvas: canvas, fills: fills)
         self.pump = pump
         try source.addStreamOutput(pump, type: .screen, sampleHandlerQueue: sampleQueue)
         try source.addStreamOutput(pump, type: .audio, sampleHandlerQueue: sampleQueue)
@@ -381,7 +388,9 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         // 本身與設定是轉置的，旋轉後剛好對上這個畫布；先前在此再交換會讓輸出變成 1080×1920（直的）。
         // 輸出畫布政策：預設 16:9（含黑邊）；native 沿用來源尺寸。
         let framePolicy = StreamFramePolicy.current
-        video.videoSize = framePolicy.fixedCanvas ?? size
+        let recordingSettings = DirectRecordingSettings(defaults: defaults)
+        video.videoSize = mode.wantsRecording && directRecordingEnabled
+            ? (recordingSettings.canvas ?? size) : (framePolicy.fixedCanvas ?? size)
         video.bitRate = max(100_000, defaults.object(forKey: "bitRate") as? Int ?? 6_000_000)
         video.maxKeyFrameIntervalDuration = Int32(max(0, min(60, defaults.object(forKey: "KeyFrameInterval") as? Int ?? 2)))
         video.allowFrameReordering = false
