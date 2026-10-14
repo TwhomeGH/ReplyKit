@@ -28,6 +28,10 @@ import UIKit
         self.failed = failed
         super.init()
     }
+
+    /// 建立錄製輸出，並附加到擷取串流；若不支援 MP4 或 H.264/HEVC，會丟出錯誤。
+    /// - Parameter stream: SCStream
+    /// - Throws: NSError
     func attach(to stream: SCStream) throws {
         do {
             let config = SCRecordingOutputConfiguration()
@@ -53,16 +57,21 @@ import UIKit
             throw error
         }
     }
+
+    /// 報告錄製狀態。
     private func report(_ phase: RecordingPhase? = nil, message: String? = nil) {
         RecordingLibrary.shared.update(id, phase: phase, duration: output?.recordedDuration.seconds ?? 0,
                                        bytes: (try? RecordingLibrary.shared.fileURL(for: id).resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? Int64(output?.recordedFileSize ?? 0), message: message)
         if let phase { sendlog(message: "[Recording] id=\(id) phase=\(phase.rawValue)") }
     }
+
+    /// 立即結束錄製，並丟棄尚未完成的檔案。
     private func complete(_ phase: RecordingPhase, message: String? = nil) {
         guard !terminal else { return }
         terminal = true; progress?.cancel(); progress = nil
         report(phase, message: message)
     }
+
     /// stopCapture 也會結束錄製；先移除輸出，等待 delegate，而不是以 stop 返回當作檔案完成。
     func detach(from stream: SCStream) {
         guard !detached, let output else { return }
@@ -71,6 +80,8 @@ import UIKit
         do { try stream.removeRecordingOutput(output) }
         catch { report(.finishing, message: "等待系統停止擷取後確認檔案。") }
     }
+
+    /// 等待錄製完成，並在逾時或失敗時保留原始檔案。
     func awaitCompletion() async {
         // 使用 monotonic deadline，避免系統時間變更延長等待；逾時仍保留原檔。
         let deadline = ContinuousClock.now.advanced(by: .seconds(30))
@@ -82,6 +93,8 @@ import UIKit
         if !terminal { complete(.interrupted, message: "未收到錄製完成確認，檔案已保留，暫不提供播放或匯出。") }
         output = nil
     }
+
+    /// 錄製開始時，會標示為錄製中並更新錄製檔案資訊。
     nonisolated func recordingOutputDidStartRecording(_ recordingOutput: SCRecordingOutput) {
         Task { @MainActor [weak self] in
             guard let self, !self.terminal, !self.started, !self.detached else { return }
@@ -95,6 +108,8 @@ import UIKit
             }
         }
     }
+
+    /// 錄製完成時，會依設定進行方向修正與壓縮，並更新錄製檔案資訊。
     nonisolated func recordingOutputDidFinishRecording(_ recordingOutput: SCRecordingOutput) {
         Task { @MainActor [weak self] in
             guard let self, !self.terminal, !self.nativeFinished else { return }
@@ -105,6 +120,20 @@ import UIKit
                 self.complete(.ready, message: AppLanguage.localized("recording.orientation.kept"))
                 return
             }
+            let file = RecordingLibrary.shared.fileURL(for: self.id)
+            if self.compression.enabled {
+                let original = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
+                RecordingLibrary.shared.compressionProgress(self.id, original: original)
+                self.progress = Task { @MainActor [weak self] in
+                    while !Task.isCancelled {
+                        guard let self else { return }
+                        let temporary = RecordingTranscoder.temporaryURL(for: file)
+                        let bytes = (try? temporary.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init)
+                        RecordingLibrary.shared.compressionProgress(self.id, output: bytes)
+                        do { try await Task.sleep(nanoseconds: 1_000_000_000) } catch { return }
+                    }
+                }
+            }
             self.report(.finishing, message: self.compression.enabled ? "正在壓縮並處理影片方向，請保持 App 在前景。" : "正在確認並修正影片方向。")
             self.correction = Task { @MainActor [self] in
                 let background = UIApplication.shared.beginBackgroundTask(withName: "RecordingPostprocess") { [weak self] in
@@ -112,14 +141,21 @@ import UIKit
                 }
                 defer { if background != .invalid { UIApplication.shared.endBackgroundTask(background) } }
                 let startedAt = ContinuousClock.now
-                sendlog(message: "[RecordingPostprocess] id=\(self.id) compression=\(self.compression.enabled) hevc=\(self.compression.hevc) mbps=\(self.compression.megabits) longestEdge=\(self.compression.longestEdge) fpsLimit=\(self.compression.fpsLimit)")
+                sendlog(message: "[RecordingPostprocess] id=\(self.id) compression=\(self.compression.enabled) systemQuality=\(self.compression.systemQuality) multiPassRequested=\(self.compression.multiPass) hevc=\(self.compression.hevc) mbps=\(self.compression.megabits) longestEdge=\(self.compression.longestEdge) fpsLimit=\(self.compression.fpsLimit)")
                 let snapshot = self.orientation.snapshot()
                 sendlog(message: "[RecordingOrientation] id=\(self.id) policy=\(self.policy.rawValue) changes=\(snapshot.events.count) missing=\(snapshot.missing) reliable=\(snapshot.reliable)")
                 do {
                     let message = try await RecordingOrientationCorrector.correct(url: RecordingLibrary.shared.fileURL(for: self.id), timeline: self.orientation, policy: self.policy, compression: self.compression)
                     sendlog(message: "[RecordingPostprocess] id=\(self.id) elapsed=\(startedAt.duration(to: .now)) \(message)")
+                    self.progress?.cancel()
+                    if self.compression.enabled {
+                        let bytes = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init)
+                        RecordingLibrary.shared.compressionProgress(self.id, output: bytes, completed: true)
+                    }
                     self.complete(.ready, message: message)
                 } catch {
+                    self.progress?.cancel()
+                    if self.compression.enabled { RecordingLibrary.shared.compressionProgress(self.id) }
                     let code = (error as NSError).code
                     sendlog(message: "[RecordingPostprocess] id=\(self.id) elapsed=\(startedAt.duration(to: .now)) failed domain=\((error as NSError).domain) code=\(code) detail=\(error.localizedDescription)")
                     self.complete(.ready, message: "錄後處理未完成：\(error.localizedDescription)（\(code)）。已保留原始錄影，方向或壓縮可能尚未套用。")
@@ -127,6 +163,8 @@ import UIKit
             }
         }
     }
+
+    /// 錄製失敗時，仍然保留原始檔案，並標示為失敗。
     nonisolated func recordingOutput(_ recordingOutput: SCRecordingOutput, didFailWithError error: any Error) {
         let code = (error as NSError).code
         Task { @MainActor [weak self] in

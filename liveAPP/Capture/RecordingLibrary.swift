@@ -31,6 +31,29 @@ import Photos
     private func persist(_ item: LocalRecording) throws {
         try JSONEncoder().encode(item).write(to: manifestURL(item.id), options: .atomic)
     }
+    func identifySegment(_ id: UUID, group: UUID, number: Int) {
+        guard let index = recordings.firstIndex(where: { $0.id == id }) else { return }
+        recordings[index].segmentGroup = group
+        recordings[index].segmentNumber = number
+        do { try persist(recordings[index]) }
+        catch { errorMessage = "片段索引無法保存。" }
+    }
+    /// 只允許使用者驗證中斷片段；可讀到有效影像才開放播放與匯出。
+    func recover(_ item: LocalRecording) async throws {
+        guard item.phase == .interrupted else { return }
+        let file = fileURL(for: item.id)
+        let asset = AVURLAsset(url: file)
+        let duration = try await asset.load(.duration)
+        guard try await asset.load(.isPlayable), duration.seconds.isFinite, duration.seconds > 0,
+              !(try await asset.loadTracks(withMediaType: .video)).isEmpty else {
+            throw NSError(domain: "RecordingRecovery", code: 1, userInfo: [NSLocalizedDescriptionKey: "沒有可播放的完整片段，原檔保留。"])
+        }
+        guard let index = recordings.firstIndex(where: { $0.id == item.id }), recordings[index].phase == .interrupted else { return }
+        var recovered = recordings[index]
+        recovered.markRecovered(duration: duration.seconds, bytes: Int64(try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0))
+        try persist(recovered)
+        recordings[index] = recovered
+    }
     func create() throws -> LocalRecording {
         let item = LocalRecording(id: UUID(), created: Date())
         try persist(item)
@@ -49,6 +72,17 @@ import Photos
         if phase != nil {
             do { try persist(item) }
             catch { errorMessage = "錄影狀態無法儲存；請保留原檔並確認儲存空間。" }
+        }
+    }
+    /// 原始大小只設定一次；進度不落盤，開始與完成時才保存。
+    func compressionProgress(_ id: UUID, original: Int64? = nil, output: Int64? = nil, completed: Bool = false) {
+        guard let index = recordings.firstIndex(where: { $0.id == id }), !recordings[index].phase.isTerminal else { return }
+        if let original, recordings[index].originalBytes == nil { recordings[index].originalBytes = max(0, original) }
+        recordings[index].compressedBytes = output.map { max(0, $0) }
+        recordings[index].compressionCompleted = completed
+        if original != nil || completed {
+            do { try persist(recordings[index]) }
+            catch { errorMessage = "壓縮容量資訊無法儲存。" }
         }
     }
     func delete(_ item: LocalRecording) throws {
@@ -88,8 +122,18 @@ import Photos
                 ForEach(library.recordings) { item in
                     VStack(alignment: .leading, spacing: 8) {
                         Text(item.created.formatted(date: .abbreviated, time: .standard))
-                        Text("\(item.phase.title) · \(Int(item.duration)) 秒 · \(ByteCountFormatter.string(fromByteCount: item.bytes, countStyle: .file))")
+                        if let number = item.segmentNumber { Text("分段錄影 \(item.segmentGroup?.uuidString.prefix(8) ?? "") · 第 \(number) 段").font(.caption) }
+                        if item.phase == .interrupted {
+                            Button("驗證並恢復可播放部分") {
+                                Task {
+                                    do { try await library.recover(item) }
+                                    catch { message = error.localizedDescription }
+                                }
+                            }.buttonStyle(.borderless)
+                        }
+                        Text("\(item.phase.title) · \(Int(item.duration)) 秒")
                             .font(.caption)
+                        Text(item.sizeSummary).font(.caption).foregroundStyle(.secondary)
                         if let error = item.message { Text(error).font(.caption).foregroundStyle(.secondary) }
                         if item.phase == .ready {
                             HStack {

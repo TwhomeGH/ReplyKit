@@ -2,6 +2,7 @@
 
 ## 功能文件
 
+- [MetricKit 本機效能報告](METRICKIT.md)
 - [ScreenCaptureKit 本地錄影：錄後壓縮](RECORDING_COMPRESSION.md)
 
 ## 開啟方式
@@ -63,7 +64,7 @@ macOS Xcode 使用 Product → Build Documentation。另提供 DocC documentatio
 
 要在 Mac 或 CI（macOS runner）產生：
 
-```
+```bash
 xcodebuild docbuild -scheme liveAPP -destination 'generic/platform=iOS' \
   -derivedDataPath build
 # 產物：build/Build/Products/Debug-iphoneos/liveAPP.doccarchive

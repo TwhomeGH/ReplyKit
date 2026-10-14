@@ -76,7 +76,10 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
 @available(iOS 27.0, *)
 @MainActor final class ScreenCaptureSource: NSObject, CaptureDriver,
     SCContentSharingPickerObserver, SCStreamDelegate {
+
+    /// 來源URL
     private let url: String
+    /// 來源Key
     private let key: String
     private let update: @MainActor (CapturePhase, String?) -> Void
     private var state = CaptureSessionState()
@@ -84,6 +87,14 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     private let recordingPolicy: RecordingOrientationPolicy
     private let publishingChanged: @MainActor (Bool) -> Void
     private var pipeline: CaptureMediaPipeline?
+    private let directRecordingEnabled = (userDefaults ?? .standard).bool(forKey: "directRecordingEnabled")
+    private var recordingSink: SegmentedRecordingSink?
+    private var directRecordingFailed = false
+    private var mediaPrepared = false
+    private var volumeUpdates: Task<Void, Never>?
+    private var hasRecording: Bool {
+        (recording != nil && recording?.terminal == false) || (mediaPrepared && recordingSink != nil && !directRecordingFailed)
+    }
     private var audioProbe: ScreenAudioProbe?
     private var streamDiagnosticsProbe: StreamDiagnosticsProbe?
     private var telemetry = CaptureStreamTelemetry()
@@ -116,6 +127,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         self.publishingChanged = publishingChanged; self.update = update
         self.telemetryChanged = telemetryChanged
     }
+
     func present() {
         guard state.begin() != nil else { return }
         startupStage = "picker.present"
@@ -195,7 +207,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         let source = SCStream(filter: filter, configuration: config, delegate: self)
         capture = source
         streamingViable = mode.wantsStreaming
-        if mode.wantsRecording {
+        if mode.wantsRecording && !directRecordingEnabled {
             do {
                 startupStage = "recording.attach"
                 let observer = ScreenRecordingOrientationObserver()
@@ -215,15 +227,18 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                 update(.starting, "本地錄製無法啟動；將繼續嘗試推流。")
             }
         }
-        if mode.wantsStreaming {
+        if mode.wantsStreaming || (mode.wantsRecording && directRecordingEnabled) {
             startupStage = "pipeline.prepare"
-            do { try await preparePublishing(source: source, filter: filter, size: size) }
+            do {
+                try await prepareMediaPipeline(source: source, filter: filter)
+                if mode.wantsStreaming { try await preparePublishing(size: size) }
+            }
             catch is CancellationError { throw CancellationError() }
             catch {
                 logFailure(error, stage: startupStage)
                 streamingViable = false
                 await stopPublishing()
-                guard let recording, !recording.terminal else { throw error }
+                guard hasRecording else { throw error }
                 update(.starting, "推流管線無法建立；將繼續本地錄製。")
             }
         }
@@ -254,6 +269,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                 guard let self else { return }
                 let queues = self.pump.map { "video{\($0.video.summary)} audio{\($0.audio.summary)} mic{\($0.mic.summary)}" } ?? "sampleQueues=none"
                 sendlog(message: "[CaptureSource] backend=screenCaptureKit session=\(token) mode=\(self.mode.rawValue) capturePhase=\(self.state.phase.rawValue) publishPhase=\(self.publishingStage) \(queues)")
+                if let sink = self.recordingSink { sendlog(message: "[SegmentedRecordingQueue] \(sink.summary)") }
                 self.telemetry.sourceQueues = queues
                 self.telemetry.pipelineSampledAt = Date()
                 sampleCount += 1
@@ -274,10 +290,68 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             }
         }
     }
-    private func preparePublishing(source: SCStream, filter: SCContentFilter, size: CGSize) async throws {
+    /// Mixer 由擷取生命週期持有，RTMP 斷線不影響本地可控錄製。
+    private func prepareMediaPipeline(source: SCStream, filter: SCContentFilter) async throws {
         let defaults = userDefaults ?? .standard
         let pipeline = CaptureMediaPipeline()
         self.pipeline = pipeline
+        var mixing = CaptureMediaPipeline.audioSettings(from: await pipeline.mixer.audioMixerSettings, microphone: filter.isMicrophoneEnabled)
+        mixing.tracks[0]?.volume = Self.volume(defaults, key: "appVolume")
+        mixing.tracks[1]?.volume = Self.volume(defaults, key: "micVolume")
+        await pipeline.mixer.setAudioMixerSettings(mixing)
+        var videoMixing = await pipeline.mixer.videoMixerSettings
+        videoMixing.mode = .passthrough
+        await pipeline.mixer.setVideoMixerSettings(videoMixing)
+        let probe = ScreenAudioProbe(session: state.id?.uuidString ?? "none")
+        audioProbe = probe
+        await pipeline.mixer.addOutput(probe)
+        if mode.wantsRecording && directRecordingEnabled {
+            let sink = SegmentedRecordingSink(settings: DirectRecordingSettings(defaults: defaults), library: RecordingLibrary.shared) { [weak self] message in
+                guard let self else { return }
+                self.directRecordingFailed = true
+                self.update(self.state.phase, message)
+                if !self.streamingViable { Task { await self.finish(message: message) } }
+            }
+            recordingSink = sink
+            await pipeline.mixer.addOutput(sink)
+        }
+        await pipeline.mixer.startRunning()
+        let policy = StreamFramePolicy.current
+        let pump = try ScreenSamplePump(mixer: pipeline.mixer, probe: probe,
+            rotateLeft: defaults.object(forKey: "screenStreamRotateLeft") as? Bool ?? true,
+            canvas: policy.fixedCanvas, fills: policy.fillsCanvas)
+        self.pump = pump
+        try source.addStreamOutput(pump, type: .screen, sampleHandlerQueue: sampleQueue)
+        try source.addStreamOutput(pump, type: .audio, sampleHandlerQueue: sampleQueue)
+        if filter.isMicrophoneEnabled { try source.addStreamOutput(pump, type: .microphone, sampleHandlerQueue: sampleQueue) }
+        mediaPrepared = true
+        // 同程序設定以低頻率合併讀取，不依賴僅傳給擴展的 Darwin 通知。
+        volumeUpdates = Task { [weak self] in
+            var previous: [Float] = []
+            while !Task.isCancelled {
+                guard let self, let mixer = self.pipeline?.mixer else { return }
+                let values = [Self.volume(defaults, key: "appVolume"), Self.volume(defaults, key: "micVolume")]
+                if values != previous {
+                    var settings = await mixer.audioMixerSettings
+                    guard !Task.isCancelled else { return }
+                    settings.tracks[0]?.volume = values[0]
+                    settings.tracks[1]?.volume = values[1]
+                    await mixer.setAudioMixerSettings(settings)
+                    previous = values
+                    sendlog(message: "[CaptureAudioSettings] appVolume=\(values[0]) micVolume=\(values[1]) live=true")
+                }
+                do { try await Task.sleep(nanoseconds: 200_000_000) } catch { return }
+            }
+        }
+    }
+    /// 防止非有限值或異常增益傳入 Mixer；0 靜音、1 原音量、最多 4 倍。
+    private static func volume(_ defaults: UserDefaults, key: String) -> Float {
+        let value = defaults.object(forKey: key) as? Double ?? 1
+        return value.isFinite ? Float(min(4, max(0, value))) : 1
+    }
+    private func preparePublishing(size: CGSize) async throws {
+        let defaults = userDefaults ?? .standard
+        guard let pipeline else { throw CancellationError() }
         let conn = RTMPConnection(minimumLogLevel: .debug)
         let stream = RTMPStream(connection: conn)
         connection = conn; output = stream
@@ -305,7 +379,6 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         // 編碼畫布沿用與 ReplayKit 相同的慣例：RTMP 直接用 (odstW, odstH)，不在此轉置
         //（ReplayKit SampleHandler 的 encoderW/H = ODWidth/ODHeight）。SC 擷取緩衝的寬高
         // 本身與設定是轉置的，旋轉後剛好對上這個畫布；先前在此再交換會讓輸出變成 1080×1920（直的）。
-        let rotateLeft = defaults.object(forKey: "screenStreamRotateLeft") as? Bool ?? true
         // 輸出畫布政策：預設 16:9（含黑邊）；native 沿用來源尺寸。
         let framePolicy = StreamFramePolicy.current
         video.videoSize = framePolicy.fixedCanvas ?? size
@@ -338,31 +411,10 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         startupStage = "pipeline.audioSettings"
         try await stream.setAudioSettings(audio)
         telemetry.targetBitrate = audio.bitRate
-        var mixing = CaptureMediaPipeline.audioSettings(from: await pipeline.mixer.audioMixerSettings, microphone: filter.isMicrophoneEnabled)
-        mixing.tracks[0]?.volume = Float(defaults.object(forKey: "appVolume") as? Double ?? 1)
-        mixing.tracks[1]?.volume = Float(defaults.object(forKey: "micVolume") as? Double ?? 1)
-        await pipeline.mixer.setAudioMixerSettings(mixing)
-        sendlog(message: "[CaptureAudioSettings] session=\(logSession) mainTrack=\(mixing.mainTrack) outputFormatTrack=\(mixing.outputFormatTrack) appVolume=\(mixing.tracks[0]?.volume ?? 0) micVolume=\(mixing.tracks[1]?.volume ?? 0) targetBitrate=\(audio.bitRate) bitratePolicy=\(audioBitrate.rawValue)")
-        var videoMixing = await pipeline.mixer.videoMixerSettings
-        videoMixing.mode = .passthrough
-        await pipeline.mixer.setVideoMixerSettings(videoMixing)
-        let probe = ScreenAudioProbe(session: logSession)
-        audioProbe = probe
-        await pipeline.mixer.addOutput(probe)
         let diagnosticsProbe = StreamDiagnosticsProbe()
         streamDiagnosticsProbe = diagnosticsProbe
         await pipeline.mixer.addOutput(diagnosticsProbe)
         await pipeline.mixer.addOutput(stream)
-        await pipeline.mixer.startRunning()
-        try Task.checkCancellation()
-        sendlog(message: "[CaptureVideoRotation] session=\(logSession) rotate=\(rotateLeft ? "left90" : "none") frame=\(framePolicy.rawValue) canvas=\(framePolicy.fixedCanvas.map { "\(Int($0.width))x\(Int($0.height))" } ?? "source")")
-        let pump = try ScreenSamplePump(mixer: pipeline.mixer, probe: probe, rotateLeft: rotateLeft,
-                                        canvas: framePolicy.fixedCanvas, fills: framePolicy.fillsCanvas)
-        self.pump = pump
-        startupStage = "pipeline.sampleOutputs"
-        try source.addStreamOutput(pump, type: .screen, sampleHandlerQueue: sampleQueue)
-        try source.addStreamOutput(pump, type: .audio, sampleHandlerQueue: sampleQueue)
-        if filter.isMicrophoneEnabled { try source.addStreamOutput(pump, type: .microphone, sampleHandlerQueue: sampleQueue) }
     }
     private func startPublishing() async throws {
         guard let conn = connection, let stream = output else { throw CancellationError() }
@@ -407,9 +459,10 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         publishingTask?.cancel()
         await publishingTask?.value; publishingTask = nil
         await stopPublishing()
+        if recordingSink == nil { await stopMediaPipeline() }
         cleaningPublishing = false
         guard state.phase != .stopping else { return }
-        if let recording, !recording.terminal {
+        if hasRecording {
             update(state.phase, message + " 本地錄製繼續。")
         } else { await finish(message: message) }
     }
@@ -420,6 +473,22 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         }
         publishingChanged(false)
         if let connection { await connection.setReconnectEnabled(false) }
+        if let output {
+            logResources(stage: "rtmp.close.begin")
+            _ = try? await output.close()
+            logResources(stage: "rtmp.close.end")
+            await pipeline?.mixer.removeOutput(output)
+        }
+        if let streamDiagnosticsProbe { await pipeline?.mixer.removeOutput(streamDiagnosticsProbe) }
+        streamDiagnosticsProbe = nil
+        logResources(stage: "connection.close.begin")
+        _ = try? await connection?.close()
+        logResources(stage: "connection.close.end")
+        output = nil; connection = nil
+    }
+    private func stopMediaPipeline() async {
+        volumeUpdates?.cancel()
+        await volumeUpdates?.value; volumeUpdates = nil
         if let pump, let capture {
             try? capture.removeStreamOutput(pump, type: .screen)
             try? capture.removeStreamOutput(pump, type: .audio)
@@ -428,23 +497,16 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         logResources(stage: "pump.finish.begin")
         await pump?.finish(); pump = nil
         logResources(stage: "pump.finish.end")
-        if let output {
-            logResources(stage: "rtmp.close.begin")
-            _ = try? await output.close()
-            logResources(stage: "rtmp.close.end")
-            await pipeline?.mixer.removeOutput(output)
-        }
         if let audioProbe { await pipeline?.mixer.removeOutput(audioProbe) }
-        self.audioProbe = nil
-        if let streamDiagnosticsProbe { await pipeline?.mixer.removeOutput(streamDiagnosticsProbe) }
-        streamDiagnosticsProbe = nil
-        logResources(stage: "mixer.stop.begin")
+        audioProbe = nil
         await pipeline?.mixer.stopRunning()
-        logResources(stage: "mixer.stop.end")
-        logResources(stage: "connection.close.begin")
-        _ = try? await connection?.close()
-        logResources(stage: "connection.close.end")
-        output = nil; connection = nil; pipeline = nil
+        if let recordingSink {
+            await pipeline?.mixer.removeOutput(recordingSink)
+            await recordingSink.finish()
+        }
+        recordingSink = nil
+        mediaPrepared = false
+        pipeline = nil
     }
     nonisolated func stream(_ stream: SCStream, didStopWithError error: Error) {
         let identity = ObjectIdentifier(stream)
@@ -539,7 +601,8 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             try? capture.removeStreamOutput(recordingOrientation, type: .screen)
         }
         await recording?.awaitCompletion(); recording = nil; recordingOrientation = nil
-        await stopPublishing(); capture = nil
+        await stopPublishing()
+        await stopMediaPipeline(); capture = nil
         let picker = SCContentSharingPicker.shared
         picker.remove(self); picker.isActive = false
         restoreMixingAudioSession()

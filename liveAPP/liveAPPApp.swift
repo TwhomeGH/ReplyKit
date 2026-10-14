@@ -1047,6 +1047,10 @@ struct liveAPPApp: App {
 
     init() {
 
+        #if os(iOS)
+        MetricReports.shared.start()
+        #endif
+
         // 與關於頁共用同一份建置快照，便於從 log.txt 辨識產物。
         AppLogPersister.shared.append(lines: BuildInformation.current.report.components(separatedBy: "\n").map { "[BuildInfo] " + $0 })
 

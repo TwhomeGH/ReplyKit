@@ -746,6 +746,13 @@ struct DeviceView: View {
                 Text("GPU: \(DeviceInfo.cpuName)")
             }
 
+            #if os(iOS)
+            Section("系統效能報告") {
+                NavigationLink("MetricKit 歷史報告") { MetricReportsView() }
+                Text("系統提供的效能與異常紀錄，與下方即時管線資訊分開。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            #endif
             StreamDiagnosticsSections()
 
             if capture.streamTelemetry.pipelineSampledAt != nil {

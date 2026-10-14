@@ -37,7 +37,7 @@ final class CaptureMailbox<Value: Sendable>: @unchecked Sendable {
         await withCheckedContinuation { continuation in
             lock.lock()
             let now = clock()
-            while let first = entries.first, now - first.time > age {
+            while !closed, let first = entries.first, now - first.time > age {
                 bytes -= entries.removeFirst().bytes; dropped += 1
             }
             if !entries.isEmpty {
@@ -47,10 +47,14 @@ final class CaptureMailbox<Value: Sendable>: @unchecked Sendable {
             else { precondition(waiter == nil); waiter = continuation; lock.unlock() }
         }
     }
-    func finish() {
-        lock.lock(); closed = true; entries.removeAll(); bytes = 0
+    /// 預設停止即丟棄；檔案錄製可選擇保留已接受的尾端樣本直到消費完成。
+    func finish(discardPending: Bool = true) {
+        lock.lock(); closed = true
+        if discardPending { entries.removeAll(); bytes = 0 }
         let pending = waiter; waiter = nil; lock.unlock(); pending?.resume(returning: nil)
     }
+
+    /// 日誌詳情
     var summary: String {
         lock.lock(); defer { lock.unlock() }
         return "accepted=\(accepted) dropped=\(dropped) queued=\(entries.count) bytes=\(bytes)/\(budget)"

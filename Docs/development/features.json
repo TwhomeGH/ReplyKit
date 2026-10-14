@@ -206,6 +206,40 @@
       "docs": [
         "Docs/development/RECORDING_COMPRESSION.md"
       ]
+    },
+    {
+      "id": "diagnostics.metrickit",
+      "name": "MetricKit 本機報告",
+      "summary": "主 App 單次訂閱系統報告，限量保存 JSON，可查看與分享；不是即時診斷。",
+      "replaykit": "未接擴展",
+      "screencapturekit": "涵蓋主 App；不保證每段錄影有報告",
+      "ui": "設備資訊 → 系統效能報告",
+      "verification": "等待 Xcode／實機報告交付驗收。",
+      "files": [
+        "liveAPP/MetricReports.swift",
+        "liveAPP/MetricReportsView.swift"
+      ],
+      "docs": [
+        "Docs/development/METRICKIT.md"
+      ]
+    },
+    {
+      "id": "recording.segmented",
+      "name": "可控分段錄製與即時音量",
+      "summary": "Mixer 共用音量；AVAssetWriter 直接編碼並獨立保存片段，可指定或自動碼率。",
+      "replaykit": "保留原路徑",
+      "screencapturekit": "可選開啟；系統錄製仍為預設",
+      "ui": "主頁 → 擷取與開始 → 可控分段錄製",
+      "verification": "已新增分段整合測試；待 Xcode／實機驗證",
+      "files": [
+        "liveAPP/Capture/DirectRecordingSettings.swift",
+        "liveAPP/Capture/SegmentedRecordingWriter.swift",
+        "liveAPPTests/SegmentedRecordingTests.swift",
+        "liveAPPTests/RecordingDrainTests.swift"
+      ],
+      "docs": [
+        "Docs/development/RECORDING_COMPRESSION.md"
+      ]
     }
   ]
 }

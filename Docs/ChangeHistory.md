@@ -1,5 +1,29 @@
 # 變更歷史
 
+## 2026.10.14 13:46 新增可控分段錄製、即時混音與系統品質匯出
+
+**類型**: 新增 · **功能 ID**: `recording.segmented`、`recording.post-compression`
+
+- 可選直接編碼 MP4，平均碼率可指定或交由編碼器決定；每 1／2／5／10 分鐘獨立保存一段，預設 2 分鐘。
+- Mixer 與 RTMP 生命週期分開，推流與可控錄製即時共用應用／麥克風音量；系統錄製保留。
+- 片段內寫入 movie fragments；中斷檔案需驗證可播放才恢復，已完成片段保持獨立。
+- 錄後處理新增系統高品質與多次編碼請求；不把系統預設描述為 CRF 固定品質，不保證多次編碼一定採用。
+- 補佇列排空與分段整合測試。實機音畫同步、切段與意外中止恢復仍待驗收。
+- 補齊錄製與 MetricKit 的 Swift 文件註釋，更正片段編號、丟棄計數範圍、固定軌道與未完成檔案恢復限制。
+
+**相關文件**: [錄影設定與限制](development/RECORDING_COMPRESSION.md)
+
+## 2026.10.14 13:26 接入 MetricKit 並分開顯示錄影壓縮容量
+
+**類型**: 新增／修正 · **功能 ID**: `diagnostics.metrickit`、`recording.post-compression`
+
+- 主 App 集中訂閱 MetricKit，限量保存本機 JSON，設備資訊提供查看與分享；附接收時 BuildInfo，不自動上傳。
+- 錄影分開保存壓縮前／後容量，處理中標明未完成，成功顯示節省 MB 與百分比；舊紀錄不推算缺少值。
+- 補充單檔持續寫入、錄後壓縮碼率與音量設定的限制，新增容量相容性測試與後續管線 TODO。
+- Apple SDK 建置、MetricKit 交付與錄影 UI 實機驗收待完成。
+
+**相關文件**: [MetricKit](development/METRICKIT.md)、[錄後壓縮](development/RECORDING_COMPRESSION.md)
+
 ## 2026.10.14 04:06 修正錄後壓縮測試巨集編譯與 DocC 重複收錄
 
 **類型**: 修正 · **檔案**: `RecordingCompressionTests.swift`、`liveAPP.xcodeproj/project.pbxproj`

@@ -2,14 +2,17 @@
 import Foundation
 @preconcurrency import AVFoundation
 
-/// Reader／Writer 錄後轉碼；可接方向 composition，一次完成方向、縮放及有損壓縮。
+/// 平均碼率使用 Reader／Writer；系統品質使用 ExportSession。兩者可接方向 composition。
 /// 原檔只在成功驗證且輸出較小時替換；取消、讀寫失敗與無節省都保留原檔。
 enum RecordingTranscoder {
+    /// 每個錄影 UUID 有獨立暫存路徑，供低頻率容量取樣。
+    static func temporaryURL(for url: URL) -> URL { url.deletingPathExtension().appendingPathExtension("compressed.mp4") }
+
     private static func failure(_ message: String) -> NSError {
         NSError(domain: "RecordingCompression", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
     }
 
-    /// 依目標平均碼率重新編碼視訊，AAC 音軌直接複製。
+    /// 平均碼率模式直接複製 AAC；系統品質模式由匯出預設管理影音編碼。
     /// - Parameters:
     ///   - url: 原始錄影位置；僅在產物驗證通過且較小時替換。
     ///   - asset: 原始媒體，或已套用方向矩陣的 composition。
@@ -40,13 +43,17 @@ enum RecordingTranscoder {
         let duration = try await asset.load(.duration)
         guard duration.seconds.isFinite, duration.seconds > 0 else { throw failure("錄影時長無效。") }
         let originalBytes = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+        if settings.systemQuality {
+            return try await exportSystemQuality(url: url, asset: asset, composition: videoComposition,
+                settings: settings, originalBytes: originalBytes, duration: duration)
+        }
         // 平均碼率只能估算；另保留音訊及容器空間，寫入時仍須處理磁碟不足。
         let estimatedBytes = duration.seconds * Double(settings.megabits * 1_000_000 + 1_000_000) / 8 + 64_000_000
         if let free = try? url.deletingLastPathComponent().resourceValues(forKeys: [.volumeAvailableCapacityKey]).volumeAvailableCapacity,
            Double(free) < estimatedBytes {
             throw failure("可用空間不足以安全產生壓縮暫存檔。")
         }
-        let temporary = url.deletingLastPathComponent().appendingPathComponent(UUID().uuidString + ".compressed.mp4")
+        let temporary = temporaryURL(for: url)
         let reader = try AVAssetReader(asset: asset)
         let writer = try AVAssetWriter(outputURL: temporary, fileType: .mp4)
         defer {
@@ -148,7 +155,43 @@ enum RecordingTranscoder {
         guard outputBytes < originalBytes else { throw failure("壓縮檔未縮小，保留原檔（方向處理亦未套用）。") }
         try Task.checkCancellation()
         _ = try FileManager.default.replaceItemAt(url, withItemAt: temporary)
-        return "錄後壓縮完成：\(codec.rawValue)、\(Int(size.width))×\(Int(size.height))、目標 \(settings.megabits) Mbps，節省 \(Int((1 - Double(outputBytes) / Double(originalBytes)) * 100))%。"
+        return "錄後壓縮完成：\(codec.rawValue)、\(Int(size.width))×\(Int(size.height))、目標 \(settings.megabits) Mbps，由 \(String(format: "%.1f", Double(originalBytes) / 1_000_000)) MB → \(String(format: "%.1f", Double(outputBytes) / 1_000_000)) MB，節省 \(String(format: "%.1f", Double(originalBytes - outputBytes) / 1_000_000)) MB（\(Int((1 - Double(outputBytes) / Double(originalBytes)) * 100))%）。"
     }
+    /// 交由 ExportSession 管理多次讀取；不把多次編碼旗標套在單次 Reader 迴圈。
+    private static func exportSystemQuality(url: URL, asset: AVAsset, composition: AVVideoComposition?,
+        settings: RecordingCompressionSettings, originalBytes: Int, duration: CMTime) async throws -> String {
+        let preset = settings.hevc ? AVAssetExportPresetHEVCHighestQuality : AVAssetExportPresetHighestQuality
+        guard let exporter = AVAssetExportSession(asset: asset, presetName: preset),
+              exporter.supportedFileTypes.contains(.mp4) else { throw failure("此裝置不支援所選系統品質預設。") }
+        let temporary = temporaryURL(for: url)
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        exporter.outputURL = temporary
+        exporter.outputFileType = .mp4
+        exporter.videoComposition = composition
+        exporter.canPerformMultiplePassesOverSourceMediaData = settings.multiPass
+        await withTaskCancellationHandler {
+            await exporter.export()
+        } onCancel: { exporter.cancelExport() }
+        try Task.checkCancellation()
+        guard exporter.status == .completed else { throw exporter.error ?? failure("系統品質匯出失敗。") }
+        let outputBytes = try temporary.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+        let check = AVURLAsset(url: temporary)
+        let checkDuration = try await check.load(.duration)
+        let expectedAudio = try await asset.loadTracks(withMediaType: .audio).count
+        guard outputBytes > 0, outputBytes < originalBytes,
+              abs(checkDuration.seconds - duration.seconds) < 1,
+              try await check.loadTracks(withMediaType: .video).count == 1,
+              try await check.loadTracks(withMediaType: .audio).count == expectedAudio else {
+            throw failure("系統品質產物未縮小或驗證失敗，保留原檔（方向處理亦未套用）。")
+        }
+        try Task.checkCancellation()
+        _ = try FileManager.default.replaceItemAt(url, withItemAt: temporary)
+        return String(format: "系統高品質匯出完成：%.1f MB → %.1f MB，節省 %.1f MB（%.1f%%）。多次編碼：%@。",
+            Double(originalBytes) / 1_000_000, Double(outputBytes) / 1_000_000,
+            Double(originalBytes - outputBytes) / 1_000_000,
+            Double(originalBytes - outputBytes) / Double(originalBytes) * 100,
+            settings.multiPass ? "已請求，由系統決定是否採用" : "未請求")
+    }
+
 }
 #endif

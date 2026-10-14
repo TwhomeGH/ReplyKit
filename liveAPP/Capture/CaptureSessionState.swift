@@ -87,12 +87,42 @@ struct LocalRecording: Identifiable, Codable {
     var duration: Double = 0
     var bytes: Int64 = 0
     var message: String?
+    /// 系統完成錄影時的原始檔大小；舊紀錄無此資訊。
+    var originalBytes: Int64?
+    /// 同一場可控錄製的群組與片段序號，舊紀錄為 nil。
+    var segmentGroup: UUID?
+    var segmentNumber: Int?
+    /// 轉碼暫存檔大小；完成前不可當作可播放產物。
+    var compressedBytes: Int64?
+    /// true 才表示壓縮產物通過驗證並取代原檔。
+    var compressionCompleted: Bool?
+    /// 統一前端容量標示；失敗及未完成不顯示節省量。
+    var sizeSummary: String {
+        func mb(_ value: Int64) -> String { String(format: "%.1f MB", Double(value) / 1_000_000) }
+        guard let originalBytes else { return "檔案大小：" + mb(bytes) }
+        let before = "壓縮前：" + mb(originalBytes)
+        if compressionCompleted == true, let compressedBytes {
+            let saved = max(0, originalBytes - compressedBytes)
+            let percent = originalBytes > 0 ? Double(saved) / Double(originalBytes) * 100 : 0
+            return before + " · 壓縮後：" + mb(compressedBytes) + " · 節省：" + mb(saved) + String(format: "（%.1f%%）", percent)
+        }
+        if let compressedBytes, !phase.isTerminal {
+            return before + " · 壓縮輸出（未完成）：" + mb(compressedBytes)
+        }
+        return before + (phase.isTerminal ? " · 壓縮未套用" : " · 壓縮後：等待處理")
+    }
     /// 只有完成回呼可以傳入 ready；終態不接受晚到回呼覆寫。
     @discardableResult mutating func transition(to next: RecordingPhase) -> Bool {
         guard !phase.isTerminal else { return false }
         if next == .recording && phase != .preparing { return false }
         if next == .preparing { return false }
         phase = next; return true
+    }
+    /// 呼叫端驗證檔案後使用；不宣稱已恢復事故前所有資料。
+    mutating func markRecovered(duration: Double, bytes: Int64) {
+        guard phase == .interrupted else { return }
+        phase = .ready; self.duration = duration; self.bytes = bytes
+        message = "已驗證現存檔案可播放；中斷前最後資料可能遺失。"
     }
     mutating func recoverAfterRelaunch() {
         if !phase.isTerminal { phase = .interrupted; message = "上次錄製中斷，未收到完成確認。" }

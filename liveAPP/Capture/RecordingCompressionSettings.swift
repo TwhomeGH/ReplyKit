@@ -15,8 +15,14 @@ struct RecordingCompressionSettings: Sendable {
     let longestEdge: Int
     /// 最高取樣頻率；0 不額外丟幀，其他支援值為 30、60。
     let fpsLimit: Int
+    /// 使用系統最高品質匯出預設；此模式不使用手動尺寸、FPS 或平均碼率。
+    let systemQuality: Bool
+    /// 僅供系統品質匯出請求多次編碼，不保證編碼器會採用。
+    let multiPass: Bool
 
-    init(enabled: Bool, hevc: Bool, megabits: Int, longestEdge: Int, fpsLimit: Int) {
+    init(enabled: Bool, hevc: Bool, megabits: Int, longestEdge: Int, fpsLimit: Int, systemQuality: Bool = false, multiPass: Bool = false) {
+        self.systemQuality = systemQuality
+        self.multiPass = multiPass
         self.enabled = enabled
         self.hevc = hevc
         self.megabits = min(40, max(1, megabits))
@@ -40,7 +46,9 @@ struct RecordingCompressionSettings: Sendable {
               hevc: defaults.string(forKey: "recordingCompressionCodec") != "h264",
               megabits: defaults.object(forKey: "recordingCompressionMbps") as? Int ?? 8,
               longestEdge: defaults.object(forKey: "recordingCompressionEdge") as? Int ?? 1920,
-              fpsLimit: defaults.object(forKey: "recordingCompressionFPS") as? Int ?? 60)
+              fpsLimit: defaults.object(forKey: "recordingCompressionFPS") as? Int ?? 60,
+              systemQuality: defaults.bool(forKey: "recordingCompressionSystemQuality"),
+              multiPass: defaults.bool(forKey: "recordingCompressionMultiPass"))
     }
 }
 
@@ -65,6 +73,8 @@ struct RecordingFrameRateLimiter {
 
 /// 本地錄影的錄後壓縮設定；與推流碼率分開保存。
 struct RecordingCompressionSettingsView: View {
+    @AppStorage("recordingCompressionSystemQuality", store: userDefaults) private var systemQuality = false
+    @AppStorage("recordingCompressionMultiPass", store: userDefaults) private var multiPass = false
     @AppStorage("recordingCompress", store: userDefaults) private var enabled = false
     @AppStorage("recordingCompressionCodec", store: userDefaults) private var codec = "hevc"
     @AppStorage("recordingCompressionMbps", store: userDefaults) private var mbps = 8
@@ -79,6 +89,12 @@ struct RecordingCompressionSettingsView: View {
                     Text("HEVC（H.265）").tag("hevc")
                     Text("H.264（相容性較高）").tag("h264")
                 }
+                Toggle("使用系統高品質預設", isOn: $systemQuality)
+                if systemQuality {
+                    Toggle("允許系統嘗試多次編碼", isOn: $multiPass)
+                    Text("由系統預設決定輸出品質，不指定 Mbps、尺寸與 FPS。多次編碼可能耗時更久、使用更多暫存；是否採用由系統決定，檔案不一定較小。")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
                 Stepper("目標平均碼率：\(mbps) Mbps", value: $mbps, in: 1...40)
                 Picker("最長邊上限", selection: $edge) {
                     Text("保留尺寸").tag(0)
@@ -92,7 +108,8 @@ struct RecordingCompressionSettingsView: View {
                 Text("視訊約 \(String(format: "%.0f", Double(mbps) * 7.5)) MB／分鐘，另加音訊與封裝；實際大小依內容而異。")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Text("下次開錄生效。錄後處理需額外時間、讀寫與暫存空間，請保持 App 在前景；失敗或背景時間不足時保留原檔。音訊保留原 AAC，HDR 暫不壓縮。")
+            }
+            Text("下次開錄生效。錄後處理需額外時間、讀寫與暫存空間，請保持 App 在前景；失敗或背景時間不足時保留原檔。平均碼率模式保留 AAC；系統品質模式的音訊由匯出器處理。HDR 暫不壓縮。")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }

@@ -83,6 +83,7 @@ import ScreenCaptureKit
     @AppStorage(RecordingVideoCodec.storageKey, store: userDefaults) private var recordingCodec = RecordingVideoCodec.auto.rawValue
     @AppStorage("screenStreamRotateLeft", store: userDefaults) private var streamRotateLeft = true
     @AppStorage(StreamFramePolicy.storageKey, store: userDefaults) private var framePolicy = StreamFramePolicy.standard.rawValue
+    @AppStorage("directRecordingEnabled", store: userDefaults) private var directRecordingEnabled = false
     @State private var anotherCapture = false
     @State private var showingRecordings = false
 
@@ -146,7 +147,7 @@ import ScreenCaptureKit
             }
             .pickerStyle(.menu)
             .disabled(controlsDisabled)
-            if selectedWorkMode.wantsStreaming {
+            if selectedWorkMode.wantsStreaming || (selectedWorkMode.wantsRecording && directRecordingEnabled) {
                 Toggle(AppLanguage.localized("capture.stream.left90"), isOn: $streamRotateLeft)
                     .disabled(controlsDisabled)
                 Picker("輸出畫布", selection: $framePolicy) {
@@ -161,6 +162,7 @@ import ScreenCaptureKit
                 }
             }
             if selectedWorkMode.wantsRecording {
+                if !directRecordingEnabled {
                 Picker(AppLanguage.localized("recording.orientation.title"), selection: $recordingPolicy) {
                     ForEach(RecordingOrientationPolicy.allCases) { policy in
                         Text(AppLanguage.localized(policy.titleKey)).tag(policy.rawValue)
@@ -170,6 +172,7 @@ import ScreenCaptureKit
                 .disabled(controlsDisabled)
                 Text(AppLanguage.localized("recording.orientation.help"))
                     .font(.caption).foregroundStyle(.secondary)
+                }
                 recordingCodecPicker
                 Text("本地錄影保存系統擷取的畫面與聲音，不含浮水印、進階音訊處理或推流音量調整；只錄製不需 RTMP 設定。")
                     .font(.caption)
@@ -195,6 +198,8 @@ import ScreenCaptureKit
     private var recordingCodecPicker: some View {
         #if SCREEN_CAPTURE_KIT_IOS27 && canImport(ScreenCaptureKit) && !targetEnvironment(macCatalyst) && !targetEnvironment(simulator)
         if #available(iOS 27.0, *) {
+            DirectRecordingSettingsView().disabled(controlsDisabled)
+            if !directRecordingEnabled {
             Picker("錄影編碼", selection: $recordingCodec) {
                 ForEach(RecordingVideoCodec.allCases) { codec in
                     Text(codec.title).tag(codec.rawValue)
@@ -206,6 +211,7 @@ import ScreenCaptureKit
             Text("系統錄製碼率由系統決定，選擇 HEVC 不保證檔案較小。AV1 需裝置支援。若需控制大小，可啟用錄後壓縮。")
                 .font(.caption).foregroundStyle(.secondary)
             RecordingCompressionSettingsView().disabled(controlsDisabled)
+            }
         }
         #endif
     }
@@ -235,7 +241,7 @@ import ScreenCaptureKit
                 }
             }
             if let item = library.recordings.first, capture.isBusy, !item.phase.isTerminal {
-                Text("· \(item.phase.title) \(Int(item.duration)) 秒 · \(ByteCountFormatter.string(fromByteCount: item.bytes, countStyle: .file))")
+                Text("· \(item.phase.title) \(Int(item.duration)) 秒 · \(item.sizeSummary)")
                     .foregroundStyle(.secondary)
             }
         }
