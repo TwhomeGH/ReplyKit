@@ -1,5 +1,13 @@
 # 變更歷史
 
+## 2026.10.15 01:13 回報分段錄影檔案大小讀取錯誤
+
+**類型**: 修復 · **檔案**: `liveAPP/Capture/SegmentedRecordingWriter.swift`
+
+- 以 do／catch 取代吞掉錯誤的 try?，透過 sendlog 記錄片段、階段及 NSError 詳情。
+- 失敗時保留最近已知大小並顯示未確認提示；相同連續錯誤去重，恢復讀取時記錄恢復事件。
+- 每段重設大小與錯誤狀態；缺少有效 size 屬性也視為讀取失敗。
+
 ## 2026.10.15 01:10 修正錄製排空測試與片段容量讀取
 
 **類型**: 修復 · **檔案**: `RecordingDrainTests.swift`、`SegmentedRecordingTests.swift`、`SegmentedRecordingWriter.swift`

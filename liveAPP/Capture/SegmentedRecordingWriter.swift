@@ -108,6 +108,11 @@ private actor SegmentedRecordingWriter {
     private var lastAudio: CMTime = .invalid
     /// 最後一次報告的時間戳（秒）。
     private var lastReport = -Double.infinity
+    /// 本段最近成功讀取的檔案大小；讀取失敗時保留，不以零覆寫。
+    private var lastKnownBytes: Int64 = 0
+    /// 本段最近的容量讀取錯誤，用來抑制連續重複日誌；成功讀取後清除。
+    private var sizeReadError: String?
+
     /// 整次錄製累計的寫入端丟棄數，切段不歸零。
     /// 包含時間戳無效／倒退與輸入未就緒；不含 FPS 篩選、佇列丟棄或音訊轉換失敗。
     private var dropped = 0
@@ -181,6 +186,8 @@ private actor SegmentedRecordingWriter {
         let file = await library.fileURL(for: item.id)
         url = file
         number += 1
+        lastKnownBytes = 0
+        sizeReadError = nil
 
         await library.identifySegment(item.id, group: group, number: number)
         let writer = try AVAssetWriter(outputURL: file, fileType: .mp4)
@@ -267,12 +274,30 @@ private actor SegmentedRecordingWriter {
     private func report(phase: RecordingPhase?, completedDuration: Double? = nil) async {
         guard let id, let url else { return }
         // 錄製中的檔案會持續增長，直接查詢檔案系統，避免沿用 URL 的資源屬性快取。
-        let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
-        let bytes = (attributes?[.size] as? NSNumber)?.int64Value ?? 0
+        do {
+            let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+            guard let size = attributes[.size] as? NSNumber, size.int64Value >= 0 else {
+                throw error("檔案屬性缺少有效大小。")
+            }
+            lastKnownBytes = size.int64Value
+            if sizeReadError != nil {
+                sendlog(message: "[SegmentedRecording] group=\(group) segment=\(number) id=\(id) event=fileSizeReadRecovered bytes=\(lastKnownBytes)")
+            }
+            sizeReadError = nil
+        } catch {
+            let failure = error as NSError
+            let detail = "domain=\(failure.domain) code=\(failure.code) description=\(failure.localizedDescription) userInfo=\(failure.userInfo)"
+            if sizeReadError != detail {
+                sendlog(message: "[SegmentedRecording] group=\(group) segment=\(number) id=\(id) phase=\(phase?.rawValue ?? "progress") event=fileSizeReadFailed file=\(url.lastPathComponent) \(detail)")
+            }
+            sizeReadError = detail
+        }
+        let bytes = lastKnownBytes
+        let sizeWarning = sizeReadError == nil ? "" : " · 大小讀取失敗（目前大小未確認）"
         let duration = completedDuration ?? (lastVideo.isValid ? max(0, lastVideo.seconds - start.seconds) : 0)
         let bitrate = settings.automaticBitrate ? "編碼器自動碼率" : "目標 \(settings.encoding.megabits) Mbps"
         await library.update(id, phase: phase, duration: duration, bytes: bytes,
-            message: "可控錄製 · 第 \(number) 段 · \(bitrate) · 寫入端丟棄 \(dropped) 個樣本")
+            message: "可控錄製 · 第 \(number) 段 · \(bitrate) · 寫入端丟棄 \(dropped) 個樣本" + sizeWarning)
     }
     /// 取消目前寫入並標記中斷，不改動先前已完成的片段。
     /// 取消寫入不保證保留未完成檔案；恢復前仍須確認檔案存在且可播放。
