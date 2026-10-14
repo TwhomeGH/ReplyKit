@@ -1,5 +1,13 @@
 # 變更歷史
 
+## 2026.10.15 00:40 修正分段錄製收尾的 URL 變數遮蔽
+
+**類型**: 修復 · **檔案**: `liveAPP/Capture/SegmentedRecordingWriter.swift`
+
+- 更正前次將 `let` 改成 `var` 的修法：解包後的區域變數仍是非 Optional `URL`，不能賦值 `nil`。
+- 驗證檔案使用 `segmentURL`，收尾明確清除 `self.url` 等實例屬性，避免同名區域變數遮蔽。
+- Swift 語法與差異檢查通過；完整 Apple SDK 建置仍待 CI 確認。
+
 ## 2026.10.15 00:04 修正語法問題 更正不可變參數修正為可變
 
 **類型**: 修復 · **檔案**: `liveAPP/Capture/SegmentedRecordingWriter.swift`

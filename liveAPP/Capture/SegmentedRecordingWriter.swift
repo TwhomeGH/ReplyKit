@@ -239,9 +239,9 @@ private actor SegmentedRecordingWriter {
         
         guard writer.status == .completed, videoCount > 0 else { throw writer.error ?? error("片段未完整收尾，原檔保留供恢復。") }
         
-        guard var url else { throw error("缺少片段路徑。") }
+        guard let segmentURL = self.url else { throw error("缺少片段路徑。") }
         
-        let asset = AVURLAsset(url: url)
+        let asset = AVURLAsset(url: segmentURL)
         
         let duration = try await asset.load(.duration)
         
@@ -253,8 +253,12 @@ private actor SegmentedRecordingWriter {
         await report(phase: .ready, completedDuration: duration.seconds)
         
         sendlog(message: "[SegmentedRecording] group=\(group) segment=\(number) completed dropped=\(dropped)")
-        // 完成後清理
-        self.writer = nil; video = nil; audio = nil; id = nil; url = nil
+        // 清除實例持有的片段狀態；驗證用的 segmentURL 僅是區域快照。
+        self.writer = nil
+        self.video = nil
+        self.audio = nil
+        self.id = nil
+        self.url = nil
     }
     /// 更新檔案大小、時長與整次錄製的寫入端丟棄數。
     /// - Parameters:
