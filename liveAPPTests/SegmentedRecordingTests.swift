@@ -41,7 +41,15 @@ import Testing
         }
         await sink.finish()
         #expect(library.recordings.count == 2)
-        #expect(library.recordings.allSatisfy { $0.phase == .ready && $0.bytes > 0 })
+        // 分別驗證完成狀態與實際大小，讓 CI 能指出是哪個契約失敗。
+        for item in library.recordings {
+            let context = "segment=\(String(describing: item.segmentNumber)) phase=\(item.phase) bytes=\(item.bytes) message=\(item.message ?? "") mailbox=\(sink.summary)"
+            #expect(item.phase == .ready, Comment(rawValue: context))
+            let attributes = try FileManager.default.attributesOfItem(atPath: library.fileURL(for: item.id).path)
+            let actualBytes = try #require((attributes[.size] as? NSNumber)?.int64Value)
+            #expect(actualBytes > 0, Comment(rawValue: context))
+            #expect(item.bytes == actualBytes, Comment(rawValue: context))
+        }
         #expect(Set(library.recordings.compactMap(\.segmentGroup)).count == 1)
         #expect(Set(library.recordings.compactMap(\.segmentNumber)) == [1, 2])
         let reopened = RecordingLibrary(directory: directory)

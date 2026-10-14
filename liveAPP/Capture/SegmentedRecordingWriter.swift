@@ -266,7 +266,9 @@ private actor SegmentedRecordingWriter {
     ///   - completedDuration: 完成後讀取的資產秒數；nil 以最後視訊 PTS 減起點估算。
     private func report(phase: RecordingPhase?, completedDuration: Double? = nil) async {
         guard let id, let url else { return }
-        let bytes = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
+        // 錄製中的檔案會持續增長，直接查詢檔案系統，避免沿用 URL 的資源屬性快取。
+        let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+        let bytes = (attributes?[.size] as? NSNumber)?.int64Value ?? 0
         let duration = completedDuration ?? (lastVideo.isValid ? max(0, lastVideo.seconds - start.seconds) : 0)
         let bitrate = settings.automaticBitrate ? "編碼器自動碼率" : "目標 \(settings.encoding.megabits) Mbps"
         await library.update(id, phase: phase, duration: duration, bytes: bytes,

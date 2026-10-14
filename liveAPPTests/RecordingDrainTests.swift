@@ -21,7 +21,7 @@ struct RecordingDrainTests {
         let mailbox = CaptureMailbox<Int>(budget: 8, age: 60)
         mailbox.offer(1, bytes: 4)
         mailbox.offer(2, bytes: 4)
-        mailbox.finish()
+        mailbox.finish(discardPending: false)
         mailbox.offer(3, bytes: 1)
         var values: [Int] = []
         for await value in mailbox.stream() { values.append(value) }

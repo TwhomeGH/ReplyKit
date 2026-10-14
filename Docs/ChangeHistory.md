@@ -1,5 +1,14 @@
 # 變更歷史
 
+## 2026.10.15 01:10 修正錄製排空測試與片段容量讀取
+
+**類型**: 修復 · **檔案**: `RecordingDrainTests.swift`、`SegmentedRecordingTests.swift`、`SegmentedRecordingWriter.swift`
+
+- 排空測試明確指定保留待處理樣本；預設關閉仍保持丟棄語意。
+- 片段容量改查檔案系統屬性，避免重用 URL 資源屬性快取。
+- 分段測試分開驗證完成狀態、實體檔案大小及紀錄容量一致性，失敗附帶片段與佇列診斷。
+- 分段整合測試仍需 Apple SDK CI 重跑確認，現有摘要不足以完全確認第二項失敗根因。
+
 ## 2026.10.15 00:40 修正分段錄製收尾的 URL 變數遮蔽
 
 **類型**: 修復 · **檔案**: `liveAPP/Capture/SegmentedRecordingWriter.swift`
