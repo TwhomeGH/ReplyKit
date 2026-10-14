@@ -29,7 +29,8 @@ final class SegmentedRecordingSink: MediaMixerOutput, @unchecked Sendable {
                 for await sample in mailbox.stream() { try await writer.append(sample.buffer) }
                 try await writer.finishSegment()
                 if settings.autoMerge {
-                    let group = await writer.group
+                    // writer.group 不存在需要await的操作
+                    let group = writer.group
                     Task { @MainActor in
                         guard library.recordings.filter({ $0.segmentGroup == group }).count >= 2 else { return }
                         do { _ = try await library.merge(group: group) }
