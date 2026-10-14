@@ -51,7 +51,7 @@ extension RecordingLibrary {
                 video.preferredTransform = transform
             }
             let range = CMTimeRange(start: .zero, duration: duration)
-            let videoRange = CMTimeRangeGetIntersection(try await track.load(.timeRange), range)
+            let videoRange = CMTimeRangeGetIntersection(try await track.load(.timeRange), otherRange: range)
             try video.insertTimeRange(videoRange, of: track, at: cursor + videoRange.start)
             if let sound = try await asset.loadTracks(withMediaType: .audio).first {
                 let descriptions = try await sound.load(.formatDescriptions)
@@ -66,7 +66,7 @@ extension RecordingLibrary {
                 expectedAudioFormat = signature
                 hasAudio = true
                 // 音訊可能晚於畫面開始；插入原始偏移，不把聲音提前。
-                let audioRange = CMTimeRangeGetIntersection(try await sound.load(.timeRange), range)
+                let audioRange = CMTimeRangeGetIntersection(try await sound.load(.timeRange), otherRange: range)
                 if audioRange.duration > .zero {
                     try audio.insertTimeRange(audioRange, of: sound, at: cursor + audioRange.start)
                 }

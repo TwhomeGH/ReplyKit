@@ -1,5 +1,12 @@
 # 變更歷史
 
+## 2026.10.15 06:04 修正錄影合併時間範圍的參數標籤
+
+**類型**: 修復 · **檔案**: `liveAPP/Capture/RecordingGroupMerger.swift`
+
+- 影音兩處 CMTimeRangeGetIntersection 呼叫補上 Swift 必要的 otherRange: 標籤，修正 Apple SDK 編譯錯誤。
+- 不變更時間範圍計算；完整編譯仍需 CI 確認。
+
 ## 2026.10.15 02:02 改善分段音訊邊界、錄影畫布與群組合併
 
 **類型**: 修復／新增 · **功能 ID**: `recording.segmented`
