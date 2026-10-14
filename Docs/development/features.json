@@ -235,6 +235,7 @@
         "liveAPP/Capture/DirectRecordingSettings.swift",
         "liveAPP/Capture/SegmentedRecordingWriter.swift",
         "liveAPP/Capture/SegmentedRecordingRouter.swift",
+        "liveAPP/Capture/RecordingPCMSlicer.swift",
         "liveAPP/Capture/RecordingGroup.swift",
         "liveAPP/Capture/RecordingGroupMerger.swift",
         "liveAPPTests/RecordingGroupTests.swift",

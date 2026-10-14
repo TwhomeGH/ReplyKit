@@ -116,14 +116,46 @@ import Testing
         return try #require(sample)
     }
 
+    /// 左右片段拼回原資料，幀數、聲道內容及時間戳都不得丟失或錯位。
+    @Test(arguments: [false, true])
+    func pcmSlicesPreserveChannelsAndTiming(interleaved: Bool) throws {
+        let source = try audioSample(seconds: 100, interleaved: interleaved)
+        let left = try RecordingPCMSlicer.copy(source, start: 0, count: 480)
+        let right = try RecordingPCMSlicer.copy(source, start: 480, count: 1568)
+        #expect(left.numSamples + right.numSamples == source.numSamples)
+        #expect(abs((left.presentationTimeStamp + left.duration - right.presentationTimeStamp).seconds) < 0.000001)
+        #expect(abs((right.presentationTimeStamp + right.duration - source.presentationTimeStamp - source.duration).seconds) < 0.000001)
+        let format = try #require(AVAudioFormat(commonFormat: .pcmFormatFloat32,
+            sampleRate: 48000, channels: 2, interleaved: interleaved))
+        for (part, offset) in [(left, 0), (right, 480)] {
+            let pcm = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(part.numSamples)))
+            pcm.frameLength = AVAudioFrameCount(part.numSamples)
+            let status = CMSampleBufferCopyPCMDataIntoAudioBufferList(part, at: 0,
+                frameCount: Int32(part.numSamples), into: pcm.mutableAudioBufferList)
+            #expect(status == noErr)
+            let channels = try #require(pcm.floatChannelData)
+            for channel in 0..<2 {
+                for frame in 0..<part.numSamples {
+                    let expected = Float(channel * 2048 + offset + frame) / 8192
+                    let actual = interleaved ? channels[0][frame * 2 + channel] : channels[channel][frame]
+                    #expect(actual == expected)
+                }
+            }
+        }
+    }
+
     /// 建立 2048 幀 PCM，時間戳與視訊共用同一時間軸。
-    private func audioSample(seconds: Double) throws -> CMSampleBuffer {
-        let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 48000, channels: 2))
+    private func audioSample(seconds: Double, interleaved: Bool = false) throws -> CMSampleBuffer {
+        let format = try #require(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48000, channels: 2, interleaved: interleaved))
         let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 2048))
         buffer.frameLength = 2048
         let channels = try #require(buffer.floatChannelData)
         for channel in 0..<2 {
-            for frame in 0..<2048 { channels[channel][frame] = 0.1 }
+            for frame in 0..<2048 {
+                let value = Float(channel * 2048 + frame) / 8192
+                if interleaved { channels[0][frame * 2 + channel] = value }
+                else { channels[channel][frame] = value }
+            }
         }
         var sample: CMSampleBuffer?
         let status = CMAudioSampleBufferCreateWithPacketDescriptions(allocator: kCFAllocatorDefault,

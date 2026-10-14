@@ -51,8 +51,8 @@ actor SegmentedRecordingWriter {
                     // PCM 緩衝跨越邊界時按取樣數切開，不能整塊留在舊段後被截斷。
                     let count = CMSampleBufferGetNumSamples(sample)
                     let split = min(count, max(0, Int(ceil((boundary - pts).seconds / sample.duration.seconds * Double(count)))))
-                    if split > 0 { try await previous.append(slice(sample, start: 0, count: split)) }
-                    if split < count { try await current?.append(slice(sample, start: split, count: count - split)) }
+                    if split > 0 { try await previous.append(RecordingPCMSlicer.copy(sample, start: 0, count: split)) }
+                    if split < count { try await current?.append(RecordingPCMSlicer.copy(sample, start: split, count: count - split)) }
                 } else {
                     try await previous.append(sample)
                 }
@@ -65,24 +65,6 @@ actor SegmentedRecordingWriter {
             return
         }
         try await current?.append(sample)
-    }
-
-    /// 複製指定 PCM 取樣範圍，CoreMedia 保留該範圍的時間戳。
-    /// - Parameters:
-    ///   - sample: 來源 PCM 樣本。
-    ///   - start: 起始取樣索引。
-    ///   - count: 要保留的取樣數。
-    /// - Returns: 只包含該範圍的樣本緩衝。
-    /// - Throws: CoreMedia 無法建立子範圍。
-    private func slice(_ sample: CMSampleBuffer, start: Int, count: Int) throws -> CMSampleBuffer {
-        var result: CMSampleBuffer?
-        let status = CMSampleBufferCopySampleBufferForRange(allocator: kCFAllocatorDefault,
-            sampleBuffer: sample, sampleRange: CFRange(location: start, length: count), sampleBufferOut: &result)
-        guard status == noErr, let result else {
-            throw NSError(domain: "RecordingBoundary", code: Int(status),
-                          userInfo: [NSLocalizedDescriptionKey: "無法切分跨段音訊樣本。"])
-        }
-        return result
     }
 
     /// 停止舊段接收，交給獨立工作完成；新段仍可消費樣本。

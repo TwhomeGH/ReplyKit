@@ -1,5 +1,13 @@
 # 變更歷史
 
+## 2026.10.15 06:34 修正非交錯 PCM 的跨段音訊切分
+
+**類型**: 修復 · **檔案**: `SegmentedRecordingRouter.swift`、`RecordingPCMSlicer.swift`、`SegmentedRecordingTests.swift`
+
+- 通用 CMSampleBufferCopySampleBufferForRange 不支援非交錯音訊，跨界測試回傳 -12735；改用 PCM 專用複製 API，再建立獨立樣本。
+- 依音訊幀偏移與取樣率計算新 PTS，保留原格式及聲道排列；錯誤回報包含失敗階段與幀範圍。
+- 保留跨界整合測試，新增交錯／非交錯 PCM 的逐聲道內容、幀數與時間戳連續性驗證；Apple SDK CI 待重跑。
+
 ## 2026.10.15 06:04 修正錄影合併時間範圍的參數標籤
 
 **類型**: 修復 · **檔案**: `liveAPP/Capture/RecordingGroupMerger.swift`
