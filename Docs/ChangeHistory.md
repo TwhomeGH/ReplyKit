@@ -1,5 +1,13 @@
 # 變更歷史
 
+## 2026.10.15 09:56 修正設備資訊頁無法開啟 MetricKit 報告
+
+**類型**: 修復 · **檔案**: `ContentView.swift`、`MetricReportsView.swift`、`MetricReports.swift`
+
+- 設備頁原本直接置於 TabView，NavigationLink 缺少導覽容器；新增該分頁專用 NavigationStack，支援報告列表、詳細頁與返回。
+- 報告頁與儲存屬性註釋明確說明使用主 App 的 Documents/MetricReports，不依賴 App Group，側載沿用相同路徑。
+- Swift 語法與差異檢查通過；列表點擊、返回及 JSON 分享需在 iOS 實機驗證。
+
 ## 2026.10.15 07:49 修正設備診斷採樣生命週期與停止狀態
 
 **類型**: 修復 · **檔案**: `OtherView.swift`、`StreamDiagnosticsView.swift`、`CaptureStreamTelemetry.swift`、`ScreenCaptureSource.swift`、`MemorySampler.swift`

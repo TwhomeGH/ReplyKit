@@ -33,9 +33,14 @@ struct ContentView: View {
 
 
 
-            DeviceView()
-                .tabItem { Label("tab.deviceInfo", systemImage: "cpu") }
-                .tag(AppPage.testpage)
+            // 設備頁及 MetricKit 報告共用獨立導覽堆疊，讓列表與詳細頁可以逐層返回。
+            NavigationStack {
+                DeviceView()
+                    .navigationTitle("tab.deviceInfo")
+                    .navigationBarTitleDisplayMode(.inline)
+            }
+            .tabItem { Label("tab.deviceInfo", systemImage: "cpu") }
+            .tag(AppPage.testpage)
 
             LogView()
                 .environmentObject(logModel)

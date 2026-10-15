@@ -54,6 +54,7 @@ final class MetricReports: NSObject, ObservableObject, MXMetricManagerSubscriber
     @MainActor private var started = false
     /// 序列化保存、讀取與容量清理，避免檔案操作互相競爭。
     private let queue = DispatchQueue(label: "liveAPP.metricReports", qos: .utility)
+    /// 主 App 自己的文件目錄；側載不需要 App Group 權限即可保存與讀取。
     private let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("MetricReports", isDirectory: true)
     private override init() { super.init() }

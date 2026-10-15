@@ -9,6 +9,7 @@ struct MetricReportsView: View {
             Section {
                 Text("主 App 的系統報告；效能統計通常涵蓋前 24 小時，並非即時監控。沒有報告不表示沒有異常。")
                 Text("保留最近 30 份／最多 20 MB，僅保存於本機。重新整理不會要求系統產生報告。")
+                Text("儲存位置：主 App 的 Documents/MetricReports，不依賴 App Group。")
             }.font(.caption).foregroundStyle(.secondary)
             if let error = store.errorMessage { Text(error).foregroundStyle(.red) }
             if store.reports.isEmpty { Text("尚未收到 MetricKit 報告，等待系統提供。") }
