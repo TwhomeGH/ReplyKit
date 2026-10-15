@@ -1,5 +1,14 @@
 # 變更歷史
 
+## 2026.10.15 21:23 加入 MetricKit 報告可視解讀
+
+**類型**: 功能 · **檔案**: `MetricReportAnalysis.swift`、`MetricReportsView.swift`、`MetricReportAnalysisTests.swift`
+
+- 詳細頁預設呈現分類指標、欄位說明、缺漏提示、版本與裝置資訊，保留原始 JSON 查看及分享。
+- 裝置磁碟容量提供使用比例圖，區分 App 檔案大小與整台裝置容量；未知單位及無效比例不繪圖。
+- 異常事件顯示分類筆數，巢狀資料與堆疊保留原文；不將缺少記憶體資料誤判為零或正常。
+- 補充解讀 API 文件與回歸測試；完整 iOS 畫面仍需實機驗收。
+
 ## 2026.10.15 09:56 修正設備資訊頁無法開啟 MetricKit 報告
 
 **類型**: 修復 · **檔案**: `ContentView.swift`、`MetricReportsView.swift`、`MetricReports.swift`

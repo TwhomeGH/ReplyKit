@@ -2,7 +2,7 @@
 
 ## 使用方式
 
-設備資訊 → 系統效能報告 → MetricKit 歷史報告。可以查看收到時間、報告涵蓋期間、內容分類與原始 JSON，也可以分享單份報告。
+設備資訊 → 系統效能報告 → MetricKit 歷史報告。可以查看收到時間、報告涵蓋期間、內容分類、指標解讀與原始 JSON，也可以分享單份報告。
 
 主 App 啟動時由 `MetricReports.shared.start()` 訂閱一次，視窗建立與銷毀不重複註冊。使用相容舊 iOS 的 MXMetricManagerSubscriber API；新版 SDK 可能提示此 API 已被新版 MetricManager 取代。
 
@@ -19,7 +19,8 @@
 ## 程式入口
 
 - `MetricReports`：訂閱、去重、保存、保留上限與列表更新。
-- `MetricReportsView`：報告列表與 JSON 查看／分享。
+- `MetricReportsView`：報告列表、分類指標、裝置容量圖與 JSON 查看／分享。
+- `MetricReportAnalysis.parse(_:)`：解析本機 schemaVersion 1 封裝；回傳分類欄位、版本資訊、未提供指標與可選容量比例。未知單位不畫圖，巢狀分布與事件堆疊保留在原文。
 - `liveAPPApp.init`：App 生命週期註冊入口。
 
 ## 驗收
@@ -27,3 +28,10 @@
 須在 Xcode／實機驗證收到 MetricKit 報告、多視窗不重複訂閱、JSON 分享、重啟載入及保留上限。Windows 語法檢查不等於 Apple SDK 型別檢查。
 
 參考：[MetricKit](https://developer.apple.com/documentation/metrickit)、[MXMetricManager](https://developer.apple.com/documentation/metrickit/mxmetricmanager)。
+
+## 解讀範圍
+
+- 詳細頁預設顯示分類指標、說明、原始單位及版本資訊，原始 JSON 為獨立入口。
+- 裝置容量圖只使用 totalDiskSpaceUsedSize / totalDiskSpaceCapacity，不能當作 App 或 RAM 占用；未知單位、零容量或已用超過總量不顯示圖表。
+- 異常事件顯示分類筆數；沒有診斷欄位不表示沒有異常。尚未提供堆疊符號化或巢狀分布圖。
+- 記憶體、CPU、異常診斷未提供時明確提示，不補零、不產生健康評分；單份磁碟報告無法定位記憶體洩漏。
