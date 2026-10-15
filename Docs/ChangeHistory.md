@@ -1,5 +1,17 @@
 # 變更歷史
 
+## 2026.10.15 22:58 修正整數解碼指標生命週期與 RTMP 發布診斷
+
+**類型**: 修復 · **檔案**: `Package.resolved`
+
+### 修改 - HaishinKit 與 MoQTHaishinKit 的整數複製改在 Data.withUnsafeBytes 有效閉包內完成，避免短 Data 解碼讀取失效指標。
+
+- Set Chunk Size 原始四位元組獨立記錄；零值、超出支援上限及錯誤長度明確關閉，不再靜默截斷數值。
+- 診斷延伸至 createStream／發布啟動，維持每連線 192 筆上限；命令逾時包含解析進度與 socket 傳送統計，不含金鑰。
+- 新增短 Data、切片與分段控制訊息回歸測試。Restream 恢復與否仍待主 App 更新套件後實測。
+
+---
+
 ## 2026.10.15 21:23 加入 MetricKit 報告可視解讀
 
 **類型**: 功能 · **檔案**: `MetricReportAnalysis.swift`、`MetricReportsView.swift`、`MetricReportAnalysisTests.swift`
