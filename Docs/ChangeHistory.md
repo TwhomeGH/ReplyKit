@@ -1,5 +1,13 @@
 # 變更歷史
 
+## 2026.10.17 21:23 第二批五分頁整併
+
+**類型**：介面整理 · **檔案**：`ContentView.swift`、`Navigation/MainTabViews.swift`
+
+- 頂層整併為主頁、設備資訊、日誌、音訊與設定；聊天移到主頁子入口，碼率分析移到設備資訊子入口。
+- 音訊頁提供音量／TTS 切換；集中音量訂閱條件，TTS、其他分頁及非前景時停用即時音量資料。
+- 沿用服務與偏好儲存，補充導航文件與實機驗收項目；Windows 僅能檢查 Swift 語法，iOS 操作待 CI／實機驗收。
+
 ## 2026.10.17 03:18 全域設定移出日誌並建立分類分頁
 
 **類型**: 介面整理 · **檔案**: `ContentView.swift`、`FileLogView.swift`、`Setting.swift`、`Settings/`、`Localizable.xcstrings`
