@@ -1756,6 +1756,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 self.rtmpConnection = RTMPConnection(useEnhancedRTMP: enh,minimumLogLevel: RPConfig.shared.state.enableRTMPLog ? .debug : .warn)
                 self.rtmpStream = RTMPStream(connection: self.rtmpConnection!)
 
+                // 包含底層低頻 publish timeline；診斷開關於開始推流前啟用。
                 await self.rtmpConnection?.setOnLog { event in
                     guard event.always || RPConfig.shared.state.enableRTMPLog else { return }
                     sendlog(message: "[RTMP] \(event.level) \(event.message) \(event.detail ?? "")")

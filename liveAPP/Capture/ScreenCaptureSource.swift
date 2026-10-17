@@ -367,12 +367,12 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         let logSession = state.id?.uuidString ?? "none"
         let logSecrets = [url, key]
         await conn.setOnLog { [weak self] event in
-            // 只放行連線生命週期與佇列摘要，不開啟高頻封包或完整命令參數輸出。
+            // 放行連線生命週期、低頻佇列／時間軸摘要及同步事件；仍遮蔽敏感資訊。
             let prefixes = ["VideoQueue", "TCP ", "State:", "S0 version", "S0S1 received",
                             "Waiting for S2", "Response:", "Connect ", "Command error",
                             "Command timeout", "Socket recv", "Close requested", "Reconnect",
                             "Reconnecting", "Keepalive", "Liveness watchdog", "Output continuity",
-                            "audio:", "audio track", "inputFormat:", "AudioCodec", "publish throughput",
+                            "audio:", "audio track", "inputFormat:", "AudioCodec", "publish throughput", "publish timeline", "audio resync:", "A/V",
                             "audio stall", "Restarting audio", "failedTo", "unableTo"]
             guard event.level == .error || prefixes.contains(where: { event.message.hasPrefix($0) }) else { return }
             let detail = CaptureErrorDiagnostics.sanitize(event.message + " " + (event.detail ?? ""), secrets: logSecrets)

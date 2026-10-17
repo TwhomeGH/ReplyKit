@@ -1,5 +1,11 @@
 # 變更歷史
 
+## 2026.10.18 07:33 接入底層 RTMP 時間軸診斷
+
+- 兩份套件鎖定檔已更新至 d7ece588；ScreenCaptureKit 白名單新增 publish timeline、音訊 resync 與影音補償事件。
+- ReplayKit 沿用 RTMP 日誌開關與事件轉送，補充啟用條件、指標限制及實機驗收文件。
+- 本次接入日誌，不把文字日誌解析成設備頁指標；完整 App／擴展建置仍待 CI。
+
 ## 2026.10.17 21:23 第二批五分頁整併
 
 **類型**：介面整理 · **檔案**：`ContentView.swift`、`Navigation/MainTabViews.swift`
