@@ -136,7 +136,7 @@ struct FileLogView: View {
                     Spacer()
                     Menu {
                         Button(AppLanguage.localized("logs.copy")) { UIPasteboard.general.string = visible.map(\.text).joined(separator: "\n") }
-                        Button(AppLanguage.localized("main.settings")) { showSettings = true }
+                        Button(AppLanguage.localized("settings.category.logs")) { showSettings = true }
                         Button(AppLanguage.localized("logs.clear"), role: .destructive) { confirmClear = true }
                         Button(AppLanguage.localized("logs.clearOverlay")) {
                             LPConfig.shared.isReconnecting = false; LPConfig.shared.reconnectStatus = ""
@@ -224,7 +224,16 @@ struct FileLogView: View {
                 }
             }
         }
-        .sheet(isPresented: $showSettings) { LogSettingsView() }
+        .sheet(isPresented: $showSettings) {
+            NavigationStack {
+                LogSettingsView()
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button(AppLanguage.localized("settings.done")) { showSettings = false }
+                        }
+                    }
+            }
+        }
         .sheet(isPresented: $showSearch, onDismiss: { state.cancelSearch() }) {
             NavigationStack {
                 List {

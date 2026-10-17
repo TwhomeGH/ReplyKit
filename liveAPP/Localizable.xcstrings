@@ -1,6 +1,248 @@
 {
   "sourceLanguage" : "zh-Hant",
   "strings" : {
+  "tab.settings": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "設定"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Settings"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "設定"
+        }
+      }
+    }
+  },
+  "settings.category.general": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "一般"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "General"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "一般"
+        }
+      }
+    }
+  },
+  "settings.category.connection": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Socket 與連線"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Socket & Connections"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Socket と接続"
+        }
+      }
+    }
+  },
+  "settings.category.appearance": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "畫面與疊加"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Video & Overlays"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "映像とオーバーレイ"
+        }
+      }
+    }
+  },
+  "settings.category.encoding": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "進階編碼與相容設定"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Advanced Encoding & Compatibility"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "詳細エンコードと互換性"
+        }
+      }
+    }
+  },
+  "settings.category.pip": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "PiP 與聊天"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "PiP & Chat"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "PiP とチャット"
+        }
+      }
+    }
+  },
+  "settings.category.logs": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "日誌設定"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Log Settings"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ログ設定"
+        }
+      }
+    }
+  },
+  "settings.category.advanced": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "進階"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Advanced"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "詳細設定"
+        }
+      }
+    }
+  },
+  "settings.category.maintenance": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "連線與直播維護"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Connection & Stream Maintenance"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "接続と配信のメンテナンス"
+        }
+      }
+    }
+  },
+  "settings.category.about": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "關於與建置資訊"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "About & Build Information"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "アプリとビルド情報"
+        }
+      }
+    }
+  },
+  "settings.done": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "完成"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Done"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "完了"
+        }
+      }
+    }
+  },
   "encoding.codec": {
     "localizations": {
       "zh-Hant": {

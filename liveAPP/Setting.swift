@@ -651,10 +651,9 @@ struct PIPSettingsView: View {
 struct LogSettingView:View {
 
     @AppStorage("onlogPage",store:userDefaults) private var onlogPage = false
-    @AppStorage("BitRateMode",store:userDefaults)  private var BitRateMode = 0
-    @AppStorage("KeyFrameInterval",store:userDefaults) private var KeyFrameInterval = 2
 
-    let BitRateOptions = ["ABR 平均碼率最常見", "CBR 固定碼率", "VBR 可變位元率"]
+
+
         
     @AppStorage("BacklogTime",store:userDefaults) private var logTime = false
 
@@ -664,23 +663,23 @@ struct LogSettingView:View {
     @AppStorage("EnableTimeDebug",store:userDefaults) private var EnableTimeDebug = false
     @AppStorage("EnablePipelineLog",store:userDefaults) private var EnablePipelineLog = false
 
-    @AppStorage("ChangeBit",store:userDefaults) private var ChangeBit = true
-
-    @AppStorage("allowFrameReordering",store:userDefaults)  private var allowFrameReordering = false
 
 
-    @AppStorage("h264useCAVLC",store:userDefaults)  private var h264useCAVLC:Bool = false
+
+
+
+
 
 
     
 
-    @AppStorage("isLowLatencyRateControlEnabled",store:userDefaults)  private var isLowLatencyRateControlEnabled = false
 
-    @AppStorage("isNotifyChat",store:userDefaults) private var isNotifyChat = false
+
+
     
 
 
-    @ObservedObject var socket = SocketServer.shared
+
 
     var body: some View {
         Section(header: Text("logSettings.debug.section")) {
@@ -692,29 +691,6 @@ struct LogSettingView:View {
             }
 
 
-
-            Picker("請選擇一個位元率模式", selection: $BitRateMode) {
-                ForEach(0..<BitRateOptions.count, id: \.self) { index in
-                    Text(BitRateOptions[index]).tag(index)
-                }
-            }
-            .pickerStyle(.segmented) // 可改成 .menu 看起來像下拉選單
-
-            Text("目前選擇：\(BitRateOptions[BitRateMode])")
-                .padding()
-
-            HStack {
-                Text("關鍵幀間隔 (秒)")
-                TextField("2", value: $KeyFrameInterval, format: .number)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .frame(width: 80)
-                Text("\(KeyFrameInterval == 0 ? "編碼器自動" : "\(KeyFrameInterval)秒")")
-                    .foregroundColor(.secondary)
-                    .font(.caption)
-            }
-            Text("預設 2 秒（Twitch/YouTube/Restream 建議值），0=編碼器自動")
-                .font(.footnote)
-                .foregroundColor(.secondary)
 
             Text("啟用日誌後, 會依用戶選擇App內顯示或外部服務器顯示 ，用於除錯或排查問題。")
                     .font(.footnote)
@@ -750,45 +726,6 @@ struct LogSettingView:View {
 
             
 
-            Toggle(isOn:$h264useCAVLC){
-                    Text("使用輕負載編碼器 CAVLC！ 可用於降低編碼壓力")
-            }
-
-            Text("開啟後用CAVLC & 實驗性軟體節流 改善VT過載問題 & 啟用VT編碼速度優先策略")                                                                                                     
-            .font(.footnote)
-            .foregroundColor(.secondary)
-            .padding(.bottom, 5)
-
-            Toggle(isOn:$allowFrameReordering){
-                    Text("啟用允許B-Frame 此功能存在不穩定性可能破壞穩定性！")
-            }
-
-            Text("允許重排 壓縮改善")                                                                                                     
-            .font(.footnote)
-            .foregroundColor(.secondary)
-            .padding(.bottom, 5)
-
-            Toggle(isOn:$isLowLatencyRateControlEnabled){
-                    Text("啟用低延遲處理！")
-            }
-
-            Text("啟用後會對使用低延遲推流")                                                                                                     
-            .font(.footnote)
-            .foregroundColor(.secondary)
-            .padding(.bottom, 5)
-
-            Toggle(isOn: Binding(
-                get: { userDefaults?.bool(forKey: "useEnhancedRTMP") ?? true },
-                set: { userDefaults?.set($0, forKey: "useEnhancedRTMP") }
-            )){
-                Text("啟用 Enhanced RTMP (E-RTMP)")
-            }
-
-            Text("啟用後使用增強型 RTMP 協定，提高傳輸效率")
-            .font(.footnote)
-            .foregroundColor(.secondary)
-            .padding(.bottom, 5)
-
             Toggle(isOn: Binding(
                 get: { userDefaults?.bool(forKey: "enableRTMPLog") ?? false },
                 set: { userDefaults?.set($0, forKey: "enableRTMPLog") }
@@ -797,15 +734,6 @@ struct LogSettingView:View {
             }
 
             Text("顯示 RTMP 連線層的內部事件日誌，便於排查連線問題")
-            .font(.footnote)
-            .foregroundColor(.secondary)
-            .padding(.bottom, 5)
-
-            Toggle(isOn:$isNotifyChat){
-                                Text("啟用聊天訊息通知！")
-                            }
-
-            Text("作為PIP子母窗口應高運存占用的替代方案，啟用後會對聊天訊息使用系統通知處理，避免PIP停止時訊息無法顯示的問題")                                                                                                     
             .font(.footnote)
             .foregroundColor(.secondary)
             .padding(.bottom, 5)
@@ -888,84 +816,9 @@ struct LogSettingView:View {
             }
 
         }
-        Section(header: Text("logSettings.liveTimer.section")) {
-
-            Button("重新開始直播計時器"){
-                sendlog(message: "直播開始計時器重啟")
-                SocketServer.shared.StreamStarting()
-
-            }
-
-            Text("當直播計時器出現異常無法正常運行時可以用這個重啟它")
-                .font(.footnote)
-                .foregroundColor(.secondary)
-                .padding(.bottom, 5)
-
-            Button("停止直播計時器 直播結束"){
-                sendlog(message: "直播結束 計時器停止")
-                SocketServer.shared.StreamStatusChanged(isLive: false)
-
-            }
-
-            Text("當直播結束時可以用這個停止計時器")
-                .font(.footnote)
-                .foregroundColor(.secondary)
-                .padding(.bottom, 5)
-
-            
-
-        }
-
-        Section(header: Text("logSettings.network.section")) {
-
-            Button("測試擴展通信傳遞"){
-                // 未來計畫棄用 已經用Socket轉送處理了
-                //AppMessagePort.shared.send(toExtension: ["ping": "From_App"])
-
-                socket.broadcast(type:"log",key: "test3", value: "OK Socket")
-                socket.broadcast(type: "testRTMP", key: "test3", value: "OK")
-
-            }
-            Button("Socket重連"){
-                CFNotificationCenterPostNotification(cfCenter, CFNotificationName("SocketRetry" as CFString), nil, nil, true)
-
-            }
-            
-            Text("如果通信斷線了可以用這個重建")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-                    .padding(.bottom, 5)
-
-            Button("Socket服務器重啟"){
-                socket.stop()
-                socket.start()
-
-            }
-            Text("如果擴展初始連不上可以用他重啟服務端")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-                    .padding(.bottom, 5)
-
-            Text("Socket 狀態：\(socket.listenerStatus)")
-
-            Button("Socket服務器停止"){
-                socket.stop()
-            }
-            
-
-            Toggle(isOn: $ChangeBit){
-                Text("[棄用]停用自動碼率調整策略 ！")
-            }
-            .onChange(of:ChangeBit) { newValue in
-                CFNotificationCenterPostNotification(cfCenter, CFNotificationName("ChangeBit" as CFString), nil, nil, true)
-            }
-            Text("停用後不管網路狀況做調整")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-                    .padding(.bottom, 5)
 
 
-        }
+
     }
 }
 

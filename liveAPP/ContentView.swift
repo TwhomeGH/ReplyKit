@@ -28,8 +28,12 @@ struct ContentView: View {
         TabView(selection: $pageState.currentPage) {
 
             homeView()
-                .tabItem { Label("tab.home", systemImage: "gear") }
+                .tabItem { Label("tab.home", systemImage: "house") }
                 .tag(AppPage.home)
+
+            NavigationStack { AppSettingsView() }
+                .tabItem { Label(AppLanguage.localized("tab.settings"), systemImage: "gearshape") }
+                .tag(AppPage.settings)
 
 
 
