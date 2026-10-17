@@ -5,6 +5,11 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+# 同一分支／PR 的新檢查取代舊檢查，不影響其他分支。
+concurrency:
+  group: development-index-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     runs-on: ubuntu-latest

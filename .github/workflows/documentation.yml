@@ -22,7 +22,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: docc
+  group: docc-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -122,6 +122,10 @@ jobs:
           path: site
 
   deploy:
+    # Pages 共用同一部署目標；不同分支的部署依序進行。
+    concurrency:
+      group: docc-pages-deploy
+      cancel-in-progress: false
     needs: documentation
     runs-on: ubuntu-latest
     environment:

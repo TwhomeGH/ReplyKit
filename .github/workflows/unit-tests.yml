@@ -16,6 +16,11 @@ on:
 permissions:
   contents: read
 
+# 共用 workflow 的 github.workflow 來自呼叫者；加獨立前綴避免取消發布父工作。
+concurrency:
+  group: unit-tests-${{ github.workflow }}-${{ github.event.workflow_run.head_branch || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   tests:
     runs-on: xcode-27

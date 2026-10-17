@@ -8,6 +8,11 @@ on:
       - "README.md"
       - ".github/**"
 
+# 連續推送時停止同一 ref 的舊標籤工作；已建立的 tag 不會因此刪除。
+concurrency:
+  group: tag-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   detect-changes:
     runs-on: ubuntu-latest
