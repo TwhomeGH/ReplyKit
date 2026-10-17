@@ -30,7 +30,7 @@
 
 **類型**: 修復 · **檔案**: `Package.resolved`
 
-### 修改 - HaishinKit 與 MoQTHaishinKit 的整數複製改在 Data.withUnsafeBytes 有效閉包內完成，避免短 Data 解碼讀取失效指標。
+### 修改 - HaishinKit 與 MoQTHaishinKit 的整數複製改在 Data.withUnsafeBytes 有效閉包內完成，避免短 Data 解碼讀取失效指標
 
 - Set Chunk Size 原始四位元組獨立記錄；零值、超出支援上限及錯誤長度明確關閉，不再靜默截斷數值。
 - 診斷延伸至 createStream／發布啟動，維持每連線 192 筆上限；命令逾時包含解析進度與 socket 傳送統計，不含金鑰。
