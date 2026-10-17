@@ -578,6 +578,7 @@ struct VoiceListView: View {
 }
 
 
+/// TTS 設定內容；由音訊分頁提供導覽容器，卡片依視窗寬度排列。
 struct TTSSettingsView: View {
 
     @State private var showVoiceList = false
@@ -656,9 +657,9 @@ struct TTSSettingsView: View {
 
 
     var body: some View {
-        NavigationView {
+        GeometryReader { geometry in
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                AdaptiveSettingsGrid(width: geometry.size.width) {
                     GroupBox("朗讀開關") {
                         VStack(alignment: .leading, spacing: 12) {
                             Toggle(isOn: $ttsEnabled) {
@@ -846,9 +847,7 @@ struct TTSSettingsView: View {
                 .padding()
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .navigationTitle("TTS朗讀")
         }
-        .navigationViewStyle(.stack)
         .onAppear {
             middleNameDraft = readMiddleName
             rateDraft = rate

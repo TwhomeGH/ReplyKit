@@ -41,7 +41,7 @@ struct ContentView: View {
       AudioTabView(showsTTS: $showsTTS)
         .environmentObject(pageState)
         .tabItem {
-          Label(AppLanguage.localized("settings.audio.title"), systemImage: "speaker.wave.2")
+          Label(AppLanguage.localized("tab.audio"), systemImage: "speaker.wave.2")
         }
         .tag(AppPage.audio)
 

@@ -6,6 +6,15 @@
 - ReplayKit 沿用 RTMP 日誌開關與事件轉送，補充啟用條件、指標限制及實機驗收文件。
 - 本次接入日誌，不把文字日誌解析成設備頁指標；完整 App／擴展建置仍待 CI。
 
+## 2026.10.18 07:32 平板導航與設定卡片布局修正
+
+**類型**：介面修復 · **檔案**：`Navigation/`、`TTSSettingsView.swift`、`OverlaySettingsView.swift`、`OtherView.swift`、`StreamDiagnosticsView.swift`
+
+- 音訊分頁統一導覽容器，限制子頁切換列寬度，分頁名稱縮短為音訊。
+- TTS／設備資訊依視窗與字體切換單雙欄；設備卡片拆分，管線圖表提供展開入口。
+- 畫面加工預覽限制尺寸，寬視窗與設定並排，提供放大預覽；補繁中、英文、日文入口文字。
+- 保留設定及採樣所有權；語法檢查通過，iPad 實際布局與導航待實機驗收。
+
 ## 2026.10.17 21:23 第二批五分頁整併
 
 **類型**：介面整理 · **檔案**：`ContentView.swift`、`Navigation/MainTabViews.swift`

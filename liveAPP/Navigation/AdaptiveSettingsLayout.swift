@@ -1,0 +1,48 @@
+import SwiftUI
+
+/// 設定與診斷共用的卡片網格；依視窗寬度而非裝置種類決定欄數。
+/// 輔助使用字體維持單欄，避免分割視窗或放大文字時擠壓控制項。
+struct AdaptiveSettingsGrid<Content: View>: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    let width: CGFloat
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        let count = width >= 900 && !dynamicTypeSize.isAccessibilitySize ? 2 : 1
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .top), count: count),
+                  alignment: .leading, spacing: 16) {
+            content()
+        }
+        .frame(maxWidth: 1280, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .top)
+    }
+}
+
+/// 將原本 List 的區段轉為可並排的卡片；內容仍由原資料擁有者提供。
+struct SettingsDashboardCard<Header: View, Content: View>: View {
+    private let header: Header
+    private let content: Content
+
+    init(@ViewBuilder header: () -> Header, @ViewBuilder content: () -> Content) {
+        self.header = header()
+        self.content = content()
+    }
+
+    var body: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 10) {
+                content
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 6)
+        } label: {
+            header
+        }
+    }
+}
+
+extension SettingsDashboardCard where Header == Text {
+    init(_ title: LocalizedStringKey, @ViewBuilder content: () -> Content) {
+        self.init(header: { Text(title) }, content: content)
+    }
+}

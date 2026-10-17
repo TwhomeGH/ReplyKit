@@ -22,7 +22,7 @@ struct StreamDiagnosticsSections: View {
     let now: Date
     @ObservedObject private var model = StreamDiagnosticsModel.shared
     var body: some View {
-        Section("串流格式與 RTMP 傳輸") {
+        SettingsDashboardCard("串流格式與 RTMP 傳輸") {
             if model.snapshots.isEmpty {
                 Text("尚未收到串流診斷。開始擷取後每五秒更新；ReplayKit 需連上主 App Socket。")
                     .foregroundStyle(.secondary)

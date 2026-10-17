@@ -586,440 +586,30 @@ struct DeviceView: View {
     }
 
     var body: some View {
-        List {
-
-            Section(header:
-                        Label("螢幕 Screen", systemImage: "ipad.landscape")
-            ) {
-                Text("寬: \(DeviceInfo.nativeWidth, specifier: "%.0f") pt")
-                Text("高: \(DeviceInfo.nativeHeight, specifier: "%.0f") pt")
-            }
-
-            Section(header:
-                        Label("ReplyKit 輸出",systemImage: "play.display")
-            ) {
-                Text("寬: \(ReplyKitW) px")
-                Text("高: \(ReplyKitH) px")
-                Text("開播後自動更新")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-
-            Section(
-                header:
-                    Label("CPU", systemImage: "cpu")
-            ) {
-                Group {
-                    Text(systemCPUText)
-                        .font(.caption)
-
-                    Chart {
-                        ForEach(cpuHistory) { pt in
-                            LineMark(
-                                x: .value("Time", pt.time),
-                                y: .value("CPU", pt.value)
-                            )
-                            .foregroundStyle(.orange)
-                        }
+        GeometryReader { geometry in
+            ScrollView {
+                AdaptiveSettingsGrid(width: geometry.size.width) {
+                    screenCard
+                    outputSizeCard
+                    cpuCard
+                    memoryCard
+                    storageCard
+                    diskIOCard
+                    networkCard
+                    systemCard
+                    gpuCard
+                    #if os(iOS)
+                    metricReportsCard
+                    #endif
+                    StreamDiagnosticsSections(now: sampleDate)
+                    if capture.streamTelemetry.pipelineSampledAt != nil {
+                        capturePipelineCard
                     }
-                    .chartYAxisLabel("App CPU %")
-                    .frame(height: 120)
+                    videoPipelineCard
+                    audioPipelineCard
+                    liveActivityCard
                 }
-
-                Text("App 使用率: \(appCPUPercent, specifier: "%.1f") %")
-                Text("處理器: \(DeviceInfo.cpuName)")
-                Text("核心數: \(DeviceInfo.cpuCount)")
-                Text("裝置代號: \(DeviceInfo.deviceCode)")
-            }
-
-            Section(
-                header:
-                    Label("記憶體 RAM", systemImage: "memorychip")
-            ) {
-                Text("總 RAM: \(DeviceInfo.ramMB, specifier: "%.0f") MB")
-                Text("App 實際佔用: \(appFootprintMB, specifier: "%.1f") MB")
-                    .foregroundColor(appFootprintMB > 300 ? .orange : .primary)
-                Text("其中自身內部 internal: \(memInternalMB, specifier: "%.1f") MB")
-                    .font(.caption)
-                Text("其中壓縮 compressed: \(memCompressedMB, specifier: "%.1f") MB")
-                    .font(.caption)
-                Text("外部映射 external（包含檔案映射）: \(memExternalMB, specifier: "%.1f") MB")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Text("其中可回收 reusable: \(memReusableMB, specifier: "%.1f") MB · 可清除 purgeable: \(memPurgeableMB, specifier: "%.1f") MB")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Text("resident: \(appResidentMB, specifier: "%.1f") MB · 峰值: \(memPeakMB, specifier: "%.1f") MB")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Text(memAvailableText)
-                    .font(.caption)
-                    .foregroundColor(memAvailableMB > 0 && memAvailableMB < 100 ? .orange : .secondary)
-                Text("PIP 輸出影像池（估）: \(PIPService.shared.estimatedPixelBufferPoolMB, specifier: "%.1f") MB")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Text("判斷 App 負擔以 footprint 為準；internal、compressed 與映射分類不是可直接加減的完整帳目。compressed 不代表已釋放，resident 也不等於 footprint。")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-
-                Chart {
-                    ForEach(memoryHistory) { pt in
-                        LineMark(
-                            x: .value("Time", pt.time),
-                            y: .value("Memory", pt.value)
-                        )
-                        .foregroundStyle(.blue)
-                    }
-                }
-                .chartYAxisLabel("MB")
-                .frame(height: 120)
-            }
-
-            Section(
-                header:
-                    Label("儲存空間", systemImage: "externaldrive")
-            ) {
-                let total = DeviceInfo.totalDiskMB
-                let available = DeviceInfo.availableDiskMB
-                let free = DeviceInfo.freeDiskMB
-                let used = total - available
-                Text("總容量: \(total / 1024, specifier: "%.1f") GB")
-                Text("已使用: \(used / 1024, specifier: "%.1f") GB")
-                Text("可用（含可清除）: \(available / 1024, specifier: "%.1f") GB")
-                    .foregroundColor(available < 1024 ? .orange : .primary)
-                Text("空閒（真正）: \(free / 1024, specifier: "%.1f") GB")
-                    .foregroundColor(free < 512 ? .orange : .secondary)
-            }
-
-            Section(
-                header:
-                    Label("磁碟 I/O", systemImage: "internaldrive")
-            ) {
-                Chart {
-                    ForEach(pageInHistory) { pt in
-                        LineMark(
-                            x: .value("Time", pt.time),
-                            y: .value("KB/s", pt.value),
-                            series: .value("Series", "Page In")
-                        )
-                        .foregroundStyle(.blue)
-                    }
-                    ForEach(pageOutHistory) { pt in
-                        LineMark(
-                            x: .value("Time", pt.time),
-                            y: .value("KB/s", pt.value),
-                            series: .value("Series", "Page Out")
-                        )
-                        .foregroundStyle(.red)
-                    }
-                    ForEach(appWriteHistory) { pt in
-                        LineMark(
-                            x: .value("Time", pt.time),
-                            y: .value("KB/s", pt.value),
-                            series: .value("Series", "App Write")
-                        )
-                        .foregroundStyle(.green)
-                    }
-                }
-                .chartYAxisLabel("KB/s")
-                .frame(height: 120)
-
-                let lastIn = pageInHistory.last?.value ?? 0
-                let lastOut = pageOutHistory.last?.value ?? 0
-                let lastWrite = appWriteHistory.last?.value ?? 0
-                Text("Page In: \(lastIn, specifier: "%.1f") KB/s")
-                    .foregroundColor(.blue)
-                Text("Page Out: \(lastOut, specifier: "%.1f") KB/s")
-                    .foregroundColor(.red)
-                Text("App Write: \(lastWrite, specifier: "%.1f") KB/s")
-                    .foregroundColor(.green)
-            }
-
-            Section(
-                header:
-                    Label("網路", systemImage: "network")
-            ) {
-                Text("介面: \(DeviceInfo.networkInterface)")
-            }
-
-            Section(
-                header:
-                    Label("系統", systemImage: "gearshape")
-            ) {
-                Text("iOS: \(DeviceInfo.osVersion)")
-                Text("開機時間: \(uptimeString)")
-                Text("電量: \(DeviceInfo.batteryLevel)% (\(DeviceInfo.batteryState))")
-            }
-
-            Section(
-                header:
-                    Label("GPU / Metal", systemImage: "cpu")
-            ) {
-                Text("GPU: \(DeviceInfo.cpuName)")
-            }
-
-            #if os(iOS)
-            Section("系統效能報告") {
-                NavigationLink("MetricKit 歷史報告") { MetricReportsView() }
-                Text("系統提供的效能與異常紀錄，與下方即時管線資訊分開。")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            #endif
-            StreamDiagnosticsSections(now: sampleDate)
-
-            if capture.streamTelemetry.pipelineSampledAt != nil {
-                Section("ScreenCaptureKit 本機管線") {
-                    CapturePipelineStatusView(sampledAt: capture.streamTelemetry.pipelineSampledAt, now: sampleDate)
-                    Text(capture.streamTelemetry.sourceQueues ?? "尚未取得來源佇列").font(.caption)
-                    Text(capture.streamTelemetry.mixerAudio ?? "尚未取得混音資料").font(.caption)
-                    Text("來源與混音計數不代表 RTMP 已送出；下方圖表來自 ReplayKit 擴展。")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-            }
-
-            Section(
-                header:
-                    Label("Video Pipeline", systemImage: "waveform.path.ecg")
-            ) {
-                pipelineFreshness(videoHealth.lastUpdatedAt)
-                Text("最後回報狀態: \(videoHealth.latestStatus)")
-                    .foregroundColor(videoHealth.latestStatus == "healthy" ? .green : .orange)
-
-                Chart {
-                    ForEach(videoHealth.inputHistory) { pt in
-                        LineMark(
-                            x: .value("Time", pt.time),
-                            y: .value("FPS", pt.value),
-                            series: .value("Series", "Input")
-                        )
-                        .foregroundStyle(.blue)
-                    }
-                    ForEach(videoHealth.processedHistory) { pt in
-                        LineMark(
-                            x: .value("Time", pt.time),
-                            y: .value("FPS", pt.value),
-                            series: .value("Series", "Processed")
-                        )
-                        .foregroundStyle(.green)
-                    }
-                    ForEach(videoHealth.droppedHistory) { pt in
-                        LineMark(
-                            x: .value("Time", pt.time),
-                            y: .value("FPS", pt.value),
-                            series: .value("Series", "Dropped")
-                        )
-                        .foregroundStyle(.red)
-                    }
-                }
-                .chartYAxisLabel("FPS")
-                .chartYScale(domain: 0...70)
-                .frame(height: 140)
-
-                Chart {
-                    ForEach(videoHealth.timeoutHistory) { pt in
-                        BarMark(
-                            x: .value("Time", pt.time),
-                            y: .value("Timeout", pt.value)
-                        )
-                        .foregroundStyle(.purple)
-                    }
-                }
-                .chartYAxisLabel("Timeout/s")
-                .frame(height: 90)
-
-                Chart {
-                    ForEach(videoHealth.latencyHistory) { pt in
-                        LineMark(
-                            x: .value("Time", pt.time),
-                            y: .value("Latency", pt.value),
-                            series: .value("Series", "GPU Latency")
-                        )
-                        .foregroundStyle(.orange)
-                    }
-                }
-                .chartYAxisLabel("completion ms")
-                .frame(height: 90)
-
-                let input = videoHealth.inputHistory.last?.value ?? 0
-                let processed = videoHealth.processedHistory.last?.value ?? 0
-                let dropped = videoHealth.droppedHistory.last?.value ?? 0
-                let timeout = videoHealth.timeoutHistory.last?.value ?? 0
-                Text("Input: \(input, specifier: "%.1f") fps  Processed: \(processed, specifier: "%.1f") fps")
-                    .font(.caption)
-                Text("Dropped: \(dropped, specifier: "%.1f") fps  Timeout: \(timeout, specifier: "%.0f")/s")
-                    .font(.caption)
-                    .foregroundColor(timeout > 0 || dropped > 0 ? .orange : .secondary)
-                Text("Input range: \(videoHealth.lastInputRange)  Processed range: \(videoHealth.lastProcessedRange)")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                Text("GPU completion: \(videoHealth.lastLatencyText)")
-                    .font(.caption2)
-                    .foregroundColor(.orange)
-            }
-
-            Section(
-                header:
-                    Label("Audio Pipeline", systemImage: "waveform")
-            ) {
-                pipelineFreshness(audioHealth.lastUpdatedAt)
-                Text("最後回報狀態: \(audioHealth.latestStatus)")
-                    .foregroundColor(audioHealth.latestStatus == "healthy" ? .green : .orange)
-
-                Text("每秒音訊 buffer 數；每個 buffer 包含多個取樣。")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
-                Chart {
-                    ForEach(audioHealth.appFPSHistory) { pt in
-                        LineMark(
-                            x: .value("Time", pt.time),
-                            y: .value("buffers/s", pt.value),
-                            series: .value("Series", "App")
-                        )
-                        .foregroundStyle(.blue)
-                    }
-                    ForEach(audioHealth.micFPSHistory) { pt in
-                        LineMark(
-                            x: .value("Time", pt.time),
-                            y: .value("buffers/s", pt.value),
-                            series: .value("Series", "Mic")
-                        )
-                        .foregroundStyle(.green)
-                    }
-                }
-                .chartYAxisLabel("Input buffers/s")
-                .frame(height: 140)
-
-                Chart {
-                    ForEach(audioHealth.alignDropHistory) { pt in
-                        LineMark(
-                            x: .value("Time", pt.time),
-                            y: .value("Samples/s", pt.value),
-                            series: .value("Series", "align drop")
-                        )
-                        .foregroundStyle(.red)
-                    }
-                    ForEach(audioHealth.skipHistory) { pt in
-                        LineMark(
-                            x: .value("Time", pt.time),
-                            y: .value("Samples/s", pt.value),
-                            series: .value("Series", "skip silence")
-                        )
-                        .foregroundStyle(.orange)
-                    }
-                    ForEach(audioHealth.noDataHistory) { pt in
-                        LineMark(
-                            x: .value("Time", pt.time),
-                            y: .value("Samples/s", pt.value),
-                            series: .value("Series", "underrun")
-                        )
-                        .foregroundStyle(.purple)
-                    }
-                    ForEach(audioHealth.alignFireHistory) { pt in
-                        LineMark(
-                            x: .value("Time", pt.time),
-                            y: .value("Samples/s", pt.value),
-                            series: .value("Series", "align fire")
-                        )
-                        .foregroundStyle(.pink)
-                    }
-                }
-                .chartYAxisLabel("samples/s")
-                .frame(height: 110)
-
-                Chart {
-                    ForEach(audioHealth.mixerOutHistory) { pt in
-                        LineMark(
-                            x: .value("Time", pt.time),
-                            y: .value("buffers/s", pt.value),
-                            series: .value("Series", "Mixer out")
-                        )
-                        .foregroundStyle(.teal)
-                    }
-                }
-                .chartYAxisLabel("Mixer buffers/s")
-                .frame(height: 90)
-
-                Chart {
-                    ForEach(audioHealth.outCh0History) { pt in
-                        LineMark(
-                            x: .value("Time", pt.time),
-                            y: .value("RMS", pt.value),
-                            series: .value("Series", "Out L")
-                        )
-                        .foregroundStyle(.blue)
-                    }
-                    ForEach(audioHealth.outCh1History) { pt in
-                        LineMark(
-                            x: .value("Time", pt.time),
-                            y: .value("RMS", pt.value),
-                            series: .value("Series", "Out R")
-                        )
-                        .foregroundStyle(.red)
-                    }
-                }
-                .chartYAxisLabel("output ch RMS")
-                .chartYScale(domain: 0...1)
-                .frame(height: 90)
-
-                let appFPS = audioHealth.appFPSHistory.last?.value ?? 0
-                let micFPS = audioHealth.micFPSHistory.last?.value ?? 0
-                let alignDrop = audioHealth.alignDropHistory.last?.value ?? 0
-                let alignFire = audioHealth.alignFireHistory.last?.value ?? 0
-                let skip = audioHealth.skipHistory.last?.value ?? 0
-                let noData = audioHealth.noDataHistory.last?.value ?? 0
-                Text("App: \(appFPS, specifier: "%.1f") buffers/s  Mic: \(micFPS, specifier: "%.1f") buffers/s")
-                    .font(.caption)
-                Text("align drop: \(alignDrop, specifier: "%.0f")/s  skip: \(skip, specifier: "%.0f")/s  underrun: \(noData, specifier: "%.0f")/s")
-                    .font(.caption)
-                    .foregroundColor(alignDrop > 0 || noData > 0 ? .orange : .secondary)
-                Text("Range (buffers/s) App: \(audioHealth.lastAppRange)  Mic range: \(audioHealth.lastMicRange)")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                Text("PTS gap max: \(audioHealth.lastGapText)  RMS: \(audioHealth.lastRMSText)")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                Text("Output \(audioHealth.lastOutChText)")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                Text("align fire: \(alignFire, specifier: "%.1f")/s  diff: \(audioHealth.lastAlignDiffSamples, specifier: "%.0f") smp")
-                    .font(.caption2)
-                    .foregroundColor(alignFire > 0 ? .orange : .secondary)
-                Text("align inserted: \(audioHealth.lastAlignInserted, specifier: "%.0f")/s  overflow drop: \(audioHealth.lastOverflowDropped, specifier: "%.0f")/s")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-            }
-
-            Section(
-                header:
-                    Label("即時動態 Live Activity", systemImage: "sparkles.tv")
-            ) {
-                HStack {
-                    Label("狀態", systemImage: "circle.fill")
-                        .foregroundColor(laManager.isActivityActive ? .green : .gray)
-                    Text(laManager.isActivityActive ? "執行中" : "未啟動")
-                        .foregroundColor(laManager.isActivityActive ? .green : .secondary)
-                }
-
-                if let err = laManager.lastError {
-                    Label(err, systemImage: "exclamationmark.triangle.fill")
-                        .foregroundColor(.orange)
-                        .font(.caption)
-                }
-
-                if laManager.isActivityActive {
-                    Button("結束即時動態", role: .destructive) {
-                        laManager.endStreamActivity()
-                    }
-                } else {
-                    Button("啟動即時動態") {
-                        laManager.startStreamActivity()
-                    }
-                }
-
-                Text("Widget Extension 檔案已建立 (liveAPPWidget/)，需在 Xcode 新增 Widget Extension target 後編譯才能在鎖定畫面顯示")
-                    .font(.caption)
-                    .foregroundColor(.orange)
+                .padding(16)
             }
         }
         .onAppear { isVisible = true }
@@ -1048,6 +638,447 @@ struct DeviceView: View {
             appWriteHistory.removeAll()
             dataPointCounter = 0
             prevAppWriteBytes = 0
+        }
+    }
+
+    /// 設備診斷卡片；沿用頁面採樣與服務狀態。
+    private var screenCard: some View {
+        SettingsDashboardCard(header: { Label("螢幕 Screen", systemImage: "ipad.landscape") }) {
+            Text("\(DeviceInfo.nativeWidth, specifier: "%.0f") × \(DeviceInfo.nativeHeight, specifier: "%.0f") px")
+        }
+    }
+
+    /// 設備診斷卡片；沿用頁面採樣與服務狀態。
+    private var outputSizeCard: some View {
+        SettingsDashboardCard(header: { Label("ReplyKit 輸出",systemImage: "play.display") }) {
+            Text("\(ReplyKitW) × \(ReplyKitH) px")
+            Text("開播後自動更新")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+
+    /// 設備診斷卡片；沿用頁面採樣與服務狀態。
+    private var cpuCard: some View {
+        SettingsDashboardCard(header: { Label("CPU", systemImage: "cpu") }) {
+            Group {
+                Text(systemCPUText)
+                    .font(.caption)
+
+                Chart {
+                    ForEach(cpuHistory) { pt in
+                        LineMark(
+                            x: .value("Time", pt.time),
+                            y: .value("CPU", pt.value)
+                        )
+                        .foregroundStyle(.orange)
+                    }
+                }
+                .chartYAxisLabel("App CPU %")
+                .frame(height: 120)
+            }
+
+            Text("App 使用率: \(appCPUPercent, specifier: "%.1f") %")
+            Text("核心數: \(DeviceInfo.cpuCount) · \(DeviceInfo.deviceCode)").font(.caption)
+        }
+    }
+
+    /// 設備診斷卡片；沿用頁面採樣與服務狀態。
+    private var memoryCard: some View {
+        SettingsDashboardCard(header: { Label("記憶體 RAM", systemImage: "memorychip") }) {
+            Text("總 RAM: \(DeviceInfo.ramMB, specifier: "%.0f") MB")
+            Text("App 實際佔用: \(appFootprintMB, specifier: "%.1f") MB")
+                .foregroundColor(appFootprintMB > 300 ? .orange : .primary)
+            Text("其中自身內部 internal: \(memInternalMB, specifier: "%.1f") MB")
+                .font(.caption)
+            Text("其中壓縮 compressed: \(memCompressedMB, specifier: "%.1f") MB")
+                .font(.caption)
+            Text("外部映射 external（包含檔案映射）: \(memExternalMB, specifier: "%.1f") MB")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            Text("其中可回收 reusable: \(memReusableMB, specifier: "%.1f") MB · 可清除 purgeable: \(memPurgeableMB, specifier: "%.1f") MB")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            Text("resident: \(appResidentMB, specifier: "%.1f") MB · 峰值: \(memPeakMB, specifier: "%.1f") MB")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            Text(memAvailableText)
+                .font(.caption)
+                .foregroundColor(memAvailableMB > 0 && memAvailableMB < 100 ? .orange : .secondary)
+            Text("PIP 輸出影像池（估）: \(PIPService.shared.estimatedPixelBufferPoolMB, specifier: "%.1f") MB")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            Text("判斷 App 負擔以 footprint 為準；internal、compressed 與映射分類不是可直接加減的完整帳目。compressed 不代表已釋放，resident 也不等於 footprint。")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+
+            Chart {
+                ForEach(memoryHistory) { pt in
+                    LineMark(
+                        x: .value("Time", pt.time),
+                        y: .value("Memory", pt.value)
+                    )
+                    .foregroundStyle(.blue)
+                }
+            }
+            .chartYAxisLabel("MB")
+            .frame(height: 120)
+        }
+    }
+
+    /// 設備診斷卡片；沿用頁面採樣與服務狀態。
+    private var storageCard: some View {
+        SettingsDashboardCard(header: { Label("儲存空間", systemImage: "externaldrive") }) {
+            let total = DeviceInfo.totalDiskMB
+            let available = DeviceInfo.availableDiskMB
+            let free = DeviceInfo.freeDiskMB
+            let used = total - available
+            Text("總容量: \(total / 1024, specifier: "%.1f") GB")
+            Text("已使用: \(used / 1024, specifier: "%.1f") GB")
+            Text("可用（含可清除）: \(available / 1024, specifier: "%.1f") GB")
+                .foregroundColor(available < 1024 ? .orange : .primary)
+            Text("空閒（真正）: \(free / 1024, specifier: "%.1f") GB")
+                .foregroundColor(free < 512 ? .orange : .secondary)
+        }
+    }
+
+    /// 設備診斷卡片；沿用頁面採樣與服務狀態。
+    private var diskIOCard: some View {
+        SettingsDashboardCard(header: { Label("磁碟 I/O", systemImage: "internaldrive") }) {
+            Chart {
+                ForEach(pageInHistory) { pt in
+                    LineMark(
+                        x: .value("Time", pt.time),
+                        y: .value("KB/s", pt.value),
+                        series: .value("Series", "Page In")
+                    )
+                    .foregroundStyle(.blue)
+                }
+                ForEach(pageOutHistory) { pt in
+                    LineMark(
+                        x: .value("Time", pt.time),
+                        y: .value("KB/s", pt.value),
+                        series: .value("Series", "Page Out")
+                    )
+                    .foregroundStyle(.red)
+                }
+                ForEach(appWriteHistory) { pt in
+                    LineMark(
+                        x: .value("Time", pt.time),
+                        y: .value("KB/s", pt.value),
+                        series: .value("Series", "App Write")
+                    )
+                    .foregroundStyle(.green)
+                }
+            }
+            .chartYAxisLabel("KB/s")
+            .frame(height: 120)
+
+            let lastIn = pageInHistory.last?.value ?? 0
+            let lastOut = pageOutHistory.last?.value ?? 0
+            let lastWrite = appWriteHistory.last?.value ?? 0
+            Text("Page In: \(lastIn, specifier: "%.1f") KB/s")
+                .foregroundColor(.blue)
+            Text("Page Out: \(lastOut, specifier: "%.1f") KB/s")
+                .foregroundColor(.red)
+            Text("App Write: \(lastWrite, specifier: "%.1f") KB/s")
+                .foregroundColor(.green)
+        }
+    }
+
+    /// 設備診斷卡片；沿用頁面採樣與服務狀態。
+    private var networkCard: some View {
+        SettingsDashboardCard(header: { Label("網路", systemImage: "network") }) {
+            Text("介面: \(DeviceInfo.networkInterface)")
+        }
+    }
+
+    /// 設備診斷卡片；沿用頁面採樣與服務狀態。
+    private var systemCard: some View {
+        SettingsDashboardCard(header: { Label("系統", systemImage: "gearshape") }) {
+            Text("iOS: \(DeviceInfo.osVersion)")
+            Text("開機時間: \(uptimeString)")
+            Text("電量: \(DeviceInfo.batteryLevel)% (\(DeviceInfo.batteryState))")
+        }
+    }
+
+    /// 設備診斷卡片；沿用頁面採樣與服務狀態。
+    private var gpuCard: some View {
+        SettingsDashboardCard(header: { Label("GPU / Metal", systemImage: "cpu") }) {
+            Text("GPU: \(DeviceInfo.cpuName)")
+        }
+    }
+
+    /// 設備診斷卡片；沿用頁面採樣與服務狀態。
+    private var metricReportsCard: some View {
+        SettingsDashboardCard("系統效能報告") {
+            NavigationLink("MetricKit 歷史報告") { MetricReportsView() }
+            Text("系統提供的效能與異常紀錄，與下方即時管線資訊分開。")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    /// 設備診斷卡片；沿用頁面採樣與服務狀態。
+    private var capturePipelineCard: some View {
+        SettingsDashboardCard("ScreenCaptureKit 本機管線") {
+            CapturePipelineStatusView(sampledAt: capture.streamTelemetry.pipelineSampledAt, now: sampleDate)
+            Text(capture.streamTelemetry.sourceQueues ?? "尚未取得來源佇列").font(.caption)
+            Text(capture.streamTelemetry.mixerAudio ?? "尚未取得混音資料").font(.caption)
+            Text("來源與混音計數不代表 RTMP 已送出；下方圖表來自 ReplayKit 擴展。")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    /// 設備診斷卡片；沿用頁面採樣與服務狀態。
+    private var videoPipelineCard: some View {
+        SettingsDashboardCard(header: { Label("Video Pipeline", systemImage: "waveform.path.ecg") }) {
+            pipelineFreshness(videoHealth.lastUpdatedAt)
+            Text("最後回報狀態: \(videoHealth.latestStatus)")
+                .foregroundColor(videoHealth.latestStatus == "healthy" ? .green : .orange)
+
+            DisclosureGroup("layout.pipelineDetails") {
+                VStack(alignment: .leading, spacing: 10) {
+            Chart {
+                ForEach(videoHealth.inputHistory) { pt in
+                    LineMark(
+                        x: .value("Time", pt.time),
+                        y: .value("FPS", pt.value),
+                        series: .value("Series", "Input")
+                    )
+                    .foregroundStyle(.blue)
+                }
+                ForEach(videoHealth.processedHistory) { pt in
+                    LineMark(
+                        x: .value("Time", pt.time),
+                        y: .value("FPS", pt.value),
+                        series: .value("Series", "Processed")
+                    )
+                    .foregroundStyle(.green)
+                }
+                ForEach(videoHealth.droppedHistory) { pt in
+                    LineMark(
+                        x: .value("Time", pt.time),
+                        y: .value("FPS", pt.value),
+                        series: .value("Series", "Dropped")
+                    )
+                    .foregroundStyle(.red)
+                }
+            }
+            .chartYAxisLabel("FPS")
+            .chartYScale(domain: 0...70)
+            .frame(height: 140)
+
+            Chart {
+                ForEach(videoHealth.timeoutHistory) { pt in
+                    BarMark(
+                        x: .value("Time", pt.time),
+                        y: .value("Timeout", pt.value)
+                    )
+                    .foregroundStyle(.purple)
+                }
+            }
+            .chartYAxisLabel("Timeout/s")
+            .frame(height: 90)
+
+            Chart {
+                ForEach(videoHealth.latencyHistory) { pt in
+                    LineMark(
+                        x: .value("Time", pt.time),
+                        y: .value("Latency", pt.value),
+                        series: .value("Series", "GPU Latency")
+                    )
+                    .foregroundStyle(.orange)
+                }
+            }
+            .chartYAxisLabel("completion ms")
+            .frame(height: 90)
+
+            let input = videoHealth.inputHistory.last?.value ?? 0
+            let processed = videoHealth.processedHistory.last?.value ?? 0
+            let dropped = videoHealth.droppedHistory.last?.value ?? 0
+            let timeout = videoHealth.timeoutHistory.last?.value ?? 0
+            Text("Input: \(input, specifier: "%.1f") fps  Processed: \(processed, specifier: "%.1f") fps")
+                .font(.caption)
+            Text("Dropped: \(dropped, specifier: "%.1f") fps  Timeout: \(timeout, specifier: "%.0f")/s")
+                .font(.caption)
+                .foregroundColor(timeout > 0 || dropped > 0 ? .orange : .secondary)
+            Text("Input range: \(videoHealth.lastInputRange)  Processed range: \(videoHealth.lastProcessedRange)")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+            Text("GPU completion: \(videoHealth.lastLatencyText)")
+                .font(.caption2)
+                .foregroundColor(.orange)
+            }
+            }
+        }
+    }
+
+    /// 設備診斷卡片；沿用頁面採樣與服務狀態。
+    private var audioPipelineCard: some View {
+        SettingsDashboardCard(header: { Label("Audio Pipeline", systemImage: "waveform") }) {
+            pipelineFreshness(audioHealth.lastUpdatedAt)
+            Text("最後回報狀態: \(audioHealth.latestStatus)")
+                .foregroundColor(audioHealth.latestStatus == "healthy" ? .green : .orange)
+
+            DisclosureGroup("layout.pipelineDetails") {
+                VStack(alignment: .leading, spacing: 10) {
+            Text("每秒音訊 buffer 數；每個 buffer 包含多個取樣。")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            Chart {
+                ForEach(audioHealth.appFPSHistory) { pt in
+                    LineMark(
+                        x: .value("Time", pt.time),
+                        y: .value("buffers/s", pt.value),
+                        series: .value("Series", "App")
+                    )
+                    .foregroundStyle(.blue)
+                }
+                ForEach(audioHealth.micFPSHistory) { pt in
+                    LineMark(
+                        x: .value("Time", pt.time),
+                        y: .value("buffers/s", pt.value),
+                        series: .value("Series", "Mic")
+                    )
+                    .foregroundStyle(.green)
+                }
+            }
+            .chartYAxisLabel("Input buffers/s")
+            .frame(height: 140)
+
+            Chart {
+                ForEach(audioHealth.alignDropHistory) { pt in
+                    LineMark(
+                        x: .value("Time", pt.time),
+                        y: .value("Samples/s", pt.value),
+                        series: .value("Series", "align drop")
+                    )
+                    .foregroundStyle(.red)
+                }
+                ForEach(audioHealth.skipHistory) { pt in
+                    LineMark(
+                        x: .value("Time", pt.time),
+                        y: .value("Samples/s", pt.value),
+                        series: .value("Series", "skip silence")
+                    )
+                    .foregroundStyle(.orange)
+                }
+                ForEach(audioHealth.noDataHistory) { pt in
+                    LineMark(
+                        x: .value("Time", pt.time),
+                        y: .value("Samples/s", pt.value),
+                        series: .value("Series", "underrun")
+                    )
+                    .foregroundStyle(.purple)
+                }
+                ForEach(audioHealth.alignFireHistory) { pt in
+                    LineMark(
+                        x: .value("Time", pt.time),
+                        y: .value("Samples/s", pt.value),
+                        series: .value("Series", "align fire")
+                    )
+                    .foregroundStyle(.pink)
+                }
+            }
+            .chartYAxisLabel("samples/s")
+            .frame(height: 110)
+
+            Chart {
+                ForEach(audioHealth.mixerOutHistory) { pt in
+                    LineMark(
+                        x: .value("Time", pt.time),
+                        y: .value("buffers/s", pt.value),
+                        series: .value("Series", "Mixer out")
+                    )
+                    .foregroundStyle(.teal)
+                }
+            }
+            .chartYAxisLabel("Mixer buffers/s")
+            .frame(height: 90)
+
+            Chart {
+                ForEach(audioHealth.outCh0History) { pt in
+                    LineMark(
+                        x: .value("Time", pt.time),
+                        y: .value("RMS", pt.value),
+                        series: .value("Series", "Out L")
+                    )
+                    .foregroundStyle(.blue)
+                }
+                ForEach(audioHealth.outCh1History) { pt in
+                    LineMark(
+                        x: .value("Time", pt.time),
+                        y: .value("RMS", pt.value),
+                        series: .value("Series", "Out R")
+                    )
+                    .foregroundStyle(.red)
+                }
+            }
+            .chartYAxisLabel("output ch RMS")
+            .chartYScale(domain: 0...1)
+            .frame(height: 90)
+
+            let appFPS = audioHealth.appFPSHistory.last?.value ?? 0
+            let micFPS = audioHealth.micFPSHistory.last?.value ?? 0
+            let alignDrop = audioHealth.alignDropHistory.last?.value ?? 0
+            let alignFire = audioHealth.alignFireHistory.last?.value ?? 0
+            let skip = audioHealth.skipHistory.last?.value ?? 0
+            let noData = audioHealth.noDataHistory.last?.value ?? 0
+            Text("App: \(appFPS, specifier: "%.1f") buffers/s  Mic: \(micFPS, specifier: "%.1f") buffers/s")
+                .font(.caption)
+            Text("align drop: \(alignDrop, specifier: "%.0f")/s  skip: \(skip, specifier: "%.0f")/s  underrun: \(noData, specifier: "%.0f")/s")
+                .font(.caption)
+                .foregroundColor(alignDrop > 0 || noData > 0 ? .orange : .secondary)
+            Text("Range (buffers/s) App: \(audioHealth.lastAppRange)  Mic range: \(audioHealth.lastMicRange)")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+            Text("PTS gap max: \(audioHealth.lastGapText)  RMS: \(audioHealth.lastRMSText)")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+            Text("Output \(audioHealth.lastOutChText)")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+            Text("align fire: \(alignFire, specifier: "%.1f")/s  diff: \(audioHealth.lastAlignDiffSamples, specifier: "%.0f") smp")
+                .font(.caption2)
+                .foregroundColor(alignFire > 0 ? .orange : .secondary)
+            Text("align inserted: \(audioHealth.lastAlignInserted, specifier: "%.0f")/s  overflow drop: \(audioHealth.lastOverflowDropped, specifier: "%.0f")/s")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+            }
+            }
+        }
+    }
+
+    /// 設備診斷卡片；沿用頁面採樣與服務狀態。
+    private var liveActivityCard: some View {
+        SettingsDashboardCard(header: { Label("即時動態 Live Activity", systemImage: "sparkles.tv") }) {
+            HStack {
+                Label("狀態", systemImage: "circle.fill")
+                    .foregroundColor(laManager.isActivityActive ? .green : .gray)
+                Text(laManager.isActivityActive ? "執行中" : "未啟動")
+                    .foregroundColor(laManager.isActivityActive ? .green : .secondary)
+            }
+
+            if let err = laManager.lastError {
+                Label(err, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundColor(.orange)
+                    .font(.caption)
+            }
+
+            if laManager.isActivityActive {
+                Button("結束即時動態", role: .destructive) {
+                    laManager.endStreamActivity()
+                }
+            } else {
+                Button("啟動即時動態") {
+                    laManager.startStreamActivity()
+                }
+            }
+
+            Text("Widget Extension 檔案已建立 (liveAPPWidget/)，需在 Xcode 新增 Widget Extension target 後編譯才能在鎖定畫面顯示")
+                .font(.caption)
+                .foregroundColor(.orange)
         }
     }
 

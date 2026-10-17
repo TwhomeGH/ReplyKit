@@ -26,12 +26,60 @@ final class OverlaySettingsViewModel: ObservableObject {
 struct OverlaySettingsView: View {
     @StateObject private var viewModel = OverlaySettingsViewModel()
 
-    var body: some View {
-        Form {
-            Section {
-                OverlayPreview(config: viewModel.config)
-                    .listRowInsets(EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var showsPreview = false
 
+    var body: some View {
+        GeometryReader { geometry in
+            if geometry.size.width >= 900 && !dynamicTypeSize.isAccessibilitySize {
+                HStack(alignment: .top, spacing: 16) {
+                    previewPanel
+                        .frame(width: min(520, geometry.size.width * 0.42))
+                    controls
+                }
+                .padding(.horizontal, 16)
+            } else {
+                compactContent
+            }
+        }
+        .navigationTitle("settings.outputOverlay.title")
+        .sheet(isPresented: $showsPreview) {
+            NavigationStack {
+                OverlayPreview(config: viewModel.config)
+                    .padding()
+                    .navigationTitle("layout.preview")
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("layout.done") { showsPreview = false }
+                        }
+                    }
+            }
+        }
+    }
+
+    /// 限制預覽寬度以保留設定空間；原始 16:9 畫布比例保持不變。
+    private var previewPanel: some View {
+        VStack(spacing: 12) {
+            OverlayPreview(config: viewModel.config)
+                .frame(maxWidth: 520)
+            Button("layout.expandPreview") { showsPreview = true }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var compactContent: some View {
+        Form {
+            Section { previewPanel }
+            controlSections
+        }
+    }
+
+    private var controls: some View {
+        Form { controlSections }
+    }
+
+    @ViewBuilder private var controlSections: some View {
+            Section {
                 Toggle("outputOverlay.enable", isOn: $viewModel.config.enabled)
             }
 
@@ -98,8 +146,6 @@ struct OverlaySettingsView: View {
                     viewModel.reset()
                 }
             }
-        }
-        .navigationTitle("settings.outputOverlay.title")
     }
 }
 

@@ -41,25 +41,35 @@ struct DeviceTabView: View {
   }
 }
 
-/// 音量與 TTS 共用音訊分頁；選擇由頂層持有，供即時音量訂閱判斷。
-/// TTS 已有自己的導覽容器，這裡不再包一層 NavigationStack。
+/// 音訊分頁唯一的導覽容器；切換列位於導覽內容內，避免與 iPad 頂部分頁重疊。
 struct AudioTabView: View {
-  @Binding var showsTTS: Bool
+    @Binding var showsTTS: Bool
 
-  var body: some View {
-    VStack(spacing: 0) {
-      Picker(AppLanguage.localized("settings.audio.title"), selection: $showsTTS) {
-        Text(AppLanguage.localized("tab.volume")).tag(false)
-        Text(AppLanguage.localized("tab.tts")).tag(true)
-      }
-      .pickerStyle(.segmented)
-      .padding()
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                Picker(AppLanguage.localized("tab.audio"), selection: $showsTTS) {
+                    Text(AppLanguage.localized("tab.volume")).tag(false)
+                    Text(AppLanguage.localized("tab.tts")).tag(true)
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 400)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
 
-      if showsTTS {
-        TTSSettingsView()
-      } else {
-        LiveVolumeView()
-      }
+                if showsTTS {
+                    TTSSettingsView()
+                } else {
+                    ScrollView {
+                        LiveVolumeView()
+                            .frame(maxWidth: 800)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                    }
+                }
+            }
+            .navigationTitle(AppLanguage.localized("tab.audio"))
+            .navigationBarTitleDisplayMode(.inline)
+        }
     }
-  }
 }
