@@ -183,323 +183,102 @@ struct SafeProgressBar: View {
 }
 
 /// 音量頁及即時音量顯示，沿用共享模型與原本監聽生命週期。
+/// 音量控制與實測分開呈現；沿用既有非線性滑桿換算與設定通知。
 struct LiveVolumeView: View {
-
-
-    @StateObject var model = LiveVolumeModel.shared
-    @EnvironmentObject var pageState: PageState
-
-    @AppStorage("appVolume",store: userDefaults)  var appVolume: Double = 1.0
-    @AppStorage("micVolume",store: userDefaults)  var micVolume: Double = 1.0
-
-    @AppStorage("appAddVolume",store: userDefaults)  var appAddVolume: Double = 1.0
-    @AppStorage("micAddVolume",store: userDefaults)  var micAddVolume: Double = 1.0
-
-
-
-    init(){
-
-    }
+    @StateObject private var model = LiveVolumeModel.shared
+    @EnvironmentObject private var pageState: PageState
+    @AppStorage("appVolume", store: userDefaults) private var appVolume: Double = 1
+    @AppStorage("micVolume", store: userDefaults) private var micVolume: Double = 1
+    @AppStorage("appAddVolume", store: userDefaults) private var appAddVolume: Double = 1
+    @AppStorage("micAddVolume", store: userDefaults) private var micAddVolume: Double = 1
 
     var body: some View {
-
-
-        VStack {
-            HStack {
-                Circle()
-                    .fill(pageState.onAudioPage ? Color.green : Color.red)
-                    .frame(width: 10, height: 10)
-                Text("onAudioPage: \(pageState.onAudioPage ? "true" : "false")")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Spacer()
-            }
-            .padding(.horizontal)
-            VStack {
-                Text("[棄用]App增益: \(String(format: "%.1f", appAddVolume)) 倍")
-                    .font(.headline)
-
-
-                Slider(value: $appAddVolume, in: 1...30, step: 0.1,
-                    onEditingChanged: {
-                    editing in
-
-                    if !editing {
-
-
-#if os(iOS)
-
-                        CFNotificationCenterPostNotification(
-                            cfCenter,
-                            CFNotificationName("appAdd" as CFString),
-                            nil,
-                            nil,
-                            true
-                        )
-#else
-                        NotificationCenter.default
-                            .post(
-                                name: Notification.Name("appAdd"),
-                                object: nil
-                            )
-#endif
-
-                        sendlog(message: String(
-                            format: "應用增益更新: %.1f 倍",
-                            appAddVolume
-                        ))
-
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Label(AppLanguage.localized(pageState.onAudioPage ? "volume.monitorOn" : "volume.monitorOff"),
+                          systemImage: "waveform")
+                        .font(.caption).foregroundStyle(.secondary)
+                    AdaptiveSettingsColumns(width: geometry.size.width) {
+                        channel(title: "volume.app", value: $appVolume,
+                                measured: Double(model.appVolumeLive), color: .blue,
+                                notification: "appVolumeChanged")
+                    } trailing: {
+                        channel(title: "volume.mic", value: $micVolume,
+                                measured: Double(model.micVolumeLive), color: .red,
+                                notification: "micVolumeChanged")
                     }
-
-                }
-
-                )
-
-
-
-            }
-
-            VStack {
-                Text("Mic增益: \(String(format: "%.1f", micAddVolume)) 倍")
-                    .font(.headline)
-
-
-
-                Slider(value: $micAddVolume, in: 1...30, step: 0.1,
-                        onEditingChanged: { editing in
-
-                    if !editing {
-
-#if os(iOS)
-
-
-
-                        CFNotificationCenterPostNotification(
-                            cfCenter,
-                            CFNotificationName("micAdd" as CFString),
-                            nil,
-                            nil,
-                            true
-                        )
-#else
-                        NotificationCenter.default
-                            .post(
-                                name: Notification.Name("micAdd"),
-                                object: nil
-                            )
-#endif
-
-                        sendlog(message: String(
-                            format: "Mic增益更新: %.1f 倍",
-                            micAddVolume
-                        ))
-
-
-                    }
-
-
-                }
-
-                )
-
-            }
-
-
-            VStack {
-
-                Text("App音量: \(formatSliderPercent(volumeToPercentage(appVolume))) 原始:\(formatPreciseVolumePercent(appVolume))")
-                    .font(.headline)
-
-
-
-                Slider(
-                    value:
-                        Binding(
-                    get: { volumeToPercentage(appVolume) },            // 從 appVolume 轉百分比
-                    set: { newValue in
-
-                             // 邊界保護，避免浮點誤差
-                            if abs(newValue - 1.0) < volumeSliderStep {
-                                appVolume = 1.0
-                            } else if abs(newValue - 0.0) < volumeSliderStep {
-                                appVolume = 0.0
-                            } else {
-                                appVolume = percentageToVolume(newValue)
-                            }
-
+                    SettingsDashboardCard("volume.advanced") {
+                        DisclosureGroup("volume.gainAndRaw") {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("volume.legacyAppGain")
+                                gainSlider($appAddVolume, notification: "appAdd")
+                                Text("volume.micGain")
+                                gainSlider($micAddVolume, notification: "micAdd")
+                                Text("App: \(formatPreciseVolumePercent(appVolume)) · Mic: \(formatPreciseVolumePercent(micVolume))")
+                                    .font(.caption).textSelection(.enabled)
+                            }.padding(.top, 8)
                         }
-                    )
-                        , in: 0.0...1.0, step: volumeSliderStep,
-                        onEditingChanged: { editing in
-
-                    if !editing {
-
-
-
-#if os(iOS)
-
-                        CFNotificationCenterPostNotification(
-                            cfCenter,
-                            CFNotificationName(
-                                "appVolumeChanged" as CFString
-                            ),
-                            nil,
-                            nil,
-                            true
-                        )
-#else
-                        NotificationCenter.default
-                            .post(
-                                name: Notification.Name("appVolumeChanged"),
-                                object: nil
-                            )
-#endif
-
-                        sendlog(message: String(
-                            format: "應用音量更新: %.5f%% (真實值: %.8f)",
-                            volumeToPercentage(appVolume) * 100,
-                            appVolume
-                        ))
-
                     }
-
                 }
-                )
-
-
-
-
-                // 標尺
-                HStack {
-                    Text("0%").font(.caption)
-                    Spacer()
-                    Text("25%").font(.caption)
-                    Spacer()
-                    Text("50%").font(.caption)
-                    Spacer()
-                    Text("75%").font(.caption)
-                    Spacer()
-                    Text("100%").font(.caption)
-                }
-
-
-
-                // 自繪進度條 (取代 ProgressView)
-                SafeProgressBar(value: visualVolumeLevel(appVolume), color: .blue)
-                    .padding(.vertical, 4)
-
-
-            }
-
-
-
-            VStack {
-                // 顯示用：直接顯示真實音量百分比
-                Text("Mic音量: \(formatSliderPercent(volumeToPercentage(micVolume))) 原始:\(formatPreciseVolumePercent(micVolume))")
-                    .font(.headline)
-
-
-
-
-                Slider(value:
-                        Binding(
-                    get: { volumeToPercentage(micVolume) },            // 從 micVolume 轉百分比
-                    set: { newValue in
-
-                           // 邊界保護，避免浮點誤差
-                            if abs(newValue - 1.0) < volumeSliderStep {
-                                micVolume = 1.0
-                            } else if abs(newValue - 0.0) < volumeSliderStep {
-                                micVolume = 0.0
-                            } else {
-                                micVolume = percentageToVolume(newValue)
-                            }
-
-
-                        }
-                    )
-
-                        , in: 0.0...1.0, step: volumeSliderStep,
-                        onEditingChanged: { editing in
-
-                    if !editing {
-                        //let realVolume = percentageToVolume(Mic_percentage)
-                        sendlog(message: String(
-                            format: "麥克風音量更新: %.5f%% (真實值: %.8f)",
-                            volumeToPercentage(micVolume) * 100,
-                            micVolume
-                        ))
-
-
-#if os(iOS)
-
-                        CFNotificationCenterPostNotification(
-                            cfCenter,
-                            CFNotificationName(
-                                "micVolumeChanged" as CFString
-                            ),
-                            nil,
-                            nil,
-                            true
-                        )
-
-#else
-                        NotificationCenter.default
-                            .post(
-                                name: Notification.Name("micVolumeChanged"),
-                                object: nil
-                            )
-#endif
-                    }
-
-                }
-                )
-
-
-
-
-                // 標尺
-                HStack {
-                    Text("0%").font(.caption)
-                    Spacer()
-                    Text("25%").font(.caption)
-                    Spacer()
-                    Text("50%").font(.caption)
-                    Spacer()
-                    Text("75%").font(.caption)
-                    Spacer()
-                    Text("100%").font(.caption)
-                }
-
-
-                // 自繪進度條 (取代 ProgressView)
-                SafeProgressBar(value: visualVolumeLevel(micVolume), color: .red)
-                    .padding(.vertical, 4)
-
-            }
-
-
-
-
-            VStack(alignment: .leading) {
-                Text("Mic Volume \(formatPreciseVolumePercent(Double(model.micVolumeLive)))")
-
-
-                // 自繪進度條 (取代 ProgressView)
-                SafeProgressBar(value: visualVolumeLevel(Double(model.micVolumeLive)), color: .red)
-                    .padding(.vertical, 4)
-
-            }
-            VStack(alignment: .leading) {
-                Text("App Volume \(formatPreciseVolumePercent(Double(model.appVolumeLive)))")
-
-                // 自繪進度條 (取代 ProgressView)
-                SafeProgressBar(value: visualVolumeLevel(Double(model.appVolumeLive)), color: .blue)
-                    .padding(.vertical, 4)
-
-
+                .frame(maxWidth: 1280)
+                .frame(maxWidth: .infinity, alignment: .top)
+                .padding(16)
             }
         }
-        .padding()
+    }
+
+    /// 滑桿百分比是控制刻度；實測值另外標示，不把設定值當作訊號音量。
+    private func channel(title: LocalizedStringKey, value: Binding<Double>, measured: Double,
+                         color: Color, notification: String) -> some View {
+        SettingsDashboardCard(title) {
+            HStack {
+                Text("volume.setting")
+                Spacer()
+                Text(String(format: "%.1f%%", volumeToPercentage(value.wrappedValue) * 100))
+                    .monospacedDigit()
+            }
+            Slider(value: Binding(
+                get: { volumeToPercentage(value.wrappedValue) },
+                set: { percent in
+                    if abs(percent - 1) < volumeSliderStep { value.wrappedValue = 1 }
+                    else if abs(percent) < volumeSliderStep { value.wrappedValue = 0 }
+                    else { value.wrappedValue = percentageToVolume(percent) }
+                }), in: 0...1, step: volumeSliderStep,
+                onEditingChanged: { editing in
+                    if !editing { publish(notification, value: value.wrappedValue) }
+                })
+                .tint(color)
+            HStack { Text("0%"); Spacer(); Text("50%"); Spacer(); Text("100%") }
+                .font(.caption).foregroundStyle(.secondary)
+            Divider()
+            HStack {
+                Text("volume.measured")
+                Spacer()
+                Text(formatPreciseVolumePercent(measured)).monospacedDigit()
+            }
+            SafeProgressBar(value: visualVolumeLevel(measured), color: color)
+            Text("volume.measurementNote").font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    /// 增益沿用原有範圍與通知名稱，只在使用者結束拖曳後通知擷取端。
+    private func gainSlider(_ value: Binding<Double>, notification: String) -> some View {
+        VStack(alignment: .leading) {
+            Text(String(format: "%.1f ×", value.wrappedValue)).monospacedDigit()
+            Slider(value: value, in: 1...30, step: 0.1) { editing in
+                if !editing { publish(notification, value: value.wrappedValue) }
+            }
+        }
+    }
+
+    /// 保存值已由 AppStorage 寫入，這裡沿用跨程序通知觸發即時套用。
+    private func publish(_ name: String, value: Double) {
+        #if os(iOS)
+        CFNotificationCenterPostNotification(cfCenter, CFNotificationName(name as CFString), nil, nil, true)
+        #else
+        NotificationCenter.default.post(name: Notification.Name(name), object: nil)
+        #endif
+        sendlog(message: "[AudioControl] \(name) value=\(value)")
     }
 }

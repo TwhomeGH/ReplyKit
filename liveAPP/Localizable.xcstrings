@@ -1,6 +1,270 @@
 {
   "sourceLanguage" : "zh-Hant",
   "strings" : {
+  "volume.details": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "詳細資訊"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Details"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "詳細情報"
+        }
+      }
+    }
+  },
+  "volume.monitorOn": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "音量監測已啟用"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Volume monitoring enabled"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "音量モニター有効"
+        }
+      }
+    }
+  },
+  "volume.monitorOff": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "音量監測未啟用"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Volume monitoring inactive"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "音量モニター無効"
+        }
+      }
+    }
+  },
+  "volume.app": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "App 聲音"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "App Audio"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "App 音声"
+        }
+      }
+    }
+  },
+  "volume.mic": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "麥克風"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Microphone"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "マイク"
+        }
+      }
+    }
+  },
+  "volume.setting": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "設定音量"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Volume Setting"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "音量設定"
+        }
+      }
+    }
+  },
+  "volume.measured": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "最近回報音量"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Last Reported Level"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "直近の音量"
+        }
+      }
+    }
+  },
+  "volume.measurementNote": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "監測啟用不代表已收到聲音；此處顯示最近一次回報。"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Monitoring does not imply audio is arriving; this is the last reported level."
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "有効でも音声受信を保証しません。直近の報告値です。"
+        }
+      }
+    }
+  },
+  "volume.advanced": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "進階選項"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Advanced"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "詳細設定"
+        }
+      }
+    }
+  },
+  "volume.gainAndRaw": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "增益與原始數值"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Gain and Raw Values"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ゲインと元の値"
+        }
+      }
+    }
+  },
+  "volume.legacyAppGain": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "舊版 App 增益（已棄用）"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Legacy App Gain (Deprecated)"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "旧 App ゲイン（非推奨）"
+        }
+      }
+    }
+  },
+  "volume.micGain": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "麥克風增益"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Microphone Gain"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "マイクゲイン"
+        }
+      }
+    }
+  },
   "layout.pipelineDetails": {
     "localizations": {
       "zh-Hant": {

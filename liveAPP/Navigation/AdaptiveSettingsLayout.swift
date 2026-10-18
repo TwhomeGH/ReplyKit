@@ -46,3 +46,25 @@ extension SettingsDashboardCard where Header == Text {
         self.init(header: { Text(title) }, content: content)
     }
 }
+
+/// 兩欄各自依內容高度排列，共用外層捲動；切換寬度時保留子視圖身分。
+struct AdaptiveSettingsColumns<Leading: View, Trailing: View>: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    let width: CGFloat
+    @ViewBuilder let leading: () -> Leading
+    @ViewBuilder let trailing: () -> Trailing
+
+    var body: some View {
+        let layout = width >= 900 && !dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(HStackLayout(alignment: .top, spacing: 16))
+            : AnyLayout(VStackLayout(alignment: .leading, spacing: 16))
+        layout {
+            VStack(alignment: .leading, spacing: 16) { leading() }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            VStack(alignment: .leading, spacing: 16) { trailing() }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+        .frame(maxWidth: 1280)
+        .frame(maxWidth: .infinity, alignment: .top)
+    }
+}

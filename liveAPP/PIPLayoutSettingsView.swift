@@ -15,17 +15,55 @@ struct PIPLayoutSettingsView: View {
     @AppStorage("PIPEndedLabelOverride", store: userDefaults) private var endedLabelOverride = ""
     @State private var previewMode: PIPLayoutPreviewMode = .normal
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var showsPreview = false
+
     var body: some View {
-        Form {
-            Section {
-                Picker(AppLanguage.localized("pipLayout.preview.mode"), selection: $previewMode) {
+        GeometryReader { geometry in
+            if geometry.size.width >= 900 && !dynamicTypeSize.isAccessibilitySize {
+                HStack(alignment: .top, spacing: 16) {
+                    ScrollView { previewPanel.padding(.vertical, 12) }
+                        .frame(width: min(520, geometry.size.width * 0.42))
+                    Form { controlSections }
+                }.padding(.horizontal, 16)
+            } else {
+                Form {
+                    Section { previewPanel }
+                    controlSections
+                }
+            }
+        }
+        .navigationTitle("settings.pipLayout.title")
+        .sheet(isPresented: $showsPreview) {
+            NavigationStack {
+                preview.padding()
+                    .navigationTitle("layout.preview")
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("layout.done") { showsPreview = false }
+                        }
+                    }
+            }
+        }
+    }
+
+    /// 預覽只縮放顯示，不修改實際 PiP 畫布或字體設定。
+    private var previewPanel: some View {
+        VStack(spacing: 12) {
+            Picker(AppLanguage.localized("pipLayout.preview.mode"), selection: $previewMode) {
                     ForEach(PIPLayoutPreviewMode.allCases) { mode in
                         Text(mode.title).tag(mode)
                     }
                 }
                 .pickerStyle(.segmented)
+                .frame(maxWidth: 400)
+            preview.frame(maxWidth: 520)
+            Button("layout.expandPreview") { showsPreview = true }
+        }.frame(maxWidth: .infinity)
+    }
 
-                PIPLayoutPreview(
+    private var preview: some View {
+        PIPLayoutPreview(
                     mode: previewMode,
                     mainFontSize: PIPFontMain,
                     secondFontSize: PIPFontSecond,
@@ -36,9 +74,9 @@ struct PIPLayoutSettingsView: View {
                     liveLabel: effectiveLabel(liveLabelOverride, localizedKey: "pip.default.liveLabel"),
                     endedLabel: effectiveLabel(endedLabelOverride, localizedKey: "pip.default.endedLabel")
                 )
-                .listRowInsets(EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))
-            }
+    }
 
+    @ViewBuilder private var controlSections: some View {
             Section(header: Text("pipLayout.statusText.section")) {
                 TextField(AppLanguage.localized("pipLayout.statusText.nowTime.placeholder"), text: $nowTimeLabelOverride)
                     .onChange(of: nowTimeLabelOverride) { newVal in
@@ -131,8 +169,6 @@ struct PIPLayoutSettingsView: View {
                         PIPService.shared.scrollTime(newVal)
                     }
             }
-        }
-        .navigationTitle("settings.pipLayout.title")
     }
 
     private func limitedOverride(_ value: String) -> String {

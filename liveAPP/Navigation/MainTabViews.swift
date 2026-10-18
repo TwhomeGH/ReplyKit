@@ -60,12 +60,7 @@ struct AudioTabView: View {
                 if showsTTS {
                     TTSSettingsView()
                 } else {
-                    ScrollView {
-                        LiveVolumeView()
-                            .frame(maxWidth: 800)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                    }
+                    LiveVolumeView()
                 }
             }
             .navigationTitle(AppLanguage.localized("tab.audio"))

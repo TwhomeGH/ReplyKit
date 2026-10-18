@@ -588,16 +588,19 @@ struct DeviceView: View {
     var body: some View {
         GeometryReader { geometry in
             ScrollView {
-                AdaptiveSettingsGrid(width: geometry.size.width) {
+                AdaptiveSettingsColumns(width: geometry.size.width) {
                     screenCard
-                    outputSizeCard
                     cpuCard
-                    memoryCard
                     storageCard
-                    diskIOCard
                     networkCard
                     systemCard
                     gpuCard
+                    videoPipelineCard
+                    liveActivityCard
+                } trailing: {
+                    outputSizeCard
+                    memoryCard
+                    diskIOCard
                     #if os(iOS)
                     metricReportsCard
                     #endif
@@ -605,9 +608,7 @@ struct DeviceView: View {
                     if capture.streamTelemetry.pipelineSampledAt != nil {
                         capturePipelineCard
                     }
-                    videoPipelineCard
                     audioPipelineCard
-                    liveActivityCard
                 }
                 .padding(16)
             }
@@ -689,28 +690,33 @@ struct DeviceView: View {
             Text("總 RAM: \(DeviceInfo.ramMB, specifier: "%.0f") MB")
             Text("App 實際佔用: \(appFootprintMB, specifier: "%.1f") MB")
                 .foregroundColor(appFootprintMB > 300 ? .orange : .primary)
-            Text("其中自身內部 internal: \(memInternalMB, specifier: "%.1f") MB")
-                .font(.caption)
-            Text("其中壓縮 compressed: \(memCompressedMB, specifier: "%.1f") MB")
-                .font(.caption)
-            Text("外部映射 external（包含檔案映射）: \(memExternalMB, specifier: "%.1f") MB")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            Text("其中可回收 reusable: \(memReusableMB, specifier: "%.1f") MB · 可清除 purgeable: \(memPurgeableMB, specifier: "%.1f") MB")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            Text("resident: \(appResidentMB, specifier: "%.1f") MB · 峰值: \(memPeakMB, specifier: "%.1f") MB")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            Text(memAvailableText)
-                .font(.caption)
-                .foregroundColor(memAvailableMB > 0 && memAvailableMB < 100 ? .orange : .secondary)
-            Text("PIP 輸出影像池（估）: \(PIPService.shared.estimatedPixelBufferPoolMB, specifier: "%.1f") MB")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            Text("判斷 App 負擔以 footprint 為準；internal、compressed 與映射分類不是可直接加減的完整帳目。compressed 不代表已釋放，resident 也不等於 footprint。")
-                .font(.caption2)
-                .foregroundColor(.secondary)
+            DisclosureGroup("volume.details") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("其中自身內部 internal: \(memInternalMB, specifier: "%.1f") MB")
+                        .font(.caption)
+                    Text("其中壓縮 compressed: \(memCompressedMB, specifier: "%.1f") MB")
+                        .font(.caption)
+                    Text("外部映射 external（包含檔案映射）: \(memExternalMB, specifier: "%.1f") MB")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Text("其中可回收 reusable: \(memReusableMB, specifier: "%.1f") MB · 可清除 purgeable: \(memPurgeableMB, specifier: "%.1f") MB")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Text("resident: \(appResidentMB, specifier: "%.1f") MB · 峰值: \(memPeakMB, specifier: "%.1f") MB")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Text(memAvailableText)
+                        .font(.caption)
+                        .foregroundColor(memAvailableMB > 0 && memAvailableMB < 100 ? .orange : .secondary)
+                    Text("PIP 輸出影像池（估）: \(PIPService.shared.estimatedPixelBufferPoolMB, specifier: "%.1f") MB")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Text("判斷 App 負擔以 footprint 為準；internal、compressed 與映射分類不是可直接加減的完整帳目。compressed 不代表已釋放，resident 也不等於 footprint。")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+
+                }
+            }
 
             Chart {
                 ForEach(memoryHistory) { pt in
