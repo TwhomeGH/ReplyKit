@@ -1,18 +1,107 @@
 import SwiftUI
+import Charts
 
-/// 每個來源僅保存一筆快照；較舊取樣不可覆蓋較新的 session 資料。
+/// 每個來源保存最新快照與最多 60 筆速率；較舊取樣不可覆蓋新資料。
 @MainActor final class StreamDiagnosticsModel: ObservableObject {
     static let shared = StreamDiagnosticsModel()
     @Published private(set) var snapshots: [String: StreamDiagnosticsSnapshot] = [:]
     @Published private(set) var receivedAt: [String: Date] = [:]
+    @Published private(set) var history: [String: [MixerRatePoint]] = [:]
 
     func record(_ snapshot: StreamDiagnosticsSnapshot, now: Date = Date()) {
         guard snapshot.schemaVersion == 1,
               ["ReplayKit", "ScreenCaptureKit"].contains(snapshot.source),
               snapshot.sampledAt <= now.addingTimeInterval(5),
               snapshots[snapshot.source].map({ $0.sampledAt < snapshot.sampledAt }) ?? true else { return }
+        let previous = snapshots[snapshot.source]
+        var points = history[snapshot.source] ?? []
+        if previous?.session != snapshot.session { points = [] }
+        // 長間隔不跨過缺測區連線；重新建立基準後才畫速率。
+        let elapsed = snapshot.sampledUptime.flatMap { current in
+            previous?.sampledUptime.map { current - $0 }
+        } ?? 0
+        if elapsed <= 0 || elapsed > 15 { points = [] }
+        let point = MixerRatePoint(snapshot: snapshot,
+                                   previous: previous?.session == snapshot.session ? previous : nil,
+                                   elapsed: elapsed)
+        points.append(point)
+        history[snapshot.source] = Array(points.suffix(60))
         snapshots[snapshot.source] = snapshot
         receivedAt[snapshot.source] = now
+    }
+}
+
+/// 同一 session 的 Mixer 輸出差分；取樣率和每秒交付 sample frames 是不同量。
+struct MixerRatePoint: Identifiable {
+    let id: Date
+    let videoFPS: Double?
+    let audioBuffersPerSecond: Double?
+    let audioFramesPerSecond: Double?
+
+    init(snapshot: StreamDiagnosticsSnapshot, previous: StreamDiagnosticsSnapshot?, elapsed: Double) {
+        id = snapshot.sampledAt
+        videoFPS = DiagnosticCounterRate.value(current: snapshot.mixerVideoFrames,
+            previous: previous?.mixerVideoFrames, elapsed: elapsed)
+        audioBuffersPerSecond = DiagnosticCounterRate.value(current: snapshot.mixerAudioBuffers,
+            previous: previous?.mixerAudioBuffers, elapsed: elapsed)
+        audioFramesPerSecond = DiagnosticCounterRate.value(current: snapshot.mixerAudioFrames,
+            previous: previous?.mixerAudioFrames, elapsed: elapsed)
+    }
+}
+
+/// 兩種來源共用的 Mixer 輸出圖表；不將輸出 FPS 當作來源擷取 FPS 或網路完成率。
+struct MixerPipelineCard: View {
+    let audio: Bool
+    let now: Date
+    @ObservedObject private var model = StreamDiagnosticsModel.shared
+
+    var body: some View {
+        SettingsDashboardCard(audio ? "Audio Pipeline · 混音輸出" : "Video Pipeline · 混合輸出") {
+            if model.snapshots.isEmpty {
+                Text("等待擷取管線回報；ReplayKit 需連上主 App Socket。")
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(["ReplayKit", "ScreenCaptureKit"], id: \.self) { source in
+                if let snapshot = model.snapshots[source] {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(source).font(.headline)
+                        if source == "ScreenCaptureKit" {
+                            CapturePipelineStatusView(sampledAt: snapshot.sampledAt, now: now)
+                        } else {
+                            Text(now.timeIntervalSince(snapshot.sampledAt) > 15
+                                 ? "未收到近期回報 · 保留最後資料" : "每五秒更新")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Text((audio ? snapshot.mixerAudio : snapshot.mixerVideo) ?? "尚未提供格式")
+                            .font(.caption).textSelection(.enabled)
+                        let points = model.history[source] ?? []
+                        let latest = points.last
+                        Text(rate(audio ? latest?.audioBuffersPerSecond : latest?.videoFPS,
+                                  unit: audio ? "PCM buffers/s" : "FPS"))
+                            .monospacedDigit()
+                        if audio {
+                            Text(rate(latest?.audioFramesPerSecond, unit: "sample frames/s"))
+                                .font(.caption).monospacedDigit()
+                        }
+                        Chart(points) { point in
+                            if let value = audio ? point.audioBuffersPerSecond : point.videoFPS {
+                                LineMark(x: .value("時間", point.id), y: .value(audio ? "Buffers/s" : "FPS", value))
+                                    .foregroundStyle(audio ? Color.green : Color.blue)
+                            }
+                        }
+                        .frame(height: 120)
+                        .chartYScale(domain: .automatic(includesZero: true))
+                        .accessibilityLabel(audio ? "混音輸出 buffer 速率" : "混合輸出影格速率")
+                    }
+                }
+            }
+            Text("速率由相鄰快照計算，保留最多 60 筆。這是編碼前 Mixer 輸出；系統直接錄製不經 Mixer，沒有這組資料。首次取樣與舊版未回報計數時不補零。")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func rate(_ value: Double?, unit: String) -> String {
+        value.map { String(format: "%.1f %@", $0, unit) } ?? "等待有效速率取樣"
     }
 }
 
@@ -41,13 +130,22 @@ struct StreamDiagnosticsSections: View {
                         Text("最後取樣狀態：\(value.phase)")
                         detail("Mixer 影片實測", value.mixerVideo)
                         detail("影片編碼設定", value.videoSettings)
-                        detail("實際編碼輸出格式", nil)
+                        detail("實際編碼輸出格式", encodedVideo(value))
                         detail("編碼器交付影格累計", value.encodedVideoFrames.map(String.init))
                         detail("RTMP 影片入列事件累計", value.videoMessagesQueued.map(String.init))
                         detail("Mixer PCM 實測", value.mixerAudio)
                         detail("混音輸出取樣率", value.mixerAudioSampleRate.map { String(format: "%.0f Hz", $0) })
                         detail("音訊編碼設定", value.audioSettings)
-                        detail("實際音訊編碼輸出格式", nil)
+                        detail("實際音訊編碼輸出格式", encodedAudio(value))
+                        if let encoding = value.encoding {
+                            detail("編碼觀測世代", "\(encoding.generation) · 取樣時 publishing=\(encoding.isPublishing)")
+                            detail("影片格式變更時間", encoding.videoFormatChangedAt?.formatted())
+                            detail("音訊格式變更時間", encoding.audioFormatChangedAt?.formatted())
+                            detail("最近壓縮影片輸出", observedTime(encoding.lastVideoOutputAt))
+                            detail("最近壓縮音訊輸出", observedTime(encoding.lastAudioOutputAt))
+                            detail("壓縮影片樣本／音訊 packet 累計", "\(encoding.videoFrames) / \(encoding.audioPackets)")
+                            detail("壓縮 payload 累計（影片／音訊）", "\(encoding.videoBytes) / \(encoding.audioBytes) bytes")
+                        }
                         detail("連線世代", value.generation.map(String.init))
                         detail("本機待完成", bytes(value.queuedBytes))
                         detail("本機完成", bytes(value.completedBytes))
@@ -65,6 +163,26 @@ struct StreamDiagnosticsSections: View {
 
     private func bytes(_ value: Int?) -> String? {
         value.map { "\($0) bytes" }
+    }
+
+    /// 格式來自壓縮樣本，色彩附件缺漏不以設定或 Mixer 像素格式補值。
+    private func encodedVideo(_ snapshot: StreamDiagnosticsSnapshot) -> String {
+        guard let encoding = snapshot.encoding else { return "未提供編碼快照（舊版來源或無 RTMP 管線）" }
+        guard let video = encoding.video else { return "此發布世代尚未觀測到壓縮影片" }
+        let codec = video.codec + (video.avcConfiguration.map { ".\($0)" } ?? "")
+        let range = video.fullRange.map { $0 ? "Full" : "Video" } ?? "未提供"
+        return "\(codec) · \(video.width)×\(video.height) · range=\(range) · primaries=\(video.colorPrimaries ?? "未提供") · transfer=\(video.transferFunction ?? "未提供") · matrix=\(video.yCbCrMatrix ?? "未提供")"
+    }
+
+    private func encodedAudio(_ snapshot: StreamDiagnosticsSnapshot) -> String {
+        guard let encoding = snapshot.encoding else { return "未提供編碼快照（舊版來源或無 RTMP 管線）" }
+        guard let audio = encoding.audio else { return "此發布世代尚未觀測到壓縮音訊" }
+        return "\(audio.codec) · \(audio.sampleRate) Hz · \(audio.channels) ch · \(audio.framesPerPacket) sample frames/packet（0 表示可變或未指定）"
+    }
+
+    /// 顯示原始觀測時間；停止後保持最後快照，不虛構新的輸出時間。
+    private func observedTime(_ time: Date?) -> String? {
+        time?.formatted()
     }
     private func detail(_ label: String, _ value: String?) -> some View {
         VStack(alignment: .leading, spacing: 3) {

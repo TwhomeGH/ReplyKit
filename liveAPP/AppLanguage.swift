@@ -1,5 +1,6 @@
 import Foundation
 
+/// 用於應用語言枚舉
 enum AppLanguage: String, CaseIterable, Identifiable {
     case system
     case zhHant
@@ -36,6 +37,9 @@ enum AppLanguage: String, CaseIterable, Identifiable {
         return AppLanguage(rawValue: rawValue) ?? .system
     }
 
+    /// 本地化翻譯 由xcstrings清單內
+    /// - Parameter key:對應xcstring
+    /// - Returns: 翻譯後的值
     static func localized(_ key: String) -> String {
         guard let identifier = selected.localeIdentifier,
               let path = Bundle.main.path(forResource: identifier, ofType: "lproj"),

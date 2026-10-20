@@ -79,13 +79,31 @@ struct MetricReportAnalysis: Sendable {
         return nil
     }
 
+    /// 將明確容量單位轉為十進位 B／KB／MB／GB／TB，其他量綱保留原文。
+    /// - Parameters:
+    ///   - value: 報告提供的原始純量文字。
+    ///   - original: true 時完整保留原始單位與精度。
+    /// - Returns: 適合畫面顯示的文字，不修改解析資料或匯出 JSON。
+    static func displayValue(_ value: String, original: Bool = false) -> String {
+        guard !original, let capacity = bytes(value) else { return value }
+        let units = ["B", "KB", "MB", "GB", "TB"]
+        var amount = capacity
+        var index = 0
+        while amount >= 1000 && index < units.count - 1 {
+            amount /= 1000
+            index += 1
+        }
+        return String(format: "%.2f %@", locale: Locale(identifier: "en_US_POSIX"), amount, units[index])
+    }
+
     /// 只接受已知容量單位；不猜測無單位數字，避免產生錯誤比例。
     private static func bytes(_ value: Any?) -> Double? {
         guard let text = value as? String else { return nil }
         let parts = text.split(whereSeparator: { $0.isWhitespace })
         guard parts.count == 2, let number = Double(parts[0]), number.isFinite, number >= 0,
               let multiplier = ["B": 1.0, "kB": 1e3, "KB": 1e3, "MB": 1e6, "GB": 1e9,
-                                "KiB": 1024.0, "MiB": 1048576.0, "GiB": 1073741824.0][String(parts[1])] else { return nil }
+                                "TB": 1e12, "KiB": 1024.0, "MiB": 1048576.0,
+                                "GiB": 1073741824.0, "TiB": 1099511627776.0][String(parts[1])] else { return nil }
         let result = number * multiplier
         return result.isFinite ? result : nil
     }

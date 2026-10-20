@@ -4,6 +4,17 @@ import Testing
 
 /// 解讀只使用原始報告提供的值，缺漏或未知單位不得生成誤導比例。
 struct MetricReportAnalysisTests {
+    @Test func capacityDisplayPreservesMeaningAndRawValues() {
+        #expect(MetricReportAnalysis.displayValue("117404 kB") == "117.40 MB")
+        #expect(MetricReportAnalysis.displayValue("256000000 kB") == "256.00 GB")
+        #expect(MetricReportAnalysis.displayValue("1 MiB") == "1.05 MB")
+        #expect(MetricReportAnalysis.displayValue("0 B") == "0.00 B")
+        #expect(MetricReportAnalysis.displayValue("117404 kB", original: true) == "117404 kB")
+        for text in ["125 ms", "42", "100 mystery", "-1 MB", "nan MB", "1e309 GB"] {
+            #expect(MetricReportAnalysis.displayValue(text) == text)
+        }
+    }
+
     @Test func diskReportDoesNotInventMemory() throws {
         let text = #"{"schemaVersion":1,"report":{"diskSpaceUsageMetrics":{"totalDiskSpaceCapacity":"256000000 kB","totalDiskSpaceUsedSize":"244752658 kB","totalDataFileSize":"117404 kB"}}}"#
         let result = try MetricReportAnalysis.parse(text)

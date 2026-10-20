@@ -12,7 +12,6 @@ import Combine
 import MachO
 import Metal
 import UIKit
-import SystemConfiguration
 import os
 
 struct DataPoint: Identifiable {
@@ -416,21 +415,6 @@ struct DeviceInfo {
         return 0
     }
 
-    static let networkInterface: String = {
-        #if targetEnvironment(simulator)
-        return "Simulator"
-        #else
-        guard let reachability = SCNetworkReachabilityCreateWithName(nil, "apple.com") else {
-            return "No Connection"
-        }
-        var flags = SCNetworkReachabilityFlags()
-        SCNetworkReachabilityGetFlags(reachability, &flags)
-        if flags.contains(.isWWAN) { return "Cellular" }
-        if flags.contains(.reachable) { return "WiFi" }
-        return "No Connection"
-        #endif
-    }()
-
     static var batteryLevel: Int {
         UIDevice.current.isBatteryMonitoringEnabled = true
         return Int(UIDevice.current.batteryLevel * 100)
@@ -550,6 +534,7 @@ struct DeviceView: View {
     @State private var sampleDate = Date()
     @State private var cpuInfo = SystemCPU()
     @State private var diskIO = SystemDiskIO()
+    @State private var networkTraffic = NetworkTrafficSampler()
     @State private var systemCPUText = "尚未取樣"
     @State private var appCPUPercent = 0.0
     @ObservedObject private var laManager = StreamActivityManager.shared
@@ -595,6 +580,7 @@ struct DeviceView: View {
                     networkCard
                     systemCard
                     gpuCard
+                    MixerPipelineCard(audio: false, now: sampleDate)
                     videoPipelineCard
                     liveActivityCard
                 } trailing: {
@@ -608,6 +594,7 @@ struct DeviceView: View {
                     if capture.streamTelemetry.pipelineSampledAt != nil {
                         capturePipelineCard
                     }
+                    MixerPipelineCard(audio: true, now: sampleDate)
                     audioPipelineCard
                 }
                 .padding(16)
@@ -619,6 +606,7 @@ struct DeviceView: View {
             // 恢復時重設差分基準，避免把背景期間的累計當作每秒速率。
             cpuInfo = SystemCPU()
             diskIO = SystemDiskIO()
+            networkTraffic = NetworkTrafficSampler()
             _ = cpuInfo.usage()
             sampleDate = Date()
             prevAppWriteBytes = AppLogPersister.shared.totalWrittenBytes
@@ -794,17 +782,15 @@ struct DeviceView: View {
 
     /// 設備診斷卡片；沿用頁面採樣與服務狀態。
     private var networkCard: some View {
-        SettingsDashboardCard(header: { Label("網路", systemImage: "network") }) {
-            Text("介面: \(DeviceInfo.networkInterface)")
-        }
+        NetworkTrafficCard(sampler: networkTraffic)
     }
 
     /// 設備診斷卡片；沿用頁面採樣與服務狀態。
     private var systemCard: some View {
         SettingsDashboardCard(header: { Label("系統", systemImage: "gearshape") }) {
             Text("iOS: \(DeviceInfo.osVersion)")
-            Text("開機時間: \(uptimeString)")
-            Text("電量: \(DeviceInfo.batteryLevel)% (\(DeviceInfo.batteryState))")
+            Text("\(AppLanguage.localized("system.runtime.total")): \(uptimeString)")
+            Text("\(AppLanguage.localized("system.battery")): \(DeviceInfo.batteryLevel)% (\(DeviceInfo.batteryState))")
         }
     }
 
@@ -830,14 +816,14 @@ struct DeviceView: View {
             CapturePipelineStatusView(sampledAt: capture.streamTelemetry.pipelineSampledAt, now: sampleDate)
             Text(capture.streamTelemetry.sourceQueues ?? "尚未取得來源佇列").font(.caption)
             Text(capture.streamTelemetry.mixerAudio ?? "尚未取得混音資料").font(.caption)
-            Text("來源與混音計數不代表 RTMP 已送出；下方圖表來自 ReplayKit 擴展。")
+            Text("來源與混音計數不代表 RTMP 已送出；共用輸出圖表涵蓋兩種來源，進階健康圖表仍由 ReplayKit 擴展提供。")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
 
     /// 設備診斷卡片；沿用頁面採樣與服務狀態。
     private var videoPipelineCard: some View {
-        SettingsDashboardCard(header: { Label("Video Pipeline", systemImage: "waveform.path.ecg") }) {
+        SettingsDashboardCard(header: { Label("ReplayKit 影片進階診斷", systemImage: "waveform.path.ecg") }) {
             pipelineFreshness(videoHealth.lastUpdatedAt)
             Text("最後回報狀態: \(videoHealth.latestStatus)")
                 .foregroundColor(videoHealth.latestStatus == "healthy" ? .green : .orange)
@@ -921,7 +907,7 @@ struct DeviceView: View {
 
     /// 設備診斷卡片；沿用頁面採樣與服務狀態。
     private var audioPipelineCard: some View {
-        SettingsDashboardCard(header: { Label("Audio Pipeline", systemImage: "waveform") }) {
+        SettingsDashboardCard(header: { Label("ReplayKit 音訊進階診斷", systemImage: "waveform") }) {
             pipelineFreshness(audioHealth.lastUpdatedAt)
             Text("最後回報狀態: \(audioHealth.latestStatus)")
                 .foregroundColor(audioHealth.latestStatus == "healthy" ? .green : .orange)
@@ -1112,6 +1098,7 @@ struct DeviceView: View {
 
     /// 每次只採樣一次，歷史最多 60 筆；呼叫端負責前景與頁面可見性。
     private func sample() {
+        networkTraffic.sample()
         dataPointCounter &+= 1
         let id = dataPointCounter
         let mem = DeviceInfo.memoryBreakdown

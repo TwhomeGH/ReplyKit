@@ -38,6 +38,7 @@ private struct MetricReportDetailView: View {
     @State private var content: String?
     @State private var analysis: MetricReportAnalysis?
     @State private var errorMessage: String?
+    @State private var originalUnits = false
 
     var body: some View {
         List {
@@ -59,6 +60,14 @@ private struct MetricReportDetailView: View {
             }
             if let errorMessage { Text(errorMessage).foregroundStyle(.red) }
             if let analysis {
+                Section("容量顯示") {
+                    Picker("單位", selection: $originalUnits) {
+                        Text("自動 KB／MB／GB").tag(false)
+                        Text("報告原始單位").tag(true)
+                    }
+                    Text("自動顯示以 1 KB = 1,000 bytes 換算；時間與次數維持原值。分享 JSON 保留原始資料。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 if !analysis.missing.isEmpty {
                     Section("本份報告的限制") {
                         Text("未提供：" + analysis.missing.joined(separator: "、"))
@@ -83,7 +92,8 @@ private struct MetricReportDetailView: View {
                         ForEach(section.fields) { field in
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(field.title).font(.subheadline)
-                                Text(field.value).font(.headline).textSelection(.enabled)
+                                Text(MetricReportAnalysis.displayValue(field.value, original: originalUnits))
+                                    .font(.headline).textSelection(.enabled)
                                 Text(field.id).font(.caption2).foregroundStyle(.secondary)
                             }
                         }

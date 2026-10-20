@@ -283,8 +283,13 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                     self.telemetry.mixerAudio = "mixed=\(health.mixerOutputFrames) ready=\(health.mixerReady) channels=\(health.outputChannels) \(self.audioProbe?.summary() ?? "probe=none")"
                     sendlog(message: "[CaptureAudioPipeline] session=\(token) mixed=\(health.mixerOutputFrames) ready=\(health.mixerReady) error=\(health.lastError ?? "none") channels=\(health.outputChannels) rms=\(health.outputChannelRMS) \(self.audioProbe?.summary() ?? "probe=none") \(tracks)")
                 }
-                if let probe = self.streamDiagnosticsProbe, let stream = self.output, let connection = self.connection {
-                    let snapshot = await probe.snapshot(source: "ScreenCaptureKit", stream: stream, connection: connection)
+                if let probe = self.streamDiagnosticsProbe {
+                    let snapshot: StreamDiagnosticsSnapshot
+                    if let stream = self.output, let connection = self.connection {
+                        snapshot = await probe.snapshot(source: "ScreenCaptureKit", stream: stream, connection: connection)
+                    } else {
+                        snapshot = probe.mixerSnapshot(source: "ScreenCaptureKit", phase: self.state.phase.rawValue)
+                    }
                     guard !Task.isCancelled else { return }
                     StreamDiagnosticsModel.shared.record(snapshot)
                 }
@@ -299,6 +304,9 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         let defaults = userDefaults ?? .standard
         let pipeline = CaptureMediaPipeline()
         self.pipeline = pipeline
+        let diagnosticsProbe = StreamDiagnosticsProbe()
+        streamDiagnosticsProbe = diagnosticsProbe
+        await pipeline.mixer.addOutput(diagnosticsProbe)
         var mixing = CaptureMediaPipeline.audioSettings(from: await pipeline.mixer.audioMixerSettings, microphone: filter.isMicrophoneEnabled)
         mixing.tracks[0]?.volume = Self.volume(defaults, key: "appVolume")
         mixing.tracks[1]?.volume = Self.volume(defaults, key: "micVolume")
@@ -422,9 +430,6 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         startupStage = "pipeline.audioSettings"
         try await stream.setAudioSettings(audio)
         telemetry.targetBitrate = audio.bitRate
-        let diagnosticsProbe = StreamDiagnosticsProbe()
-        streamDiagnosticsProbe = diagnosticsProbe
-        await pipeline.mixer.addOutput(diagnosticsProbe)
         await pipeline.mixer.addOutput(stream)
     }
     private func startPublishing() async throws {
@@ -490,8 +495,6 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             logResources(stage: "rtmp.close.end")
             await pipeline?.mixer.removeOutput(output)
         }
-        if let streamDiagnosticsProbe { await pipeline?.mixer.removeOutput(streamDiagnosticsProbe) }
-        streamDiagnosticsProbe = nil
         logResources(stage: "connection.close.begin")
         _ = try? await connection?.close()
         logResources(stage: "connection.close.end")
@@ -510,6 +513,8 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         logResources(stage: "pump.finish.end")
         if let audioProbe { await pipeline?.mixer.removeOutput(audioProbe) }
         audioProbe = nil
+        if let streamDiagnosticsProbe { await pipeline?.mixer.removeOutput(streamDiagnosticsProbe) }
+        streamDiagnosticsProbe = nil
         await pipeline?.mixer.stopRunning()
         if let recordingSink {
             await pipeline?.mixer.removeOutput(recordingSink)

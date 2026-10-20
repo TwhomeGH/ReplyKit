@@ -4821,8 +4821,26 @@
         "ja" : { "stringUnit" : { "state" : "translated", "value" : "ログ記録モード" } },
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "日誌模式" } }
         }
+    },
+
+    "system.runtime.total":{
+       "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Running Time" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "総稼働時間" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "總運行時間" } }
+        }
+
+    },
+     "system.battery":{
+       "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Battery" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "電量" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "電量" } }
+        }
+
     }
-    
+
   },
+
   "version" : "1.0"
 }

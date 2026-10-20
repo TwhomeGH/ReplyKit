@@ -33,7 +33,7 @@ struct MetricReportEntry: Identifiable, Sendable {
                                      ("memoryMetrics", "peakMemoryUsage", "記憶體峰值"),
                                      ("diskIOMetrics", "cumulativeLogicalWrites", "邏輯寫入量")] {
             if let values = report[group] as? [String: Any], let value = values[field] as? String {
-                lines.append(label + "：" + value)
+                lines.append(label + "：" + MetricReportAnalysis.displayValue(value))
             }
         }
         if lines.isEmpty {
