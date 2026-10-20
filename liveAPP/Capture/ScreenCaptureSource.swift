@@ -416,8 +416,18 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             let detail = CaptureErrorDiagnostics.sanitize(event.message + " " + (event.detail ?? ""), secrets: logSecrets)
             sendlog(message: "[CaptureTransport] session=\(logSession) \(detail)")
             Task { @MainActor [weak self] in
-                guard let self, self.state.phase != .stopping, self.state.phase != .idle else { return }
+                guard let self, self.state.id?.uuidString == logSession,
+                      self.state.phase != .stopping, self.state.phase != .idle else { return }
                 self.telemetry.consume(message: event.message, detail: event.detail, now: event.timestamp)
+                // 重連成功只代表恢復發布流程；收到本次的新輸出才恢復直播狀態。
+                if self.publishingStage == "rtmp.publish",
+                   event.message == "publish throughput",
+                   event.timestamp >= self.telemetry.stageStartedAt,
+                   self.telemetry.stage == "published" {
+                    self.publishingStage = "published"
+                    self.publishingChanged(true)
+                    self.logStage()
+                }
                 self.telemetryChanged(self.telemetry)
             }
         }
@@ -448,10 +458,9 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         try await stream.setVideoSettings(video)
         await stream.setBitRateStrategy(StreamVideoAdaptiveBitRateStrategy(mamimumVideoBitrate: video.bitRate))
         await conn.setReconnectEnabled(true)
+        let reconnectSession = state.id
         await conn.setOnReconnectStateChanged { [weak self] reconnect in
-            if case .exhausted = reconnect {
-                Task { @MainActor in await self?.publishingFailed("網路重連次數已達上限，推流已停止。") }
-            }
+            await self?.handleReconnect(reconnect, session: reconnectSession)
         }
         var audio = await stream.audioSettings
         let audioBitrate = StreamAudioBitrate.load(from: defaults)
@@ -461,6 +470,27 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         try await stream.setAudioSettings(audio)
         telemetry.targetBitrate = audio.bitRate
         await pipeline.mixer.addOutput(stream)
+    }
+    /// 同步重連生命週期；忽略舊工作與停止期間的回呼，避免收尾後重新顯示直播中。
+    /// - Parameters:
+    ///   - reconnect: 底層重試進度；成功仍需等待新的輸出摘要。
+    ///   - session: 安裝回呼時的擷取識別碼。
+    private func handleReconnect(_ reconnect: RTMPConnection.ReconnectState, session: UUID?) async {
+        guard session == state.id, session != nil,
+              state.phase != .idle, state.phase != .stopping, !cleaningPublishing else { return }
+        switch reconnect {
+        case .started, .failed:
+            publishingStage = "reconnect"
+            publishingChanged(false)
+        case .succeeded:
+            publishingStage = "rtmp.publish"
+        case .exhausted:
+            await publishingFailed("網路重連次數已達上限，推流已停止。")
+            return
+        }
+        telemetry.audioPackets = nil
+        telemetry.sampledAt = nil
+        logStage()
     }
     /// 依序連接 RTMP 服務器並發布串流，成功後才通知上層正在推流。
     /// - Throws: 連線／發布失敗、必要物件不存在或工作取消。
@@ -483,7 +513,8 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     /// 將發布階段映射到上層連線摘要並寫入日誌；已失敗時保留失敗摘要。
     private func logStage() {
         if !telemetry.failed {
-            telemetry.stage = publishingStage == "published" ? "published" : (publishingStage == "rtmp.publish" ? "publish" : "tcp")
+            telemetry.stage = publishingStage == "reconnect" ? "reconnect" :
+                (publishingStage == "published" ? "published" : (publishingStage == "rtmp.publish" ? "publish" : "tcp"))
             telemetry.stageStartedAt = Date()
             telemetryChanged(telemetry)
         }

@@ -74,6 +74,10 @@ struct MixerPipelineCard: View {
                         }
                         Text((audio ? snapshot.mixerAudio : snapshot.mixerVideo) ?? "尚未提供格式")
                             .font(.caption).textSelection(.enabled)
+                            // 雙欄卡片仍須完整呈現色彩與音訊欄位，讓高度隨換行增加。
+                            .lineLimit(nil)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         let points = model.history[source] ?? []
                         let latest = points.last
                         Text(rate(audio ? latest?.audioBuffersPerSecond : latest?.videoFPS,
@@ -97,6 +101,9 @@ struct MixerPipelineCard: View {
             }
             Text("速率由相鄰快照計算，保留最多 60 筆。這是編碼前 Mixer 輸出；系統直接錄製不經 Mixer，沒有這組資料。首次取樣與舊版未回報計數時不補零。")
                 .font(.caption).foregroundStyle(.secondary)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
