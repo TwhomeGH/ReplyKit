@@ -156,6 +156,9 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         let selection = SelectedCaptureFilter(filter: filter)
         Task { @MainActor [weak self] in self?.selected(selection.filter) }
     }
+    /// 接收使用者選取的分享內容，建立可取消的啟動工作並統一處理啟動失敗。
+    /// 已在擷取時變更選擇會結束本次工作，要求重新開始以套用新內容。
+    /// - Parameter filter: 系統分享選擇器提供的擷取內容與麥克風選項。
     private func selected(_ filter: SCContentFilter) {
         if state.phase == .streaming {
             Task { await finish(message: "分享選項已變更，請重新開始擷取以套用新選擇。") }
@@ -175,6 +178,13 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             }
         }
     }
+    /// 準備音訊、SCStream 與所選模式的錄製／推流管線，啟動擷取及診斷回報。
+    /// RTMP 連線由獨立 publishingTask 執行，因此本函式完成不表示推流成功。
+    /// - Parameters:
+    ///   - filter: 本次分享內容與麥克風選項。
+    ///   - token: 本次擷取識別碼，用於狀態轉移與日誌關聯。
+    /// - Throws: 無法繼續擷取的初始化錯誤、系統啟動錯誤或工作取消。
+    ///   呼叫端負責呼叫 finish(message:) 收回已建立的資源。
     private func start(filter: SCContentFilter, token: UUID) async throws {
         let defaults = userDefaults ?? .standard
         let width = max(2, defaults.integer(forKey: "odstW") > 0 ? defaults.integer(forKey: "odstW") : 1920)
@@ -265,6 +275,9 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                 }
             }
         }
+        // 診斷回報起點：擷取啟動成功後立即取樣，每輪完成再等待 5 秒。
+        // 此工作由擷取生命週期持有，finish() 會取消並等待結束；
+        // RTMP 失敗但本地可控錄製繼續時，仍能回報 Mixer 資料。
         diagnostics = Task { [weak self] in
             var sampleCount = 0
             while !Task.isCancelled {
@@ -286,24 +299,37 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                 if let probe = self.streamDiagnosticsProbe {
                     let snapshot: StreamDiagnosticsSnapshot
                     if let stream = self.output, let connection = self.connection {
+                        // 組合 Mixer 實測、實際壓縮格式與 RTMP 傳輸快照。
                         snapshot = await probe.snapshot(source: "ScreenCaptureKit", stream: stream, connection: connection)
                     } else {
+                        // 純本地可控錄製只有 Mixer，不能補出不存在的 RTMP 指標。
                         snapshot = probe.mixerSnapshot(source: "ScreenCaptureKit", phase: self.state.phase.rawValue)
                     }
                     guard !Task.isCancelled else { return }
+                    // 實際回報設備頁的入口：同程序直接更新共用 Model。
+                    // ReplayKit 則經 Socket 解碼後呼叫同一個 record()。
                     StreamDiagnosticsModel.shared.record(snapshot)
                 }
                 guard !Task.isCancelled else { return }
+                // 另一條摘要回報：更新 CaptureCoordinator 的擷取／連線狀態，
+                // 與上方供格式明細、影音速率圖表使用的 Model 分開。
                 self.telemetryChanged(self.telemetry)
                 do { try await Task.sleep(nanoseconds: 5_000_000_000) } catch { return }
             }
         }
     }
     /// Mixer 由擷取生命週期持有，RTMP 斷線不影響本地可控錄製。
+    /// 建立取樣佇列、診斷探針與可選錄製輸出，並啟動即時音量同步工作。
+    /// - Parameters:
+    ///   - source: 要掛載影音取樣接收器的 SCStream。
+    ///   - filter: 用於判斷是否掛載麥克風輸入。
+    /// - Throws: 取樣處理器建立或系統輸出掛載失敗。
     private func prepareMediaPipeline(source: SCStream, filter: SCContentFilter) async throws {
         let defaults = userDefaults ?? .standard
         let pipeline = CaptureMediaPipeline()
         self.pipeline = pipeline
+        // 掛載僅讓 Probe 接收 Mixer 回呼並累計資料，不會自行更新 UI。
+        // 設備頁回報由上方 diagnostics Task 定期組合快照，再呼叫 record()。
         let diagnosticsProbe = StreamDiagnosticsProbe()
         streamDiagnosticsProbe = diagnosticsProbe
         await pipeline.mixer.addOutput(diagnosticsProbe)
@@ -366,6 +392,10 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         let value = defaults.object(forKey: key) as? Double ?? 1
         return value.isFinite ? Float(min(4, max(0, value))) : 1
     }
+    /// 建立 RTMP 連線物件、編碼設定與日誌回呼，將串流掛到既有 Mixer。
+    /// 此步驟尚未連線；實際 connect／publish 由 startPublishing() 執行。
+    /// - Parameter size: 未指定固定畫布時採用的尺寸。
+    /// - Throws: Mixer 不存在或編碼設定套用失敗；已建立資源由外層清理。
     private func preparePublishing(size: CGSize) async throws {
         let defaults = userDefaults ?? .standard
         guard let pipeline else { throw CancellationError() }
@@ -432,6 +462,8 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         telemetry.targetBitrate = audio.bitRate
         await pipeline.mixer.addOutput(stream)
     }
+    /// 依序連接 RTMP 服務器並發布串流，成功後才通知上層正在推流。
+    /// - Throws: 連線／發布失敗、必要物件不存在或工作取消。
     private func startPublishing() async throws {
         guard let conn = connection, let stream = output else { throw CancellationError() }
         try Task.checkCancellation()
@@ -448,6 +480,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         logStage()
         publishingChanged(true)
     }
+    /// 將發布階段映射到上層連線摘要並寫入日誌；已失敗時保留失敗摘要。
     private func logStage() {
         if !telemetry.failed {
             telemetry.stage = publishingStage == "published" ? "published" : (publishingStage == "rtmp.publish" ? "publish" : "tcp")
@@ -456,6 +489,11 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         }
         sendlog(message: "[CaptureSource] session=\(state.id?.uuidString ?? "none") mode=\(mode.rawValue) publishPhase=\(publishingStage)")
     }
+    /// 遮蔽端點與金鑰後記錄錯誤；RTMP 階段的錯誤另更新推流失敗狀態。
+    /// 本函式只回報，不負責停止或釋放資源。
+    /// - Parameters:
+    ///   - error: 原始錯誤，供診斷展開錯誤型別與原因。
+    ///   - stage: 失敗所在階段；以 rtmp. 開頭時標記推流失敗。
     private func logFailure(_ error: Error, stage: String) {
         if stage.hasPrefix("rtmp.") {
             telemetry.failed = true
@@ -464,6 +502,9 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         let detail = CaptureErrorDiagnostics.describe(error, secrets: [url, key])
         sendlog(message: "[CaptureError] session=\(state.id?.uuidString ?? "none") mode=\(mode.rawValue) stage=\(stage) \(detail)")
     }
+    /// 清理失敗的發布工作；有本地錄製時保留錄製，否則結束整次擷取。
+    /// 會等待 publishingTask，須由該工作以外的 Task 呼叫，避免等待自己。
+    /// - Parameter message: 顯示於上層的錯誤摘要。
     private func publishingFailed(_ message: String) async {
         guard state.id != nil, state.phase != .stopping, !cleaningPublishing else { return }
         telemetry.failed = true
@@ -482,6 +523,8 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             update(state.phase, message + " 本地錄製繼續。")
         } else { await finish(message: message) }
     }
+    /// 停用重連、關閉並卸載 RTMP 輸出；保留 Mixer、診斷探針與本地錄製。
+    /// 呼叫端負責先停止發布工作；關閉錯誤不阻斷後續資源清理。
     private func stopPublishing() async {
         if !telemetry.failed, telemetry.stage != "idle" {
             telemetry.stage = "stopped"
@@ -500,6 +543,8 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         logResources(stage: "connection.close.end")
         output = nil; connection = nil
     }
+    /// 停止音量同步、解除來源回呼並等待取樣工作結束，再卸載探針與收尾錄製。
+    /// 釋放 Mixer 管線；SCStream 本身與 RTMP 連線由外層分別停止。
     private func stopMediaPipeline() async {
         volumeUpdates?.cancel()
         await volumeUpdates?.value; volumeUpdates = nil
@@ -569,11 +614,16 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             logFailure(error, stage: "audioSession.restoreMixing")
         }
     }
+    /// 記錄主 App 音訊 session 的類別、混音選項及路由，供追查外部播放中斷。
+    /// - Parameter event: 呼叫端提供的生命週期事件名稱。
     private func logAudioSession(_ event: String) {
         let audio = AVAudioSession.sharedInstance()
         let outputs = audio.currentRoute.outputs.map { $0.portType.rawValue }.joined(separator: ",")
         sendlog(message: "[CaptureAudio] session=\(state.id?.uuidString ?? "none") event=\(event) category=\(audio.category.rawValue) mode=\(audio.mode.rawValue) options=\(audio.categoryOptions.rawValue) otherAudio=\(audio.isOtherAudioPlaying) outputs=\(outputs)")
     }
+    /// 訂閱音訊中斷與路由變更，僅記錄事件，不自行重啟擷取或修改音訊設定。
+    /// 觀察者由 finish(message:) 統一移除；每次啟動只呼叫一次。
+    /// - Parameter token: 寫入事件日誌的本次擷取識別碼。
     private func observeAudioSession(token: UUID) {
         let center = NotificationCenter.default
         let interruption = center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { note in
@@ -595,6 +645,10 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         sendlog(message: "[CaptureResources] session=\(state.id?.uuidString ?? "none") stage=\(stage) \(values)")
     }
     func stop() async { await finish(message: nil) }
+    /// 結束整次擷取：取消並等待背景工作，收尾錄製、RTMP、Mixer 與系統觀察者。
+    /// 收尾期間重複呼叫直接返回；完成後釋放音訊所有權並通知上層回到 idle。
+    /// 不可由 operation／diagnostics／publishingTask 本身直接等待此函式，以免自我等待。
+    /// - Parameter message: 收尾完成後顯示的訊息；正常停止可傳 nil。
     private func finish(message: String?) async {
         guard let token = state.id, state.phase != .stopping else { return }
         sendlog(message: "[CaptureSource] session=\(token) stopping publishPhase=\(publishingStage)")

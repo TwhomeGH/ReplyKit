@@ -73,6 +73,7 @@ struct MetricReportAnalysis: Sendable {
         return Self(sections: sections, metadata: metadata, missing: missing, deviceStorageFraction: fraction)
     }
 
+    /// 只抽取 JSON 字串或數值；複合資料回傳 nil，交由呼叫端顯示分布／事件摘要。
     private static func scalar(_ value: Any?) -> String? {
         if let text = value as? String { return text }
         if let number = value as? NSNumber { return number.stringValue }

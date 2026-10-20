@@ -100,6 +100,7 @@ struct MixerPipelineCard: View {
         }
     }
 
+    /// 格式化有效速率；缺少差分基準時顯示等待，不能以零取代未知。
     private func rate(_ value: Double?, unit: String) -> String {
         value.map { String(format: "%.1f %@", $0, unit) } ?? "等待有效速率取樣"
     }
@@ -161,6 +162,7 @@ struct StreamDiagnosticsSections: View {
         }
     }
 
+    /// 保留傳輸計數的原始 bytes 與 nil，讓明細統一處理未提供資料。
     private func bytes(_ value: Int?) -> String? {
         value.map { "\($0) bytes" }
     }
@@ -174,6 +176,7 @@ struct StreamDiagnosticsSections: View {
         return "\(codec) · \(video.width)×\(video.height) · range=\(range) · primaries=\(video.colorPrimaries ?? "未提供") · transfer=\(video.transferFunction ?? "未提供") · matrix=\(video.yCbCrMatrix ?? "未提供")"
     }
 
+    /// 顯示實際壓縮音訊格式，區分沒有快照與本世代尚未產出壓縮樣本。
     private func encodedAudio(_ snapshot: StreamDiagnosticsSnapshot) -> String {
         guard let encoding = snapshot.encoding else { return "未提供編碼快照（舊版來源或無 RTMP 管線）" }
         guard let audio = encoding.audio else { return "此發布世代尚未觀測到壓縮音訊" }
@@ -184,6 +187,7 @@ struct StreamDiagnosticsSections: View {
     private func observedTime(_ time: Date?) -> String? {
         time?.formatted()
     }
+    /// 建立可選取的診斷明細列，缺值統一顯示「未提供」。
     private func detail(_ label: String, _ value: String?) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(label).font(.caption).foregroundStyle(.secondary)

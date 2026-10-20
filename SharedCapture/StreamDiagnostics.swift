@@ -89,6 +89,7 @@ final class StreamDiagnosticsProbe: MediaMixerOutput, @unchecked Sendable {
         audio = "\(Self.fourCC(a.mFormatID)) · \(a.mSampleRate) Hz · \(a.mChannelsPerFrame) ch · \(a.mBitsPerChannel) bit · interleaved=\(buffer.format.isInterleaved)"
     }
 
+    /// 將像素／音訊格式代碼轉為四字元 ASCII；無法表示時保留數值供排查。
     private static func fourCC(_ value: UInt32) -> String {
         let bytes = [24, 16, 8, 0].map { UInt8(truncatingIfNeeded: value >> $0) }
         return String(bytes: bytes, encoding: .ascii) ?? String(value)

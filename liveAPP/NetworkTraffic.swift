@@ -86,6 +86,7 @@ struct NetworkTrafficCard: View {
         }
     }
 
+    /// 將 bytes/s 同時呈現為 Mbps 與自動容量單位；無基準時顯示等待取樣。
     private func rate(_ value: Double?) -> String {
         guard let value else { return "等待相鄰取樣" }
         return String(format: "%.2f Mbps · ", value * 8 / 1_000_000)
