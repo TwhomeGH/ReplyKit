@@ -1,33 +1,27 @@
 # 松鼠🐿️推流
 
-  適用於iOS的直播推流應用
+適用於iOS的直播推流應用
 
 最近註冊了 愛發電有興趣可以去看看
 
 [愛發電 快樂大松鼠](https://ifdian.net/a/coffee0709)
 
-![主畫面](Docs/main.png) ![主畫面 2](Docs/main2.png)
+![主畫面](Docs/Screenshots/Main.png)
 
 > [!WARNING]
 > 說明文件不即時 由於後續更新迭代多次
 >
 > 文檔可能沒有更新 所以實際包含功能會有所區別
 
-## 最新更新
+## 更新紀錄
 
-- 2026.07.31 移除 MemoryWarning 監聽設計
-- 2026.07.30 Metal Shader 性能優化
-- 2026.06.20 語音通話與直播共存
+近期更新包含：
 
-👉 完整變更歷史（新→舊）：[Docs/ChangeHistory.md](Docs/ChangeHistory.md)
+- **擷取與錄影**：新增 ScreenCaptureKit 擷取路徑，保留 ReplayKit；提供本地錄影、分段與壓縮設定。
+- **操作介面**：整併主頁、設備資訊、日誌、音訊與設定五個分頁，改善平板布局。
+- **推流診斷**：補強影音管線、RTMP 連線與時間戳日誌，方便追查推流問題。
 
-## HaishinKit Fork
-
-推流引擎已切換至自行維護的 fork：
-
-- **Repo**: [TwhomeGH/HaishinKitFixSwfit](https://github.com/TwhomeGH/HaishinKitFixSwfit)
-- **修正內容**: VBR iOS 13+ 支援、Quality mode、VBV 參數、ABR 演算法改善、NetworkMonitor 擁塞檢測強化
-- 完整改動說明請見 [CHANGES.md](https://github.com/TwhomeGH/HaishinKitFixSwfit/blob/main/CHANGES.md)
+各項功能的版本、限制與驗證進度，請參閱 [完整變更歷史](Docs/ChangeHistory.md)。
 
 ## 問題應對方案
 
@@ -36,45 +30,64 @@
 
 [常見問題處理方式 - Common Problem Solutions](https://github.com/TwhomeGH/ReplyKit/wiki)
 
-## 重新設計 音訊處理 新增了降噪功能&回音消除
+## 螢幕擷取與本地錄影
 
-降噪處理增加 以及包含回音處理
+主頁可選擇擷取來源與工作模式。
 
-> [!WARNING]
-> App增益被列為棄用 未來將移除
+### 擷取來源
+
+- **ReplayKit**：保留既有廣播擴展推流方式。
+- **ScreenCaptureKit**：需要 iOS／iPadOS 27 或更新版本，可使用推流與本地錄影功能。
+
+兩種來源的設定支援程度可能不同，請依所選來源的介面提示操作。
+
+### 本地錄影
+
+使用 ScreenCaptureKit 時，可以選擇只錄影，先確認畫面、方向與聲音，再進行直播。
+
+錄影相關功能包含：
+
+- 錄製品質與壓縮設定。
+- 畫面方向修正。
+- 分段錄製，以及結束後合併分段。
+- 從本地錄影清單查看檔案資訊，並進入碼率分析。
+
+> [!NOTE]
+> 分段錄製可保留已完成的段落，降低意外中斷造成整場錄影無法使用的風險
 >
-> 由於此項會造成回音消除 處理過頭
->
-> 回音消除的基準應保持原始數據
+> 正在寫入的段落仍可能受影響。
 
-## 視頻碼率分析 🎬
+## 影片碼率分析
 
-為了方便直播主或壓片組更便捷地使用，提供了**視頻碼率分析**功能：
+從「設備資訊」右上角的碼率分析入口，可選取影片進行檢查。
 
-- **選取視頻**：支援從相簿或檔案 App 選取視頻
-- **詳細碼率資訊**：顯示平均碼率、視頻軌碼率、音頻軌碼率、編碼格式、解析度、幀率等
-- **圖表化展示**：使用 Swift Charts 呈現碼率對比柱狀圖與碼率隨時間變化折線圖
-- **快速診斷**：協助判斷原始視頻品質，作為直播推流參數配置參考
+- **匯入影片**：支援從相簿或「檔案」選取。
+- **查看資訊**：檢查編碼格式、解析度、幀率與碼率。
+- **碼率圖表**：觀察影片不同時間點的碼率變化，協助排查品質與檔案大小問題。
 
-### 未來計畫
+### 與本地錄影的關係
 
-- **壓縮轉碼功能**：提供影片壓縮與轉碼功能，最大化效益，讓直播主與壓片組能直接在 App 內完成影片最佳化
+碼率分析用於檢查影片的編碼、尺寸、幀率及碼率，不會修改原始影片。
 
-## AltStore 測試
+ScreenCaptureKit 本地錄影另有壓縮與分段設定
 
-> [!TIP]
-> 需要自行確認 `AltStoreTest.json`
->
-> 目前所指向的版本號 有可能文檔紀錄版本可能過時 或未更新
+這些功能屬於錄影流程，並不代表此分析頁能替任意匯入影片進行壓縮或轉碼。
 
-以下示例版本是 **16.3.5**
-<!-- you can set the alighnment here to left/center/right -->
-<h1 align="left">
-<a href="https://stikstore.app/altdirect/?url=https://raw.githubusercontent.com/TwhomeGH/ReplyKit/refs/heads/main/AltStoreTest.json"><img src="https://github.com/StikStore/altdirect/blob/main/assets/png/AltSource_Blue.png?raw=true" alt="加入 AltStore 來源" target="_blank" width="200">
-</a>
-<a href="https://github.com/TwhomeGH/ReplyKit/releases/download/16.3.5/liveApp_16.3.5.ipa"><img src="https://github.com/StikStore/altdirect/blob/main/assets/png/Download_Blue.png?raw=true" alt="下載 IPA" target="_blank" width="200">
-</a>
-</h1>
+## 下載與安裝
+
+### 手動下載 IPA
+
+請前往 [GitHub Releases](https://github.com/TwhomeGH/ReplyKit/releases)，查看版本說明並下載對應的 IPA。
+
+### AltStore 來源
+
+可透過 [加入 AltStore 來源](https://stikstore.app/altdirect/?url=https://raw.githubusercontent.com/TwhomeGH/ReplyKit/refs/heads/main/AltStoreTest.json) 開啟來源加入入口。
+
+來源設定檔：[AltStoreTest.json](AltStoreTest.json)。
+
+> [!NOTE]
+> AltStore 來源與 GitHub Releases 的更新時間可能不同，安裝前請確認版本號。
+> 安裝後的連線與設定同步注意事項，請參閱下方「側載用戶說明」。
 
 ## 贊助支持
 
@@ -101,34 +114,42 @@
 
 ## 側載用戶說明
 
-> [!WARNING]
-> 由於本應用為側載安裝，**App Group 無法使用**，因此改以 **Socket** 作為資料傳遞替代方案。  
-> 這可能導致首次啟動時，部分 `UserDefaults` 設定 **未能正確同步**，例如：
->
-> - `AppVolume`  
-> - `MicVolume`  
-> - `Rotate`  
-> - `主要與次要字體大小`
->
-> 其中 **部分 AppVolume / MicVolume 已做額外修正**，因此首次啟動時不會影響實際使用。
-> 主要與次要字體大小也可能丟失 導致子母窗口無法正常顯示訊息是空的
->
-> 只需要稍微設置中上下微調即可修正
+主 App 與 ReplayKit 廣播擴展需要交換設定、狀態與日誌。
+
+當安裝環境無法使用 App Group 共享容器時，會依賴 Socket 通訊。
+
+是否能使用 App Group，取決於簽章與權限配置，不能只由「側載」判定。
+
+若使用 ReplayKit 時出現設定未套用或診斷資料未更新，請先確認：
+
+- 主 App 的 Socket 服務是否已啟動。
+- 廣播擴展是否已連上主 App。
+- 相關資料轉送與日誌選項是否已啟用。
+
+排查時請一併提供 App 版本、擷取來源及日誌，方便確認是哪一段通訊未完成。
 
 ### Socket 轉送
 
-請先開啟 **Socket 轉送** 功能。  
+在「設定 → Socket 與連線」查看本機內網 IPv4 位址、服務端口與連線狀態。
 
-- 若首次啟動時 **沒有跳出「允許區域網路」權限提示**  
-  請先**啟用調試日誌**（此操作會主動觸發本地 Socket 行為，從而喚起系統權限視窗）。  
-  啟用後，將 App 從背景完全關閉並重新開啟，以重新觸發權限提示。
-  
-### GPU 處理方向
+- 預設端口為 `9322`，可依需要修改。
+- 外部工具連線時，請使用主 App 顯示的位址與端口。
+- 若服務啟動失敗，請查看日誌中的錯誤原因，確認端口是否被占用。
+- 若無法連線，請確認裝置與外部工具的網路可互通，並檢查系統的區域網路權限。
 
-首次使用時，請務必 **手動更新一次 GPU 處理方向**。  
+Socket 服務與日誌轉送是不同設定
 
-- 避免因預設值未正確填入而變成 `0`  
-- 手動更新後即可正常套用正確數值
+需要收集廣播擴展的日誌時，請另外確認相關轉送選項已啟用。
+
+### 畫面方向檢查
+
+首次使用或切換擷取來源後，建議先做短時間錄影或測試推流，確認畫面方向與比例。
+
+若畫面側轉、上下顛倒或比例不符，請檢查目前擷取來源對應的方向修正與畫布設定。
+
+ReplayKit 與 ScreenCaptureKit 的推流、本地錄影可能使用不同的處理路徑
+
+請分別確認結果，避免重複旋轉。
 
 ## TODO 待辦事項
 
@@ -146,7 +167,11 @@
 
 ### 為什麼需要旋轉處理？
 
-由於原始 **ReplyKit** 只提供直向畫面，若需要橫向畫面，必須進行 GPU 畫面旋轉處理。  
+擷取到的影像尺寸與方向資訊，可能與預期的播放方向不同。
+
+當輸出畫面側轉或顛倒時，可透過方向修正調整。
+
+旋轉與畫布尺寸應一起確認，避免畫面轉正後仍出現拉伸、裁切或黑邊。
 
 ### 可設定參數
 
@@ -168,73 +193,57 @@
 
 ## 音訊設定
 
-![Audio](Docs/audio.png)
+![Audio](Docs/Screenshots/Audio.png)
 
-在此頁面，你可以：
+### 音訊相關功能分為
 
-- **控制麥克風或應用的增益與音量大小**  
-- **查看直播時的實際輸出音量**，方便即時監控音訊狀態
+- 音訊分頁：調整 App 與麥克風音量，查看最近回報的音量。
+- 設定 → 音訊處理設定：配置降噪、回音消除等處理選項。
 
-## 日誌服務
+### 降噪與回音消除
 
-![LogSet](Docs/SettingLog.png)
+- 降噪：降低背景噪音。
 
-- **啟用調試日誌**
+- 回音消除：減少應用聲音經喇叭播放後，再被麥克風收錄的回音。
 
-  除錯用日誌
+實際效果會受到收音環境、音訊路由與處理設定影響。
 
-- **停用非日誌頁面頻率調整**
-  
-  停用後在非日誌頁會保持更新
-
-- **啟用畫面旋轉日誌**
-  
-  啟用後可以查看關於畫面處理信息
-
-- **啟用Socke轉送日誌**
+### 舊版 App 增益
 
 > [!WARNING]
-> 此選項是給側載用戶 由於側載AppGroup就不可用
-> 需要用Socket作為轉送橋梁
+> 舊版 App 增益已棄用，目前保留於進階選項，預計後續移除。
 >
-> 啟用後他會把日誌以Socket送回來
-> 以及依賴AppGroup更新音量等的部分會用Socket取得新配置
+> 一般音量調整請使用「App 聲音」卡片中的音量控制。
 
-- **啟用PIP子母窗口**
+## 日誌與問題排查
 
-  PIP的每秒處理張數情況
+| ![日誌主頁](Docs/Screenshots/LogSettings00.png) | ![日誌更多設定](Docs/Screenshots/LogSettings01.png) | ![日誌更多02](Docs/Screenshots/LogSettings02.png) |
+| -- | -- | -- |
 
-- **啟用PIP子母窗口訊息處理**
+### 查看日誌
 
-  PIP的收到訊息後處理情況
-  
-![日誌服務器設定頁面，顯示多個開關選項：啟用PIP子母窗口訊息處理調試日誌、測試娛樂傳輸、Socket管理、停用自動碼率調整、GPU旋轉處理設定、API接口地址設為http://192.168.0.242:3000/post、測試連線和取得視頻輸出設定等功能](Docs/SettingLog2.png)
+「日誌」分頁以主 App 的 `log.txt` 為歷史資料來源，可查看較早紀錄或回到最新日誌。
 
-- **測試擃展通信傳遞**
+頁面提供來源篩選，方便區分主 App 與外部來源的紀錄。能否看到廣播擴展日誌，取決於擴展是否已連線，以及相關記錄與轉送設定。
 
-  用於測試擃展通信情況
+### 日誌設定
 
-- **Socket重連**
+從「設定 → 日誌設定」，或日誌頁內的設定入口，調整記錄與轉送選項。
 
-  如果Socket斷線 可用於重新連接
+排查特定問題時，可啟用對應的 RTMP、畫面處理或 PiP 診斷。提供紀錄時，請註明問題發生時間、擷取來源及操作步驟。
 
-- **停用自動碼率調整**
+RTMP 時間軸診斷的啟用方式與欄位說明，請參閱 [時間軸診斷文件](Docs/development/RTMP_TIMELINE_DIAGNOSTICS.md)。
 
-  停用後 不會再根據網路情況調整 保持原設定
+### 外部日誌服務
 
-- **API 接口地址**
+需要將日誌送到自架服務時，可設定 POST 接收位址。一般使用不必配置此外部服務。
 
-  這只有當你有啟用外部日誌時他才會使用
-
-  通常一般來說你用不到
-
-  主要是接收App調試日誌
-
-  日誌Api服務端參閱: [LogServer.js](https://github.com/TwhomeGH/ReplyKit/blob/main/LogServer.js)
+服務端範例：[LogServer.js](LogServer.js)。
 
 ## **設備信息**
 
-![CPUINFO](Docs/DeviceInfo1.png)
+| ![DeviceInfo](Docs/Screenshots/DeviceInfo.png) | ![DeviceInfo2](Docs/Screenshots/DeviceInfo2.png) |
+| -- | -- |
 
 該頁面可以快速查看設備的重要信息，包括：
 
@@ -243,22 +252,13 @@
 - 裝置原始屏幕寬高（points / pixels）
 - ReplayKit 開播後得到的系統輸出解析度（如 1920×1334）
 
-## CPU / GPU 資訊
+### CPU / GPU 資訊
 
 - CPU 使用率（App 當前使用率）
 - CPU 核心數
 - 處理器 / GPU 名稱（如 A14 / Apple M1 GPU）
 
-## 裝置型號
-
-- 裝置代號（如 `iPad13,18`）
-- 對應 處理器型號（如 A14 / M1）
-
-## **設備信息 RAM**
-
-![CPUINFO](Docs/DeviceInfo2.png)
-
-## 運行內存 Ram
+### 運行內存 RAM
 
 以 `task_vm_info` 的 **`phys_footprint`** 為主（Jetsam 真正採計的值），並拆解來源：
 
@@ -274,9 +274,36 @@
 
 > 只看 `resident_size` 會偏高（含可回收的檔案映射頁）；判斷記憶體壓力請看「App 實際佔用」(phys_footprint)。external 大只代表靜態連結的媒體庫（libsrt / libdatachannel / HaishinKit）code 被映射，並非 App 資料。
 
-### 圖表凍結修復 (2026/06)
+### 儲存空間 Storage
 
-CPU / RAM / Disk I/O 三個即時圖表在長時間開啟或反覆切頁後會停止更新。修正：`DataPoint` ID 從 `UUID()` 改為遞增整數（Charts diff 穩定）、計時器改為 `onAppear`/`onDisappear` 顯式管理、切頁時清空歷史陣列。詳見 `Docs/replykit-core-fixes-summary.md` §10。
+- 總容量顯示
+- 已使用容量
+- 可用(含可清除)
+- 空閒 實際可使用
+
+### 磁盤 I/O
+
+- Page In 分頁輸入
+- Page Out 分頁取出
+- App Write 應用寫入
+
+### 系統信息 System Info
+
+- 當前iOS版本
+- 設備持續運行總時間
+- 電量
+
+### 網路 Network
+
+- 介面 是WiFI或流量
+- 上行速度/下行速度 (待實現)
+
+## 設備管線與性能報告
+
+- MetricKit性能報告 由系統提供
+- 串流格式與RTMP傳輸
+- Video Pipeline 視頻管線 (由ReplyKit提供)
+- Audio Pipeline 音頻管線 (由ReplyKit提供)
 
 ## **PIP子母窗口聊天室**
 
