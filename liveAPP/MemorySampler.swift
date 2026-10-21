@@ -1,4 +1,7 @@
 import Foundation
+#if os(iOS)
+import UIKit
+#endif
 
 /// 週期把記憶體明細寫入日誌，用來定位 footprint 成長的時間；無法單憑分類判定持有物件。
 ///
@@ -21,6 +24,11 @@ final class MemorySampler {
 
     private init() {}
 
+    /// 在生命週期邊界取樣，與週期日誌使用同一條序列佇列。
+    func checkpoint(_ reason: String) {
+        queue.async { [weak self] in self?.sample(reason: reason) }
+    }
+
     /// 開始週期取樣；重複呼叫安全（已啟動則忽略）。
     func start(interval: TimeInterval = 30) {
         queue.async { [weak self] in
@@ -40,7 +48,7 @@ final class MemorySampler {
         }
     }
 
-    private func sample() {
+    private func sample(reason: String = "periodic") {
         let m = DeviceInfo.memoryBreakdown
         let url = URLCache.shared
         let line = String(
@@ -50,5 +58,21 @@ final class MemorySampler {
             Double(url.currentMemoryUsage) / 1024, Double(url.currentDiskUsage) / 1024
         )
         sendlog(message: line)
+        #if os(iOS)
+        // UI 狀態在 MainActor 讀取，不從背景佇列讀取 ObservableObject。
+        Task { @MainActor in
+            let capture = CaptureCoordinator.shared
+            let pip = PIPService.diagnosticInstance?.resourceDiagnosticSummary ?? "pip=notInitialized"
+            let tts = TTSService.diagnosticInstance?.resourceDiagnosticSummary ?? "tts=notInitialized"
+            let appState: String
+            switch UIApplication.shared.applicationState {
+            case .active: appState = "active"
+            case .inactive: appState = "inactive"
+            case .background: appState = "background"
+            @unknown default: appState = "unknown"
+            }
+            sendlog(message: "[IdleResources] reason=\(reason) uptime=\(Int(ProcessInfo.processInfo.systemUptime)) app=\(appState) footprintMB=\(String(format: "%.1f", m.footprintMB)) \(capture.resourceDiagnosticSummary) \(pip) \(tts) replayKitStatusIsLive=\(!LPConfig.shared.StreamEnded) statusIsNotProcessProof=true")
+        }
+        #endif
     }
 }

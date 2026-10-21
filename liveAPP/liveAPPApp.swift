@@ -1076,6 +1076,7 @@ struct liveAPPApp: App {
 
         // 週期把記憶體明細寫入日誌，供追查 footprint 成長來源
         MemorySampler.shared.start()
+        MemorySampler.shared.checkpoint("app.start")
 
         // 預先初始化 BroadcastButton 的 RPSystemBroadcastPickerView，避免首次使用時指向錯誤
         let bundleID = (Bundle.main.bundleIdentifier ?? "nuclear.liveAPP") + ".ReplyKIT"
@@ -1154,6 +1155,11 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
             ContentView()
                 .environmentObject(logModel)
                 .environment(\.locale, AppLanguage(rawValue: appLanguageRawValue)?.locale ?? .autoupdatingCurrent)
+                #if os(iOS)
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
+                    MemorySampler.shared.checkpoint("memory.warning")
+                }
+                #endif
                 .onChange(of: scenePhase) { phase in
                     switch phase {
                     case .inactive:
@@ -1167,6 +1173,7 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
 
                         // 釋放非關鍵記憶體，降低被 kill 風險
                         PIPService.shared.releaseNonCriticalMemory()
+                        MemorySampler.shared.checkpoint("app.background.afterCleanup")
                         // 日誌頁以檔案為準；背景不清除可見歷史。
                         // 進入背景前把 pending log 批次落盤，避免被系統暫停/終止時遺失最後一筆
                         AppLogPersister.shared.flushNow()
@@ -1183,6 +1190,7 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
 
                         // 通知 PIPService 回到前景
                         PIPService.shared.appWillEnterForeground()
+                        MemorySampler.shared.checkpoint("app.foreground")
 
                         // 取消背景窗口與 BGTaskScheduler 任務（前景不需要）
                         #if os(iOS)

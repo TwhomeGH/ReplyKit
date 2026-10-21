@@ -20,6 +20,12 @@ import ScreenCaptureKit
     @Published private(set) var streamTelemetry = CaptureStreamTelemetry()
     private var lease: CaptureLease?
     private var driver: (any CaptureDriver)?
+    /// 本程序是否曾開始擷取；用來區分冷啟動閒置與擷取後閒置。
+    private var hasStartedCapture = false
+    /// 診斷物件持有狀態，不代表底層資源的精確記憶體大小。
+    var resourceDiagnosticSummary: String {
+        "capturePhase=\(phase.rawValue) publishing=\(isPublishing) everStartedCapture=\(hasStartedCapture) driverRetained=\(driver != nil) leaseRetained=\(lease != nil)"
+    }
     var isBusy: Bool { phase != .idle }
     /// ScreenCaptureKit 在此建置／裝置不可用的原因；nil 表示可用。
     /// 由「最特定」排到「最一般」，讓 UI 能直接顯示為何灰掉。
@@ -50,6 +56,7 @@ import ScreenCaptureKit
         catch { errorMessage = error.localizedDescription; return }
         #if SCREEN_CAPTURE_KIT_IOS27 && canImport(ScreenCaptureKit) && !targetEnvironment(macCatalyst) && !targetEnvironment(simulator)
         if #available(iOS 27.0, *) {
+            hasStartedCapture = true
             errorMessage = nil
             phase = .selecting
             streamTelemetry = CaptureStreamTelemetry()
@@ -64,6 +71,7 @@ import ScreenCaptureKit
                 if let message { self.errorMessage = message }
                 if phase == .idle {
                     self.driver = nil; self.lease = nil
+                    MemorySampler.shared.checkpoint("capture.finished")
                 }
             }
             driver = source; source.present(); return

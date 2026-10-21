@@ -31,11 +31,14 @@ final class DummyPlaybackDelegate: NSObject, AVPictureInPictureSampleBufferPlayb
 
 final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     static let shared = PIPService()
+    /// 診斷僅查詢已初始化的服務，不因取樣建立影像資源。
+    private(set) static weak var diagnosticInstance: PIPService?
 
     private var isInBackground = false
 
     private override init() {
         super.init()
+        Self.diagnosticInstance = self
     }
 
     var lastFPS = 1.0
@@ -283,6 +286,11 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     var estimatedPixelBufferPoolMB: Double {
         guard OframeSize.width > 0, OframeSize.height > 0 else { return 0 }
         return Double(pixelBufferPoolSize) * Double(OframeSize.width) * Double(OframeSize.height) * 4 / 1024 / 1024
+    }
+
+    /// 只讀目前排程與影像池狀態；估算大小不是實際配置／常駐記憶體。
+    var resourceDiagnosticSummary: String {
+        "pipActive=\(isPiPActive) pipRenderScheduled=\(scheduledRender != nil) pipRenderCancelled=\(renderCancelled) pipTargetFPS=\(currentFPS) pipPoolRetained=\(pixelBufferPool != nil) pipPoolEstimateMB=\(estimatedPixelBufferPoolMB)"
     }
 
     private var frameCount: Int64 = 0

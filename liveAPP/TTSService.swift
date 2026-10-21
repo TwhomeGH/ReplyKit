@@ -17,6 +17,12 @@ enum TTSQueueOverflowAction: Int {
 @MainActor
 final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
     static let shared = TTSService()
+    /// 診斷不透過 shared 建立語音合成器。
+    private(set) static weak var diagnosticInstance: TTSService?
+    /// 只讀目前語音與排隊狀態，不更動音訊工作階段。
+    var resourceDiagnosticSummary: String {
+        "ttsSpeaking=\(synthesizer.isSpeaking) ttsPaused=\(synthesizer.isPaused) ttsPending=\(pendingUtteranceCount)"
+    }
 
     private let synthesizer = AVSpeechSynthesizer()
     #if os(iOS)
@@ -134,6 +140,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
 
 
         super.init()
+        Self.diagnosticInstance = self
         
         
 
