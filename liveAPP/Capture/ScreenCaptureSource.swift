@@ -341,6 +341,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         videoMixing.mode = .passthrough
         await pipeline.mixer.setVideoMixerSettings(videoMixing)
         let probe = ScreenAudioProbe(session: state.id?.uuidString ?? "none")
+        LiveVolumeModel.shared.beginCapture(state.id?.uuidString ?? "none")
         audioProbe = probe
         await pipeline.mixer.addOutput(probe)
         if mode.wantsRecording && directRecordingEnabled {
@@ -577,6 +578,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     /// 停止音量同步、解除來源回呼並等待取樣工作結束，再卸載探針與收尾錄製。
     /// 釋放 Mixer 管線；SCStream 本身與 RTMP 連線由外層分別停止。
     private func stopMediaPipeline() async {
+        LiveVolumeModel.shared.endCapture(state.id?.uuidString ?? "none")
         volumeUpdates?.cancel()
         await volumeUpdates?.value; volumeUpdates = nil
         if let pump, let capture {

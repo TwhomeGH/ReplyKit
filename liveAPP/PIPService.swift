@@ -290,7 +290,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
     /// 只讀目前排程與影像池狀態；估算大小不是實際配置／常駐記憶體。
     var resourceDiagnosticSummary: String {
-        "pipActive=\(isPiPActive) pipRenderScheduled=\(scheduledRender != nil) pipRenderCancelled=\(renderCancelled) pipTargetFPS=\(currentFPS) pipPoolRetained=\(pixelBufferPool != nil) pipPoolEstimateMB=\(estimatedPixelBufferPoolMB)"
+        "pipActive=\(isPiPActive) pipRenderScheduled=\(scheduledRender != nil) pipRenderCancelled=\(renderCancelled) pipTargetFPS=\(currentFPS) pipPoolRetained=\(pixelBufferPool != nil) pipPoolHeldEstimateMB=\(pixelBufferPool == nil ? 0 : estimatedPixelBufferPoolMB) pipPoolConfiguredEstimateMB=\(estimatedPixelBufferPoolMB)"
     }
 
     private var frameCount: Int64 = 0

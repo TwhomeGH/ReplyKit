@@ -71,8 +71,48 @@ final class MemorySampler {
             case .background: appState = "background"
             @unknown default: appState = "unknown"
             }
-            sendlog(message: "[IdleResources] reason=\(reason) uptime=\(Int(ProcessInfo.processInfo.systemUptime)) app=\(appState) footprintMB=\(String(format: "%.1f", m.footprintMB)) \(capture.resourceDiagnosticSummary) \(pip) \(tts) replayKitStatusIsLive=\(!LPConfig.shared.StreamEnded) statusIsNotProcessProof=true")
+            let comparison = IdleMemoryComparison.shared.observe(
+                footprint: m.footprintMB, captureBusy: capture.isBusy,
+                replayLive: !LPConfig.shared.StreamEnded, reason: reason)
+            sendlog(message: "[IdleResources] reason=\(reason) \(comparison) uptime=\(Int(ProcessInfo.processInfo.systemUptime)) app=\(appState) footprintMB=\(String(format: "%.1f", m.footprintMB)) \(capture.resourceDiagnosticSummary) \(pip) \(tts) replayKitStatusIsLive=\(!LPConfig.shared.StreamEnded) statusIsNotProcessProof=true")
         }
         #endif
+    }
+}
+
+/// 在主 actor 維護本程序基準；沿用採樣，不增加背景執行或定時器。
+@MainActor
+final class IdleMemoryComparison {
+    static let shared = IdleMemoryComparison()
+    private let processID = UUID()
+    private let startedAt: TimeInterval
+
+    init(startedAt: TimeInterval = ProcessInfo.processInfo.systemUptime) { self.startedAt = startedAt }
+    private var everBusy = false
+    private var wasBusy = false
+    private var baseline: Double?
+    private var lastBusyFootprint: Double?
+    private var stoppedAt: TimeInterval?
+    private var milestones: Set<Int> = []
+
+    /// 冷啟動滿 60 秒仍未觀察到開播才建立基準；停止後以實際採樣時間標記里程碑。
+    /// ReplayKit 僅是最後已知狀態，不能以此證明擴展程序已結束。
+    func observe(footprint: Double, captureBusy: Bool, replayLive: Bool, reason: String, now: TimeInterval = ProcessInfo.processInfo.systemUptime) -> String {
+        let busy = captureBusy || replayLive
+        if busy {
+            everBusy = true
+            lastBusyFootprint = footprint
+            stoppedAt = nil
+            milestones = []
+        } else {
+            if !everBusy && baseline == nil && now - startedAt >= 60 { baseline = footprint }
+            if wasBusy { stoppedAt = now }
+        }
+        wasBusy = busy
+        let elapsed = stoppedAt.map { now - $0 }
+        let due = [30, 60, 120].filter { !milestones.contains($0) && (elapsed ?? -1) >= Double($0) }
+        milestones.formUnion(due)
+        func number(_ value: Double?) -> String { value.map { String(format: "%.1f", $0) } ?? "unknown" }
+        return "process=\(processID) everObservedCapture=\(everBusy) coldIdleBaselineMB=\(number(baseline)) deltaBaselineMB=\(number(baseline.map { footprint - $0 })) stopElapsedSeconds=\(number(elapsed)) deltaLastBusyMB=\(number(elapsed == nil ? nil : lastBusyFootprint.map { footprint - $0 })) reachedStopSeconds=\(due)"
     }
 }

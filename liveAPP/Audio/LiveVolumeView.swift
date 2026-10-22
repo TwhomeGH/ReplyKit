@@ -11,7 +11,65 @@ final class LiveVolumeModel: ObservableObject {
     @Published var micVolumeLive: Float = 0.0
     @Published var appVolumeLive: Float = 0.0
 
-    private init() {
+    /// 本機擷取優先持有回報權；nil 表示接受舊版 ReplayKit 傳輸。
+    private var captureSession: String?
+    @Published private(set) var source = "ReplayKit"
+    @Published private(set) var mixedVolume: Float?
+    @Published private(set) var sampledAt: [String: Date] = [:]
+    @Published private(set) var stopped = false
+    private var visibleViews: Set<UUID> = []
+    var monitoringVisible: Bool { !visibleViews.isEmpty }
+
+    /// 多視窗各自登記，避免其中一個關閉便停用其他視窗的監測。
+    func setVisible(_ visible: Bool, id: UUID) {
+        if visible { visibleViews.insert(id) } else { visibleViews.remove(id) }
+    }
+
+    /// 開始本機 session，清除上一來源的值與時間。
+    func beginCapture(_ session: String) {
+        captureSession = session
+        source = "ScreenCaptureKit"
+        stopped = false
+        sampledAt = [:]
+        mixedVolume = nil
+        micVolumeLive = 0
+        appVolumeLive = 0
+    }
+
+    /// 停止後保留來源標籤，但所有數值都不可再視為即時資料。
+    func endCapture(_ session: String) {
+        guard captureSession == session else { return }
+        captureSession = nil
+        stopped = true
+        sampledAt = [:]
+        mixedVolume = nil
+    }
+
+    /// RMS 為線性振幅；來源分軌在 Mixer 音量調整前，mixed 在混音後。
+    /// nil 表示讀取失敗／格式不支援；不得轉成有效靜音。
+    func reportCapture(_ session: String, channel: String, rms: Float?, at: Date) {
+        guard captureSession == session else { return }
+        guard let rms, rms.isFinite, rms >= 0 else {
+            sampledAt[channel] = nil
+            return
+        }
+        sampledAt[channel] = at
+        switch channel {
+        case "app": appVolumeLive = rms
+        case "mic": micVolumeLive = rms
+        default: mixedVolume = rms
+        }
+    }
+
+    /// 回報缺席與有效零值分開；過期判斷只在頁面重繪時計算。
+    func measurement(_ channel: String, now: Date) -> String? {
+        if stopped { return "已停止" }
+        guard let at = sampledAt[channel] else { return "未收到資料" }
+        return now.timeIntervalSince(at) > 3 ? "資料已過期" : nil
+    }
+
+    init(observeNotifications: Bool = true) {
+        guard observeNotifications else { return }
 #if os(iOS)
 
         if !LPConfig.shared.SocketLog && !LPConfig.isSideload {
@@ -22,8 +80,7 @@ final class LiveVolumeModel: ObservableObject {
             let model = Unmanaged<LiveVolumeModel>.fromOpaque(observer).takeUnretainedValue()
 
             Task { @MainActor in
-                model.micVolumeLive  = getUserDefault(forKey: "micVolumeLive") ?? 0.0
-                model.appVolumeLive  = getUserDefault(forKey: "appVolumeLive") ?? 0.0
+                model.updateVolumes(mic: getUserDefault(forKey: "micVolumeLive"), app: getUserDefault(forKey: "appVolumeLive"))
             }
         },
                                         "LiveVolumeUpdated" as CFString,
@@ -42,8 +99,7 @@ final class LiveVolumeModel: ObservableObject {
             ) { [weak self] _ in
                 guard let self = self else { return }
                 Task { @MainActor in
-                    self.micVolumeLive = getUserDefault(forKey: "micVolumeLive") ?? 0.0
-                    self.appVolumeLive = getUserDefault(forKey: "appVolumeLive") ?? 0.0
+                    self.updateVolumes(mic: getUserDefault(forKey: "micVolumeLive"), app: getUserDefault(forKey: "appVolumeLive"))
                 }
             }
 
@@ -60,31 +116,27 @@ final class LiveVolumeModel: ObservableObject {
 #endif
     }
 
-    // 🔹 新增一個全局更新函數
+    /// ReplayKit 相容入口；本機擷取期間拒收擴展值，不再將接收事件重新廣播造成回授。
     func updateVolumes(mic: Float? = nil, app: Float? = nil, persist: Bool = false) {
-        if let mic = mic {
+        guard captureSession == nil else { return }
+        source = "ReplayKit"
+        stopped = LPConfig.shared.StreamEnded
+        if let mic = mic, mic.isFinite, mic >= 0 {
+            sampledAt["mic"] = Date()
             self.micVolumeLive = mic
             if persist {
             setUserDefault(mic, forKey: "micVolumeLive")
             }
         }
-        if let app = app {
+        if let app = app, app.isFinite, app >= 0 {
+            sampledAt["app"] = Date()
             self.appVolumeLive = app
             if persist {
             setUserDefault(app, forKey: "appVolumeLive")
             }
         }
 
-        // 發送通知，讓其他地方也能收到更新
-#if os(iOS)
-        CFNotificationCenterPostNotification(cfCenter,
-                                             CFNotificationName("LiveVolumeUpdated" as CFString),
-                                             nil,
-                                             nil,
-                                             true)
-#else
-        NotificationCenter.default.post(name: Notification.Name("LiveVolumeUpdated"), object: nil)
-#endif
+
     }
 }
 
@@ -186,6 +238,7 @@ struct SafeProgressBar: View {
 /// 音量控制與實測分開呈現；沿用既有非線性滑桿換算與設定通知。
 struct LiveVolumeView: View {
     @StateObject private var model = LiveVolumeModel.shared
+    @State private var visibilityID = UUID()
     @EnvironmentObject private var pageState: PageState
     @AppStorage("appVolume", store: userDefaults) private var appVolume: Double = 1
     @AppStorage("micVolume", store: userDefaults) private var micVolume: Double = 1
@@ -199,6 +252,15 @@ struct LiveVolumeView: View {
                     Label(AppLanguage.localized(pageState.onAudioPage ? "volume.monitorOn" : "volume.monitorOff"),
                           systemImage: "waveform")
                         .font(.caption).foregroundStyle(.secondary)
+                    Text(model.source == "ScreenCaptureKit" ? "ScreenCaptureKit · App／Mic 為混音前 RMS" : "ReplayKit · 擴展回報音量")
+                        .font(.caption).foregroundStyle(.secondary)
+                    if model.source == "ScreenCaptureKit" {
+                        TimelineView(.periodic(from: .now, by: 1)) { context in
+                            Text("混音輸出 RMS：" + (model.measurement("mixed", now: context.date)
+                                ?? formatPreciseVolumePercent(Double(model.mixedVolume ?? 0))))
+                                .font(.caption).monospacedDigit()
+                        }
+                    }
                     AdaptiveSettingsColumns(width: geometry.size.width) {
                         channel(title: "volume.app", value: $appVolume,
                                 measured: Double(model.appVolumeLive), color: .blue,
@@ -226,6 +288,8 @@ struct LiveVolumeView: View {
                 .padding(16)
             }
         }
+        .onAppear { model.setVisible(true, id: visibilityID) }
+        .onDisappear { model.setVisible(false, id: visibilityID) }
     }
 
     /// 滑桿百分比是控制刻度；實測值另外標示，不把設定值當作訊號音量。
@@ -252,12 +316,15 @@ struct LiveVolumeView: View {
             HStack { Text("0%"); Spacer(); Text("50%"); Spacer(); Text("100%") }
                 .font(.caption).foregroundStyle(.secondary)
             Divider()
-            HStack {
-                Text("volume.measured")
-                Spacer()
-                Text(formatPreciseVolumePercent(measured)).monospacedDigit()
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                let status = model.measurement(notification == "appVolumeChanged" ? "app" : "mic", now: context.date)
+                HStack {
+                    Text("volume.measured")
+                    Spacer()
+                    Text(status ?? formatPreciseVolumePercent(measured)).monospacedDigit()
+                }
+                if status == nil { SafeProgressBar(value: visualVolumeLevel(measured), color: color) }
             }
-            SafeProgressBar(value: visualVolumeLevel(measured), color: color)
             Text("volume.measurementNote").font(.caption).foregroundStyle(.secondary)
         }
     }
