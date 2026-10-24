@@ -1,5 +1,12 @@
 # 變更歷史
 
+## 2026.10.24 08:45 接入底層影音時間補償策略修正
+
+- 兩份套件鎖定同步更新至 `6ac475ad`，底層測試通過；包含 `ebd0a827` 的跨軌自動補償移除。
+- ReplayKit／ScreenCaptureKit 不再依最近影音輸出位置差推算影片補償，也不將落後音訊重標到影片位置；音訊封包節奏修正仍保留。
+- 現有日誌入口可接收 publish timeline schema=2，包含 alignment=observeOnly、origins=perTrackFirstSample 與 sourceStartOffset；不需新增 API 呼叫。
+- 套件 JSON、一致性及差異檢查通過；主 App CI、起播／停頓／重連後的內容同步待實機驗收。共同時間原點與跨階段影格追蹤尚未完成。
+
 ## 2026.10.22 22:34 接入 ScreenCaptureKit 音量監測與閒置基準
 
 - ScreenCaptureKit 來源 App／Mic 在 Mixer 前限頻量測 RMS，混音後另列輸出 RMS；不以左右聲道代替來源分軌。
