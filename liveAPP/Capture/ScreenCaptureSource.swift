@@ -19,6 +19,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     let mic = CaptureMailbox<CapturedSample>(budget: 1024 * 1024)
     private var workers: [Task<Void, Never>] = []
     private var loggedFrameSize = CGSize.zero
+    let callbacks = CaptureCallbackDiagnostics()
     init(mixer: MediaMixer, probe: ScreenAudioProbe, rotateLeft: Bool,
          canvas: CGSize? = nil, fills: Bool = false) throws {
         let compositor = try ScreenStreamVideoRotator(rotateLeft: rotateLeft, overlay: ScreenOverlayComposer(),
@@ -46,14 +47,45 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         }
     }
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
-        guard CMSampleBufferIsValid(sampleBuffer), CMSampleBufferDataIsReady(sampleBuffer) else { return }
+        let arrival = CMClockGetTime(CMClockGetHostTimeClock()).seconds
+        let track: CaptureCallbackDiagnostics.Track
+        switch type {
+        case .screen: track = .video
+        case .audio: track = .audio
+        case .microphone: track = .mic
+        @unknown default: track = .unknown
+        }
+        var outcome = CaptureCallbackDiagnostics.Outcome.invalid
+        var frameState: String?
+        // defer 覆蓋每個提早返回；入口計數與 mailbox 接受量是不同層次。
+        defer {
+            callbacks.record(track: track, outcome: outcome, state: frameState,
+                             arrival: arrival, pts: sampleBuffer.presentationTimeStamp.seconds)
+        }
+        guard CMSampleBufferIsValid(sampleBuffer) else { return }
+        outcome = .notReady
+        guard CMSampleBufferDataIsReady(sampleBuffer) else { return }
+        outcome = .offered
         let sample = CapturedSample(buffer: sampleBuffer)
         switch type {
         case .screen:
+            outcome = .missingStatus
             guard let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
-                  let raw = attachments.first?[.status] as? Int,
-                  SCFrameStatus(rawValue: raw) == .complete,
-                  let image = sampleBuffer.imageBuffer else { return }
+                  let raw = attachments.first?[.status] as? Int else { return }
+            switch SCFrameStatus(rawValue: raw) {
+            case .complete: frameState = "complete"
+            case .idle: frameState = "idle"
+            case .blank: frameState = "blank"
+            case .suspended: frameState = "suspended"
+            case .started: frameState = "started"
+            case .stopped: frameState = "stopped"
+            default: frameState = "unknown"
+            }
+            outcome = .nonComplete
+            guard SCFrameStatus(rawValue: raw) == .complete else { return }
+            outcome = .missingImage
+            guard let image = sampleBuffer.imageBuffer else { return }
+            outcome = .offered
             let frameSize = CGSize(width: CVPixelBufferGetWidth(image), height: CVPixelBufferGetHeight(image))
             if frameSize != loggedFrameSize {
                 loggedFrameSize = frameSize
@@ -62,7 +94,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             video.offer(sample, bytes: CVPixelBufferGetDataSize(image))
         case .audio: audio.offer(sample, bytes: CMSampleBufferGetTotalSampleSize(sampleBuffer))
         case .microphone: mic.offer(sample, bytes: CMSampleBufferGetTotalSampleSize(sampleBuffer))
-        @unknown default: break
+        @unknown default: outcome = .unknownType
         }
     }
     func finish() async {
@@ -285,6 +317,9 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                 let queues = self.pump.map { "video{\($0.video.summary)} audio{\($0.audio.summary)} mic{\($0.mic.summary)}" } ?? "sampleQueues=none"
                 sendlog(message: "[CaptureSource] backend=screenCaptureKit session=\(token) mode=\(self.mode.rawValue) capturePhase=\(self.state.phase.rawValue) publishPhase=\(self.publishingStage) \(queues)")
                 if let sink = self.recordingSink { sendlog(message: "[SegmentedRecordingQueue] \(sink.summary)") }
+                if let pump = self.pump {
+                    sendlog(message: "[CaptureCallbacks] session=\(token) schema=1 clockComparison=unverified \(pump.callbacks.summary(now: CMClockGetTime(CMClockGetHostTimeClock()).seconds))")
+                }
                 self.telemetry.sourceQueues = queues
                 self.telemetry.pipelineSampledAt = Date()
                 sampleCount += 1
@@ -587,7 +622,11 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             try? capture.removeStreamOutput(pump, type: .microphone)
         }
         logResources(stage: "pump.finish.begin")
-        await pump?.finish(); pump = nil
+        await pump?.finish()
+        if let pump {
+            sendlog(message: "[CaptureCallbacks] session=\(state.id?.uuidString ?? "unknown") stage=finished schema=1 clockComparison=unverified \(pump.callbacks.summary(now: CMClockGetTime(CMClockGetHostTimeClock()).seconds))")
+        }
+        pump = nil
         logResources(stage: "pump.finish.end")
         if let audioProbe { await pipeline?.mixer.removeOutput(audioProbe) }
         audioProbe = nil
