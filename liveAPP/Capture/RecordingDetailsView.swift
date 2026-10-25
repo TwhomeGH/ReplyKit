@@ -6,7 +6,7 @@ import AVFoundation
 
 /// 從實際檔案讀取的資訊快照，不使用開播設定推算，也不逐幀解碼。
 /// 影像欄位取第一條 video track；音訊編碼則列出所有 audio tracks。
-private struct RecordingFileDetails {
+struct RecordingFileDetails {
     /// 容器時長，單位為秒；無效數值由顯示層轉成「—」。
     let duration: Double
     /// 完整檔案位元組數，包含影像、音訊及容器封裝。
@@ -105,6 +105,7 @@ private struct RecordingFileDetails {
                     value("recording.videoCodec", d.videoCodec)
                     value("recording.audioCodec", d.audioCodecs)
                     Text(AppLanguage.localized("recording.infoHelp")).font(.caption).foregroundStyle(.secondary)
+                    NavigationLink("壓縮影片") { VideoCompressionView(initialURL: url) }
                     NavigationLink(AppLanguage.localized("recording.analyze")) { VideoBitrateView(initialURL: url) }
                 } else if let error { Text(error).foregroundStyle(.red) }
                 else { ProgressView() }

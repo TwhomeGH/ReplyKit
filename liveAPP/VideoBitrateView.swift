@@ -4,6 +4,7 @@ import Charts
 
 struct VideoBitrateView: View {
     var initialURL: URL? = nil
+    @State private var showingCompression = false
     @State private var didLoadInitialURL = false
     @State private var selectedPickerItem: PhotosPickerItem?
     @State private var selectedFileURL: URL?
@@ -16,6 +17,13 @@ struct VideoBitrateView: View {
 
     var body: some View {
         content
+            .toolbar { Button("壓縮影片") { showingCompression = true } }
+            .sheet(isPresented: $showingCompression) {
+                NavigationStack {
+                    VideoCompressionView(initialURL: selectedFileURL ?? initialURL)
+                        .toolbar { Button("完成") { showingCompression = false } }
+                }
+            }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .fileImporter(
                 isPresented: $showFilePicker,
@@ -330,6 +338,7 @@ struct VideoBitrateView: View {
     }
 
     private func startAnalysis(url: URL) {
+        selectedFileURL = url
         isAnalyzing = true
         errorMessage = nil
         result = nil
