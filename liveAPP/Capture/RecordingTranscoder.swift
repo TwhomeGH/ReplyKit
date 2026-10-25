@@ -14,6 +14,14 @@ enum RecordingTranscoder {
         NSError(domain: "RecordingCompression", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
     }
 
+    /// 以階段名稱包裝底層錯誤，保留原始錯誤供除錯與日誌辨識。
+    private static func staged(_ stage: String, _ error: Error) -> NSError {
+        NSError(domain: "RecordingCompression", code: 2, userInfo: [
+            NSLocalizedDescriptionKey: "\(stage)：\(error.localizedDescription)",
+            NSUnderlyingErrorKey: error
+        ])
+    }
+
     /// 平均碼率模式直接複製 AAC；系統品質模式由匯出預設管理影音編碼。
     /// - Parameters:
     ///   - url: 原始錄影位置；僅在產物驗證通過且較小時替換。
@@ -68,7 +76,9 @@ enum RecordingTranscoder {
         }
         let temporary = destination.map { _ in FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".partial.mp4") } ?? temporaryURL(for: url)
         let reader = try AVAssetReader(asset: asset)
-        let writer = try AVAssetWriter(outputURL: temporary, fileType: .mp4)
+        let writer: AVAssetWriter
+        do { writer = try AVAssetWriter(outputURL: temporary, fileType: .mp4) }
+        catch { throw staged("無法建立壓縮暫存檔", error) }
         defer {
             if reader.status == .reading { reader.cancelReading() }
             if writer.status == .writing { writer.cancelWriting() }
@@ -89,7 +99,9 @@ enum RecordingTranscoder {
             AVVideoCodecKey: codec, AVVideoWidthKey: Int(size.width), AVVideoHeightKey: Int(size.height),
             AVVideoScalingModeKey: AVVideoScalingModeResizeAspect,
             AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: settings.megabits * 1_000_000,
-                                               AVVideoMaxKeyFrameIntervalDurationKey: 2]
+                                               AVVideoMaxKeyFrameIntervalDurationKey: 2,
+                                               // 與錄影路徑一致關閉 B 幀：影格時間順序固定，輸出時長與驗證較可預期。
+                                               AVVideoAllowFrameReorderingKey: false] as [String: Any]
         ]
         var colors: [String: Any] = [:]
         for (source, destination) in [(kCMFormatDescriptionExtension_ColorPrimaries, AVVideoColorPrimariesKey),
@@ -144,7 +156,7 @@ enum RecordingTranscoder {
             guard reader.canAdd(outputs[index]), writer.canAdd(inputs[index]) else { throw failure("無法建立錄影轉碼軌道。") }
             reader.add(outputs[index]); writer.add(inputs[index])
         }
-        guard writer.startWriting() else { throw writer.error ?? failure("無法開始寫入。") }
+        guard writer.startWriting() else { throw staged("無法開始寫入壓縮檔", writer.error ?? failure("寫入器未回報原因。")) }
         writer.startSession(atSourceTime: .zero)
         guard reader.startReading() else { throw reader.error ?? failure("無法開始讀取。") }
         var lastProgress = -Double.infinity
@@ -153,7 +165,7 @@ enum RecordingTranscoder {
         // 有背壓才短暫讓出執行；不堆積整段影片或阻塞主執行緒。
         while finished.count < inputs.count {
             try Task.checkCancellation()
-            guard writer.status == .writing else { throw writer.error ?? failure("寫入中止。") }
+            guard writer.status == .writing else { throw staged("壓縮寫入中止", writer.error ?? failure("寫入中止。")) }
             var advanced = false
             for index in inputs.indices where !finished.contains(index) && inputs[index].isReadyForMoreMediaData {
                 guard let sample = outputs[index].copyNextSampleBuffer() else {
@@ -170,7 +182,7 @@ enum RecordingTranscoder {
                     }
                     if !limiter.accepts(seconds: pts) { continue }
                 }
-                guard inputs[index].append(sample) else { throw writer.error ?? failure("無法寫入媒體樣本。") }
+                guard inputs[index].append(sample) else { throw staged("無法寫入媒體樣本", writer.error ?? failure("無法寫入媒體樣本。")) }
             }
             if !advanced { try await Task.sleep(nanoseconds: 2_000_000) }
         }
@@ -179,7 +191,7 @@ enum RecordingTranscoder {
             await writer.finishWriting()
         } onCancel: { writer.cancelWriting() }
         try Task.checkCancellation()
-        guard writer.status == .completed else { throw writer.error ?? failure("轉碼未完成。") }
+        guard writer.status == .completed else { throw staged("轉碼未完成", writer.error ?? failure("轉碼未完成。")) }
         let outputBytes = try temporary.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
         let check = AVURLAsset(url: temporary)
         let outputDuration = try await check.load(.duration)
@@ -191,9 +203,11 @@ enum RecordingTranscoder {
         guard destination != nil || outputBytes < originalBytes else { throw failure("壓縮檔未縮小，保留原檔（方向處理亦未套用）。") }
         try Task.checkCancellation()
         if let destination {
-            try FileManager.default.moveItem(at: temporary, to: destination)
+            do { try FileManager.default.moveItem(at: temporary, to: destination) }
+            catch { throw staged("無法移入壓縮成品", error) }
         } else {
-            _ = try FileManager.default.replaceItemAt(url, withItemAt: temporary)
+            do { _ = try FileManager.default.replaceItemAt(url, withItemAt: temporary) }
+            catch { throw staged("無法取代原始錄影", error) }
         }
         progress?(1)
         return "轉碼完成：\(codec.rawValue)、\(Int(size.width))×\(Int(size.height))、目標 \(settings.megabits) Mbps，由 \(String(format: "%.1f", Double(originalBytes) / 1_000_000)) MB → \(String(format: "%.1f", Double(outputBytes) / 1_000_000)) MB，節省 \(String(format: "%.1f", Double(originalBytes - outputBytes) / 1_000_000)) MB（\(Int((1 - Double(outputBytes) / Double(originalBytes)) * 100))%）。"

@@ -2,6 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import AVFoundation
 import VideoToolbox
+import PhotosUI
 
 /// 手動單檔壓縮；與錄影壓縮設定分開，結果可分享或交給既有分析頁。
 struct VideoCompressionView: View {
@@ -9,6 +10,9 @@ struct VideoCompressionView: View {
     @ObservedObject private var model = VideoCompressionModel.shared
     @Environment(\.scenePhase) private var scenePhase
     @State private var importing = false
+    @State private var photoItem: PhotosPickerItem?
+    @State private var loadingPhoto = false
+    @State private var didLoadInitialURL = false
     @State private var codec = "h264"
     @State private var mbps = 8
     @State private var edge = 0
@@ -18,7 +22,12 @@ struct VideoCompressionView: View {
     var body: some View {
         Form {
             Section("來源影片") {
-                Button("從檔案選擇影片") { importing = true }.disabled(model.busy)
+                PhotosPicker(selection: $photoItem, matching: .videos) {
+                    Label("從相簿選擇影片", systemImage: "photo.on.rectangle")
+                }
+                .disabled(model.busy || loadingPhoto)
+                Button("從檔案選擇影片") { importing = true }.disabled(model.busy || loadingPhoto)
+                if loadingPhoto { ProgressView("正在讀取相簿影片…") }
                 if let source = model.source { Text(source.lastPathComponent) }
                 if let info = model.details {
                     Text("\(bytes(info.bytes)) · \(String(format: "%.1f", info.duration)) 秒")
@@ -96,7 +105,24 @@ struct VideoCompressionView: View {
             case .failure(let error): model.report(error)
             }
         }
-        .onAppear { if let initialURL, !model.busy, model.source != initialURL { model.select(initialURL) } }
+        // 只在首次出現帶入入口來源；從子頁返回時保留使用者後來選的影片。
+        .onAppear {
+            guard !didLoadInitialURL else { return }
+            didLoadInitialURL = true
+            if let initialURL, !model.busy { model.select(initialURL) }
+        }
+        .onChange(of: photoItem) { item in
+            guard let item else { return }
+            Task { @MainActor in
+                loadingPhoto = true
+                defer {
+                    loadingPhoto = false
+                    photoItem = nil
+                }
+                do { model.selectImported(try await PhotoVideoImport.load(item)) }
+                catch { model.report(error) }
+            }
+        }
         .onChange(of: scenePhase) { phase in if phase == .background { model.cancel() } }
     }
 

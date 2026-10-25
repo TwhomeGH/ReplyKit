@@ -17,12 +17,12 @@ struct VideoBitrateView: View {
 
     var body: some View {
         content
-            .toolbar { Button("壓縮影片") { showingCompression = true } }
-            .sheet(isPresented: $showingCompression) {
-                NavigationStack {
-                    VideoCompressionView(initialURL: selectedFileURL ?? initialURL)
-                        .toolbar { Button("完成") { showingCompression = false } }
-                }
+            .toolbar {
+                // 與詳細資訊頁一致，以推入頁面開啟，不再套一層臨時表單。
+                Button("壓縮影片") { showingCompression = true }
+            }
+            .navigationDestination(isPresented: $showingCompression) {
+                VideoCompressionView(initialURL: selectedFileURL ?? initialURL)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .fileImporter(
@@ -42,16 +42,15 @@ struct VideoBitrateView: View {
             .photosPicker(isPresented: $showPhotosPicker, selection: $selectedPickerItem, matching: .videos)
             .onChange(of: selectedPickerItem) { newItem in
                 guard let item = newItem else { return }
-                Task {
-                    guard let data = try? await item.loadTransferable(type: Data.self) else { return }
-                    let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "mp4"
-                    let tempURL = FileManager.default.temporaryDirectory
-                        .appendingPathComponent(UUID().uuidString)
-                        .appendingPathExtension(ext)
-                    try? data.write(to: tempURL)
-                    tempFileURLs.append(tempURL)
-                    selectedPickerItem = nil
-                    startAnalysis(url: tempURL)
+                Task { @MainActor in
+                    defer { selectedPickerItem = nil }
+                    do {
+                        let url = try await PhotoVideoImport.load(item)
+                        tempFileURLs.append(url)
+                        startAnalysis(url: url)
+                    } catch {
+                        errorMessage = error.localizedDescription
+                    }
                 }
             }
             .onAppear {
@@ -61,7 +60,8 @@ struct VideoBitrateView: View {
                 }
             }
             .onDisappear {
-                cleanupTempFiles()
+                // 推入壓縮頁時本頁也會消失；只有離開本頁才清掉相簿暫存檔。
+                cleanupTempFiles(keeping: showingCompression ? selectedFileURL : nil)
             }
             .alert("錯誤", isPresented: Binding(
                 get: { errorMessage != nil },

@@ -1,5 +1,42 @@
 # 變更歷史
 
+## 2026.10.26 04:06 手動壓縮改為完整頁面並支援相簿選片
+
+**類型**: 功能 · **檔案**: `liveAPP/Compression/VideoCompressionView.swift`、`liveAPP/Compression/VideoCompressionModel.swift`、`liveAPP/VideoBitrateView.swift`、`liveAPP/Support/PhotoVideoImport.swift`
+
+### 問題 - 壓縮頁只能從檔案選片，且碼率頁以臨時表單開啟
+
+同一個壓縮頁在錄影詳細頁是推入頁面，在碼率頁卻是 sheet 疊 sheet，並多一個「完成」按鈕；選片也只有 fileImporter，沒有相簿入口。
+
+### 根因 - 兩個入口各自決定呈現方式，且相簿匯入邏輯只存在於碼率頁
+
+### 修改 - 統一推入頁面、加入相簿選片並共用檔案式匯入
+
+- 碼率頁工具列的「壓縮影片」改為 Button 搭配 `navigationDestination` 推入，移除 sheet 與「完成」按鈕，與錄影詳細頁同級；推入期間保留相簿暫存檔，真正離開分析頁才清除。
+- 壓縮頁新增 `PhotosPicker`；相簿影片以 `FileRepresentation` 複製到 App 暫存後才選取，避免整段影片進入記憶體；讀取期間停用來源按鈕並顯示進度。
+- 相簿暫存副本由 `VideoCompressionModel` 持有，只保留最近一份；換片或改選檔案時刪除。
+- 碼率頁的相簿匯入改用共用 `PhotoVideoImport`，不再以 `Data` 一次載入整片。
+- 待 CI／實機驗證相簿選片、iCloud 下載與推入導覽。
+
+## 2026.10.26 02:55 改善手動壓縮測試診斷與編碼設定
+
+**類型**: 修復 · **檔案**: `liveAPP/Capture/RecordingTranscoder.swift`、`liveAPPTests/VideoCompressionExportTests.swift`
+
+### 問題 - separateOutputKeepsSourceBytes 在 CI 以 NSCocoaErrorDomain 512 失敗
+
+Swift Testing 只在測試宣告行回報「The file couldn't be saved.」，無法從日誌判斷是建立暫存檔、寫入、移入成品或測試自身的合成影片失敗。
+
+### 根因 - 檔案類錯誤共用同一個出口，且測試影格配置與錄影路徑不同
+
+轉碼器的 Writer 建立、寫入與移檔都把底層錯誤直接重拋；測試以非 IOSurface 緩衝、64×64 合成來源，再以 1 Mbps 目標碼率轉碼，和同一 CI 已通過的錄影路徑（關閉重排序、使用緩衝池）不一致。實際失敗階段尚待 CI 重跑確認。
+
+### 修改 - 錯誤標示階段、轉碼與錄影一致關閉 B 幀、測試改用編碼器緩衝池
+
+- 平均碼率模式關閉 B 幀，與錄影路徑一致；影格時間順序固定，輸出時長驗證較可預期。
+- `AVAssetWriter` 建立、開始寫入、寫入樣本、完成、移入成品與取代原檔失敗都包成「階段：原因」，保留 `NSUnderlyingErrorKey`。
+- 測試改由 adaptor 的像素緩衝池取得 IOSurface-backed 影格、關閉重排序、改為 320×240 十幀，等待與附加階段拋出具名錯誤，結束後刪除暫存資料夾。
+- 尚未取得 CI 重跑結果，實際失敗階段待確認。
+
 ## 2026.10.26 02:26 修正手動壓縮頁的硬體編碼能力查詢
 
 **類型**: 修復 · **檔案**: `liveAPP/Compression/VideoEncoderCapabilities.swift`、`liveAPP/Compression/VideoCompressionView.swift`、`liveAPP/Compression/VideoCompressionModel.swift`

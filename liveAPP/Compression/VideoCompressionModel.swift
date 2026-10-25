@@ -15,6 +15,7 @@ import UIKit
     @Published private(set) var message = "選擇一個影片開始。"
     private var jobID = UUID()
     private var backgroundObserver: AnyCancellable?
+    private var importedSource: URL?
 
     private init() {
         backgroundObserver = NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)
@@ -37,6 +38,8 @@ import UIKit
     /// 在安全範圍授權有效期間讀取資訊；只保存 URL 與純量，不整片載入記憶體。
     func select(_ url: URL) {
         guard !busy else { return }
+        // 相簿匯入的暫存副本只保留最近一份；載入新來源時刪除，避免大型影片累積。
+        if importedSource != url { discardImportedSource() }
         busy = true
         task = Task {
             defer { busy = false; task = nil }
@@ -51,6 +54,19 @@ import UIKit
                 message = "已載入。原檔會保留。"
             } catch { message = Task.isCancelled ? "已取消。" : error.localizedDescription }
         }
+    }
+
+    /// 相簿影片由 App 複製到暫存目錄；下一支來源載入時清除，只保留最近一份。
+    func selectImported(_ url: URL) {
+        guard !busy else { try? FileManager.default.removeItem(at: url); return }
+        select(url)
+        importedSource = url
+    }
+
+    private func discardImportedSource() {
+        guard let importedSource else { return }
+        try? FileManager.default.removeItem(at: importedSource)
+        self.importedSource = nil
     }
 
     /// 固定本次設定，等待本機擷取結束後轉碼；新檔驗證成功才出現在成品路徑。
