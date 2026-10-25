@@ -85,12 +85,14 @@ final class OutputOverlayMetalRenderer: @unchecked Sendable {
 
     // MARK: - Frame path (concurrent)
 
-    func applyIfNeeded(commandBuffer: MTLCommandBuffer, dstY: MTLTexture, dstUV: MTLTexture) {
+    /// 回傳此命令是否實際編入時間疊加；false 不代表旋轉加工停用。
+    @discardableResult
+    func applyIfNeeded(commandBuffer: MTLCommandBuffer, dstY: MTLTexture, dstUV: MTLTexture) -> Bool {
         let access = frameAccess()
         let snap = access.snapshot
         guard snap.enabled, snap.timeEnabled,
               let pipeline = access.pipeline,
-              let texture = snap.texture else { return }
+              let texture = snap.texture else { return false }
         let start = CFAbsoluteTimeGetCurrent()
 
         requestRefreshIfNeeded(currentSecond: snap.second)
@@ -115,7 +117,7 @@ final class OutputOverlayMetalRenderer: @unchecked Sendable {
             opacity: 1.0
         )
 
-        guard let encoder = commandBuffer.makeComputeCommandEncoder() else { return }
+        guard let encoder = commandBuffer.makeComputeCommandEncoder() else { return false }
 
         encoder.label = "ReplyKit.output.overlay"
         encoder.setComputePipelineState(pipeline)
@@ -132,6 +134,7 @@ final class OutputOverlayMetalRenderer: @unchecked Sendable {
         )
         encoder.endEncoding()
         recordOverlayDuration(start: start)
+        return true
     }
 
     /// 一次鎖內取出 frame path 需要的全部資源。pipeline 由 producer 建立,

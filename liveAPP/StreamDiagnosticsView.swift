@@ -139,12 +139,12 @@ struct StreamDiagnosticsSections: View {
                         Text("Session：\(value.session.uuidString)").font(.caption2)
                         Text("最後取樣狀態：\(value.phase)")
                         detail("Mixer 影片實測", value.mixerVideo)
-                        if source == "ScreenCaptureKit" {
-                            detail("加工 worker 忙碌比例", value.videoProcessingLoad.map {
+                        if source == "ScreenCaptureKit" || value.videoProcessingLoadKind == "metalInFlight" {
+                            detail(value.videoProcessingLoadKind == "metalInFlight" ? "Metal 加工在途比例" : "加工 worker 忙碌比例", value.videoProcessingLoad.map {
                                 String(format: "%.1f%% · 最近 %.1f 秒中忙碌 %.2f 秒", $0.busyPercent, $0.intervalSeconds, $0.busySeconds)
                                 + ($0.inFlight ? " · 取樣時仍在加工" : "")
                             } ?? "等待完整取樣區間，或此管線未提供")
-                            Text("包含加工與同步等待，不是 CPU／GPU 使用率；停止後數值為最後取樣歷史。")
+                            Text("包含加工或排隊等待；Metal 在途比例不重複計入並行命令。不是 CPU／GPU 使用率；停止後為歷史資料。")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         detail("畫面加工", value.videoProcessing)

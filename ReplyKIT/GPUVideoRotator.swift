@@ -113,6 +113,7 @@ enum RotationAngle: UInt32, Codable, CaseIterable, Identifiable, CustomStringCon
 
 // MARK: - Safe Batch Video Rotator (Async/Await)
 final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
+    let processingLoad = ProcessingInFlightTracker()
 
 
     var originalTimeBAK: CMSampleTimingInfo?
@@ -821,6 +822,7 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
 
     // MARK: - Enqueue Frame
     func rotateAsync(pixelBuffer: CVPixelBuffer, originalTime: CMSampleTimingInfo, angle: RotationAngle) async -> CMSampleBuffer? {
+        let preparationStart = ProcessInfo.processInfo.systemUptime
 
          // 延遲初始化 Metal/TextureCache，並解析本幀 compute pipeline（單一快照點）
         guard let computePipeline = ensureMetalPipelineSnapshot() else {
@@ -884,9 +886,10 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
         let commandSnapshot = nextCommandSnapshot()
         cmd.label = "ReplyKit.video.rotate#\(commandSnapshot.id) \(srcW)x\(srcH)->\(dstW)x\(dstH)"
 
+        var overlayEncoded = false
         guard renderPlaneYUV(cmd: cmd, compute: computePipeline,
                         srcY: ycvTexIn.tex, srcUV: uvcvTexIn.tex,
-                        dstY: outSet.yTex, dstUV: outSet.uvTex, angle: angle) else {
+                        dstY: outSet.yTex, dstUV: outSet.uvTex, angle: angle, overlayEncoded: &overlayEncoded) else {
             _ = markCommandCompleted(elapsedMs: 0)
             handleMetalFailure("renderPlaneYUV 建立 encoder 失敗 cmd:#\(commandSnapshot.id) srcY:\(textureDescription(ycvTexIn.tex)) srcUV:\(textureDescription(uvcvTexIn.tex)) dstY:\(textureDescription(outSet.yTex)) dstUV:\(textureDescription(outSet.uvTex))")
             return nil
@@ -904,6 +907,11 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
             )
 
             let submittedAt = CACurrentMediaTime()
+            let loadStart = ProcessInfo.processInfo.systemUptime
+            processingLoad.begin(at: loadStart, preparationMs: (loadStart - preparationStart) * 1000,
+                angle: Int(angle.rawValue), width: dstW, height: dstH, overlay: overlayEncoded,
+                resized: dstW != ((angle == .landscapeLeft || angle == .landscapeRight) ? srcH : srcW)
+                    || dstH != ((angle == .landscapeLeft || angle == .landscapeRight) ? srcW : srcH))
 
             cmd.addCompletedHandler { [self] _ in
                 let completion = completionState.markCompletion()
@@ -915,6 +923,8 @@ final class RPVideoRotatorNV12BatchQueueOptimized: @unchecked Sendable {
                 frameC.inUV = nil
 
                 let isCompleted = cmd.status == .completed && cmd.error == nil
+                processingLoad.end(at: ProcessInfo.processInfo.systemUptime,
+                    elapsedMs: (ProcessInfo.processInfo.systemUptime - loadStart) * 1000, success: isCompleted)
                 let wrapped = isCompleted
                     ? self.wrapPixelBuffer(frameC.outSet, timing: frameC.timing)
                     : nil
@@ -1148,7 +1158,7 @@ private func fallbackSampleBuffer(
                         compute: MTLComputePipelineState,
                         srcY: MTLTexture, srcUV: MTLTexture,
                         dstY: MTLTexture, dstUV: MTLTexture,
-                        angle: RotationAngle) -> Bool {
+                        angle: RotationAngle, overlayEncoded: inout Bool) -> Bool {
 
         guard let encoder = cmd.makeComputeCommandEncoder() else {
             sendlog(message: "[GPU Rotator] renderPlaneYUV makeComputeCommandEncoder nil cmdStatus:\(cmd.status.rawValue) error:\(describeCommandBufferError(cmd.error))")
@@ -1188,7 +1198,7 @@ private func fallbackSampleBuffer(
         }
 
         encoder.endEncoding()
-        OutputOverlayMetalRenderer.shared.applyIfNeeded(commandBuffer: cmd, dstY: dstY, dstUV: dstUV)
+        overlayEncoded = OutputOverlayMetalRenderer.shared.applyIfNeeded(commandBuffer: cmd, dstY: dstY, dstUV: dstUV)
         return true
     }
 

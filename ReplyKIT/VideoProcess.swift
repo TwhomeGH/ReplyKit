@@ -37,6 +37,7 @@ struct VideoProcessorDiagnostics: Sendable {
 }
 
 actor FrameProcessorActor {
+    private var lastProcessingPath = "waiting"
     private var gpuRotator: RPVideoRotatorNV12BatchQueueOptimized?
     private var cpuRotator: RPVideoRotatorCPU_NV12?
     private var lastKey: (useBic: Bool, dstW: Int, dstH: Int, outW: Int, outH: Int, rotateOriginal: Bool)?
@@ -75,12 +76,15 @@ actor FrameProcessorActor {
         if let rotator = await getOrCreateGpuRotator() {
             if rotator.isPermanentlyDead {
                 onPermanentFailure?()
+                lastProcessingPath = "cpuFallback"
                 result = await tryCpuFallback(imageBuffer: imageBuffer, originalTime: originalTime, angle: angle)
             } else {
+                lastProcessingPath = "metal"
                 result = await rotator.rotateAsync(pixelBuffer: imageBuffer, originalTime: originalTime, angle: angle)
                 ownsOutputStorage = true
             }
         } else {
+            lastProcessingPath = "cpuFallback"
             result = await tryCpuFallback(imageBuffer: imageBuffer, originalTime: originalTime, angle: angle)
         }
         trackFrameInterval(pts: originalTime.presentationTimeStamp)
@@ -382,6 +386,15 @@ actor FrameProcessorActor {
         lastKey = nil
     }
 
+    /// 五秒回報讀取目前 GPU 實例；CPU 後備或尚未建立時不補造 GPU 數值。
+    func processingSnapshot() -> (load: VideoProcessingLoadSnapshot?, summary: String)? {
+        guard lastProcessingPath == "metal", let gpuRotator else {
+            return (nil, "path=\(lastProcessingPath) load=unavailable consecutiveDrops=\(consecutiveDropCount)")
+        }
+        let sample = gpuRotator.processingLoad.sample()
+        return (sample.load, "path=metal consecutiveDrops=\(consecutiveDropCount) " + sample.summary)
+    }
+
     func diagnostics(isActive: Bool, processedCount: Int, droppedCount: Int) -> VideoProcessorDiagnostics {
         let rotator = gpuRotator
         let latencyTuple = rotator?.completionLatencyStats()
@@ -508,6 +521,11 @@ final class VideoFrameProcessor {
             outWidth: outWidth,
             outHeight: outHeight
         )
+    }
+
+    /// 透過 actor 取得旋轉加工負載，避免直接讀取可重建的 GPU 實例。
+    func processingSnapshot() async -> (load: VideoProcessingLoadSnapshot?, summary: String)? {
+        await actor.processingSnapshot()
     }
 
     func diagnostics() async -> VideoProcessorDiagnostics {

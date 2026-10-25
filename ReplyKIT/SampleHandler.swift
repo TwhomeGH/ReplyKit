@@ -1778,8 +1778,14 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 let diagnosticsConnection = self.rtmpConnection!
                 self.streamDiagnosticsTask = Task {
                     while !Task.isCancelled {
-                        let snapshot = await diagnosticsProbe.snapshot(source: "ReplayKit", stream: diagnosticsStream, connection: diagnosticsConnection)
+                        var snapshot = await diagnosticsProbe.snapshot(source: "ReplayKit", stream: diagnosticsStream, connection: diagnosticsConnection)
                         guard !Task.isCancelled else { return }
+                        if let processing = await self.videoProcessor?.processingSnapshot() {
+                            snapshot.videoProcessing = processing.summary
+                            snapshot.videoProcessingLoad = processing.load
+                            snapshot.videoProcessingLoadKind = "metalInFlight"
+                            sendlog(message: "[ReplayVideoProcessing] \(processing.summary) busyPercent=\(processing.load.map { String($0.busyPercent) } ?? "unknown")")
+                        }
                         SocketClient.shared.sendStreamDiagnostics(snapshot)
                         do { try await Task.sleep(nanoseconds: 5_000_000_000) } catch { return }
                     }

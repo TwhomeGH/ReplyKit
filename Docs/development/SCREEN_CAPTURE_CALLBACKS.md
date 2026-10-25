@@ -46,3 +46,11 @@ App 疊加時鐘是在加工當下產生，不能當作原始擷取時鐘。完�
 ### 加工 worker 忙碌比例
 
 `CaptureVideoProcessingLoad` 每輪診斷取樣一次，設備資訊 → 串流格式與 RTMP 傳輸 → ScreenCaptureKit 顯示同一筆區間結果。以加工忙碌秒數除以實際區間秒數，週期目標五秒；首次只建立基準，沒有資料不冒充零。計入跨區間尚未完成的加工，不含等候來源影格、Mixer 或編碼器的時間。包含加工內部同步等待，不能稱作 CPU／GPU 使用率。停止後保留最後取樣歷史，不繼續累計。
+
+### ReplayKit 旋轉加工接入
+
+ReplayKit 的 GPU 旋轉器經既有 Socket 快照每五秒回報，設備資訊 → 串流格式與 RTMP 傳輸 → ReplayKit 顯示「Metal 加工在途比例」及加工摘要。時間層未編入時 overlayEncoded=false，旋轉／尺寸加工仍統計。
+
+在途比例為至少一筆命令尚未完成的區間聯集，並行命令不重複計時；watchdog 逾時不提前當作完成，實際回呼才扣除在途數。preparationMs 包含準備及可能等待，submitToCompletionMs 包含排隊與執行，兩者都不是 CPU／GPU 使用率。rotationDegrees、resized、canvas 描述最近提交命令；不是獨立旋轉或縮放 GPU 耗時。
+
+追蹤器隨旋轉器重建換 ID，首次僅建立基準。CPU 後備顯示 load=unavailable；摘要提供 consecutiveDrops，避免把凍結畫面後備誤當成正常新畫面。尚未涵蓋舊旋轉器重建後仍未完成命令的跨實例負載合計。

@@ -32,6 +32,8 @@ struct StreamDiagnosticsSnapshot: Codable, Sendable {
     var videoProcessing: String?
     /// 最近完整取樣區間的加工忙碌比例；首次或未提供時為 nil。
     var videoProcessingLoad: VideoProcessingLoadSnapshot?
+    /// metalInFlight 表示 Metal 在途聯集比例；nil 沿用 ScreenCaptureKit worker 定義。
+    var videoProcessingLoadKind: String?
     var videoSettings: String?
     var audioSettings: String?
     var encodedVideoFrames: UInt64?
