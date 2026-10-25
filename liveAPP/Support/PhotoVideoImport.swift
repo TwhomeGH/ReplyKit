@@ -1,6 +1,8 @@
 import CoreTransferable
 import Foundation
 import PhotosUI
+// PhotosPickerItem 由 PhotosUI ＋ SwiftUI 的 cross-import overlay 提供，兩者都要匯入。
+import SwiftUI
 import UniformTypeIdentifiers
 
 /// 相簿影片的暫存副本；以檔案表示載入，避免整段影片進入記憶體。

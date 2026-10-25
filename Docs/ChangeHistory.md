@@ -16,6 +16,7 @@
 - 壓縮頁新增 `PhotosPicker`；相簿影片以 `FileRepresentation` 複製到 App 暫存後才選取，避免整段影片進入記憶體；讀取期間停用來源按鈕並顯示進度。
 - 相簿暫存副本由 `VideoCompressionModel` 持有，只保留最近一份；換片或改選檔案時刪除。
 - 碼率頁的相簿匯入改用共用 `PhotoVideoImport`，不再以 `Data` 一次載入整片。
+- `PhotoVideoImport` 需同時匯入 SwiftUI 與 PhotosUI；`PhotosPickerItem` 由 cross-import overlay 提供，只匯入 PhotosUI 會找不到型別。
 - 待 CI／實機驗證相簿選片、iCloud 下載與推入導覽。
 
 ## 2026.10.26 02:55 改善手動壓縮測試診斷與編碼設定
