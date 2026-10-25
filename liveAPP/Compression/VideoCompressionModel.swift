@@ -77,8 +77,8 @@ import UIKit
                 message = "正在壓縮，請保持 App 在前景。"
                 _ = try await RecordingTranscoder.compress(url: source, asset: AVURLAsset(url: source),
                     settings: settings, destination: destination, audioMode: audio) { value in
-                        Task { @MainActor [weak self] in
-                            guard let self, self.busy, self.jobID == token else { return }
+                        Task { @MainActor in
+                            guard self.busy, self.jobID == token else { return }
                             self.progress = max(self.progress, value)
                             if self.captureBusy { self.cancel() }
                         }

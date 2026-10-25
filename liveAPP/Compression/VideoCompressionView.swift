@@ -29,7 +29,7 @@ struct VideoCompressionView: View {
             Section("壓縮設定") {
                 Picker("編碼", selection: $codec) {
                     Text("H.264").tag("h264")
-                    if VTIsHardwareEncodeSupported(kCMVideoCodecType_HEVC) { Text("HEVC").tag("hevc") }
+                    if VideoEncoderCapabilities.isHardwareEncodeSupported(kCMVideoCodecType_HEVC) { Text("HEVC").tag("hevc") }
                 }
                 Picker("最長邊上限（保持比例）", selection: $edge) {
                     Text("保持原始").tag(0)

@@ -1,5 +1,21 @@
 # 變更歷史
 
+## 2026.10.26 02:26 修正手動壓縮頁的硬體編碼能力查詢
+
+**類型**: 修復 · **檔案**: `liveAPP/Compression/VideoEncoderCapabilities.swift`、`liveAPP/Compression/VideoCompressionView.swift`、`liveAPP/Compression/VideoCompressionModel.swift`
+
+### 問題 - CI 編譯失敗：cannot find 'VTIsHardwareEncodeSupported' in scope
+
+`VideoCompressionView.swift:32` 的選單條件呼叫不存在的符號；同次建置另回報 `VideoCompressionModel.swift:80` 的 weak self 擷取不一致警告。
+
+### 根因 - VideoToolbox 沒有編碼版的硬體能力查詢函式
+
+`import VideoToolbox` 早已存在，並非漏匯入。Apple 只提供 `VTIsHardwareDecodeSupported`（解碼）；編碼能力須以 `VTCopyVideoEncoderList` 搭配 `kVTVideoEncoderList_IsHardwareAccelerated`（iOS 13+）查詢。
+
+### 修改 - 改查系統登錄的硬體編碼器清單，並保留寫入階段的最終驗證
+
+新增 `VideoEncoderCapabilities`，程序內只列舉一次並快取支援硬體加速的編碼格式；清單不可讀或缺少硬體欄位時不預先隱藏選項，實際轉碼仍由 `RecordingTranscoder` 的 `writer.canApply` 把關。進度回呼移除多餘的 `[weak self]`，與外層一致強擷取單例。本機無法建置 iOS 目標，待 CI 確認。
+
 ## 2026.10.26 01:46 新增手動單檔影片壓縮頁
 
 - 從碼率分析與錄影詳細資訊進入，提供碼率、尺寸／FPS 上限與音訊選項，支援進度及取消。
