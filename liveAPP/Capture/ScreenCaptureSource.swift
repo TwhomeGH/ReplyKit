@@ -20,10 +20,12 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     private var workers: [Task<Void, Never>] = []
     private var loggedFrameSize = CGSize.zero
     let callbacks = CaptureCallbackDiagnostics()
+    let processing: VideoProcessingDiagnostics
     init(mixer: MediaMixer, probe: ScreenAudioProbe, rotateLeft: Bool,
          canvas: CGSize? = nil, fills: Bool = false) throws {
         let compositor = try ScreenStreamVideoRotator(rotateLeft: rotateLeft, overlay: ScreenOverlayComposer(),
                                                       canvas: canvas, fills: fills)
+        processing = compositor.diagnostics
         super.init()
         for (queue, track, isVideo) in [(video, UInt8(0), true), (audio, UInt8(0), false), (mic, UInt8(1), false)] {
             workers.append(Task {
@@ -317,7 +319,12 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                 let queues = self.pump.map { "video{\($0.video.summary)} audio{\($0.audio.summary)} mic{\($0.mic.summary)}" } ?? "sampleQueues=none"
                 sendlog(message: "[CaptureSource] backend=screenCaptureKit session=\(token) mode=\(self.mode.rawValue) capturePhase=\(self.state.phase.rawValue) publishPhase=\(self.publishingStage) \(queues)")
                 if let sink = self.recordingSink { sendlog(message: "[SegmentedRecordingQueue] \(sink.summary)") }
+                let processingLoad = self.pump?.processing.sampleLoad()
+                if let load = processingLoad {
+                    sendlog(message: "[CaptureVideoProcessingLoad] session=\(token) intervalSeconds=\(load.intervalSeconds) busySeconds=\(load.busySeconds) workerBusyPercent=\(load.busyPercent) inFlight=\(load.inFlight)")
+                }
                 if let pump = self.pump {
+                    sendlog(message: "[CaptureVideoProcessing] session=\(token) schema=1 \(pump.processing.summary)")
                     sendlog(message: "[CaptureCallbacks] session=\(token) schema=1 clockComparison=unverified \(pump.callbacks.summary(now: CMClockGetTime(CMClockGetHostTimeClock()).seconds))")
                 }
                 self.telemetry.sourceQueues = queues
@@ -332,7 +339,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                     sendlog(message: "[CaptureAudioPipeline] session=\(token) mixed=\(health.mixerOutputFrames) ready=\(health.mixerReady) error=\(health.lastError ?? "none") channels=\(health.outputChannels) rms=\(health.outputChannelRMS) \(self.audioProbe?.summary() ?? "probe=none") \(tracks)")
                 }
                 if let probe = self.streamDiagnosticsProbe {
-                    let snapshot: StreamDiagnosticsSnapshot
+                    var snapshot: StreamDiagnosticsSnapshot
                     if let stream = self.output, let connection = self.connection {
                         // 組合 Mixer 實測、實際壓縮格式與 RTMP 傳輸快照。
                         snapshot = await probe.snapshot(source: "ScreenCaptureKit", stream: stream, connection: connection)
@@ -343,6 +350,8 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                     guard !Task.isCancelled else { return }
                     // 實際回報設備頁的入口：同程序直接更新共用 Model。
                     // ReplayKit 則經 Socket 解碼後呼叫同一個 record()。
+                    snapshot.videoProcessing = self.pump?.processing.summary
+                    snapshot.videoProcessingLoad = processingLoad
                     StreamDiagnosticsModel.shared.record(snapshot)
                 }
                 guard !Task.isCancelled else { return }
@@ -624,6 +633,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         logResources(stage: "pump.finish.begin")
         await pump?.finish()
         if let pump {
+            sendlog(message: "[CaptureVideoProcessing] session=\(state.id?.uuidString ?? "unknown") stage=finished schema=1 \(pump.processing.summary)")
             sendlog(message: "[CaptureCallbacks] session=\(state.id?.uuidString ?? "unknown") stage=finished schema=1 clockComparison=unverified \(pump.callbacks.summary(now: CMClockGetTime(CMClockGetHostTimeClock()).seconds))")
         }
         pump = nil

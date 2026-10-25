@@ -1,5 +1,7 @@
 import SwiftUI
 import Charts
+import HaishinKit
+import RTMPHaishinKit
 
 /// 每個來源保存最新快照與最多 60 筆速率；較舊取樣不可覆蓋新資料。
 @MainActor final class StreamDiagnosticsModel: ObservableObject {
@@ -137,6 +139,17 @@ struct StreamDiagnosticsSections: View {
                         Text("Session：\(value.session.uuidString)").font(.caption2)
                         Text("最後取樣狀態：\(value.phase)")
                         detail("Mixer 影片實測", value.mixerVideo)
+                        if source == "ScreenCaptureKit" {
+                            detail("加工 worker 忙碌比例", value.videoProcessingLoad.map {
+                                String(format: "%.1f%% · 最近 %.1f 秒中忙碌 %.2f 秒", $0.busyPercent, $0.intervalSeconds, $0.busySeconds)
+                                + ($0.inFlight ? " · 取樣時仍在加工" : "")
+                            } ?? "等待完整取樣區間，或此管線未提供")
+                            Text("包含加工與同步等待，不是 CPU／GPU 使用率；停止後數值為最後取樣歷史。")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        detail("畫面加工", value.videoProcessing)
+                        detail("VT 首筆同幀時間", encoderTiming(value.firstEncoderTiming))
+                        detail("VT 最新同幀時間", encoderTiming(value.lastEncoderTiming))
                         detail("影片編碼設定", value.videoSettings)
                         detail("實際編碼輸出格式", encodedVideo(value))
                         detail("編碼器交付影格累計", value.encodedVideoFrames.map(String.init))
@@ -146,6 +159,8 @@ struct StreamDiagnosticsSections: View {
                         detail("音訊編碼設定", value.audioSettings)
                         detail("實際音訊編碼輸出格式", encodedAudio(value))
                         if let encoding = value.encoding {
+                            detail("影片 RTMP 入列時間", mediaTiming(encoding.videoTiming))
+                            detail("音訊 RTMP 入列時間", mediaTiming(encoding.audioTiming))
                             detail("編碼觀測世代", "\(encoding.generation) · 取樣時 publishing=\(encoding.isPublishing)")
                             detail("影片格式變更時間", encoding.videoFormatChangedAt?.formatted())
                             detail("音訊格式變更時間", encoding.audioFormatChangedAt?.formatted())
@@ -167,6 +182,28 @@ struct StreamDiagnosticsSections: View {
                 }
             }
         }
+    }
+
+    /// 明確區分來源時間、RTMP 相對時間與本機入列結果；不推算跨軌口型差。
+    private func mediaTiming(_ value: RTMPMediaTimingDiagnostics?) -> String? {
+        guard let value else { return nil }
+        func sample(_ value: RTMPMediaTimingSample?) -> String {
+            guard let value else { return "尚無資料" }
+            return "#\(value.sequence) 來源 PTS/DTS：\(seconds(value.sourcePTSSeconds)) / \(seconds(value.sourceDTSSeconds))；RTMP PTS/DTS：\(seconds(value.generatedPTSSeconds)) / \(seconds(value.generatedDTSSeconds))；入列：\(value.accepted)；音訊整批 duration：\(seconds(value.preferredDurationSeconds))"
+        }
+        return "接受 \(value.accepted)／拒絕 \(value.rejected)\n首筆嘗試：\(sample(value.firstAttempt))\n首筆成功：\(sample(value.firstAccepted))\n最新：\(sample(value.lastAttempt))\n入列不代表伺服器收到；兩軌最新樣本不能直接比較同步。"
+    }
+
+    /// 顯示 VT 同次提交／回呼，耗時包含編碼器內部等待。
+    private func encoderTiming(_ value: VideoEncoderTimingSample?) -> String? {
+        guard let value else { return nil }
+        return "Session：\(value.session)\n輸入 PTS：\(seconds(value.inputPTSSeconds))；輸出 PTS/DTS：\(seconds(value.outputPTSSeconds)) / \(seconds(value.outputDTSSeconds))\n提交至回呼：\(String(format: "%.2f", value.elapsedMilliseconds)) ms"
+    }
+
+    /// 無效或缺漏時間保持未知，不以零冒充。
+    private func seconds(_ value: Double?) -> String {
+        guard let value, value.isFinite else { return "未知" }
+        return String(format: "%.6f s", value)
     }
 
     /// 保留傳輸計數的原始 bytes 與 nil，讓明細統一處理未提供資料。

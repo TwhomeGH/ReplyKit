@@ -11,6 +11,8 @@ final class CaptureCallbackDiagnostics: @unchecked Sendable {
         var states: [String: Int] = [:]
         var lastArrival: Double?
         var maxGap = 0.0
+        var firstPTS: Double?
+        var firstArrival: Double?
         var lastPTS: Double?
         var regressions = 0
         var invalidPTS = 0
@@ -27,12 +29,14 @@ final class CaptureCallbackDiagnostics: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         var value = tracks[track] ?? Counters()
+        if value.firstArrival == nil { value.firstArrival = arrival }
         value.callbacks += 1
         value.outcomes[outcome, default: 0] += 1
         if let state { value.states[state, default: 0] += 1 }
         if let previous = value.lastArrival { value.maxGap = max(value.maxGap, arrival - previous) }
         value.lastArrival = arrival
         if pts.isFinite {
+            if value.firstPTS == nil { value.firstPTS = pts }
             if let previous = value.lastPTS, pts < previous { value.regressions += 1 }
             value.lastPTS = pts
             let delta = arrival - pts
@@ -55,7 +59,7 @@ final class CaptureCallbackDiagnostics: @unchecked Sendable {
             let value = tracks[track] ?? Counters()
             let outcomes = value.outcomes.map { "\($0.key.rawValue)=\($0.value)" }.sorted().joined(separator: ",")
             let states = value.states.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: ",")
-            return "\(track.rawValue){callbacks=\(value.callbacks) outcomes=[\(outcomes)] states=[\(states)] idleSeconds=\(number(value.lastArrival.map { max(0, now - $0) })) maxCallbackGapSeconds=\(number(value.maxGap)) lastPTS=\(number(value.lastPTS)) regress=\(value.regressions) invalidPTS=\(value.invalidPTS) hostMinusPTSSeconds=\(number(value.lastDelta)) minHostMinusPTSSeconds=\(number(value.minDelta)) maxHostMinusPTSSeconds=\(number(value.maxDelta))}"
+            return "\(track.rawValue){callbacks=\(value.callbacks) firstArrival=\(number(value.firstArrival)) firstPTS=\(number(value.firstPTS)) outcomes=[\(outcomes)] states=[\(states)] idleSeconds=\(number(value.lastArrival.map { max(0, now - $0) })) maxCallbackGapSeconds=\(number(value.maxGap)) lastPTS=\(number(value.lastPTS)) regress=\(value.regressions) invalidPTS=\(value.invalidPTS) hostMinusPTSSeconds=\(number(value.lastDelta)) minHostMinusPTSSeconds=\(number(value.minDelta)) maxHostMinusPTSSeconds=\(number(value.maxDelta))}"
         }.joined(separator: " ")
     }
 }

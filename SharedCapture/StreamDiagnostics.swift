@@ -25,6 +25,13 @@ struct StreamDiagnosticsSnapshot: Codable, Sendable {
     var sampledUptime: Double?
     /// RTMPStream 觀測到的實際壓縮輸出；無 RTMP 管線或舊版未提供時為 nil。
     var encoding: RTMPEncodingDiagnostics?
+    /// VT 成功回呼的同幀時間；舊來源或無編碼器時為 nil。
+    var firstEncoderTiming: VideoEncoderTimingSample?
+    var lastEncoderTiming: VideoEncoderTimingSample?
+    /// ScreenCaptureKit 畫面加工摘要；未走本機加工時為 nil。
+    var videoProcessing: String?
+    /// 最近完整取樣區間的加工忙碌比例；首次或未提供時為 nil。
+    var videoProcessingLoad: VideoProcessingLoadSnapshot?
     var videoSettings: String?
     var audioSettings: String?
     var encodedVideoFrames: UInt64?
@@ -47,6 +54,8 @@ final class StreamDiagnosticsProbe: MediaMixerOutput, @unchecked Sendable {
     private var video: String?
     private var audio: String?
     private var audioSampleRate: Double?
+    private var firstVideoPTS: Double?
+    private var firstAudioHostTime: Double?
     private var videoFrames: UInt64 = 0
     private var audioBuffers: UInt64 = 0
     private var audioFrames: UInt64 = 0
@@ -57,6 +66,10 @@ final class StreamDiagnosticsProbe: MediaMixerOutput, @unchecked Sendable {
 
     func mixer(_ mixer: MediaMixer, didOutput sampleBuffer: CMSampleBuffer) {
         lock.lock(); defer { lock.unlock() }
+        if firstVideoPTS == nil, sampleBuffer.presentationTimeStamp.seconds.isFinite {
+            firstVideoPTS = sampleBuffer.presentationTimeStamp.seconds
+            sendlog(message: "[MixerOrigin] session=\(session) track=video pts=\(firstVideoPTS!) clock=sourcePTS")
+        }
         videoFrames &+= 1
         let now = ProcessInfo.processInfo.systemUptime
         guard now - lastVideoTime >= 1, let image = sampleBuffer.imageBuffer else { return }
@@ -79,6 +92,10 @@ final class StreamDiagnosticsProbe: MediaMixerOutput, @unchecked Sendable {
 
     func mixer(_ mixer: MediaMixer, didOutput buffer: AVAudioPCMBuffer, when: AVAudioTime) {
         lock.lock(); defer { lock.unlock() }
+        if firstAudioHostTime == nil, when.isHostTimeValid {
+            firstAudioHostTime = AVAudioTime.seconds(forHostTime: when.hostTime)
+            sendlog(message: "[MixerOrigin] session=\(session) track=audio pts=\(firstAudioHostTime!) clock=hostTime")
+        }
         audioBuffers &+= 1
         audioFrames &+= UInt64(buffer.frameLength)
         let now = ProcessInfo.processInfo.systemUptime
@@ -123,6 +140,8 @@ final class StreamDiagnosticsProbe: MediaMixerOutput, @unchecked Sendable {
         let encoding = await stream.encodingDiagnostics()
         var result = mixerSnapshot(source: source, phase: phase)
         result.encoding = encoding
+        result.firstEncoderTiming = pipeline.encoder?.firstEncoderTiming
+        result.lastEncoderTiming = pipeline.encoder?.lastEncoderTiming
         result.videoSettings = "\(video.profileLevel) · \(Int(video.videoSize.width))×\(Int(video.videoSize.height)) · \(video.bitRate / 1000) kbps"
         result.audioSettings = "\(audio.format.rawValue) · \(audio.bitRate / 1000) kbps"
         result.encodedVideoFrames = pipeline.encoder?.events["encoderDelivered"]?.count

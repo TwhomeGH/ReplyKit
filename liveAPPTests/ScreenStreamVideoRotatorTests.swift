@@ -12,6 +12,8 @@ struct ScreenStreamVideoRotatorTests {
         #expect(CVPixelBufferCreate(nil, 2, 3, kCVPixelFormatType_32BGRA,
             [kCVPixelBufferIOSurfacePropertiesKey as String: [:]] as CFDictionary, &source) == kCVReturnSuccess)
         let pixels = try #require(source)
+        let sourceColorSpace = try #require(CGColorSpace(name: CGColorSpace.sRGB))
+        CVBufferSetAttachment(pixels, kCVImageBufferCGColorSpaceKey, sourceColorSpace, .shouldPropagate)
         // BGRA：紅、綠 / 藍、白 / 黑、黃。左轉應為：綠、白、黃 / 紅、藍、黑。
         let colors: [[UInt8]] = [[0,0,255,255], [0,255,0,255], [255,0,0,255],
                                   [255,255,255,255], [0,0,0,255], [0,255,255,255]]
@@ -36,6 +38,8 @@ struct ScreenStreamVideoRotatorTests {
         #expect(rotated.presentationTimeStamp == timing.presentationTimeStamp)
         #expect(rotated.duration == timing.duration)
         let output = try #require(rotated.imageBuffer)
+        #expect(CVBufferCopyAttachment(output, kCVImageBufferCGColorSpaceKey, nil) != nil)
+        #expect(CVBufferCopyAttachment(output, kCVImageBufferYCbCrMatrixKey, nil) == nil)
         #expect(CVPixelBufferGetWidth(output) == 3)
         #expect(CVPixelBufferGetHeight(output) == 2)
         CVPixelBufferLockBaseAddress(output, .readOnly)

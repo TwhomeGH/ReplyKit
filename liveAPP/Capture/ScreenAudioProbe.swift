@@ -8,6 +8,8 @@ final class ScreenAudioProbe: MediaMixerOutput, @unchecked Sendable {
     let audioTrackId: UInt8? = UInt8.max
     private let lock = NSLock()
     private var formats: [UInt8: String] = [:]
+    private var timelines: [UInt8: AudioTimelineObservation] = [:]
+    private var mixedTimeline = AudioTimelineObservation()
     private var mixedBuffers = 0
     private var mixedFormat = "unknown"
     private var lastMeterTime: [String: TimeInterval] = [:]
@@ -52,6 +54,10 @@ final class ScreenAudioProbe: MediaMixerOutput, @unchecked Sendable {
         lock.lock()
         let changed = formats[track] != signature
         formats[track] = signature
+        var timeline = timelines[track] ?? AudioTimelineObservation()
+        timeline.record(pts: sample.presentationTimeStamp.seconds, frames: sample.numSamples,
+                        rate: a.mSampleRate, signature: signature)
+        timelines[track] = timeline
         lock.unlock()
         if changed {
             let check = inspectPCM(sample, asbd: a)
@@ -83,6 +89,9 @@ final class ScreenAudioProbe: MediaMixerOutput, @unchecked Sendable {
     func selectTrack(_ id: UInt8?, mediaType: CMFormatDescription.MediaType) async {}
     func mixer(_ mixer: MediaMixer, didOutput buffer: AVAudioPCMBuffer, when: AVAudioTime) {
         lock.lock()
+        mixedTimeline.record(pts: when.isHostTimeValid ? AVAudioTime.seconds(forHostTime: when.hostTime) : .nan,
+                             frames: Int(buffer.frameLength), rate: buffer.format.sampleRate,
+                             signature: String(describing: buffer.format))
         mixedBuffers += 1
         mixedFormat = "\(buffer.format.sampleRate)Hz \(buffer.format.channelCount)ch"
         lock.unlock()
@@ -91,7 +100,8 @@ final class ScreenAudioProbe: MediaMixerOutput, @unchecked Sendable {
     /// 此計數確認 Mixer 已將 buffer 交付輸出端，比 mixerOutputFrames 更接近 RTMP 輸入。
     func summary() -> String {
         lock.lock(); defer { lock.unlock() }
-        return "delivered=\(mixedBuffers) format=\(mixedFormat)"
+        let sources = timelines.keys.sorted().map { "track\($0){\(timelines[$0]!.summary)}" }.joined(separator: " ")
+        return "delivered=\(mixedBuffers) format=\(mixedFormat) audioTimeline{\(sources) mixed{\(mixedTimeline.summary)}}"
     }
 }
 #endif

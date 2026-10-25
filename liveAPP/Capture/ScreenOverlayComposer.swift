@@ -15,16 +15,32 @@ final class ScreenOverlayComposer: @unchecked Sendable {
     private var cachedSecond = -1
     private var cachedImage: CGImage?
     private var cachedSize: CGSize = .zero
+    private var cachedScene = OverlaySceneConfig()
+    private var lastConfigRead = -Double.infinity
+    private enum OverlayError: Error { case rasterizationFailed, invalidConfiguration }
     private var loggedConfig: TimeOverlayConfig?
 
     /// 要在 `canvas` 上繪製的疊加圖、左上原點與尺寸；未啟用時 nil。
-    func layer(canvas: CGSize) -> (image: CGImage, origin: CGPoint, size: CGSize)? {
-        let scene = OverlayConfigStore.load()
+    /// - Throws: 圖片光柵化失敗；由影像 worker 記錄並丟棄該幀。
+    func layer(canvas: CGSize) throws -> (image: CGImage, origin: CGPoint, size: CGSize)? {
+        // 設定最多延遲一秒套用，避免逐幀讀取 UserDefaults 並解碼 JSON。
+        lock.lock()
+        defer { lock.unlock() }
+        let now = ProcessInfo.processInfo.systemUptime
+        if now - lastConfigRead >= 1 {
+            cachedScene = OverlayConfigStore.load()
+            lastConfigRead = now
+        }
+        let scene = cachedScene
         guard scene.enabled, scene.time.enabled else { return nil }
         let timeCfg = scene.time
+        let positions = [timeCfg.marginX, timeCfg.marginY, timeCfg.offsetX, timeCfg.offsetY,
+                         timeCfg.backgroundOpacity, timeCfg.cornerRadius]
+        guard positions.allSatisfy({ $0.isFinite && abs($0) <= 16384 }) else {
+            throw OverlayError.invalidConfiguration
+        }
         let second = Int(Date().timeIntervalSince1970)
 
-        lock.lock()
         if cachedImage == nil || cachedSecond != second || cachedConfig != timeCfg {
             if let raster = rasterize(timeCfg, second: second) {
                 cachedImage = raster.image
@@ -32,20 +48,18 @@ final class ScreenOverlayComposer: @unchecked Sendable {
                 cachedSecond = second
                 cachedConfig = timeCfg
             } else {
-                lock.unlock()
-                return nil
+                throw OverlayError.rasterizationFailed
             }
         }
         let image = cachedImage
         let size = cachedSize
-        lock.unlock()
 
         if loggedConfig != timeCfg {
             loggedConfig = timeCfg
             sendlog(message: "[CaptureOverlay] config applied enabled:\(scene.enabled) time:\(timeCfg.enabled) anchor:\(timeCfg.anchor.rawValue) size:\(Int(size.width))x\(Int(size.height))")
         }
 
-        guard let image else { return nil }
+        guard let image else { throw OverlayError.rasterizationFailed }
         let origin = timeCfg.anchor.origin(
             container: canvas,
             item: size,
@@ -58,6 +72,8 @@ final class ScreenOverlayComposer: @unchecked Sendable {
     }
 
     private func rasterize(_ config: TimeOverlayConfig, second: Int) -> (image: CGImage, size: CGSize)? {
+        let values = [config.fontSize, config.paddingX, config.paddingY]
+        guard values.allSatisfy({ $0.isFinite && $0 >= 0 && $0 <= 512 }) else { return nil }
         let text = timeText(config: config, now: Date(timeIntervalSince1970: TimeInterval(second)))
         let font = UIFont.monospacedDigitSystemFont(
             ofSize: max(1, CGFloat(config.fontSize)),
@@ -71,6 +87,8 @@ final class ScreenOverlayComposer: @unchecked Sendable {
         let width = max(1, Int(ceil(textSize.width + paddingX * 2)))
         let height = max(1, Int(ceil(textSize.height + paddingY * 2)))
 
+        // 防止異常設定建立超大文字貼圖；失敗由加工器降級為無疊加。
+        guard width <= 4096, height <= 1024 else { return nil }
         let format = UIGraphicsImageRendererFormat.default()
         format.scale = 1
         format.opaque = false
