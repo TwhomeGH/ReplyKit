@@ -19,7 +19,7 @@
 
 ## 共用服務
 
-RecordingTranscoder.compress 新增 destination、audioMode、progress。destination 為 nil 時維持錄後「較小才替換」策略；提供新位置則另存，禁止同路徑、既有輸出及系統品質模式。音訊處理預設 preserve，既有呼叫不變。
+RecordingTranscoder.compress 新增 destination、audioMode、progress。destination 為 nil 時維持錄後「較小才替換」策略；提供新位置則另存，禁止同路徑與既有輸出。系統品質模式亦可另存，無需比原片小。音訊處理預設 preserve，既有呼叫不變。
 
 ## 後續與驗收
 
@@ -32,3 +32,11 @@ RecordingTranscoder.compress 新增 destination、audioMode、progress。destina
 第一版使用者可在檔案 App 管理／刪除輸出；頁面提供播放、分享、詳細資訊與碼率分析；播放頁離開時停止並釋放播放器。
 
 來源與壓縮結果逐軌顯示音訊編碼、取樣率（kHz）、聲道與 estimatedDataRate（kbps，估計值）。格式缺失顯示未提供；沒有音軌則顯示無音訊軌，不以設定值代替實際檔案資訊。
+
+## 系統品質模式
+
+手動頁可切換「自訂平均碼率／系統品質預設」。系統模式列出來源相容且可輸出 MP4 的低、中、最高及 HEVC 最高品質預設；實際匯出仍可能受裝置資源限制而失敗。
+
+選擇系統模式後，隱藏手動編碼、尺寸、FPS、碼率與音訊控制；這些設定不套用，影音輸出由系統決定。容量不做推算，顯示不定進度並支援取消。HDR 仍拒絕；不提供固定品質百分比，也不保證縮小或無損。完成後顯示實際檔案資訊並可播放、分享。
+
+既有錄後系統品質路徑仍要求較小才替換；手動另存保留較大的產物與原檔。新增系統最高品質另存測試，Apple CI 與實機驗收待執行。

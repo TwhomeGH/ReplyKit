@@ -14,6 +14,8 @@ struct VideoCompressionView: View {
     @State private var photoItem: PhotosPickerItem?
     @State private var loadingPhoto = false
     @State private var didLoadInitialURL = false
+    @State private var systemQuality = false
+    @State private var qualityPreset = RecordingTranscoder.QualityPreset.highest
     @State private var codec = "h264"
     @State private var mbps = 8.0
     @State private var suggestionFeedback = ""
@@ -46,6 +48,19 @@ struct VideoCompressionView: View {
                 }
             }
             Section("壓縮設定") {
+                Picker("壓縮模式", selection: $systemQuality) {
+                    Text("自訂平均碼率").tag(false)
+                    Text("系統品質預設").tag(true)
+                }
+                if systemQuality {
+                    Picker("品質預設", selection: $qualityPreset) {
+                        ForEach(model.qualityPresets, id: \.self) { preset in
+                            Text(preset.title).tag(preset)
+                        }
+                    }
+                    Text(model.qualityPresets.isEmpty ? "請先選片；此來源若無可用 MP4 預設，請使用自訂模式。" : "尺寸、FPS、影音編碼與碼率由系統預設管理；手動設定不套用。容量無法預估，最高品質不表示無損，也不保證縮小。HDR 暫不支援。")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
                 Picker("編碼", selection: $codec) {
                     Text("H.264").tag("h264")
                     if VideoEncoderCapabilities.isHardwareEncodeSupported(kCMVideoCodecType_HEVC) { Text("HEVC").tag("hevc") }
@@ -111,17 +126,22 @@ struct VideoCompressionView: View {
                 if !validOptions { Text("請輸入有效寬高、FPS 與碼率（0.1…40 Mbps）。").foregroundStyle(.red) }
                 Text("輸出 MP4，不放大或補幀。HDR 暫不支援；裝置編碼能力會於開始時檢查。轉 AAC 支援單／雙聲道。輸出不保證比原片小。")
                     .font(.caption).foregroundStyle(.secondary)
+                }
             }.disabled(model.busy)
             outputSummary
             Section("工作狀態") {
                 Text(model.message)
                 if model.busy {
-                    ProgressView(value: model.progress)
-                    Text(String(format: "%.0f%%", model.progress * 100))
+                    if model.systemExportRunning {
+                        ProgressView("系統品質匯出中…")
+                    } else {
+                        ProgressView(value: model.progress)
+                        Text(String(format: "%.0f%%", model.progress * 100))
+                    }
                     Button("取消", role: .cancel) { model.cancel() }
                 } else {
                     Button("開始壓縮") {
-                        model.start(settings: compressionSettings, audio: audio, audioBitrate: audioKbps * 1000)
+                        model.start(settings: compressionSettings, audio: audio, audioBitrate: audioKbps * 1000, qualityPreset: systemQuality ? qualityPreset : nil)
                     }.disabled(model.source == nil || !validOptions)
                 }
                 Text("請保持前景；切到背景會取消。偵測到擷取或近期 ReplayKit 推流回報時會等待；擴展斷線可能無法偵測，請先停止廣播。")
@@ -147,6 +167,9 @@ struct VideoCompressionView: View {
         .alert("建議碼率", isPresented: $showingSuggestion) {
             Button("知道了", role: .cancel) { }
         } message: { Text(suggestionFeedback) }
+        .onChange(of: model.qualityPresets) { presets in
+            if !presets.contains(qualityPreset), let first = presets.first { qualityPreset = first }
+        }
         .onChange(of: model.source) { _ in suggestionFeedback = "" }
 
         .fileImporter(isPresented: $importing, allowedContentTypes: [.movie], allowsMultipleSelection: false) { result in
@@ -157,6 +180,7 @@ struct VideoCompressionView: View {
         }
         // 只在首次出現帶入入口來源；從子頁返回時保留使用者後來選的影片。
         .onAppear {
+            if !model.qualityPresets.contains(qualityPreset), let first = model.qualityPresets.first { qualityPreset = first }
             guard !didLoadInitialURL else { return }
             didLoadInitialURL = true
             if let initialURL, !model.busy { model.select(initialURL) }
@@ -205,7 +229,7 @@ struct VideoCompressionView: View {
 
     /// 開始前集中確認輸出設定；容量為平均碼率估算，尚未包含封裝。
     @ViewBuilder private var outputSummary: some View {
-        if let info = model.details, validOptions {
+        if let info = model.details, validOptions, !systemQuality {
             Section("目前輸出設定") {
                 let size = compressionSettings.outputSize(info.displayed)
                 LabeledContent("格式", value: "MP4 · " + (codec == "hevc" ? "HEVC" : "H.264"))
@@ -231,14 +255,19 @@ struct VideoCompressionView: View {
 
     /// 開始前驗證輸入，避免設定正規化悄悄改掉手動輸入值。
     private var validOptions: Bool {
-        mbps.isFinite && (0.1...40).contains(mbps) &&
+        if systemQuality { return model.qualityPresets.contains(qualityPreset) }
+        return mbps.isFinite && (0.1...40).contains(mbps) &&
         (!customSize || ((2...8192).contains(width) && (2...8192).contains(height))) &&
         (!customFPS || (1...120).contains(customFPSValue))
     }
 
     /// 手動尺寸以顯示方向的邊界表示，轉碼器負責處理來源旋轉矩陣。
     private var compressionSettings: RecordingCompressionSettings {
-        .init(enabled: true, hevc: codec == "hevc", megabits: 8,
+        if systemQuality {
+            return .init(enabled: true, hevc: qualityPreset == .hevcHighest,
+                         megabits: 8, longestEdge: 0, fpsLimit: 0, systemQuality: true)
+        }
+        return .init(enabled: true, hevc: codec == "hevc", megabits: 8,
               longestEdge: customSize ? 0 : edge, fpsLimit: customFPS ? customFPSValue : fps,
               boundingSize: customSize ? CGSize(width: width, height: height) : nil,
               videoBitrate: mbps.isFinite && (0.1...40).contains(mbps) ? Int((mbps * 1_000_000).rounded()) : 8_000_000)

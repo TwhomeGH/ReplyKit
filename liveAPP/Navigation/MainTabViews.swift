@@ -94,11 +94,11 @@ struct VideoToolLinks: View {
 struct HomeToolShortcuts: View {
     var body: some View {
         GroupBox(AppLanguage.localized("tools.shortcuts")) {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), alignment: .leading)], alignment: .leading, spacing: 12) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), alignment: .leading)], alignment: .leading, spacing: 12) {
                 NavigationLink {
                     PIPView().navigationTitle(AppLanguage.localized("tools.pip"))
                 } label: {
-                    Label(AppLanguage.localized("tools.pip"), systemImage: "pip.enter")
+                    Label(AppLanguage.localized("tools.pipShort"), systemImage: "pip.enter")
                 }
                 VideoToolLinks()
             }

@@ -13,6 +13,9 @@ import UIKit
     @Published private(set) var busy = false
     @Published private(set) var progress = 0.0
     @Published private(set) var message = "選擇一個影片開始。"
+    /// 來源可建立 MP4 匯出的系統預設；換片成功時一起更新。
+    @Published private(set) var qualityPresets: [RecordingTranscoder.QualityPreset] = []
+    @Published private(set) var systemExportRunning = false
     private var jobID = UUID()
     private var backgroundObserver: AnyCancellable?
     private var importedSource: URL?
@@ -49,6 +52,14 @@ import UIKit
                 let info = try await RecordingFileDetails.read(url)
                 try Task.checkCancellation()
                 guard info.duration.isFinite, info.duration > 0 else { throw CocoaError(.fileReadCorruptFile) }
+                let asset = AVURLAsset(url: url)
+                let compatible = AVAssetExportSession.exportPresets(compatibleWith: asset)
+                let presets = RecordingTranscoder.QualityPreset.allCases.filter {
+                    compatible.contains($0.name) &&
+                    AVAssetExportSession(asset: asset, presetName: $0.name)?.supportedFileTypes.contains(.mp4) == true
+                }
+                try Task.checkCancellation()
+                qualityPresets = presets
                 source = url; details = info; output = nil; outputDetails = nil
                 progress = 0
                 message = "已載入。原檔會保留。"
@@ -70,13 +81,14 @@ import UIKit
     }
 
     /// 固定本次設定，等待本機擷取結束後轉碼；新檔驗證成功才出現在成品路徑。
-    func start(settings: RecordingCompressionSettings, audio: RecordingTranscoder.AudioMode, audioBitrate: Int = 128000) {
+    func start(settings: RecordingCompressionSettings, audio: RecordingTranscoder.AudioMode, audioBitrate: Int = 128000, qualityPreset: RecordingTranscoder.QualityPreset? = nil) {
         guard !busy, let source else { return }
+        systemExportRunning = settings.systemQuality
         busy = true; progress = 0; output = nil; outputDetails = nil
         jobID = UUID()
         let token = jobID
         task = Task {
-            defer { busy = false; task = nil }
+            defer { busy = false; task = nil; systemExportRunning = false }
             let scoped = source.startAccessingSecurityScopedResource()
             defer { if scoped { source.stopAccessingSecurityScopedResource() } }
             do {
@@ -92,7 +104,7 @@ import UIKit
                 let destination = folder.appendingPathComponent(name + "_壓縮_" + UUID().uuidString + ".mp4")
                 message = "正在壓縮，請保持 App 在前景。"
                 _ = try await RecordingTranscoder.compress(url: source, asset: AVURLAsset(url: source),
-                    settings: settings, destination: destination, audioMode: audio, audioBitrate: audioBitrate) { value in
+                    settings: settings, destination: destination, audioMode: audio, audioBitrate: audioBitrate, qualityPreset: qualityPreset) { value in
                         Task { @MainActor in
                             guard self.busy, self.jobID == token else { return }
                             self.progress = max(self.progress, value)

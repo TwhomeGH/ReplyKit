@@ -5,7 +5,8 @@ import Testing
 
 /// 用小型合成影片驗證另存契約；需 Apple SDK 與可用 H.264 編碼器。
 struct VideoCompressionExportTests {
-    @Test func separateOutputKeepsSourceBytes() async throws {
+    @Test(arguments: [false, true])
+    func separateOutputKeepsSourceBytes(systemQuality: Bool) async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -68,8 +69,9 @@ struct VideoCompressionExportTests {
 
         let original = try Data(contentsOf: source)
         _ = try await RecordingTranscoder.compress(url: source, asset: AVURLAsset(url: source),
-            settings: .init(enabled: true, hevc: false, megabits: 1, longestEdge: 0, fpsLimit: 0),
-            destination: destination, audioMode: .remove)
+            settings: .init(enabled: true, hevc: false, megabits: 1, longestEdge: 0, fpsLimit: 0, systemQuality: systemQuality),
+            destination: destination, audioMode: .remove,
+            qualityPreset: systemQuality ? .highest : nil)
         #expect(try Data(contentsOf: source) == original)
         #expect(FileManager.default.fileExists(atPath: destination.path))
         let tracks = try await AVURLAsset(url: destination).loadTracks(withMediaType: .video)

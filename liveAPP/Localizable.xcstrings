@@ -1,6 +1,7 @@
 {
   "sourceLanguage" : "zh-Hant",
   "strings" : {
+"tools.pipShort": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "子母畫面"}}, "en": {"stringUnit": {"state": "translated", "value": "PiP"}}, "ja": {"stringUnit": {"state": "translated", "value": "PiP"}}}},
     "tab.tools": {
     "localizations": {
       "zh-Hant": {
