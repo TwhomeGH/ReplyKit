@@ -60,34 +60,34 @@ jobs:
           # 缺少它會使 .metal 編譯失敗（rotateNV12.metal）。安裝到本機 Xcode。
           xcodebuild -downloadComponent metalToolchain
 
-      - name: Select available iPhone simulator
-        id: simulator
+      - name: Resolve locked package versions
         run: |
-          xcrun simctl list devices available --json > "$RUNNER_TEMP/test-devices.json"
-          python3 - <<'PY'
-          import json, os, re
-          from pathlib import Path
-          data = json.loads((Path(os.environ["RUNNER_TEMP"]) / "test-devices.json").read_text())
-          candidates = []
-          for runtime, devices in data["devices"].items():
-              match = re.search(r"SimRuntime\.iOS-(\d+)-(\d+)(?:-(\d+))?$", runtime)
-              if not match:
-                  continue
-              version = tuple(int(value or 0) for value in match.groups())
-              if version[0] != 27:
-                  continue
-              for device in devices:
-                  if device.get("isAvailable") and device["name"].startswith("iPhone"):
-                      candidates.append((version, device.get("state") == "Booted", device["name"], device["udid"]))
-          if not candidates:
-              raise SystemExit("No available iOS 27 iPhone simulator; tests cannot run.")
-          version, booted, name, udid = max(candidates)
-          print(f"Using {name}, iOS {version}, {udid}")
-          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-              output.write(f"id={udid}\nbooted={str(booted).lower()}\n")
-          PY
+          set -o pipefail
+          mkdir -p TestResults
+          xcodebuild -clonedSourcePackagesDirPath "$BUILD_INFO_PACKAGES_DIR" -resolvePackageDependencies \
+            -project liveAPP.xcodeproj -scheme liveAPP \
+            -onlyUsePackageVersionsFromResolvedFile 2>&1 | tee TestResults/resolve.log
+
+      - name: Verify simulator selector
+        run: python3 Scripts/test_select_test_simulator.py
+
+      - name: Select scheme-compatible iPhone simulator
+        id: simulator
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          mkdir -p TestResults
+          xcrun simctl list devices available --json > TestResults/devices.json
+          xcrun simctl list runtimes --json > TestResults/runtimes.json
+          xcodebuild -skipPackagePluginValidation -skipMacroValidation \
+            -clonedSourcePackagesDirPath "$BUILD_INFO_PACKAGES_DIR" \
+            -project liveAPP.xcodeproj -scheme liveAPP -configuration Debug \
+            -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile \
+            -showdestinations 2>&1 | tee TestResults/destinations.log
+          python3 Scripts/select_test_simulator.py
 
       - name: Boot simulator
+        timeout-minutes: 5
         env:
           SIMULATOR_ID: ${{ steps.simulator.outputs.id }}
           ALREADY_BOOTED: ${{ steps.simulator.outputs.booted }}
@@ -96,14 +96,6 @@ jobs:
             xcrun simctl boot "$SIMULATOR_ID"
           fi
           xcrun simctl bootstatus "$SIMULATOR_ID" -b
-
-      - name: Resolve locked package versions
-        run: |
-          set -o pipefail
-          mkdir -p TestResults
-          xcodebuild -clonedSourcePackagesDirPath "$BUILD_INFO_PACKAGES_DIR" -resolvePackageDependencies \
-            -project liveAPP.xcodeproj -scheme liveAPP \
-            -onlyUsePackageVersionsFromResolvedFile 2>&1 | tee TestResults/resolve.log
 
       - name: Verify CI summary parser
         run: python3 Scripts/test_ci_test_summary.py

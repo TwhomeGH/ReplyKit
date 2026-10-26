@@ -1,5 +1,12 @@
 # 變更歷史
 
+## 2026.10.26 23:37 修正 CI 模擬器目的地選取
+
+- 原選取僅依 simctl 可用清單挑最新 runtime，可能選到 liveAPP scheme 不接受的 UUID，導致 xcodebuild exit 70。
+- 改為解析鎖定套件後，交叉比對 Debug scheme 相容目的地與 simctl 的可用 iOS 27 iPhone。
+- 保存裝置、runtime、目的地與選取結果至 TestResults；查詢及開機步驟各設五分鐘上限。
+- 三項 Python 回歸測試通過；實際 Xcode 模擬器測試待 CI 驗收。
+
 ## 2026.10.26 23:26 接入手動系統品質匯出與修正 PiP 快捷標籤
 
 - 壓縮頁新增互斥系統品質模式，依來源列出可用 MP4 預設，隱藏不生效的手動參數與容量估算。
