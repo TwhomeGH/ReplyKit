@@ -11,34 +11,46 @@ struct RecordingCompressionSettings: Sendable {
     let hevc: Bool
     /// 目標視訊平均碼率，單位 Mbps，範圍 1…40。
     let megabits: Int
+    /// 實際交給編碼器的平均 bit/s；手動壓縮可指定小數 Mbps。
+    let videoBitrate: Int
     /// 最長邊像素上限；0 保留原尺寸，不放大。
     let longestEdge: Int
-    /// 最高取樣頻率；0 不額外丟幀，其他支援值為 30、60。
+    /// 最高取樣頻率；0 不額外丟幀，其他值為 1…120。
     let fpsLimit: Int
+    /// 手動壓縮的顯示寬高上限；nil 沿用長邊限制，維持比例且不放大。
+    let boundingSize: CGSize?
     /// 使用系統最高品質匯出預設；此模式不使用手動尺寸、FPS 或平均碼率。
     let systemQuality: Bool
     /// 僅供系統品質匯出請求多次編碼，不保證編碼器會採用。
     let multiPass: Bool
 
-    init(enabled: Bool, hevc: Bool, megabits: Int, longestEdge: Int, fpsLimit: Int, systemQuality: Bool = false, multiPass: Bool = false) {
+    init(enabled: Bool, hevc: Bool, megabits: Int, longestEdge: Int, fpsLimit: Int, systemQuality: Bool = false, multiPass: Bool = false, boundingSize: CGSize? = nil, videoBitrate: Int? = nil) {
+        self.boundingSize = boundingSize
         self.systemQuality = systemQuality
         self.multiPass = multiPass
         self.enabled = enabled
         self.hevc = hevc
         self.megabits = min(40, max(1, megabits))
-        self.longestEdge = [0, 1280, 1920, 2560].contains(longestEdge) ? longestEdge : 1920
-        self.fpsLimit = [0, 30, 60].contains(fpsLimit) ? fpsLimit : 60
+        self.videoBitrate = min(40_000_000, max(100_000, videoBitrate ?? self.megabits * 1_000_000))
+        self.longestEdge = longestEdge == 0 ? 0 : min(8192, max(2, longestEdge))
+        self.fpsLimit = min(120, max(0, fpsLimit))
     }
 
     /// 保留長寬比、使用偶數尺寸，且不放大原始畫面。
-    func outputSize(_ source: CGSize) -> CGSize {
-        let scale = longestEdge == 0 ? 1 : min(1, CGFloat(longestEdge) / max(source.width, source.height))
+    func outputSize(_ source: CGSize, swapsAxes: Bool = false) -> CGSize {
+        var scale = longestEdge == 0 ? 1 : min(1, CGFloat(longestEdge) / max(source.width, source.height))
+        if let box = boundingSize, box.width.isFinite, box.height.isFinite,
+           box.width >= 2, box.height >= 2 {
+            let width = swapsAxes ? box.height : box.width
+            let height = swapsAxes ? box.width : box.height
+            scale = min(scale, min(width / source.width, height / source.height))
+        }
         return CGSize(width: max(2, floor(source.width * scale / 2) * 2),
                       height: max(2, floor(source.height * scale / 2) * 2))
     }
 
     /// 十進位 MB，僅估視訊；音訊與容器另計，不是大小保證。
-    var estimatedVideoMBPerMinute: Double { Double(megabits) * 60 / 8 }
+    var estimatedVideoMBPerMinute: Double { Double(videoBitrate) / 1_000_000 * 60 / 8 }
 
     /// 讀取並驗證持久設定；缺少值時採關閉、HEVC、8 Mbps、1920、60 FPS。
     static func load(from defaults: UserDefaults) -> Self {

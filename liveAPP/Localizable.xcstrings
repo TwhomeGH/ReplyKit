@@ -1,6 +1,204 @@
 {
   "sourceLanguage" : "zh-Hant",
   "strings" : {
+    "tab.tools": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "工具"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Tools"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ツール"
+        }
+      }
+    }
+  },
+  "tools.title": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "工具與設定"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Tools & Settings"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ツールと設定"
+        }
+      }
+    }
+  },
+  "tools.video": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "影片工具"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Video Tools"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "動画ツール"
+        }
+      }
+    }
+  },
+  "tools.pip": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "子母畫面 PiP"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Picture in Picture"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ピクチャ・イン・ピクチャ"
+        }
+      }
+    }
+  },
+  "tools.pipControls": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "PiP 操作與狀態"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "PiP Controls & Status"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "PiP 操作と状態"
+        }
+      }
+    }
+  },
+  "tools.appSettings": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "App 設定"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "App Settings"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "App 設定"
+        }
+      }
+    }
+  },
+  "tools.compress": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "影片壓縮"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Compress Video"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "動画圧縮"
+        }
+      }
+    }
+  },
+  "tools.recordings": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "本地錄影"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Local Recordings"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "ローカル録画"
+        }
+      }
+    }
+  },
+  "tools.shortcuts": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "常用工具"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Quick Tools"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "よく使うツール"
+        }
+      }
+    }
+  },
   "volume.details": {
     "localizations": {
       "zh-Hant": {

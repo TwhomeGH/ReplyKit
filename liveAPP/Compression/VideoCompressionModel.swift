@@ -70,7 +70,7 @@ import UIKit
     }
 
     /// 固定本次設定，等待本機擷取結束後轉碼；新檔驗證成功才出現在成品路徑。
-    func start(settings: RecordingCompressionSettings, audio: RecordingTranscoder.AudioMode) {
+    func start(settings: RecordingCompressionSettings, audio: RecordingTranscoder.AudioMode, audioBitrate: Int = 128000) {
         guard !busy, let source else { return }
         busy = true; progress = 0; output = nil; outputDetails = nil
         jobID = UUID()
@@ -92,7 +92,7 @@ import UIKit
                 let destination = folder.appendingPathComponent(name + "_壓縮_" + UUID().uuidString + ".mp4")
                 message = "正在壓縮，請保持 App 在前景。"
                 _ = try await RecordingTranscoder.compress(url: source, asset: AVURLAsset(url: source),
-                    settings: settings, destination: destination, audioMode: audio) { value in
+                    settings: settings, destination: destination, audioMode: audio, audioBitrate: audioBitrate) { value in
                         Task { @MainActor in
                             guard self.busy, self.jobID == token else { return }
                             self.progress = max(self.progress, value)

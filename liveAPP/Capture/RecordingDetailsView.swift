@@ -5,7 +5,7 @@ import AVFoundation
 // MARK: - 完成錄影的檔案資訊
 
 /// 從實際檔案讀取的資訊快照，不使用開播設定推算，也不逐幀解碼。
-/// 影像欄位取第一條 video track；音訊編碼則列出所有 audio tracks。
+/// 影像欄位取第一條 video track；音訊逐軌保存格式與估計碼率。
 struct RecordingFileDetails {
     /// 容器時長，單位為秒；無效數值由顯示層轉成「—」。
     let duration: Double
@@ -22,7 +22,34 @@ struct RecordingFileDetails {
     /// 第一條影像軌的媒體子類型 FourCC。
     let videoCodec: String
     /// 各音訊軌的 FourCC，以逗號分隔；沒有音訊時顯示「—」。
-    let audioCodecs: String
+    var audioCodecs: String { audioTracks.isEmpty ? "—" : audioTracks.map(\.codec).joined(separator: ", ") }
+    /// 每條音軌的資訊；空陣列表示檔案沒有音訊軌。
+    let audioTracks: [AudioTrackDetails]
+
+    /// 只保存音訊中繼資料，不保留格式描述或解碼器。
+    struct AudioTrackDetails {
+        let codec: String
+        /// ASBD 取樣率，單位 Hz；格式缺失或非正有限值為 nil。
+        let sampleRate: Double?
+        /// ASBD 聲道數；0 或格式缺失為 nil。
+        let channels: UInt32?
+        /// estimatedDataRate，單位 bit/s；是軌道估計值，不是逐封包實測。
+        let estimatedBitrate: Double?
+
+        /// 統一呈現單位與未知值，供來源、成品及詳細頁共用。
+        var summary: String {
+            let rate = sampleRate.map { String(format: "%g kHz", $0 / 1000) } ?? "取樣率未提供"
+            let channel = channels.map { "\($0) 聲道" } ?? "聲道未提供"
+            let bitrate = estimatedBitrate.map { String(format: "約 %.0f kbps（估計）", $0 / 1000) } ?? "碼率未提供"
+            return "\(codec) · \(rate) · \(channel) · \(bitrate)"
+        }
+    }
+
+    /// 多音軌分行列出，避免把不同音軌的取樣率或碼率誤當成單一格式。
+    var audioSummary: String {
+        guard !audioTracks.isEmpty else { return "無音訊軌" }
+        return audioTracks.enumerated().map { "音軌 \($0.offset + 1)：\($0.element.summary)" }.joined(separator: "\n")
+    }
 
     /// 取第一份格式描述的媒體子類型，依高位元組到低位元組轉成 FourCC。
     /// 保留原始代碼供排錯；格式缺失或無法解碼為 ASCII 時回傳「—」。
@@ -47,14 +74,22 @@ struct RecordingFileDetails {
         let fps = try await video.load(.nominalFrameRate)
         let rate = try await video.load(.estimatedDataRate)
         let videoCodec = codec(try await video.load(.formatDescriptions))
-        var audioCodecs: [String] = []
+        var audioTracks: [AudioTrackDetails] = []
         for audio in try await asset.loadTracks(withMediaType: .audio) {
-            audioCodecs.append(codec(try await audio.load(.formatDescriptions)))
+            let formats = try await audio.load(.formatDescriptions)
+            let asbd = formats.first.flatMap { CMAudioFormatDescriptionGetStreamBasicDescription($0)?.pointee }
+            let rate = asbd?.mSampleRate
+            let channels = asbd?.mChannelsPerFrame
+            let bitrate = Double(try await audio.load(.estimatedDataRate))
+            audioTracks.append(AudioTrackDetails(codec: codec(formats),
+                sampleRate: rate.flatMap { $0.isFinite && $0 > 0 ? $0 : nil },
+                channels: channels.flatMap { $0 > 0 ? $0 : nil },
+                estimatedBitrate: bitrate.isFinite && bitrate > 0 ? bitrate : nil))
         }
         let bytes = Int64(try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0)
         return Self(duration: duration, bytes: bytes, encoded: size, displayed: bounds.size,
                     fps: fps, videoRate: rate, videoCodec: videoCodec,
-                    audioCodecs: audioCodecs.isEmpty ? "—" : audioCodecs.joined(separator: ", "))
+                    audioTracks: audioTracks)
     }
 }
 
@@ -103,7 +138,7 @@ struct RecordingFileDetails {
                     // 整檔平均 = bytes × 8 ÷ 秒數，再換算 kbps；不能當成純影像碼率。
                     value("recording.fileRate", d.duration.isFinite && d.duration > 0 ? String(format: "%.0f kbps", Double(d.bytes) * 8 / d.duration / 1000) : "—")
                     value("recording.videoCodec", d.videoCodec)
-                    value("recording.audioCodec", d.audioCodecs)
+                    value("recording.audioCodec", d.audioSummary)
                     Text(AppLanguage.localized("recording.infoHelp")).font(.caption).foregroundStyle(.secondary)
                     NavigationLink("壓縮影片") { VideoCompressionView(initialURL: url) }
                     NavigationLink(AppLanguage.localized("recording.analyze")) { VideoBitrateView(initialURL: url) }

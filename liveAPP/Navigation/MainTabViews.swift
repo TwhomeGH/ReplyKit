@@ -68,3 +68,42 @@ struct AudioTabView: View {
         }
     }
 }
+
+/// 工具分頁共用影片入口；僅建立導覽，不持有分析或錄製服務。
+struct VideoToolLinks: View {
+    var body: some View {
+        NavigationLink {
+            VideoBitrateView().navigationTitle(AppLanguage.localized("tab.bitrate"))
+        } label: {
+            Label(AppLanguage.localized("tab.bitrate"), systemImage: "chart.bar.xaxis")
+        }
+        NavigationLink {
+            VideoCompressionView()
+        } label: {
+            Label(AppLanguage.localized("tools.compress"), systemImage: "arrow.down.right.and.arrow.up.left")
+        }
+        NavigationLink {
+            RecordingLibraryView()
+        } label: {
+            Label(AppLanguage.localized("tools.recordings"), systemImage: "film.stack")
+        }
+    }
+}
+
+/// 主頁快捷區依可用寬度換行，避免平板單列與手機文字互相擠壓。
+struct HomeToolShortcuts: View {
+    var body: some View {
+        GroupBox(AppLanguage.localized("tools.shortcuts")) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), alignment: .leading)], alignment: .leading, spacing: 12) {
+                NavigationLink {
+                    PIPView().navigationTitle(AppLanguage.localized("tools.pip"))
+                } label: {
+                    Label(AppLanguage.localized("tools.pip"), systemImage: "pip.enter")
+                }
+                VideoToolLinks()
+            }
+            .buttonStyle(.bordered)
+            .padding(.vertical, 8)
+        }
+    }
+}

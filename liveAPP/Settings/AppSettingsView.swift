@@ -1,4 +1,4 @@
-/// 全域設定的唯一分類入口；子頁共用原有偏好，不建立新的擷取或連線服務。
+/// 工具與全域設定的固定分類入口；子頁共用原有偏好，不建立新的擷取或連線服務。
 import SwiftUI
 
 struct AppSettingsView: View {
@@ -6,7 +6,23 @@ struct AppSettingsView: View {
 
   var body: some View {
     List {
-      Section {
+      Section(AppLanguage.localized("tools.video")) {
+        VideoToolLinks()
+      }
+      Section(AppLanguage.localized("tools.pip")) {
+        NavigationLink {
+          PIPView()
+            .navigationTitle(AppLanguage.localized("tools.pip"))
+        } label: {
+          row("tools.pipControls", "pip.enter")
+        }
+        NavigationLink {
+          ChatSettingsView()
+        } label: {
+          row("settings.category.pip", "slider.horizontal.3")
+        }
+      }
+      Section(AppLanguage.localized("tools.appSettings")) {
         NavigationLink {
           GeneralSettingsView()
         } label: {
@@ -33,11 +49,6 @@ struct AppSettingsView: View {
         NavigationLink(AppLanguage.localized("settings.category.encoding")) {
           LegacyEncodingSettingsView()
         }
-        NavigationLink {
-          ChatSettingsView()
-        } label: {
-          row("settings.category.pip", "pip")
-        }
       }
       Section {
         NavigationLink {
@@ -57,7 +68,7 @@ struct AppSettingsView: View {
         }
       }
     }
-    .navigationTitle(AppLanguage.localized("tab.settings"))
+    .navigationTitle(AppLanguage.localized("tools.title"))
     .navigationBarTitleDisplayMode(.inline)
   }
 

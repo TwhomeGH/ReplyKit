@@ -114,7 +114,7 @@ struct VideoBitrateView: View {
                     Label("從檔案", systemImage: "folder")
                         .padding(.horizontal, 20)
                         .padding(.vertical, 12)
-                        .background(Color.accentColor.opacity(0.8))
+                        .background(Color.accentColor)
                         .foregroundColor(.white)
                         .cornerRadius(10)
                 }

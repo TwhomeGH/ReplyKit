@@ -79,7 +79,7 @@ API 遷移屬後續技術評估，不作為以上功能完成的條件；需要�
 - [x] 碼率圖表化（Swift Charts）
 - [x] 手動單檔壓縮頁：相簿／檔案匯入、H.264／HEVC、碼率／長邊／FPS、音訊選項、進度取消、文件共享另存與原檔保留。
 - [ ] 手動壓縮 CI／實機驗收：原檔 bytes 不變、方向／音訊／VFR、取消、不支援格式、磁碟不足與分享結果。
-- [ ] 手動壓縮後續：批次、背景續跑、自訂尺寸、任務歷史、目標大小及完整本地化；詳見 `Docs/development/VIDEO_COMPRESSION.md`。
+- [ ] 手動壓縮後續：批次、背景續跑、任務歷史、目標大小及完整本地化；詳見 `Docs/development/VIDEO_COMPRESSION.md`。
 
 ## Live Activity / 動態島
 

@@ -30,12 +30,13 @@ enum RecordingTranscoder {
     ///   - settings: 本次工作固定的壓縮參數。
     ///   - destination: 手動壓縮的新 MP4 路徑；nil 保留原有較小才替換錄影的行為。
     ///   - audioMode: 保留 AAC、轉 AAC 或移除音訊。
+    ///   - audioBitrate: 轉 AAC 的每軌碼率，單位 bps，範圍 32000…320000。
     ///   - progress: 低頻媒體處理進度；1 表示產物驗證並移入正式位置。
     /// - Returns: 包含編碼、像素尺寸、目標碼率及節省比例的結果文字。
     /// - Throws: 取消、格式不支援、讀寫或驗證失敗；原檔保留。
     static func compress(url: URL, asset: AVAsset, videoComposition: AVVideoComposition? = nil,
                          settings: RecordingCompressionSettings, destination: URL? = nil,
-                         audioMode: AudioMode = .preserve,
+                         audioMode: AudioMode = .preserve, audioBitrate: Int = 128000,
                          progress: (@Sendable (Double) -> Void)? = nil) async throws -> String {
         try Task.checkCancellation()
         let videoTracks = try await asset.loadTracks(withMediaType: .video)
@@ -54,7 +55,17 @@ enum RecordingTranscoder {
         guard sourceSize.width.isFinite, sourceSize.height.isFinite, sourceSize.width > 0, sourceSize.height > 0 else {
             throw failure("錄影尺寸無效。")
         }
-        let size = settings.outputSize(sourceSize)
+        guard (32000...320000).contains(audioBitrate) else { throw failure("AAC 碼率超出範圍。") }
+        if let box = settings.boundingSize {
+            guard box.width.isFinite, box.height.isFinite,
+                  (2...8192).contains(box.width), (2...8192).contains(box.height) else {
+                throw failure("自訂寬高必須介於 2…8192 px。")
+            }
+        }
+        let sourceTransform = try await track.load(.preferredTransform)
+        // 設定採觀看方向；直向影片常以橫向像素搭配旋轉矩陣儲存。
+        let swapsAxes = videoComposition == nil && abs(sourceTransform.b) > abs(sourceTransform.a)
+        let size = settings.outputSize(sourceSize, swapsAxes: swapsAxes)
         let duration = try await asset.load(.duration)
         guard duration.seconds.isFinite, duration.seconds > 0 else { throw failure("錄影時長無效。") }
         let originalBytes = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
@@ -69,7 +80,7 @@ enum RecordingTranscoder {
                 settings: settings, originalBytes: originalBytes, duration: duration)
         }
         // 平均碼率只能估算；另保留音訊及容器空間，寫入時仍須處理磁碟不足。
-        let estimatedBytes = duration.seconds * Double(settings.megabits * 1_000_000 + 1_000_000) / 8 + 64_000_000
+        let estimatedBytes = duration.seconds * Double(settings.videoBitrate + 1_000_000) / 8 + 64_000_000
         if let free = try? (destination ?? url).deletingLastPathComponent().resourceValues(forKeys: [.volumeAvailableCapacityKey]).volumeAvailableCapacity,
            Double(free) < estimatedBytes {
             throw failure("可用空間不足以安全產生壓縮暫存檔。")
@@ -98,7 +109,7 @@ enum RecordingTranscoder {
         var outputSettings: [String: Any] = [
             AVVideoCodecKey: codec, AVVideoWidthKey: Int(size.width), AVVideoHeightKey: Int(size.height),
             AVVideoScalingModeKey: AVVideoScalingModeResizeAspect,
-            AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: settings.megabits * 1_000_000,
+            AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: settings.videoBitrate,
                                                AVVideoMaxKeyFrameIntervalDurationKey: 2,
                                                // 與錄影路徑一致關閉 B 幀：影格時間順序固定，輸出時長與驗證較可預期。
                                                AVVideoAllowFrameReorderingKey: false] as [String: Any]
@@ -143,7 +154,7 @@ enum RecordingTranscoder {
                 }
                 let encode: [String: Any] = [AVFormatIDKey: kAudioFormatMPEG4AAC,
                     AVSampleRateKey: 48000, AVNumberOfChannelsKey: asbd.mChannelsPerFrame,
-                    AVEncoderBitRateKey: 128000]
+                    AVEncoderBitRateKey: audioBitrate]
                 guard writer.canApply(outputSettings: encode, forMediaType: .audio) else {
                     throw failure("裝置無法使用此 AAC 設定。")
                 }
@@ -210,7 +221,7 @@ enum RecordingTranscoder {
             catch { throw staged("無法取代原始錄影", error) }
         }
         progress?(1)
-        return "轉碼完成：\(codec.rawValue)、\(Int(size.width))×\(Int(size.height))、目標 \(settings.megabits) Mbps，由 \(String(format: "%.1f", Double(originalBytes) / 1_000_000)) MB → \(String(format: "%.1f", Double(outputBytes) / 1_000_000)) MB，節省 \(String(format: "%.1f", Double(originalBytes - outputBytes) / 1_000_000)) MB（\(Int((1 - Double(outputBytes) / Double(originalBytes)) * 100))%）。"
+        return "轉碼完成：\(codec.rawValue)、\(Int(size.width))×\(Int(size.height))、目標 \(Double(settings.videoBitrate) / 1_000_000) Mbps，由 \(String(format: "%.1f", Double(originalBytes) / 1_000_000)) MB → \(String(format: "%.1f", Double(outputBytes) / 1_000_000)) MB，節省 \(String(format: "%.1f", Double(originalBytes - outputBytes) / 1_000_000)) MB（\(Int((1 - Double(outputBytes) / Double(originalBytes)) * 100))%）。"
     }
     /// 交由 ExportSession 管理多次讀取；不把多次編碼旗標套在單次 Reader 迴圈。
     private static func exportSystemQuality(url: URL, asset: AVAsset, composition: AVVideoComposition?,

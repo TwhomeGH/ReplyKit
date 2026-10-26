@@ -10,8 +10,8 @@ struct RecordingCompressionTests {
     @Test func settingsValidatePersistedValues() {
         let settings = RecordingCompressionSettings(enabled: true, hevc: true, megabits: -1, longestEdge: 7, fpsLimit: 999)
         #expect(settings.megabits == 1)
-        #expect(settings.longestEdge == 1920)
-        #expect(settings.fpsLimit == 60)
+        #expect(settings.longestEdge == 7)
+        #expect(settings.fpsLimit == 120)
         #expect(RecordingCompressionSettings(enabled: true, hevc: false, megabits: 99, longestEdge: 0, fpsLimit: 0).megabits == 40)
     }
 
@@ -22,6 +22,31 @@ struct RecordingCompressionTests {
         #expect(size == CGSize(width: 1334, height: 1920))
         #expect(settings.outputSize(CGSize(width: 1280, height: 720)) == CGSize(width: 1280, height: 720))
         #expect(settings.estimatedVideoMBPerMinute == 60)
+    }
+
+    /// 自訂框按觀看方向縮放，直向旋轉來源須交換像素軸；不放大小片。
+    @Test func customBoundsRespectDisplayOrientation() {
+        let settings = RecordingCompressionSettings(enabled: true, hevc: false,
+            megabits: 8, longestEdge: 0, fpsLimit: 24,
+            boundingSize: CGSize(width: 1080, height: 1920))
+        #expect(settings.fpsLimit == 24)
+        #expect(settings.outputSize(CGSize(width: 3840, height: 2160), swapsAxes: true)
+            == CGSize(width: 1920, height: 1080))
+        #expect(settings.outputSize(CGSize(width: 2160, height: 3840))
+            == CGSize(width: 1080, height: 1920))
+        #expect(settings.outputSize(CGSize(width: 640, height: 480))
+            == CGSize(width: 640, height: 480))
+    }
+
+    /// 小數 Mbps 必須傳到 Writer 使用的 bit/s，不能沿用整數相容欄位。
+    @Test func fractionalBitrateReachesEncoderSettings() {
+        let settings = RecordingCompressionSettings(enabled: true, hevc: false,
+            megabits: 8, longestEdge: 0, fpsLimit: 0, videoBitrate: 2_500_000)
+        #expect(settings.videoBitrate == 2_500_000)
+        #expect(settings.estimatedVideoMBPerMinute == 18.75)
+        let legacy = RecordingCompressionSettings(enabled: true, hevc: false,
+            megabits: 8, longestEdge: 0, fpsLimit: 0)
+        #expect(legacy.videoBitrate == 8_000_000)
     }
 
     /// 測試限制影格率的行為，確保不會產生不存在的樣本。

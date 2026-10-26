@@ -122,6 +122,7 @@ import Foundation
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     Text("松鼠推流").font(.largeTitle.bold())
+                    HomeToolShortcuts()
                     if geometry.size.width >= 850 && !dynamicTypeSize.isAccessibilitySize {
                         HStack(alignment: .top, spacing: 20) {
                             captureCard.frame(width: max(0, (min(geometry.size.width, 1200) - 52) / 2), alignment: .topLeading)

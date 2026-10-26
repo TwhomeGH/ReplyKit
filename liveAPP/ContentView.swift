@@ -46,7 +46,7 @@ struct ContentView: View {
         .tag(AppPage.audio)
 
       NavigationStack { AppSettingsView() }
-        .tabItem { Label(AppLanguage.localized("tab.settings"), systemImage: "gearshape") }
+        .tabItem { Label(AppLanguage.localized("tab.tools"), systemImage: "square.grid.2x2") }
         .tag(AppPage.settings)
 
     }
