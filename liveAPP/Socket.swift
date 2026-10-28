@@ -943,7 +943,8 @@ class SocketServer:ObservableObject, @unchecked Sendable {
     }
 
     // MARK: - 直播狀態管理 直播開始/結束 狀態更新
-    func StreamStatusChanged(isLive: Bool, message: String? = nil) {
+    /// 更新串流與活動狀態；activityEndReason 僅用於生命週期日誌，不作為 PiP 文案。
+    func StreamStatusChanged(isLive: Bool, message: String? = nil, activityEndReason: String? = nil) {
         LPConfig.shared.StreamEnded = !isLive
         LPConfig.shared.StreamEndMes = normalizedPIPStatusMessage(isLive: isLive, message: message)
         PIPService.shared.markOverlayDirty()
@@ -954,7 +955,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
             }
         } else {
             Task { @MainActor in
-                StreamActivityManager.shared.endStreamActivity()
+                StreamActivityManager.shared.endStreamActivity(reason: activityEndReason ?? "串流狀態已結束")
             }
         }
     }

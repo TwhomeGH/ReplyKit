@@ -60,11 +60,11 @@ import ScreenCaptureKit
             errorMessage = nil
             phase = .selecting
             streamTelemetry = CaptureStreamTelemetry()
-            let source = ScreenCaptureSource(url: url, key: key, mode: mode, publishingChanged: { [weak self] active in
+            let source = ScreenCaptureSource(url: url, key: key, mode: mode, publishingChanged: { [weak self] active, reason in
                 guard let self, self.isPublishing != active else { return }
                 self.isPublishing = active
                 if active { SocketServer.shared.StreamStarting() }
-                else { SocketServer.shared.StreamStatusChanged(isLive: false, message: nil) }
+                else { SocketServer.shared.StreamStatusChanged(isLive: false, message: nil, activityEndReason: reason) }
             }, telemetryChanged: { [weak self] in self?.streamTelemetry = $0 }) { [weak self] phase, message in
                 guard let self else { return }
                 self.phase = phase

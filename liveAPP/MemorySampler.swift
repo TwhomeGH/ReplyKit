@@ -6,12 +6,12 @@ import UIKit
 /// 週期把記憶體明細寫入日誌，用來定位 footprint 成長的時間；無法單憑分類判定持有物件。
 ///
 /// 只讀取 `DeviceInfo.memoryBreakdown`（單次 `task_vm_info`）與幾個已知會累積的計數器，
-/// 不改動任何狀態，純觀測；用於追查像「廣播中 footprint 持續爬升」這類問題。
+/// 維護比較基準但不改動擷取狀態；用於追查像「廣播中 footprint 持續爬升」這類問題。
 ///
 /// 欄位：
 /// - footprint：jetsam 真正採計的實際佔用（該看的數字）。
 /// - internal／compressed：獨立的 VM 分類，不能直接相加視為 footprint。
-/// - external：檔案映射（框架/靜態庫），多可回收，**不計入** footprint。
+/// - external：外部映射分類，不能單憑此欄位推算其對 footprint 的貢獻。
 /// - reusable／purgeable：可重用／可清除頁。
 /// - resident：實體駐留（含可回收），僅對照。
 /// - avail：距 jetsam 上限的可用量（`os_proc_available_memory`）。
@@ -91,28 +91,37 @@ final class IdleMemoryComparison {
     private var everBusy = false
     private var wasBusy = false
     private var baseline: Double?
+    private var firstFootprint: Double?
+    private var preCaptureFootprint: Double?
+    private var lastIdleFootprint: Double?
     private var lastBusyFootprint: Double?
     private var stoppedAt: TimeInterval?
     private var milestones: Set<Int> = []
 
-    /// 冷啟動滿 60 秒仍未觀察到開播才建立基準；停止後以實際採樣時間標記里程碑。
+    /// 本程序擷取前滿 60 秒建立主 App 基準；不使用持久化的 ReplayKit 狀態判定本程序活動。
     /// ReplayKit 僅是最後已知狀態，不能以此證明擴展程序已結束。
     func observe(footprint: Double, captureBusy: Bool, replayLive: Bool, reason: String, now: TimeInterval = ProcessInfo.processInfo.systemUptime) -> String {
-        let busy = captureBusy || replayLive
+        if firstFootprint == nil { firstFootprint = footprint }
+        let busy = captureBusy
+        if busy && !everBusy { preCaptureFootprint = lastIdleFootprint }
         if busy {
             everBusy = true
             lastBusyFootprint = footprint
             stoppedAt = nil
             milestones = []
         } else {
+            lastIdleFootprint = footprint
             if !everBusy && baseline == nil && now - startedAt >= 60 { baseline = footprint }
             if wasBusy { stoppedAt = now }
         }
         wasBusy = busy
         let elapsed = stoppedAt.map { now - $0 }
-        let due = [30, 60, 120].filter { !milestones.contains($0) && (elapsed ?? -1) >= Double($0) }
+        let due = [30, 60, 120, 300].filter { !milestones.contains($0) && (elapsed ?? -1) >= Double($0) }
         milestones.formUnion(due)
+        // 超過時點 45 秒才恢復採樣時，不把目前值冒充成當時的量測。
+        let missed = due.filter { (elapsed ?? 0) - Double($0) > 45 }
+        let observed = due.filter { !missed.contains($0) }
         func number(_ value: Double?) -> String { value.map { String(format: "%.1f", $0) } ?? "unknown" }
-        return "process=\(processID) everObservedCapture=\(everBusy) coldIdleBaselineMB=\(number(baseline)) deltaBaselineMB=\(number(baseline.map { footprint - $0 })) stopElapsedSeconds=\(number(elapsed)) deltaLastBusyMB=\(number(elapsed == nil ? nil : lastBusyFootprint.map { footprint - $0 })) reachedStopSeconds=\(due)"
+        return "process=\(processID) everObservedCapture=\(everBusy) coldIdleBaselineMB=\(number(baseline)) deltaBaselineMB=\(number(baseline.map { footprint - $0 })) stopElapsedSeconds=\(number(elapsed)) deltaLastBusyMB=\(number(elapsed == nil ? nil : lastBusyFootprint.map { footprint - $0 })) reachedStopSeconds=\(observed) missedStopSeconds=\(missed) baselineScope=mainAppProcess firstSampleMB=\(number(firstFootprint)) preCaptureSampleMB=\(number(preCaptureFootprint)) replayLastKnownLive=\(replayLive)"
     }
 }

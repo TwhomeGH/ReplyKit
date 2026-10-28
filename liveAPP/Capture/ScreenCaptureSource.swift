@@ -121,7 +121,14 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     private var state = CaptureSessionState()
     private let mode: CaptureWorkMode
     private let recordingPolicy: RecordingOrientationPolicy
-    private let publishingChanged: @MainActor (Bool) -> Void
+    /// 與 session 分開的物件識別；停止清空 session 後仍可核對實際釋放。
+    private let lifetimeID = UUID()
+
+    deinit {
+        sendlog(message: "[CaptureLifetime] source=\(lifetimeID) event=deinit")
+    }
+
+    private let publishingChanged: @MainActor (Bool, String?) -> Void
     private var pipeline: CaptureMediaPipeline?
     private let directRecordingEnabled = (userDefaults ?? .standard).bool(forKey: "directRecordingEnabled")
     private var recordingSink: SegmentedRecordingSink?
@@ -155,13 +162,15 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     private var priorOptions: AVAudioSession.CategoryOptions = []
     private let sampleQueue = DispatchQueue(label: "capture.screencapturekit.samples", qos: .userInitiated)
     init(url: String, key: String, mode: CaptureWorkMode,
-         publishingChanged: @escaping @MainActor (Bool) -> Void,
+         publishingChanged: @escaping @MainActor (Bool, String?) -> Void,
          telemetryChanged: @escaping @MainActor (CaptureStreamTelemetry) -> Void,
          update: @escaping @MainActor (CapturePhase, String?) -> Void) {
         self.url = url; self.key = key; self.mode = mode
         recordingPolicy = RecordingOrientationPolicy(rawValue: userDefaults?.string(forKey: "recordingOrientationPolicy") ?? "") ?? .automatic
         self.publishingChanged = publishingChanged; self.update = update
         self.telemetryChanged = telemetryChanged
+        super.init()
+        sendlog(message: "[CaptureLifetime] source=\(lifetimeID) event=init")
     }
 
     func present() {
@@ -470,7 +479,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                    event.timestamp >= self.telemetry.stageStartedAt,
                    self.telemetry.stage == "published" {
                     self.publishingStage = "published"
-                    self.publishingChanged(true)
+                    self.publishingChanged(true, nil)
                     self.logStage()
                 }
                 self.telemetryChanged(self.telemetry)
@@ -526,7 +535,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         switch reconnect {
         case .started, .failed:
             publishingStage = "reconnect"
-            publishingChanged(false)
+            publishingChanged(false, "ScreenCaptureKit 網路重連中")
         case .succeeded:
             publishingStage = "rtmp.publish"
         case .exhausted:
@@ -553,7 +562,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         try Task.checkCancellation()
         publishingStage = "published"
         logStage()
-        publishingChanged(true)
+        publishingChanged(true, nil)
     }
     /// 將發布階段映射到上層連線摘要並寫入日誌；已失敗時保留失敗摘要。
     private func logStage() {
@@ -606,7 +615,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             telemetry.stage = "stopped"
             telemetryChanged(telemetry)
         }
-        publishingChanged(false)
+        publishingChanged(false, telemetry.failed ? "ScreenCaptureKit 發布失敗" : "ScreenCaptureKit 停止發布")
         if let connection { await connection.setReconnectEnabled(false) }
         if let output {
             logResources(stage: "rtmp.close.begin")

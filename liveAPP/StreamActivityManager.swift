@@ -83,7 +83,7 @@ final class StreamActivityManager: ObservableObject {
         }
     }
 
-    func endStreamActivity(reason: String = "用戶手動結束") {
+    func endStreamActivity(reason: String = "活動結束（未提供原因）") {
         updateTask?.cancel()
         updateTask = nil
         dismissTask?.cancel()
