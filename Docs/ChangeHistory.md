@@ -1,5 +1,12 @@
 # 變更歷史
 
+## 2026.10.28 08:29 接入 RTMP 封包與重連修正
+
+- HaishinKit 套件鎖定由 `992412e9` 更新至 `946de4e9`，包含 `dd274027` 的 RTMP 修正。
+- ReplayKit 與 ScreenCaptureKit 共用底層修正：續接 chunk 補 extended timestamp、大 CSID 位元組順序修正、新連線重建影音時間基準、重新發布失敗不再誤報重連成功。
+- ScreenCaptureKit 日誌白名單補上 `Receive loop ended`；ReplayKit 沿用必要事件入口，接收帶連線世代的接收結束原因；區分接收錯誤、遠端 EOF 與本機關閉，避免舊接收迴圈結束時關閉新連線。
+- 底層 CI 已通過；主 App 的 Apple SDK 建置及 Twitch 長時間推流／重連仍待驗收，尚不能認定此次修正已排除 log-62 的首次斷線原因。
+
 ## 2026.10.26 23:37 修正 CI 模擬器目的地選取
 
 - 原選取僅依 simctl 可用清單挑最新 runtime，可能選到 liveAPP scheme 不接受的 UUID，導致 xcodebuild exit 70。
