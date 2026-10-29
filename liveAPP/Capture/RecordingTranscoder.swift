@@ -111,7 +111,7 @@ enum RecordingTranscoder {
            Double(free) < estimatedBytes {
             throw failure("可用空間不足以安全產生壓縮暫存檔。")
         }
-        let temporary = destination.map { _ in FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".partial.mp4") } ?? temporaryURL(for: url)
+        let temporary = try destination.map { _ in try VideoWorkFiles.makeURL(kind: "Transcodes", extension: "partial.mp4") } ?? temporaryURL(for: url)
         let reader = try AVAssetReader(asset: asset)
         let writer: AVAssetWriter
         do { writer = try AVAssetWriter(outputURL: temporary, fileType: .mp4) }
@@ -119,7 +119,7 @@ enum RecordingTranscoder {
         defer {
             if reader.status == .reading { reader.cancelReading() }
             if writer.status == .writing { writer.cancelWriting() }
-            try? FileManager.default.removeItem(at: temporary)
+            VideoWorkFiles.discard(temporary)
         }
         let pixelSettings: [String: Any] = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange]
         let videoOutput: AVAssetReaderOutput
@@ -256,8 +256,8 @@ enum RecordingTranscoder {
         let preset = qualityPreset?.name ?? (settings.hevc ? AVAssetExportPresetHEVCHighestQuality : AVAssetExportPresetHighestQuality)
         guard let exporter = AVAssetExportSession(asset: asset, presetName: preset),
               exporter.supportedFileTypes.contains(.mp4) else { throw failure("此裝置不支援所選系統品質預設。") }
-        let temporary = destination.map { _ in FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".quality.mp4") } ?? temporaryURL(for: url)
-        defer { try? FileManager.default.removeItem(at: temporary) }
+        let temporary = try destination.map { _ in try VideoWorkFiles.makeURL(kind: "Transcodes", extension: "quality.mp4") } ?? temporaryURL(for: url)
+        defer { VideoWorkFiles.discard(temporary) }
         exporter.outputURL = temporary
         exporter.outputFileType = .mp4
         exporter.videoComposition = composition

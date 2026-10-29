@@ -42,7 +42,7 @@ import UIKit
     func select(_ url: URL) {
         guard !busy else { return }
         // 相簿匯入的暫存副本只保留最近一份；載入新來源時刪除，避免大型影片累積。
-        if importedSource != url { discardImportedSource() }
+        if importedSource != url, !discardImportedSource() { return }
         busy = true
         task = Task {
             defer { busy = false; task = nil }
@@ -69,15 +69,29 @@ import UIKit
 
     /// 相簿影片由 App 複製到暫存目錄；下一支來源載入時清除，只保留最近一份。
     func selectImported(_ url: URL) {
-        guard !busy else { try? FileManager.default.removeItem(at: url); return }
+        guard !busy else { VideoWorkFiles.discard(url); return }
+        guard discardImportedSource() else { VideoWorkFiles.discard(url); return }
         select(url)
         importedSource = url
     }
 
-    private func discardImportedSource() {
-        guard let importedSource else { return }
-        try? FileManager.default.removeItem(at: importedSource)
+    /// 刪除失敗保留持有路徑，讓下一次可重試並向畫面回報。
+    private func discardImportedSource() -> Bool {
+        guard let importedSource else { return true }
+        guard VideoWorkFiles.discard(importedSource) else {
+            message = "來源暫存清理失敗，請查看日誌並重試。"
+            return false
+        }
         self.importedSource = nil
+        return true
+    }
+
+    /// 手動釋放來源副本；保留已完成成品，執行中不可清除。
+    func clearSource() {
+        guard !busy else { return }
+        guard discardImportedSource() else { return }
+        source = nil; details = nil; qualityPresets = []
+        message = "已清除目前來源，成品保留。"
     }
 
     /// 固定本次設定，等待本機擷取結束後轉碼；新檔驗證成功才出現在成品路徑。

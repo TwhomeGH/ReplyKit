@@ -32,6 +32,12 @@ struct VideoCompressionView: View {
 
     var body: some View {
         Form {
+            Section {
+                NavigationLink("已壓縮影片與暫存管理") { CompressedVideoLibraryView() }
+                Button("清除目前來源副本") { model.clearSource() }
+                    .disabled(model.busy || loadingPhoto || model.source == nil)
+            }
+
             Section("來源影片") {
                 PhotosPicker(selection: $photoItem, matching: .videos) {
                     Label("從相簿選擇影片", systemImage: "photo.on.rectangle")
@@ -280,7 +286,7 @@ struct VideoCompressionView: View {
 }
 
 /// 只在播放頁持有播放器；離頁釋放解碼資源，返回後可重新播放。
-private struct CompressionPlaybackView: View {
+struct CompressionPlaybackView: View {
     let url: URL
     @State private var player: AVPlayer?
 

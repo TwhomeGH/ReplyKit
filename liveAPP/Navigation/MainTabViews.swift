@@ -82,6 +82,7 @@ struct VideoToolLinks: View {
         } label: {
             Label(AppLanguage.localized("tools.compress"), systemImage: "arrow.down.right.and.arrow.up.left")
         }
+        NavigationLink("已壓縮影片", destination: CompressedVideoLibraryView())
         NavigationLink {
             RecordingLibraryView()
         } label: {

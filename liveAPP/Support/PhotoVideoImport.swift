@@ -15,10 +15,9 @@ struct ImportedVideo: Transferable {
         } importing: { received in
             let source = received.file
             let ext = source.pathExtension.isEmpty ? "mp4" : source.pathExtension
-            let copy = FileManager.default.temporaryDirectory
-                .appendingPathComponent(UUID().uuidString)
-                .appendingPathExtension(ext)
-            try FileManager.default.copyItem(at: source, to: copy)
+            let copy = try VideoWorkFiles.makeURL(kind: "Imports", extension: ext)
+            do { try FileManager.default.copyItem(at: source, to: copy) }
+            catch { VideoWorkFiles.discard(copy); throw error }
             return Self(url: copy)
         }
     }
