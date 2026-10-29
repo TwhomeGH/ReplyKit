@@ -7,6 +7,7 @@ struct ChatSettingsView: View {
   @AppStorage("isNotifyChat", store: userDefaults) private var isNotifyChat = false
   var body: some View {
     Form {
+      PIPKeepaliveSettingsSection()
       Toggle(isOn: $isNotifyChat) {
         Text("啟用聊天訊息通知！")
       }

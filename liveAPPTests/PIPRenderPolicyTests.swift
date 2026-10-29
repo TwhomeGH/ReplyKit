@@ -41,3 +41,19 @@ struct PIPRenderPolicyTests {
         }
     }
 }
+
+/// 保活設定不應受低 FPS 精度或無效偏好值影響。
+extension PIPRenderPolicyTests {
+    @Test func configurableKeepaliveIntervals() {
+        for seconds in [1.0, 5.0, 10.0, 60.0] {
+            let fps = PIPRenderPolicy.targetFPS(keepalive: true, overlay: false,
+                animating: false, pendingMessages: false, recentlyActive: false,
+                keepaliveInterval: seconds)
+            #expect(abs(PIPRenderPolicy.interval(for: fps) - seconds) < 0.000001)
+        }
+        #expect(PIPRenderPolicy.keepaliveSeconds(0) == 1)
+        #expect(PIPRenderPolicy.keepaliveSeconds(100) == 60)
+        #expect(PIPRenderPolicy.keepaliveSeconds(.nan) == 5)
+        #expect(PIPRenderPolicy.keepaliveSeconds(.infinity) == 5)
+    }
+}

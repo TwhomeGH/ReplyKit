@@ -206,7 +206,21 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     private let animationFPS = PIPRenderPolicy.animationFPS
     private let activeFPS = PIPRenderPolicy.activeFPS
     private let idleFPS = PIPRenderPolicy.idleFPS
-    private let keepaliveFPS = PIPRenderPolicy.keepaliveFPS
+    private var keepaliveFPS: Double { 1.0 / configuredKeepaliveSeconds }
+
+    /// 每次讀取持久化值；缺值時預設五秒，診斷與排程共用同一份設定。
+    private var configuredKeepaliveSeconds: Double {
+        PIPRenderPolicy.keepaliveSeconds(userDefaults?.object(forKey: "pipKeepaliveSeconds") as? Double ?? 5)
+    }
+
+    /// 設定頁明確套用間隔時可延後或提前下一幀；一般訊息更新仍只提前排程。
+    @MainActor func applyKeepaliveInterval() {
+        guard isKeepaliveMode else { return }
+        decayFPSIfNeeded()
+        guard !renderCancelled else { return }
+        scheduleNextRender(after: PIPRenderPolicy.interval(for: currentFPS))
+        PIPLogTo("保活更新間隔設定：\(configuredKeepaliveSeconds) 秒，實際目標 FPS：\(currentFPS)")
+    }
 
     private var currentFPS: Double = 2
     private var lastDrawnKeepaliveTime: String?
@@ -245,16 +259,18 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         setNeedsRedraw()
     }
 
+    /// 每幀重新評估目標頻率；下一次單次排程使用更新後的間隔。
     func decayFPSIfNeeded() {
         let now = CACurrentMediaTime()
         let targetFPS = PIPRenderPolicy.targetFPS(
             keepalive: isKeepaliveMode, overlay: adOverlayActive,
             animating: messagesLayer?.isAnimating == true,
             pendingMessages: messagesLayer.map { !$0.pendingSegments.isEmpty } ?? false,
-            recentlyActive: (now - lastActiveRenderTime) < decayCooldown
+            recentlyActive: (now - lastActiveRenderTime) < decayCooldown,
+            keepaliveInterval: configuredKeepaliveSeconds
         )
 
-        if abs(currentFPS - targetFPS) > 0.1 {
+        if abs(currentFPS - targetFPS) > 0.000001 {
             currentFPS = targetFPS
             if lastFPS != currentFPS {
                 PIPLogTo("📉 fps -> \(currentFPS)")
@@ -1103,6 +1119,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     }
 
     // MARK: - Render Timer
+    /// 重設單次渲染排程與統計，立即安排首幀。
     private func startRenderTimer() {
         cancelRenderTimer()
         renderCancelled = false
@@ -1113,6 +1130,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         scheduleNextRender(after: 0)
     }
 
+    /// 安排唯一下一幀並以世代拒絕已取消的回呼；delay 為秒，nil 使用目前 FPS。
     private func scheduleNextRender(after delay: TimeInterval? = nil) {
         guard !renderCancelled else { return }
         let interval = delay ?? PIPRenderPolicy.interval(for: currentFPS)
@@ -1134,6 +1152,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         DispatchQueue.main.asyncAfter(deadline: .now() + interval, execute: work)
     }
 
+    /// 訊息更新只提前下一幀，不反覆延後而餓死渲染；fps 單位為每秒幀數。
     private func rescheduleRenderTimer(fps: Double) {
         guard !renderCancelled else { return }
         let interval = PIPRenderPolicy.interval(for: fps)
@@ -1143,6 +1162,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         scheduleNextRender(after: interval)
     }
 
+    /// 停止排程並作廢已送入主佇列但尚未執行的回呼。
     private func cancelRenderTimer() {
         renderCancelled = true
         renderGeneration.invalidate()
