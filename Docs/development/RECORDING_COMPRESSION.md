@@ -81,3 +81,15 @@ ScreenCaptureKit 的 Mixer 每 200 ms 合併讀取 appVolume／micVolume，有�
 - 「合併整場錄影」按序號匯出新 MP4；可選停止後自動合併，預設關閉。合併期間禁止刪除來源，原片段永遠保留。
 - 缺段、未完成、尺寸／方向／編碼或音訊格式不一致時拒絕直接合併。音訊保留在原片段內的時間位置；合併不補回原本遺失的聲音。
 - 接縫逐樣本連續性、六秒以上音訊延遲、磁碟不足與實機資源峰值仍需驗收，不承諾事故後最後片段完整。
+
+## 輸出設定拒絕診斷
+
+手動影片壓縮與錄後壓縮共用 `RecordingTranscoder`。平均碼率路徑的 `[VideoCompression]` 日誌以 `job` 串接：
+
+- `prepare`：來源 codec（FourCC 數值）、原始尺寸、處理尺寸、輸出尺寸、方向矩陣、時長、FPS 上限及來源色彩欄位。
+- `video.settings`：送入 Writer 的完整影片輸出設定，包含編碼、平均碼率、關鍵幀間隔、重排與色彩設定。
+- `video.preflight`：`accepted` 只代表設定檢查通過，不保證後續編碼成功；`rejected` 表示尚未開始編碼。
+
+拒絕時，`withoutColorPropertiesAccepted=true` 表示移除色彩欄位後設定檢查通過，可優先調查色彩值或組合相容性；false 不足以指出哪個參數錯誤，`notApplicable` 表示原本沒有色彩欄位。比較僅用於診斷，正式輸出不採用移除色彩的設定。不根據此結果直接宣稱設備不支援 H.264 或 HEVC。
+
+系統品質路徑使用 ExportSession，不經過上述 Writer 檢查。日誌不記錄來源完整路徑，也不逐影格輸出設定。

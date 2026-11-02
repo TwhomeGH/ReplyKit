@@ -45,6 +45,23 @@ enum RecordingTranscoder {
         ])
     }
 
+    /// 將本次建立的設定字典依鍵排序成單行，方便比較兩次失敗；不接收來源路徑。
+    /// - Parameter settings: Writer 設定或選取的來源色彩欄位。
+    /// - Returns: 穩定排序的診斷文字；換行會轉成空白。
+    private static func diagnosticSettings(_ settings: [String: Any]) -> String {
+        settings.keys.sorted().map { key in
+            let value = settings[key]!
+            let text: String
+            if let nested = value as? [String: Any] {
+                text = "{" + diagnosticSettings(nested) + "}"
+            } else {
+                text = String(describing: value).replacingOccurrences(of: "\n", with: " ")
+                    .replacingOccurrences(of: "\r", with: " ")
+            }
+            return "\(key)=\(text)"
+        }.joined(separator: "; ")
+    }
+
     /// 平均碼率模式直接複製 AAC；系統品質模式由匯出預設管理影音編碼。
     /// - Parameters:
     ///   - url: 原始錄影位置；僅在產物驗證通過且較小時替換。
@@ -63,6 +80,7 @@ enum RecordingTranscoder {
                          audioMode: AudioMode = .preserve, audioBitrate: Int = 128000,
                          qualityPreset: QualityPreset? = nil,
                          progress: (@Sendable (Double) -> Void)? = nil) async throws -> String {
+        let diagnosticID = UUID().uuidString
         try Task.checkCancellation()
         let videoTracks = try await asset.loadTracks(withMediaType: .video)
         guard videoTracks.count == 1, let track = videoTracks.first else {
@@ -100,6 +118,18 @@ enum RecordingTranscoder {
                 throw failure("手動壓縮需要新的輸出路徑。")
             }
         }
+        let sourceColors = extensions.filter { key, _ in
+            [kCMFormatDescriptionExtension_ColorPrimaries as String,
+             kCMFormatDescriptionExtension_TransferFunction as String,
+             kCMFormatDescriptionExtension_YCbCrMatrix as String].contains(key)
+        }
+        sendlog(message: "[VideoCompression] job=\(diagnosticID) stage=prepare "
+            + "mode=\(settings.systemQuality ? "systemQuality" : "averageBitrate") "
+            + "sourceCodec=\(CMFormatDescriptionGetMediaSubType(format)) "
+            + "sourceSize=\(naturalSize) renderSize=\(sourceSize) outputSize=\(size) "
+            + "transform=\(sourceTransform) durationSeconds=\(duration.seconds) "
+            + "fpsLimit=\(settings.fpsLimit) audioMode=\(audioMode.rawValue) audioBitrate=\(audioBitrate) "
+            + "sourceColors={\(diagnosticSettings(sourceColors))}")
         if settings.systemQuality {
             return try await exportSystemQuality(url: url, asset: asset, composition: videoComposition,
                 settings: settings, originalBytes: originalBytes, duration: duration,
@@ -147,9 +177,20 @@ enum RecordingTranscoder {
             if let value = extensions[source as String] as? String { colors[destination] = value }
         }
         if !colors.isEmpty { outputSettings[AVVideoColorPropertiesKey] = colors }
+        sendlog(message: "[VideoCompression] job=\(diagnosticID) stage=video.settings "
+            + "container=mp4 output={\(diagnosticSettings(outputSettings))}")
         guard writer.canApply(outputSettings: outputSettings, forMediaType: .video) else {
-            throw failure("此裝置不支援所選壓縮設定。")
+            // 只比較色彩欄位的影響，不使用比較設定輸出，避免靜默改變來源色彩。
+            var withoutColors = outputSettings
+            withoutColors.removeValue(forKey: AVVideoColorPropertiesKey)
+            let colorProbe = colors.isEmpty ? "notApplicable"
+                : String(writer.canApply(outputSettings: withoutColors, forMediaType: .video))
+            sendlog(message: "[VideoCompression] job=\(diagnosticID) stage=video.preflight result=rejected "
+                + "withoutColorPropertiesAccepted=\(colorProbe) writerStatus=\(writer.status.rawValue) "
+                + "writerError=\(String(describing: writer.error))")
+            throw failure("影片輸出設定檢查失敗（\(codec.rawValue)、\(Int(size.width))×\(Int(size.height))、\(settings.videoBitrate) bps）；尚未開始編碼。診斷編號：\(diagnosticID)。")
         }
+        sendlog(message: "[VideoCompression] job=\(diagnosticID) stage=video.preflight result=accepted")
         let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: outputSettings)
         videoInput.expectsMediaDataInRealTime = false
         if videoComposition == nil {
