@@ -93,3 +93,11 @@ ScreenCaptureKit 的 Mixer 每 200 ms 合併讀取 appVolume／micVolume，有�
 拒絕時，`withoutColorPropertiesAccepted=true` 表示移除色彩欄位後設定檢查通過，可優先調查色彩值或組合相容性；false 不足以指出哪個參數錯誤，`notApplicable` 表示原本沒有色彩欄位。比較僅用於診斷，正式輸出不採用移除色彩的設定。不根據此結果直接宣稱設備不支援 H.264 或 HEVC。
 
 系統品質路徑使用 ExportSession，不經過上述 Writer 檢查。日誌不記錄來源完整路徑，也不逐影格輸出設定。
+
+## 來源色彩映射
+
+`YCbCrMatrix#5`（BT.470 BG）與 `#6` 的矩陣係數映射為 Apple BT.601 常數；不代表色域或轉移函數也已知。完整三項才建立 Writer 的 `AVVideoColorPropertiesKey`，部分資訊沿解碼影格附件傳遞。解碼影格既有矩陣優先，無 composition 且缺少矩陣時才補來源已知矩陣；未知矩陣報錯。系統品質 ExportSession 路徑不經此映射。
+
+`video.colorMapping` 記錄 `explicitComplete` 或 `sampleAttachments`。Reader 仍請求 420v（video range）解碼像素，由 AVFoundation 進行來源範圍轉換；不把 full-range 標記直接貼到 video-range 像素上。須以實機產物檢查黑白階、色彩及輸出標記，不能把設定通過視為色彩驗收完成。
+
+Apple 要求色彩字典同時提供三項，參見 [AVVideoColorPropertiesKey](https://developer.apple.com/documentation/avfoundation/avvideocolorpropertieskey)。因此先前拒絕不能只歸因於矩陣字串，缺少其他兩項也是原設計缺陷。

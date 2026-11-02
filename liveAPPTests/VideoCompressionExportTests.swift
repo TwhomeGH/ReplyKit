@@ -5,6 +5,63 @@ import Testing
 
 /// 用小型合成影片驗證另存契約；需 Apple SDK 與可用 H.264 編碼器。
 struct VideoCompressionExportTests {
+    /// 真實失敗來源只有 matrix #5；不可捏造 primaries／transfer 或誤標 BT.709。
+    @Test func partialBT601MetadataRemainsPartial() throws {
+        let colors = try RecordingTranscoder.mappedColorProperties([
+            kCMFormatDescriptionExtension_YCbCrMatrix as String: "YCbCrMatrix#5"
+        ])
+        #expect(colors.count == 1)
+        #expect(colors[AVVideoYCbCrMatrixKey] == AVVideoYCbCrMatrix_ITU_R_601_4)
+        #expect(colors[AVVideoColorPrimariesKey] == nil)
+        #expect(colors[AVVideoTransferFunctionKey] == nil)
+    }
+
+    /// 完整合法設定必須保持原意，未知矩陣不得默默降級。
+    @Test func completeColorsAndUnknownMatrix() throws {
+        let colors = try RecordingTranscoder.mappedColorProperties([
+            kCMFormatDescriptionExtension_ColorPrimaries as String: AVVideoColorPrimaries_ITU_R_709_2,
+            kCMFormatDescriptionExtension_TransferFunction as String: AVVideoTransferFunction_ITU_R_709_2,
+            kCMFormatDescriptionExtension_YCbCrMatrix as String: AVVideoYCbCrMatrix_ITU_R_709_2
+        ])
+        #expect(colors.count == 3)
+        #expect(colors[AVVideoYCbCrMatrixKey] == AVVideoYCbCrMatrix_ITU_R_709_2)
+        #expect(throws: (any Error).self) {
+            _ = try RecordingTranscoder.normalizedColorMatrix("YCbCrMatrix#999")
+        }
+    }
+
+    /// 附件映射不改像素格式；解碼器已指定的矩陣優先於來源回補。
+    @Test func decodedMatrixPreservesRangeAndDecoderChoice() throws {
+        var buffer: CVPixelBuffer?
+        let status = CVPixelBufferCreate(kCFAllocatorDefault, 16, 16,
+            kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, nil, &buffer)
+        #expect(status == kCVReturnSuccess)
+        let image = try #require(buffer)
+        CVBufferSetAttachment(image, kCVImageBufferYCbCrMatrixKey,
+            "YCbCrMatrix#5" as CFString, .shouldPropagate)
+        var description: CMVideoFormatDescription?
+        #expect(CMVideoFormatDescriptionCreateForImageBuffer(allocator: kCFAllocatorDefault,
+            imageBuffer: image, formatDescriptionOut: &description) == noErr)
+        let format = try #require(description)
+        var timing = CMSampleTimingInfo(duration: CMTime(value: 1, timescale: 30),
+            presentationTimeStamp: .zero, decodeTimeStamp: .invalid)
+        var bufferSample: CMSampleBuffer?
+        #expect(CMSampleBufferCreateReadyWithImageBuffer(allocator: kCFAllocatorDefault,
+            imageBuffer: image, formatDescription: format, sampleTiming: &timing,
+            sampleBufferOut: &bufferSample) == noErr)
+        let sample = try #require(bufferSample)
+        try RecordingTranscoder.normalizeDecodedColor(sample, sourceMatrix: nil)
+        let mapped = CVBufferCopyAttachment(image, kCVImageBufferYCbCrMatrixKey, nil) as? String
+        #expect(mapped == AVVideoYCbCrMatrix_ITU_R_601_4)
+        #expect(CVPixelBufferGetPixelFormatType(image) == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange)
+
+        CVBufferSetAttachment(image, kCVImageBufferYCbCrMatrixKey,
+            kCVImageBufferYCbCrMatrix_ITU_R_709_2, .shouldPropagate)
+        try RecordingTranscoder.normalizeDecodedColor(sample, sourceMatrix: AVVideoYCbCrMatrix_ITU_R_601_4)
+        let retained = CVBufferCopyAttachment(image, kCVImageBufferYCbCrMatrixKey, nil) as? String
+        #expect(retained == AVVideoYCbCrMatrix_ITU_R_709_2)
+    }
+
     @Test(arguments: [false, true])
     func separateOutputKeepsSourceBytes(systemQuality: Bool) async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

@@ -62,6 +62,57 @@ enum RecordingTranscoder {
         }.joined(separator: "; ")
     }
 
+    /// 將來源矩陣別名轉為 Apple 可接受的值；5／6 共用 BT.601 矩陣係數。
+    /// 此操作只正規化同義標記，不轉換像素，也不推測色域或轉移函數。
+    /// - Parameter value: Core Media／Core Video 回報的矩陣字串。
+    /// - Returns: Apple 矩陣常數。
+    /// - Throws: 無法辨識的矩陣，避免靜默改標 BT.709。
+    static func normalizedColorMatrix(_ value: String) throws -> String {
+        switch value {
+        case "YCbCrMatrix#1", AVVideoYCbCrMatrix_ITU_R_709_2:
+            return AVVideoYCbCrMatrix_ITU_R_709_2
+        case "YCbCrMatrix#5", "YCbCrMatrix#6", AVVideoYCbCrMatrix_ITU_R_601_4:
+            return AVVideoYCbCrMatrix_ITU_R_601_4
+        case "YCbCrMatrix#7", AVVideoYCbCrMatrix_SMPTE_240M_1995:
+            return AVVideoYCbCrMatrix_SMPTE_240M_1995
+        case "YCbCrMatrix#9", AVVideoYCbCrMatrix_ITU_R_2020:
+            return AVVideoYCbCrMatrix_ITU_R_2020
+        default:
+            throw failure("無法映射來源色彩矩陣：\(value)。")
+        }
+    }
+
+    /// 建立已知色彩欄位；缺少的欄位保持缺少，呼叫端只可把完整三項交給 Writer。
+    /// - Parameter extensions: 來源格式描述的擴充欄位。
+    /// - Returns: 以 AVVideo 色彩鍵表示的已知欄位，矩陣已正規化。
+    /// - Throws: 不支援的矩陣別名。
+    static func mappedColorProperties(_ extensions: [String: Any]) throws -> [String: String] {
+        var result: [String: String] = [:]
+        for (source, destination) in [
+            (kCMFormatDescriptionExtension_ColorPrimaries, AVVideoColorPrimariesKey),
+            (kCMFormatDescriptionExtension_TransferFunction, AVVideoTransferFunctionKey),
+            (kCMFormatDescriptionExtension_YCbCrMatrix, AVVideoYCbCrMatrixKey)
+        ] {
+            guard let value = extensions[source as String] as? String else { continue }
+            result[destination] = destination == AVVideoYCbCrMatrixKey
+                ? try normalizedColorMatrix(value) : value
+        }
+        return result
+    }
+
+    /// 正規化解碼影格的矩陣附件，保留解碼器實際產生的其他色彩與範圍資訊。
+    /// - Parameters:
+    ///   - sample: 即將交給 Writer 的未壓縮影格。
+    ///   - sourceMatrix: 未經 composition 時可補回的已知來源矩陣；不覆蓋現有附件。
+    /// - Throws: 解碼影格含無法辨識的矩陣。
+    static func normalizeDecodedColor(_ sample: CMSampleBuffer, sourceMatrix: String?) throws {
+        guard let image = CMSampleBufferGetImageBuffer(sample) else { return }
+        let existing = CVBufferCopyAttachment(image, kCVImageBufferYCbCrMatrixKey, nil) as? String
+        guard let value = existing ?? sourceMatrix else { return }
+        let matrix = try normalizedColorMatrix(value)
+        CVBufferSetAttachment(image, kCVImageBufferYCbCrMatrixKey, matrix as CFString, .shouldPropagate)
+    }
+
     /// 平均碼率模式直接複製 AAC；系統品質模式由匯出預設管理影音編碼。
     /// - Parameters:
     ///   - url: 原始錄影位置；僅在產物驗證通過且較小時替換。
@@ -170,20 +221,21 @@ enum RecordingTranscoder {
                                                // 與錄影路徑一致關閉 B 幀：影格時間順序固定，輸出時長與驗證較可預期。
                                                AVVideoAllowFrameReorderingKey: false] as [String: Any]
         ]
-        var colors: [String: Any] = [:]
-        for (source, destination) in [(kCMFormatDescriptionExtension_ColorPrimaries, AVVideoColorPrimariesKey),
-                                       (kCMFormatDescriptionExtension_TransferFunction, AVVideoTransferFunctionKey),
-                                       (kCMFormatDescriptionExtension_YCbCrMatrix, AVVideoYCbCrMatrixKey)] {
-            if let value = extensions[source as String] as? String { colors[destination] = value }
-        }
-        if !colors.isEmpty { outputSettings[AVVideoColorPropertiesKey] = colors }
+        let colors: [String: String]
+        do { colors = try mappedColorProperties(extensions) }
+        catch { throw staged("來源色彩映射失敗", error) }
+        // Writer 要求三項齊全；部分來源資訊改由解碼影格附件傳遞，不捏造缺少的值。
+        if colors.count == 3 { outputSettings[AVVideoColorPropertiesKey] = colors }
+        sendlog(message: "[VideoCompression] job=\(diagnosticID) stage=video.colorMapping "
+            + "policy=\(colors.count == 3 ? "explicitComplete" : "sampleAttachments") "
+            + "mapped={\(diagnosticSettings(colors))} readerPixelFormat=420v")
         sendlog(message: "[VideoCompression] job=\(diagnosticID) stage=video.settings "
             + "container=mp4 output={\(diagnosticSettings(outputSettings))}")
         guard writer.canApply(outputSettings: outputSettings, forMediaType: .video) else {
             // 只比較色彩欄位的影響，不使用比較設定輸出，避免靜默改變來源色彩。
             var withoutColors = outputSettings
             withoutColors.removeValue(forKey: AVVideoColorPropertiesKey)
-            let colorProbe = colors.isEmpty ? "notApplicable"
+            let colorProbe = outputSettings[AVVideoColorPropertiesKey] == nil ? "notApplicable"
                 : String(writer.canApply(outputSettings: withoutColors, forMediaType: .video))
             sendlog(message: "[VideoCompression] job=\(diagnosticID) stage=video.preflight result=rejected "
                 + "withoutColorPropertiesAccepted=\(colorProbe) writerStatus=\(writer.status.rawValue) "
@@ -259,6 +311,8 @@ enum RecordingTranscoder {
                         lastProgress = pts
                     }
                     if !limiter.accepts(seconds: pts) { continue }
+                    try normalizeDecodedColor(sample, sourceMatrix: videoComposition == nil
+                        ? colors[AVVideoYCbCrMatrixKey] : nil)
                 }
                 guard inputs[index].append(sample) else { throw staged("無法寫入媒體樣本", writer.error ?? failure("無法寫入媒體樣本。")) }
             }
