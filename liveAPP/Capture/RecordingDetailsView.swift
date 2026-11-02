@@ -21,6 +21,8 @@ struct RecordingFileDetails {
     let videoRate: Float
     /// 第一條影像軌的媒體子類型 FourCC。
     let videoCodec: String
+    /// 來源或成品實際色彩標記，不使用壓縮設定推算。
+    let color: CompressionColorInfo
     /// 各音訊軌的 FourCC，以逗號分隔；沒有音訊時顯示「—」。
     var audioCodecs: String { audioTracks.isEmpty ? "—" : audioTracks.map(\.codec).joined(separator: ", ") }
     /// 每條音軌的資訊；空陣列表示檔案沒有音訊軌。
@@ -73,7 +75,9 @@ struct RecordingFileDetails {
         let bounds = CGRect(origin: .zero, size: size).applying(transform)
         let fps = try await video.load(.nominalFrameRate)
         let rate = try await video.load(.estimatedDataRate)
-        let videoCodec = codec(try await video.load(.formatDescriptions))
+        let formats = try await video.load(.formatDescriptions)
+        let videoCodec = codec(formats)
+        let color = CompressionColorInfo(extensions: formats.first.map { CMFormatDescriptionGetExtensions($0) as? [String: Any] ?? [:] } ?? [:])
         var audioTracks: [AudioTrackDetails] = []
         for audio in try await asset.loadTracks(withMediaType: .audio) {
             let formats = try await audio.load(.formatDescriptions)
@@ -88,7 +92,7 @@ struct RecordingFileDetails {
         }
         let bytes = Int64(try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0)
         return Self(duration: duration, bytes: bytes, encoded: size, displayed: bounds.size,
-                    fps: fps, videoRate: rate, videoCodec: videoCodec,
+                    fps: fps, videoRate: rate, videoCodec: videoCodec, color: color,
                     audioTracks: audioTracks)
     }
 }

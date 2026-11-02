@@ -30,6 +30,14 @@ struct VideoCompressionExportTests {
         }
     }
 
+    /// iOS 不可使用 macOS 專屬 Writer 矩陣，也不可將 240M 偷換成 BT.601／709。
+    @Test(arguments: ["YCbCrMatrix#7", "SMPTE_240M_1995"])
+    func unsupportedIOSMatrixIsRejected(value: String) {
+        #expect(throws: (any Error).self) {
+            _ = try RecordingTranscoder.normalizedColorMatrix(value)
+        }
+    }
+
     /// 附件映射不改像素格式；解碼器已指定的矩陣優先於來源回補。
     @Test func decodedMatrixPreservesRangeAndDecoderChoice() throws {
         var buffer: CVPixelBuffer?
@@ -60,6 +68,35 @@ struct VideoCompressionExportTests {
         try RecordingTranscoder.normalizeDecodedColor(sample, sourceMatrix: AVVideoYCbCrMatrix_ITU_R_601_4)
         let retained = CVBufferCopyAttachment(image, kCVImageBufferYCbCrMatrixKey, nil) as? String
         #expect(retained == AVVideoYCbCrMatrix_ITU_R_709_2)
+    }
+
+    /// 不完整來源可用自動，但不可在嚴格或轉色模式中猜測缺少資訊。
+    @Test func colorPolicyExplainsIncompleteSource() {
+        let info = CompressionColorInfo(extensions: [
+            kCMFormatDescriptionExtension_YCbCrMatrix as String: "YCbCrMatrix#5"
+        ])
+        #expect(info.matrixLabel == "BT.601")
+        #expect(info.restriction(for: .automatic) == nil)
+        #expect(info.restriction(for: .preserve) != nil)
+        #expect(info.restriction(for: .bt709) != nil)
+        #expect(info.preview(for: .automatic).contains("待確認"))
+        #expect(info.summary.contains("範圍：未提供"))
+    }
+
+    /// 範圍缺失不能當作有限範圍；手動保留與轉色都需要明確來源範圍。
+    @Test func strictColorRequiresKnownRange() {
+        var values: [String: Any] = [
+            kCMFormatDescriptionExtension_ColorPrimaries as String: AVVideoColorPrimaries_ITU_R_709_2,
+            kCMFormatDescriptionExtension_TransferFunction as String: AVVideoTransferFunction_ITU_R_709_2,
+            kCMFormatDescriptionExtension_YCbCrMatrix as String: AVVideoYCbCrMatrix_ITU_R_709_2
+        ]
+        let unknown = CompressionColorInfo(extensions: values)
+        #expect(unknown.restriction(for: .preserve) != nil)
+        #expect(unknown.restriction(for: .bt709) != nil)
+        values[kCMFormatDescriptionExtension_FullRangeVideo as String] = true
+        let known = CompressionColorInfo(extensions: values)
+        #expect(known.restriction(for: .preserve) == nil)
+        #expect(known.summary.contains("全範圍"))
     }
 
     @Test(arguments: [false, true])

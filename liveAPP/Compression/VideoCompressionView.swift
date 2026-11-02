@@ -16,6 +16,7 @@ struct VideoCompressionView: View {
     @State private var didLoadInitialURL = false
     @State private var systemQuality = false
     @State private var qualityPreset = RecordingTranscoder.QualityPreset.highest
+    @State private var colorMode = CompressionColorMode.automatic
     @State private var codec = "h264"
     @State private var mbps = 8.0
     @State private var suggestionFeedback = ""
@@ -51,6 +52,7 @@ struct VideoCompressionView: View {
                     Text("\(Int(info.displayed.width)) × \(Int(info.displayed.height)) · \(String(format: "%.2f", info.fps)) FPS")
                     Text("影片 \(info.videoCodec) · \(String(format: "%.2f", info.videoRate / 1_000_000)) Mbps")
                     Text(info.audioSummary).textSelection(.enabled)
+                    Text("來源色彩（檔案標記）\n" + info.color.summary).textSelection(.enabled)
                 }
             }
             Section("壓縮設定") {
@@ -134,6 +136,21 @@ struct VideoCompressionView: View {
                     .font(.caption).foregroundStyle(.secondary)
                 }
             }.disabled(model.busy)
+            Section("輸出色彩") {
+                if systemQuality {
+                    Text("由系統品質預設決定；成品實測於完成後顯示。")
+                } else {
+                    Picker("色彩策略", selection: $colorMode) {
+                        ForEach(CompressionColorMode.allCases, id: \.self) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }.disabled(model.busy)
+                    if let info = model.details {
+                        Text("預計輸出\n" + info.color.preview(for: colorMode))
+                            .textSelection(.enabled)
+                    } else { Text("選擇影片後解析來源與預計輸出色彩。") }
+                }
+            }
             outputSummary
             Section("工作狀態") {
                 Text(model.message)
@@ -147,7 +164,7 @@ struct VideoCompressionView: View {
                     Button("取消", role: .cancel) { model.cancel() }
                 } else {
                     Button("開始壓縮") {
-                        model.start(settings: compressionSettings, audio: audio, audioBitrate: audioKbps * 1000, qualityPreset: systemQuality ? qualityPreset : nil)
+                        model.start(settings: compressionSettings, audio: audio, audioBitrate: audioKbps * 1000, qualityPreset: systemQuality ? qualityPreset : nil, colorMode: systemQuality ? .automatic : colorMode)
                     }.disabled(model.source == nil || !validOptions)
                 }
                 Text("請保持前景；切到背景會取消。偵測到擷取或近期 ReplayKit 推流回報時會等待；擴展斷線可能無法偵測，請先停止廣播。")
@@ -158,6 +175,7 @@ struct VideoCompressionView: View {
                     if let original = model.details, let result = model.outputDetails {
                         Text("原始 \(bytes(original.bytes)) → 輸出 \(bytes(result.bytes))")
                         Text(result.audioSummary).textSelection(.enabled)
+                        Text("實際輸出色彩（成品標記）\n" + result.color.summary).textSelection(.enabled)
                         let saved = original.bytes - result.bytes
                         Text("\(saved >= 0 ? "減少" : "增加") \(bytes(abs(saved)))（\(String(format: "%.1f", original.bytes > 0 ? Double(abs(saved)) / Double(original.bytes) * 100 : 0))%）")
                     }
@@ -262,6 +280,7 @@ struct VideoCompressionView: View {
     /// 開始前驗證輸入，避免設定正規化悄悄改掉手動輸入值。
     private var validOptions: Bool {
         if systemQuality { return model.qualityPresets.contains(qualityPreset) }
+        if let info = model.details, info.color.restriction(for: colorMode) != nil { return false }
         return mbps.isFinite && (0.1...40).contains(mbps) &&
         (!customSize || ((2...8192).contains(width) && (2...8192).contains(height))) &&
         (!customFPS || (1...120).contains(customFPSValue))

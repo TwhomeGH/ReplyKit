@@ -101,3 +101,13 @@ ScreenCaptureKit 的 Mixer 每 200 ms 合併讀取 appVolume／micVolume，有�
 `video.colorMapping` 記錄 `explicitComplete` 或 `sampleAttachments`。Reader 仍請求 420v（video range）解碼像素，由 AVFoundation 進行來源範圍轉換；不把 full-range 標記直接貼到 video-range 像素上。須以實機產物檢查黑白階、色彩及輸出標記，不能把設定通過視為色彩驗收完成。
 
 Apple 要求色彩字典同時提供三項，參見 [AVVideoColorPropertiesKey](https://developer.apple.com/documentation/avfoundation/avvideocolorpropertieskey)。因此先前拒絕不能只歸因於矩陣字串，缺少其他兩項也是原設計缺陷。
+
+## 手動壓縮的輸出色彩
+
+壓縮頁分別列出來源檔案標記、預計輸出與完成後重新讀取的實際成品標記。未知值顯示「未提供」或「待確認」，標記實測不等於視覺色彩正確性驗收。
+
+- 自動：保留已知色彩意義，正規化矩陣別名；來源不完整時沿用解碼影格附件。解碼請求有限範圍，成品標記需確認。
+- 保留來源（嚴格）：要求來源三項色彩及範圍完整，解碼請求相同範圍；成品色彩標記與範圍必須符合，否則保留原檔並報錯。
+- SDR BT.709：要求來源三項色彩及範圍完整，Writer 指定完整 BT.709 目標，依 AVFoundation 來源標記轉換，解碼請求有限範圍；成品需通過 BT.709 與有限範圍標記檢查。不可將缺少來源資料的影片直接猜標為 BT.709。
+
+系統品質模式由 ExportSession 管理，不套用以上手動設定，畫面明確顯示由系統決定。HDR 仍沿用既有不支援限制。新選項需 Apple CI 編譯及實機色階／色彩轉換驗收；嚴格模式遇到成品範圍未提供也會拒絕，不能視為零或有限範圍。

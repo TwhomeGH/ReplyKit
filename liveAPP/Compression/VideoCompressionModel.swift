@@ -53,10 +53,18 @@ import UIKit
                 try Task.checkCancellation()
                 guard info.duration.isFinite, info.duration > 0 else { throw CocoaError(.fileReadCorruptFile) }
                 let asset = AVURLAsset(url: url)
-                let compatible = AVAssetExportSession.exportPresets(compatibleWith: asset)
-                let presets = RecordingTranscoder.QualityPreset.allCases.filter {
-                    compatible.contains($0.name) &&
-                    AVAssetExportSession(asset: asset, presetName: $0.name)?.supportedFileTypes.contains(.mp4) == true
+                var presets: [RecordingTranscoder.QualityPreset] = []
+                // 同時檢查來源與 MP4 容器，不使用已棄用的同步預設清單 API。
+                for preset in RecordingTranscoder.QualityPreset.allCases {
+                    try Task.checkCancellation()
+                    let compatible = await withCheckedContinuation { continuation in
+                        AVAssetExportSession.determineCompatibility(ofExportPreset: preset.name,
+                            with: asset, outputFileType: .mp4) { supported in
+                            continuation.resume(returning: supported)
+                        }
+                    }
+                    try Task.checkCancellation()
+                    if compatible { presets.append(preset) }
                 }
                 try Task.checkCancellation()
                 qualityPresets = presets
@@ -95,7 +103,7 @@ import UIKit
     }
 
     /// 固定本次設定，等待本機擷取結束後轉碼；新檔驗證成功才出現在成品路徑。
-    func start(settings: RecordingCompressionSettings, audio: RecordingTranscoder.AudioMode, audioBitrate: Int = 128000, qualityPreset: RecordingTranscoder.QualityPreset? = nil) {
+    func start(settings: RecordingCompressionSettings, audio: RecordingTranscoder.AudioMode, audioBitrate: Int = 128000, qualityPreset: RecordingTranscoder.QualityPreset? = nil, colorMode: CompressionColorMode = .automatic) {
         guard !busy, let source else { return }
         systemExportRunning = settings.systemQuality
         busy = true; progress = 0; output = nil; outputDetails = nil
@@ -118,7 +126,7 @@ import UIKit
                 let destination = folder.appendingPathComponent(name + "_壓縮_" + UUID().uuidString + ".mp4")
                 message = "正在壓縮，請保持 App 在前景。"
                 _ = try await RecordingTranscoder.compress(url: source, asset: AVURLAsset(url: source),
-                    settings: settings, destination: destination, audioMode: audio, audioBitrate: audioBitrate, qualityPreset: qualityPreset) { value in
+                    settings: settings, destination: destination, audioMode: audio, audioBitrate: audioBitrate, qualityPreset: qualityPreset, colorMode: colorMode) { value in
                         Task { @MainActor in
                             guard self.busy, self.jobID == token else { return }
                             self.progress = max(self.progress, value)

@@ -73,8 +73,9 @@ enum RecordingTranscoder {
             return AVVideoYCbCrMatrix_ITU_R_709_2
         case "YCbCrMatrix#5", "YCbCrMatrix#6", AVVideoYCbCrMatrix_ITU_R_601_4:
             return AVVideoYCbCrMatrix_ITU_R_601_4
-        case "YCbCrMatrix#7", AVVideoYCbCrMatrix_SMPTE_240M_1995:
-            return AVVideoYCbCrMatrix_SMPTE_240M_1995
+        case "YCbCrMatrix#7", "SMPTE_240M_1995":
+            // AVFoundation 的 SMPTE 240M Writer 常數僅限 macOS，不能在 iOS 冒充其他矩陣。
+            throw failure("iOS 壓縮路徑不支援 SMPTE 240M 色彩矩陣。")
         case "YCbCrMatrix#9", AVVideoYCbCrMatrix_ITU_R_2020:
             return AVVideoYCbCrMatrix_ITU_R_2020
         default:
@@ -123,6 +124,7 @@ enum RecordingTranscoder {
     ///   - audioMode: 保留 AAC、轉 AAC 或移除音訊。
     ///   - audioBitrate: 轉 AAC 的每軌碼率，單位 bps，範圍 32000…320000。
     ///   - qualityPreset: 手動另存的系統品質預設；須搭配 systemQuality，其他手動影音參數不套用。
+    ///   - colorMode: 平均碼率色彩策略；非自動策略需完整來源，系統品質僅允許自動。
     ///   - progress: 低頻媒體處理進度；1 表示產物驗證並移入正式位置。
     /// - Returns: 包含編碼、像素尺寸、目標碼率及節省比例的結果文字。
     /// - Throws: 取消、格式不支援、讀寫或驗證失敗；原檔保留。
@@ -130,6 +132,7 @@ enum RecordingTranscoder {
                          settings: RecordingCompressionSettings, destination: URL? = nil,
                          audioMode: AudioMode = .preserve, audioBitrate: Int = 128000,
                          qualityPreset: QualityPreset? = nil,
+                         colorMode: CompressionColorMode = .automatic,
                          progress: (@Sendable (Double) -> Void)? = nil) async throws -> String {
         let diagnosticID = UUID().uuidString
         try Task.checkCancellation()
@@ -140,6 +143,9 @@ enum RecordingTranscoder {
         let descriptions = try await track.load(.formatDescriptions)
         guard let format = descriptions.first else { throw failure("無法取得視訊格式。") }
         let extensions = CMFormatDescriptionGetExtensions(format) as? [String: Any] ?? [:]
+        let sourceColor = CompressionColorInfo(extensions: extensions)
+        if let reason = sourceColor.restriction(for: colorMode) { throw failure(reason) }
+        if settings.systemQuality && colorMode != .automatic { throw failure("系統品質模式不套用手動色彩策略。") }
         let transfer = extensions[kCMFormatDescriptionExtension_TransferFunction as String] as? String ?? ""
         guard !transfer.contains("2084"), !transfer.uppercased().contains("HLG") else {
             throw failure("HDR 錄影暫不支援此壓縮模式。")
@@ -202,7 +208,9 @@ enum RecordingTranscoder {
             if writer.status == .writing { writer.cancelWriting() }
             VideoWorkFiles.discard(temporary)
         }
-        let pixelSettings: [String: Any] = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange]
+        let readerPixelFormat = colorMode == .preserve && sourceColor.fullRange == true
+            ? kCVPixelFormatType_420YpCbCr8BiPlanarFullRange : kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+        let pixelSettings: [String: Any] = [kCVPixelBufferPixelFormatTypeKey as String: readerPixelFormat]
         let videoOutput: AVAssetReaderOutput
         if let videoComposition {
             let output = AVAssetReaderVideoCompositionOutput(videoTracks: [track], videoSettings: pixelSettings)
@@ -225,10 +233,15 @@ enum RecordingTranscoder {
         do { colors = try mappedColorProperties(extensions) }
         catch { throw staged("來源色彩映射失敗", error) }
         // Writer 要求三項齊全；部分來源資訊改由解碼影格附件傳遞，不捏造缺少的值。
-        if colors.count == 3 { outputSettings[AVVideoColorPropertiesKey] = colors }
+        let targetColors = colorMode == .bt709 ? [
+            AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
+            AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
+            AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2
+        ] : colors
+        if targetColors.count == 3 { outputSettings[AVVideoColorPropertiesKey] = targetColors }
         sendlog(message: "[VideoCompression] job=\(diagnosticID) stage=video.colorMapping "
             + "policy=\(colors.count == 3 ? "explicitComplete" : "sampleAttachments") "
-            + "mapped={\(diagnosticSettings(colors))} readerPixelFormat=420v")
+            + "mapped={\(diagnosticSettings(colors))} colorMode=\(colorMode.rawValue) readerPixelFormat=\(readerPixelFormat)")
         sendlog(message: "[VideoCompression] job=\(diagnosticID) stage=video.settings "
             + "container=mp4 output={\(diagnosticSettings(outputSettings))}")
         guard writer.canApply(outputSettings: outputSettings, forMediaType: .video) else {
@@ -331,6 +344,19 @@ enum RecordingTranscoder {
               try await check.loadTracks(withMediaType: .video).count == 1,
               try await check.loadTracks(withMediaType: .audio).count == inputs.count - 1 else {
             throw failure("壓縮產物驗證失敗，保留原檔。")
+        }
+        if colorMode != .automatic {
+            // 比較實際寫入的標記，不將「Writer 接受設定」當作成品驗收。
+            let actual = try await RecordingFileDetails.read(temporary).color
+            let actualColors: [String: String] = [
+                AVVideoColorPrimariesKey: actual.primaries ?? "",
+                AVVideoTransferFunctionKey: actual.transfer ?? "",
+                AVVideoYCbCrMatrixKey: try actual.matrix.map { try normalizedColorMatrix($0) } ?? ""
+            ]
+            guard actualColors == targetColors,
+                  actual.fullRange == (colorMode == .preserve ? sourceColor.fullRange : false) else {
+                throw failure("成品色彩標記與指定策略不符，原檔保留。實測：\(actual.summary)")
+            }
         }
         guard destination != nil || outputBytes < originalBytes else { throw failure("壓縮檔未縮小，保留原檔（方向處理亦未套用）。") }
         try Task.checkCancellation()
