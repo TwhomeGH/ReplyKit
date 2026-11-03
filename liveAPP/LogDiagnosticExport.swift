@@ -75,6 +75,8 @@ enum LogDiagnosticExport {
         var undated = 0
         func consume(_ data: Data) throws {
             let line = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .newlines)
+            if line == "[ArchiveBoundary]" { selected = false; return }
+            if line.hasPrefix("[Retention]") { try write(line + "\n"); return }
             if let timestamp = date(in: line, zone: zone) {
                 selected = timestamp >= start && timestamp <= end
             } else if line.first?.isNumber == true && line.contains(":") {
@@ -135,7 +137,7 @@ struct LogDiagnosticExportView: View {
                 if let result {
                     ShareLink(item: result) { Label("分享診斷檔", systemImage: "square.and.arrow.up") }
                 }
-                Text("包含常見敏感欄位遮蔽，但無法保證辨識任意文字中的秘密，分享前請檢視。匯出快取保留 7 天；不包含已被主日誌清理的歷史。")
+                Text("包含常見敏感欄位遮蔽，但無法保證辨識任意文字中的秘密，分享前請檢視。匯出快取保留 7 天；包含主檔與可用封存；封存上限 7 天／256 MiB，超限清理會附缺口提示。")
                     .font(.caption)
             }
         }

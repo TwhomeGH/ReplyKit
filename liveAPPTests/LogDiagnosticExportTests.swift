@@ -15,6 +15,21 @@ struct LogDiagnosticExportTests {
         #expect(!safe.contains("xyz"))
     }
 
+    @Test func archiveBoundaryDoesNotInheritPreviousTimestamp() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let input = folder.appendingPathComponent("source.snapshot")
+        try Data("[Retention] missing history\n2026/11/3 上午1:00:00: included\n[ArchiveBoundary]\norphan\n2026/11/3 上午1:01:00: second\n".utf8).write(to: input)
+        let zone = try #require(TimeZone(identifier: "Asia/Taipei"))
+        let start = try #require(LogDiagnosticExport.date(in: "2026/11/3 上午1:00:00: x", zone: zone))
+        let result = try LogDiagnosticExport.extract(snapshot: input, start: start, end: start.addingTimeInterval(120), zone: zone)
+        let text = try String(contentsOf: result, encoding: .utf8)
+        #expect(text.contains("missing history"))
+        #expect(text.contains("second"))
+        #expect(!text.contains("orphan"))
+    }
+
     @Test func rangeKeepsContinuationAndExcludesOtherDay() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

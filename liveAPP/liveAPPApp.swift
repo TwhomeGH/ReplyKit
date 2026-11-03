@@ -167,9 +167,42 @@ final class AppLogPersister: @unchecked Sendable {
                     let folder = root.appendingPathComponent(UUID().uuidString, isDirectory: true)
                     try manager.createDirectory(at: folder, withIntermediateDirectories: true)
                     let snapshot = folder.appendingPathComponent("source.snapshot")
-                    if manager.fileExists(atPath: self.logURL.path) {
-                        try manager.copyItem(at: self.logURL, to: snapshot)
-                    } else { try Data().write(to: snapshot) }
+                    try self.importSealedExtensionLogs()
+                    let archive = try LogArchiveStore.directory(beside: self.logURL)
+                    var sources = try LogArchiveStore.files(in: archive)
+                    if manager.fileExists(atPath: self.logURL.path) { sources.append(self.logURL) }
+                    try Data().write(to: snapshot)
+                    let output = try FileHandle(forWritingTo: snapshot)
+                    defer { try? output.close() }
+                    for noticeName in ["retention-notice.txt", "extension-retention-notice.txt"] {
+                    let noticeURL = archive.appendingPathComponent(noticeName)
+                    if manager.fileExists(atPath: noticeURL.path) {
+                        let notice = try String(contentsOf: noticeURL, encoding: .utf8)
+                        try output.write(contentsOf: Data(("[Retention] " + notice + "\n").utf8))
+                    }
+                    }
+                    // 舊版活動檔只讀不清空，避免破壞可能仍在執行的舊擴展。
+                    if let group = manager.containerURL(forSecurityApplicationGroupIdentifier: "group.nuclear.liveAPP") {
+                        for name in ["early-log.txt", "log.txt"] {
+                            let legacy = group.appendingPathComponent(name)
+                            if manager.fileExists(atPath: legacy.path) { sources.append(legacy) }
+                        }
+                    }
+                    for source in sources {
+                        try output.write(contentsOf: Data("\n[ArchiveBoundary]\n".utf8))
+                        let input = try FileHandle(forReadingFrom: source)
+                        defer { try? input.close() }
+                        var remaining = try input.seekToEnd()
+                        try input.seek(toOffset: 0)
+                        while remaining > 0 {
+                            guard let data = try input.read(upToCount: Int(min(remaining, 65536))), !data.isEmpty else {
+                                throw CocoaError(.fileReadCorruptFile)
+                            }
+                            try output.write(contentsOf: data)
+                            remaining -= UInt64(data.count)
+                        }
+                    }
+                    try output.synchronize()
                     continuation.resume(returning: snapshot)
                 } catch { continuation.resume(throwing: error) }
             }
@@ -189,18 +222,19 @@ final class AppLogPersister: @unchecked Sendable {
     private var flushWorkItem: DispatchWorkItem?
 
     // 持久化寫入 handle：啟動/首次寫入時 open 一次，重複使用，
-    // clear/trim 原子替換前會關閉，下一批重新開啟；背景每批寫完關閉。
+    // clear/輪替前會關閉，下一批重新開啟；背景連續寫入重用，閒置才關閉。
     private var writeHandle: FileHandle?
 
     private var estimatedLineCount = 0
     private var estimatedFileBytes = 0
     private let maxFileBytes = 8 * 1024 * 1024
-    private let retainedFileBytes = 4 * 1024 * 1024
     private let maxPendingBytes = 2 * 1024 * 1024
     private var lastFlushSucceeded = true
     private var retryCount = 0
     private var retryScheduled = false
     private var closeAfterFlush = false
+    private var idleCloseItem: DispatchWorkItem?
+    private var idleCloseGeneration = UUID()
     private var flushGeneration = UUID()
 
     private var logURL: URL {
@@ -218,6 +252,7 @@ final class AppLogPersister: @unchecked Sendable {
         // singleton 通常不析構；不依賴此處落盤，也不 queue.sync 造成同佇列析構死鎖。
         flushWorkItem?.cancel()
         ioFailureFlushItem?.cancel()
+        idleCloseItem?.cancel()
         try? writeHandle?.close()
     }
 
@@ -259,15 +294,17 @@ final class AppLogPersister: @unchecked Sendable {
         queue.async { [weak self] in self?.flushPending() }
     }
 
-    /// 背景切換先寫入並關檔；背景後續寫入亦按批關閉，前景恢復重用 handle。
+    /// 背景切換先嘗試寫入，十秒閒置才關檔；前景取消閒置關檔。
     /// 完成代表本次嘗試已結束；失敗另有帶外診斷，不保證作業系統不會提前終止。
     func setBackground(_ background: Bool) async {
         await withCheckedContinuation { continuation in
             queue.async {
                 self.closeAfterFlush = background
+                self.idleCloseItem?.cancel()
+                self.idleCloseGeneration = UUID()
                 if background {
                     self.flushPending()
-                    self.closeWriter(synchronize: true)
+                    self.scheduleIdleClose()
                 }
                 continuation.resume()
             }
@@ -330,7 +367,21 @@ final class AppLogPersister: @unchecked Sendable {
                 scheduleFlush(after: 2)
             }
         }
-        if closeAfterFlush { closeWriter(synchronize: true) }
+        if closeAfterFlush { scheduleIdleClose() }
+    }
+
+    /// 背景持續寫入時重用 handle；十秒沒有成功批次才關閉。
+    private func scheduleIdleClose() {
+        idleCloseItem?.cancel()
+        let generation = UUID()
+        idleCloseGeneration = generation
+        let item = DispatchWorkItem { [weak self] in
+            guard let self, self.closeAfterFlush, self.idleCloseGeneration == generation else { return }
+            self.closeWriter(synchronize: true)
+            self.idleCloseItem = nil
+        }
+        idleCloseItem = item
+        queue.asyncAfter(deadline: .now() + 10, execute: item)
     }
 
     /// 關檔錯誤走帶外診斷；背景同步是低頻收尾，不逐筆強制同步磁碟。
@@ -345,43 +396,48 @@ final class AppLogPersister: @unchecked Sendable {
         catch { recordIOFailure(context: "close", lastError: String(describing: error)) }
     }
 
+    /// 只接收新協定已完成的不可變批次；不截斷擴展活動檔。
     func copyFromAppGroup() {
         queue.async { [weak self] in
             guard let self else { return }
-            guard let groupURL = FileManager.default.containerURL(
-                forSecurityApplicationGroupIdentifier: "group.nuclear.liveAPP"
-            ) else { return }
-            // early-log.txt：extension 每筆 log 即時寫入（force-quit 兜底），
-            // 時間上先於 log.txt（flush timer 批量寫）。啟動時先合併它，再
-            // 合併 log.txt，讓分析者看到完整、按時間排序的 log。
-            let earlySource = groupURL.appendingPathComponent("early-log.txt")
-            if FileManager.default.fileExists(atPath: earlySource.path),
-               let earlyData = try? Data(contentsOf: earlySource),
-               !earlyData.isEmpty {
-                guard self.appendRaw(earlyData) else { return }
-                // 合併後清空（截斷而非刪除）：extension 可能正在寫入該檔，
-                // removeItem 會失敗；FileHandle 截斷到 0 與 extension 的
-                // seekToEndOfFile 並存，下次寫入從 0 開始。
-                if let handle = try? FileHandle(forWritingTo: earlySource) {
-                    try? handle.truncate(atOffset: 0)
-                    handle.closeFile()
+            do { try self.importSealedExtensionLogs() }
+            catch { self.recordIOFailure(context: "archive.import", lastError: String(describing: error)) }
+        }
+    }
+
+    /// 目的檔名即交接識別；當複製完成但尚未移除來源就終止，下次不重複匯入。
+    private func importSealedExtensionLogs() throws {
+        guard let group = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.nuclear.liveAPP") else { return }
+        let source = group.appendingPathComponent("SealedExtensionLogs", isDirectory: true)
+        guard FileManager.default.fileExists(atPath: source.path) else { return }
+        do {
+            let destination = try LogArchiveStore.directory(beside: logURL)
+            try SealedLogAccess.withLock(directory: source) {
+            let notice = source.appendingPathComponent("retention-notice.txt")
+            if FileManager.default.fileExists(atPath: notice.path) {
+                try Data(contentsOf: notice).write(to: destination.appendingPathComponent("extension-retention-notice.txt"), options: .atomic)
+            }
+            for file in try LogArchiveStore.files(in: source) {
+                let target = destination.appendingPathComponent(file.lastPathComponent)
+                if !FileManager.default.fileExists(atPath: target.path) {
+                    // 先複製到非 log 暫存，再 rename 發布，避免殘缺副本被誤認為已完成。
+                    let temporary = destination.appendingPathComponent(UUID().uuidString + ".pending")
+                    defer {
+                        if FileManager.default.fileExists(atPath: temporary.path) {
+                            do { try FileManager.default.removeItem(at: temporary) }
+                            catch { recordIOFailure(context: "archive.pendingCleanup", lastError: String(describing: error)) }
+                        }
+                    }
+                    try FileManager.default.copyItem(at: file, to: temporary)
+                    try FileManager.default.moveItem(at: temporary, to: target)
                 }
+                try FileManager.default.removeItem(at: file)
             }
-            let source = groupURL.appendingPathComponent(self.logFileName)
-            guard FileManager.default.fileExists(atPath: source.path),
-                  let data = try? Data(contentsOf: source) else {
-                self.trimNow()
-                return
             }
-            guard self.appendRaw(data) else { return }
-            // 合併後截斷來源（與 early-log 相同策略），避免下次啟動把同一份
-            // group log 再 append 一次造成重複累積。截斷而非刪除：extension
-            // 可能正在寫入，其 write 前會 seekToEndOfFile，截斷後從 0 續寫。
-            if let handle = try? FileHandle(forWritingTo: source) {
-                try? handle.truncate(atOffset: 0)
-                handle.closeFile()
-            }
-            self.trimNow()
+            try LogArchiveStore.prune(destination)
+        } catch {
+            recordIOFailure(context: "archive.import", lastError: String(describing: error))
+            throw error
         }
     }
 
@@ -496,27 +552,20 @@ final class AppLogPersister: @unchecked Sendable {
         } catch { recordIOFailure(context: "clear", lastError: String(describing: error)) }
     }
 
-    /// 只讀有限大小的尾端，再以原子替換更新主日誌；失敗保留原檔。
+    /// 輪替完整主檔，不裁掉前段；下一批依原路徑建立新的 log.txt。
     private func trimNow() {
         do {
-            guard FileManager.default.fileExists(atPath: logURL.path) else { return }
-            let reader = try FileHandle(forReadingFrom: logURL)
-            defer { try? reader.close() }
-            let size = try reader.seekToEnd()
-            let start = size > UInt64(retainedFileBytes) ? size - UInt64(retainedFileBytes) : 0
-            try reader.seek(toOffset: start)
-            let tail = try reader.read(upToCount: retainedFileBytes) ?? Data()
-            let data = LogRetention.retainedTail(tail, startsMidFile: start > 0, maximumLines: maxLogFileLines)
-            guard start > 0 || data != tail else { return }
-            closeWriter()
-            try data.write(to: logURL, options: .atomic)
+            let root = try LogArchiveStore.directory(beside: logURL)
+            closeWriter(synchronize: true)
+            if FileManager.default.fileExists(atPath: logURL.path) {
+                try FileManager.default.moveItem(at: logURL,
+                    to: root.appendingPathComponent(LogArchiveStore.name(prefix: "main")))
+            }
             historyReader.invalidate()
-            estimatedFileBytes = data.count
-            estimatedLineCount = data.reduce(0) { $0 + ($1 == 10 ? 1 : 0) }
-            statisticsLock.lock()
-            writtenBytes += UInt64(data.count)
-            statisticsLock.unlock()
-        } catch { recordIOFailure(context: "trim", lastError: String(describing: error)) }
+            estimatedFileBytes = 0
+            estimatedLineCount = 0
+            try LogArchiveStore.prune(root)
+        } catch { recordIOFailure(context: "archive.rotate", lastError: String(describing: error)) }
     }
 
 }
@@ -1270,6 +1319,7 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
                         #endif
 
                     case .active:
+                        AppLogPersister.shared.copyFromAppGroup()
                         Task { await AppLogPersister.shared.setBackground(false) }
                         sendlog(message: "App 回到前景")
                         SocketServer.shared.start()

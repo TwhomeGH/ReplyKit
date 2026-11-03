@@ -241,14 +241,8 @@ final class LogManager {
     private var localLogBuffer: [String] = []
     private let maxRingBufferEntries = 1000
 
-    private let logFileName = "log.txt"
-    private let earlyLogFileName = "early-log.txt"
     private let groupID = "group.nuclear.liveAPP"
-    private let maxLogFileLines = 5000
-    private let maxEarlyLogLines = 2000
     private let maxForceFlushLines = 200
-    private var earlyLogWriteCount = 0
-    private let trimCheckInterval = 50
 
     // MARK: flush寫入間隔
     var flushInterval: TimeInterval = 1.0
@@ -472,30 +466,6 @@ final class LogManager {
 
     /// 檔案寫入失敗累積成有界摘要（OSLog + socket 診斷），
     /// 不回流 log 管線（sendlog/early-log），避免寫入失敗→再寫 log→再失敗的回饋迴圈。
-    private func safeWrite(_ handle: FileHandle, _ data: Data, context: String) {
-        do {
-            try handle.write(contentsOf: data)
-        } catch {
-            recordIOFailure(context, error)
-        }
-    }
-
-    private func safeWrite(_ data: Data, to url: URL, context: String) {
-        do {
-            try data.write(to: url, options: .atomic)
-        } catch {
-            recordIOFailure(context, error)
-        }
-    }
-
-    // MARK: log 寫入失敗的帶外診斷（有界摘要：每 ioFailureFlushDelay 秒最多一則）
-    // logQueue 為 concurrent，故以 ioFailureLock 保護計數與排程。
-    private let ioFailureLock = NSLock()
-    private var ioFailureCount = 0
-    private var ioLastError: String?
-    private var ioFailureFlushItem: DispatchWorkItem?
-    private let ioFailureFlushDelay: TimeInterval = 60
-
     private func recordIOFailure(_ context: String, _ error: Error) {
         ioFailureLock.lock()
         ioFailureCount += 1
@@ -528,50 +498,50 @@ final class LogManager {
         ])
     }
 
-    private func writeLogToFile(_ text: String) {
+    /// 每批以 UUID 檔案原子發布；主 App 只讀完成的 .log，不與活動寫入競爭。
+    private var lastSealedPrune = Date.distantPast
+
+    private func sealLogBatch(_ text: String, channel: String) {
         guard !RPConfig.isSideload else { return }
-        let containerURL: URL
-        if let groupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupID) {
-            containerURL = groupURL
-        } else {
-            containerURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        }
-        let fileURL = containerURL.appendingPathComponent(logFileName)
-        guard let data = text.data(using: .utf8) else { return }
-        if FileManager.default.fileExists(atPath: fileURL.path),
-           let fileHandle = try? FileHandle(forWritingTo: fileURL) {
-            defer { fileHandle.closeFile() }
-            fileHandle.seekToEndOfFile()
-            safeWrite(fileHandle, data, context: "log append")
-        } else {
-            safeWrite(data, to: fileURL, context: "log create")
-        }
-        trimLogFileIfNeeded(fileURL: fileURL)
-    }
-
-    private func trimLogFileIfNeeded(fileURL: URL) {
-        guard let fileHandle = try? FileHandle(forReadingFrom: fileURL),
-              let currentData = try? fileHandle.readToEnd()
-        else { return }
-        fileHandle.closeFile()
-        guard let content = String(data: currentData, encoding: .utf8) else { return }
-        let lines = content.split(separator: "\n", omittingEmptySubsequences: false)
-        guard lines.count > maxLogFileLines else { return }
-        let hasSuffixNewline = content.hasSuffix("\n")
-        let trimmedLines = lines.suffix(maxLogFileLines)
-        let trimmedText = trimmedLines.joined(separator: "\n") + (hasSuffixNewline ? "\n" : "")
+        let base = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupID)
+            ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         do {
-            try trimmedText.write(to: fileURL, atomically: true, encoding: .utf8)
-        } catch {
-            recordIOFailure("trim log", error)
-        }
+            let root = base.appendingPathComponent("SealedExtensionLogs", isDirectory: true)
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            let name = String(format: "%020.0f", Date().timeIntervalSince1970 * 1000)
+                + "-extension-" + channel + "-" + UUID().uuidString + ".log"
+            try SealedLogAccess.withLock(directory: root) {
+                try Data(text.utf8).write(to: root.appendingPathComponent(name), options: .atomic)
+                if Date().timeIntervalSince(lastSealedPrune) >= 60 {
+                    lastSealedPrune = Date()
+                    let files = try FileManager.default.contentsOfDirectory(at: root,
+                        includingPropertiesForKeys: [.fileSizeKey, .isSymbolicLinkKey, .isRegularFileKey])
+                        .filter { url in
+                            let info = try url.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey])
+                            return url.pathExtension == "log" && info.isRegularFile == true && info.isSymbolicLink != true
+                        }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+                    var bytes = try files.reduce(Int64(0)) { $0 + Int64(try $1.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) }
+                    var count = files.count
+                    for file in files where bytes > 256 * 1024 * 1024 || count > 10000 {
+                        let size = Int64(try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0)
+                        let notice = "擴展交接容量／檔案數超限，最近清理或準備清理：\(file.lastPathComponent)。歷史可能不完整。"
+                        try Data(notice.utf8).write(to: root.appendingPathComponent("retention-notice.txt"), options: .atomic)
+                        try FileManager.default.removeItem(at: file)
+                        bytes -= size; count -= 1
+                    }
+                }
+            }
+        } catch { recordIOFailure("seal extension log", error) }
     }
 
-    // MARK: early-log 持久寫入 handle（消除每筆 open/close）
+    private func writeLogToFile(_ text: String) {
+        sealLogBatch(text, channel: "normal")
+    }
+
+    // MARK: early 通道批次封存（不可變檔案交接）
     // 逐筆 write 會產生大量小 syscall（高頻 [VFrame]/[AudioFRAME]），故改為
     // 累積成緩衝，滿 earlyLogFlushThreshold 筆或每 earlyLogFlushDelay 秒寫一次。
     // early-log 為 force-quit 兜底，最壞情況遺失約一個 flush 週期（與 log.txt 批次一致）。
-    private var earlyLogHandle: FileHandle?
     private let earlyLogLock = NSLock()
     private var earlyLogPending: [String] = []
     private var earlyLogFlushItem: DispatchWorkItem?
@@ -622,64 +592,7 @@ final class LogManager {
     }
 
     private func writeEarlyLogToFile(_ text: String) {
-        guard !RPConfig.isSideload else { return }
-        guard let data = text.data(using: .utf8) else { return }
-        earlyLogLock.lock()
-        defer { earlyLogLock.unlock() }
-
-        let fileURL = earlyLogFileURL()
-        if let handle = earlyLogHandle {
-            // 重用已開啟的 handle：只做 seek+write，省掉 open/close syscall。
-            // seekToEndOfFile 同時涵蓋主 app 啟動時截斷後的位置重建。
-            handle.seekToEndOfFile()
-            safeWrite(handle, data, context: "early-log append")
-        } else if FileManager.default.fileExists(atPath: fileURL.path),
-                  let handle = try? FileHandle(forWritingTo: fileURL) {
-            earlyLogHandle = handle
-            handle.seekToEndOfFile()
-            safeWrite(handle, data, context: "early-log append")
-        } else {
-            // 檔案不存在：先建立，再開啟並保持
-            safeWrite(data, to: fileURL, context: "early-log create")
-            if let handle = try? FileHandle(forWritingTo: fileURL) {
-                earlyLogHandle = handle
-                handle.seekToEndOfFile()
-                safeWrite(handle, data, context: "early-log append")
-            }
-        }
-        earlyLogWriteCount += 1
-        if earlyLogWriteCount % trimCheckInterval == 0 {
-            trimEarlyLogFileIfNeeded(fileURL: fileURL)
-        }
-    }
-
-    private func earlyLogFileURL() -> URL {
-        if let groupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupID) {
-            return groupURL.appendingPathComponent(earlyLogFileName)
-        }
-        return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!.appendingPathComponent(earlyLogFileName)
-    }
-
-    private func trimEarlyLogFileIfNeeded(fileURL: URL) {
-        // 原子重寫整個檔案會讓持久的 write handle 指向舊 inode/offset，
-        // 故 trim 前先關閉，trim 後由下一次寫入重新開啟。
-        earlyLogHandle?.closeFile()
-        earlyLogHandle = nil
-        guard let fileHandle = try? FileHandle(forReadingFrom: fileURL),
-              let currentData = try? fileHandle.readToEnd()
-        else { return }
-        fileHandle.closeFile()
-        guard let content = String(data: currentData, encoding: .utf8) else { return }
-        let lines = content.split(separator: "\n", omittingEmptySubsequences: false)
-        guard lines.count > maxEarlyLogLines else { return }
-        let hasSuffixNewline = content.hasSuffix("\n")
-        let trimmedLines = lines.suffix(maxEarlyLogLines)
-        let trimmedText = trimmedLines.joined(separator: "\n") + (hasSuffixNewline ? "\n" : "")
-        do {
-            try trimmedText.write(to: fileURL, atomically: true, encoding: .utf8)
-        } catch {
-            recordIOFailure("trim early-log", error)
-        }
+        sealLogBatch(text, channel: "early")
     }
 
     // MARK: - 通知主 App（優化版）
