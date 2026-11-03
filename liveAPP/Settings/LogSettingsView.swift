@@ -11,6 +11,7 @@ struct LogSettingsView: View {
   var body: some View {
     Form {
       LogSettingView()
+      Section("外部日誌") { ExternalLogTransportView() }
       Section(header: Text("settings.apiEndpoint.section")) {
         TextField("https://example.com/api/logs", text: $tempEndpoint)
           .keyboardType(.URL)

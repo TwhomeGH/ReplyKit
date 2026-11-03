@@ -176,6 +176,33 @@ class SocketServer:ObservableObject, @unchecked Sendable {
             self.isApplyingPort = false
         }
     }
+    /// 只供 UI 顯示；訂閱集合仍由服務 queue 管理。
+    @Published private(set) var externalLogSubscribers = 0
+    @Published private(set) var externalLogDropped = 0
+    private var externalDroppedCount = 0
+    private var externalLogIDs = Set<ObjectIdentifier>()
+    private var extensionLogIDs = Set<ObjectIdentifier>()
+    private let externalCountLock = NSLock()
+    private var externalCount = 0
+
+    /// 跨執行緒快速查詢，無訂閱者時不累積離線日誌。
+    var hasExternalLogSubscribers: Bool {
+        externalCountLock.lock()
+        defer { externalCountLock.unlock() }
+        return externalCount > 0
+    }
+
+    /// 在服務 queue 更新訂閱數；連線消失即剔除，重連必須重新訂閱。
+    private func updateExternalLogCount() {
+        externalLogIDs = externalLogIDs.filter { connections[$0] != nil }
+        extensionLogIDs = extensionLogIDs.filter { connections[$0] != nil }
+        let count = externalLogIDs.count
+        externalCountLock.lock()
+        externalCount = count
+        externalCountLock.unlock()
+        DispatchQueue.main.async { self.externalLogSubscribers = count }
+    }
+
     private var connections: [ObjectIdentifier: NWConnection] = [:]
     private var lastReceiveTimes: [ObjectIdentifier: Date] = [:]
     private var keepaliveTimer: DispatchSourceTimer?
@@ -1187,8 +1214,23 @@ class SocketServer:ObservableObject, @unchecked Sendable {
         do {
 
 
+            let connectionID = ObjectIdentifier(connection)
+            if ["logbatch", "videoHealth", "audioHealth", "reconnectStatus"].contains(type) {
+                extensionLogIDs.insert(connectionID)
+                externalLogIDs.remove(connectionID)
+                updateExternalLogCount()
+            }
             switch type {
-
+            case "subscribeExternalLogs":
+                let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                let enabled = payload?["enabled"] as? Bool ?? false
+                if enabled && !extensionLogIDs.contains(connectionID) { externalLogIDs.insert(connectionID) }
+                else { externalLogIDs.remove(connectionID) }
+                updateExternalLogCount()
+                sendTo(connection, dictionary: ["type": "externalLogSubscription", "enabled": externalLogIDs.contains(connectionID)])
+            case "externalLogBatch":
+                // 對外訊息若被工具回送，直接忽略，避免再落盤與群播形成迴圈。
+                break
             case "AdOverlay":
                 let dict = try decoder.decode(AdOverlay.self, from: data)
 
@@ -1453,9 +1495,13 @@ class SocketServer:ObservableObject, @unchecked Sendable {
                 let prefixed = batch.entries.map { "UseESocket:\($0)" }
                 LogBuffer.shared.push(prefixed)
                 AppLogPersister.shared.append(lines: prefixed)
+                if LPConfig.shared.logMode == 0 || LPConfig.shared.logMode == 2 {
+                    RemoteLogSender.shared.start()
+                    RemoteLogBuffer.shared.push(title: "ReplyKit", message: batch.entries.joined(separator: "\n"))
+                }
 
             case "diagnostic":
-                // 診斷訊息：只群播給其他連線（含外部工具），**不寫入 log 檔**，
+                // 診斷訊息：只轉送已訂閱的外部工具，**不寫入 log 檔**，
                 // 避免「寫入失敗→記診斷→又寫檔」的回饋迴圈；也不回送原發者。
                 if let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
                     broadcast(dict, excluding: connection)
@@ -1611,13 +1657,40 @@ class SocketServer:ObservableObject, @unchecked Sendable {
         }
 
 
-    // MARK: - 診斷群播（帶外，不寫檔）
-    /// 診斷訊息專用：群播給所有連線（含外部工具），不寫入 log 檔。
-    func broadcastDiagnostic(_ payload: [String: Any]) {
-        queueSend(dictionary: payload)
+    /// 外部工具專用批次；不送擴展，不寫日誌，不等待慢工具。
+    func broadcastExternalLogs(_ entries: [[String: String]]) {
+        let payload: [String: Any] = ["type": "externalLogBatch", "source": "mainapp",
+            "id": UUID().uuidString, "entries": entries]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload), data.count <= 256 * 1024 else { return }
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.updateExternalLogCount()
+            for id in self.externalLogIDs {
+                guard let connection = self.connections[id] else { continue }
+                let pending = self.sendQueues[id] ?? []
+                guard pending.count < 32, pending.reduce(0, { $0 + $1.count }) + data.count <= 512 * 1024 else {
+                    self.externalDroppedCount += 1
+                    let dropped = self.externalDroppedCount
+                    DispatchQueue.main.async { self.externalLogDropped = dropped }
+                    continue
+                }
+                // 直接在服務 queue 加入，避免非同步 enqueue 令上限檢查與入列分離。
+                self.sendQueues[id, default: []].append(data)
+                if self.sendingFlags[id] != true {
+                    self.sendingFlags[id] = true
+                    self.sendNextPayload(for: connection)
+                }
+            }
+        }
     }
 
-    /// 群播給除 origin 以外的所有連線（避免把診斷回送原發者）。
+    // MARK: - 診斷群播（帶外，不寫檔）
+    /// 帶外診斷不受一般日誌開關限制，只送訂閱的外部工具，不回寫日誌。
+    func broadcastDiagnostic(_ payload: [String: Any]) {
+        broadcast(payload, excluding: nil)
+    }
+
+    /// 帶外診斷只送訂閱工具，排除來源與擴展；使用相同的有界待送門檻。
     private func broadcast(_ dictionary: [String: Any], excluding origin: NWConnection?) {
         guard let data = try? JSONSerialization.data(withJSONObject: dictionary, options: []) else { return }
         let originID = origin.map { ObjectIdentifier($0) }
@@ -1625,7 +1698,14 @@ class SocketServer:ObservableObject, @unchecked Sendable {
             guard let self else { return }
             for (id, conn) in self.connections {
                 if let originID, id == originID { continue }
-                self.enqueue(data, to: conn)
+                guard self.externalLogIDs.contains(id), !self.extensionLogIDs.contains(id) else { continue }
+                let pending = self.sendQueues[id] ?? []
+                guard pending.count < 32, pending.reduce(0, { $0 + $1.count }) + data.count <= 512 * 1024 else { continue }
+                self.sendQueues[id, default: []].append(data)
+                if self.sendingFlags[id] != true {
+                    self.sendingFlags[id] = true
+                    self.sendNextPayload(for: conn)
+                }
             }
         }
     }
@@ -1718,6 +1798,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
         }
 
         connections[id] = nil
+        updateExternalLogCount()
         receiveBuffers[id] = nil
         receiveOffsets[id] = nil
         lastReceiveTimes[id] = nil
@@ -1763,6 +1844,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
             }
             self.stopKeepaliveTimer()
             self.connections.removeAll()
+            self.updateExternalLogCount()
             self.receiveBuffers.removeAll()
             self.receiveOffsets.removeAll()
             self.lastReceiveTimes.removeAll()
@@ -1832,6 +1914,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
             conn.stateUpdateHandler = nil
             conn.cancel()
             connections[id] = nil
+        updateExternalLogCount()
             receiveBuffers[id] = nil
             receiveOffsets[id] = nil
             lastReceiveTimes[id] = nil
@@ -1899,6 +1982,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
 
         stopKeepaliveTimer()
         connections.removeAll()
+        updateExternalLogCount()
         receiveBuffers.removeAll()
         receiveOffsets.removeAll()
         lastReceiveTimes.removeAll()

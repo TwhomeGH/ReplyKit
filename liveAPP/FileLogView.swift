@@ -121,6 +121,7 @@ struct FileLogView: View {
                     LPConfig.shared.logMode = value
                     CFNotificationCenterPostNotification(cfCenter, CFNotificationName("logMode" as CFString), nil, nil, true)
                 }
+                if logMode == 0 || logMode == 2 { ExternalLogTransportView() }
                 TextField(AppLanguage.localized("logs.search"), text: $state.query)
                     .textFieldStyle(.roundedBorder).autocorrectionDisabled().textInputAutocapitalization(.never)
                 HStack {

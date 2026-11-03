@@ -819,6 +819,8 @@ final class RemoteLogBuffer {
     private let maxBufferSize = 500
 
     func push(title: String, message: String) {
+        if userDefaults?.string(forKey: "externalLogTransport") == "socket",
+           !SocketServer.shared.hasExternalLogSubscribers { return }
         let item = [
             "title": title,
             "body": message,
@@ -834,6 +836,9 @@ final class RemoteLogBuffer {
             }
         }
     }
+
+    /// 通道切換不重播尚未送出的舊批次。
+    func clear() { queue.async { self.buffer.removeAll() } }
 
     func drain(max: Int) -> [[String: String]] {
         queue.sync {
@@ -889,7 +894,12 @@ final class RemoteLogSender {
         let logs = RemoteLogBuffer.shared.drain(max: batchLimit)
         guard !logs.isEmpty else { return }
 
-        sendBatch(logs)
+        guard LPConfig.shared.logMode == 0 || LPConfig.shared.logMode == 2 else { return }
+        if userDefaults?.string(forKey: "externalLogTransport") == "socket" {
+            SocketServer.shared.broadcastExternalLogs(logs)
+        } else {
+            sendBatch(logs)
+        }
     }
 
     private func sendBatch(_ logs: [[String: String]]) {
@@ -1044,7 +1054,8 @@ func receiveSocketLog(title: String = "UseESocket", message: String) {
         AppLogPersister.shared.append(lines: lines)
     }
 
-    if LPConfig.shared.logMode == 0 || LPConfig.shared.logMode == 2 {
+    if (LPConfig.shared.logMode == 0 || LPConfig.shared.logMode == 2),
+       userDefaults?.string(forKey: "externalLogTransport") != "socket" {
         RemoteLogSender.shared.start()
         RemoteLogBuffer.shared.push(title: title, message: message)
     }
