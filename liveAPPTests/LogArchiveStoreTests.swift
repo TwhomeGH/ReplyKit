@@ -12,7 +12,7 @@ struct LogArchiveStoreTests {
         let recent = folder.appendingPathComponent("001-new.log")
         try Data("old".utf8).write(to: old)
         try Data("new".utf8).write(to: recent)
-        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-8 * 86400)], atPath: old.path)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-8 * 86400)], ofItemAtPath: old.path)
         try LogArchiveStore.prune(folder)
         #expect(!FileManager.default.fileExists(atPath: old.path))
         #expect(try Data(contentsOf: recent) == Data("new".utf8))

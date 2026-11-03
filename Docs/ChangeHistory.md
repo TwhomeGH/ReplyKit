@@ -1,5 +1,11 @@
 # 變更歷史
 
+## 2026.11.04 01:21 修正封存測試的 FileManager 參數標籤
+
+- 問題：`LogArchiveStoreTests` 使用 `setAttributes(_:atPath:)`，CI 編譯失敗並中止整批測試。
+- 根因：新增測試誤用 `FileManager` API 標籤，正確為 `setAttributes(_:ofItemAtPath:)`。
+- 變更：修正該呼叫；同一編譯批次未再出現其他錯誤，待 Apple CI 重跑確認。
+
 ## 2026.11.04 01:05 補外部日誌角色與通道切換測試
 
 - 問題：擴展角色只認批次與健康訊息，漏了 ReplyKIT `sendLog` 的單筆 `log`；切換通道時 `clear`／`stop` 皆非同步，舊緩衝可能被下一個 flush 用新通道送出。
