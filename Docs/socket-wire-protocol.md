@@ -444,7 +444,6 @@ if buffer.count > maxBufferSize {
 
 先前行為是 buffer 超限即關閉連線。這把「單一異常／過大的訊息」放大成「整個 log pipeline 中斷 + 重連」（sideload 下還需靠 `liveAPP.SocketRestart` Darwin notification 重建）。現行 resync 讓大部分失步案例只丟棄一筆異常資料即可復原，斷線僅保留給 framing 無法復原的最壞情況。
 
-
 ### 外部日誌通道與訂閱（更新）
 
 `subscribeExternalLogs` 訂閱已建立 Socket 的對外日誌；一般資料使用 `externalLogBatch`。`diagnostic` 現在也只送已訂閱的外部工具，排除來源與擴展，取代舊版「其他所有連線」行為。擴展角色由單筆 `log` 或 `logbatch`／`videoHealth`／`audioHealth`／`reconnectStatus` 判定，標記持續到斷線。詳見 [外部日誌傳輸](development/EXTERNAL_LOG_TRANSPORT.md)。
