@@ -155,6 +155,7 @@ struct FileLogView: View {
                     Spacer()
                     Button(AppLanguage.localized("logs.latest")) { Task { await state.load(latest: true) } }
                 }
+                NavigationLink("匯出診斷日誌") { LogDiagnosticExportView() }
                 Button(AppLanguage.localized("logs.selectText")) {
                     state.follow = false
                     selectionText = visible.map(\.text).joined(separator: "\n")

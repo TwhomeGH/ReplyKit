@@ -134,12 +134,48 @@ final class AppLogPersister: @unchecked Sendable {
     func historyPage(start: Int? = nil, generation: Int? = nil) async throws -> LogFilePage {
         try await withCheckedThrowingContinuation { continuation in
             queue.async {
-                self.flushPending()
                 do { continuation.resume(returning: try self.historyReader.page(url: self.logURL, start: start, expectedGeneration: generation)) }
                 catch { continuation.resume(throwing: error) }
             }
         }
     }
+    /// 在寫入佇列 flush 後複製快照，避免清空或追加造成範圍匯出混用版本。
+    /// 僅管理 Caches/DiagnosticLogExports 的 UUID 工作目錄；七天前的匯出快取可清理。
+    func diagnosticSnapshot() async throws -> URL {
+        try await withCheckedThrowingContinuation { continuation in
+            queue.async {
+                do {
+                    self.flushPending()
+                    guard self.pendingLines.isEmpty, self.lastFlushSucceeded else {
+                        throw NSError(domain: "LogExport", code: 3,
+                            userInfo: [NSLocalizedDescriptionKey: "日誌最近一次寫入失敗或仍待重試，請查看日誌 I/O 診斷後再匯出。"])
+                    }
+                    let manager = FileManager.default
+                    let root = try manager.url(for: .cachesDirectory, in: .userDomainMask,
+                        appropriateFor: nil, create: true).appendingPathComponent("DiagnosticLogExports", isDirectory: true)
+                    try manager.createDirectory(at: root, withIntermediateDirectories: true)
+                    for folder in try manager.contentsOfDirectory(at: root,
+                        includingPropertiesForKeys: [.creationDateKey, .isDirectoryKey, .isSymbolicLinkKey]) {
+                        let info = try folder.resourceValues(forKeys: [.creationDateKey, .isDirectoryKey, .isSymbolicLinkKey])
+                        if UUID(uuidString: folder.lastPathComponent) != nil, info.isDirectory == true,
+                           info.isSymbolicLink != true, let date = info.creationDate,
+                           date < Date().addingTimeInterval(-7 * 86400) {
+                            do { try manager.removeItem(at: folder) }
+                            catch { NSLog("Diagnostic export cleanup failed: %@", error.localizedDescription) }
+                        }
+                    }
+                    let folder = root.appendingPathComponent(UUID().uuidString, isDirectory: true)
+                    try manager.createDirectory(at: folder, withIntermediateDirectories: true)
+                    let snapshot = folder.appendingPathComponent("source.snapshot")
+                    if manager.fileExists(atPath: self.logURL.path) {
+                        try manager.copyItem(at: self.logURL, to: snapshot)
+                    } else { try Data().write(to: snapshot) }
+                    continuation.resume(returning: snapshot)
+                } catch { continuation.resume(throwing: error) }
+            }
+        }
+    }
+
     private let logFileName = "log.txt"
     private let maxLogFileLines = 5000
     private let trimMargin = 2000
@@ -153,10 +189,19 @@ final class AppLogPersister: @unchecked Sendable {
     private var flushWorkItem: DispatchWorkItem?
 
     // 持久化寫入 handle：啟動/首次寫入時 open 一次，重複使用，
-    // clear/trim 需要重設 offset 時以 seekToEndOfFile 對齊。
+    // clear/trim 原子替換前會關閉，下一批重新開啟；背景每批寫完關閉。
     private var writeHandle: FileHandle?
 
     private var estimatedLineCount = 0
+    private var estimatedFileBytes = 0
+    private let maxFileBytes = 8 * 1024 * 1024
+    private let retainedFileBytes = 4 * 1024 * 1024
+    private let maxPendingBytes = 2 * 1024 * 1024
+    private var lastFlushSucceeded = true
+    private var retryCount = 0
+    private var retryScheduled = false
+    private var closeAfterFlush = false
+    private var flushGeneration = UUID()
 
     private var logURL: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
@@ -170,22 +215,26 @@ final class AppLogPersister: @unchecked Sendable {
     }
 
     deinit {
-        queue.sync {
-            flushWorkItem?.cancel()
-            flushWorkItem = nil
-            flushPending()
-            writeHandle?.closeFile()
-            writeHandle = nil
-        }
+        // singleton 通常不析構；不依賴此處落盤，也不 queue.sync 造成同佇列析構死鎖。
+        flushWorkItem?.cancel()
+        ioFailureFlushItem?.cancel()
+        try? writeHandle?.close()
     }
 
+    /// 分塊校準實際檔案大小與換行數，不把啟動歷史整份載入記憶體。
     private func calibrateLineCount() {
-        guard let handle = try? FileHandle(forReadingFrom: logURL),
-              let currentData = try? handle.readToEnd()
-        else { return }
-        handle.closeFile()
-        guard let content = String(data: currentData, encoding: .utf8) else { return }
-        estimatedLineCount = content.split(separator: "\n", omittingEmptySubsequences: false).count
+        guard FileManager.default.fileExists(atPath: logURL.path) else { return }
+        do {
+            let handle = try FileHandle(forReadingFrom: logURL)
+            defer { try? handle.close() }
+            var bytes = 0, lines = 0
+            while let data = try handle.read(upToCount: 65536), !data.isEmpty {
+                bytes += data.count
+                lines += data.reduce(0) { $0 + ($1 == 10 ? 1 : 0) }
+            }
+            estimatedFileBytes = bytes
+            estimatedLineCount = lines
+        } catch { recordIOFailure(context: "calibrate", lastError: String(describing: error)) }
     }
 
     func append(line: String) {
@@ -205,39 +254,95 @@ final class AppLogPersister: @unchecked Sendable {
         }
     }
 
-    /// 立即把 pending buffer 寫入檔案（背景/切離場景時確保不遺失最後一筆）。
+    /// 排入立即寫入；呼叫返回不表示完成，也不保證程序被終止前所有資料已保存。
     func flushNow() {
-        queue.async { [weak self] in
-            guard let self else { return }
-            self.flushWorkItem?.cancel()
-            self.flushWorkItem = nil
-            self.flushPending()
+        queue.async { [weak self] in self?.flushPending() }
+    }
+
+    /// 背景切換先寫入並關檔；背景後續寫入亦按批關閉，前景恢復重用 handle。
+    /// 完成代表本次嘗試已結束；失敗另有帶外診斷，不保證作業系統不會提前終止。
+    func setBackground(_ background: Bool) async {
+        await withCheckedContinuation { continuation in
+            queue.async {
+                self.closeAfterFlush = background
+                if background {
+                    self.flushPending()
+                    self.closeWriter(synchronize: true)
+                }
+                continuation.resume()
+            }
         }
+    }
+
+    /// 撤銷排程並更新世代；即使舊工作已排入佇列，也不能提早 flush 新批次。
+    private func cancelScheduledFlush() {
+        flushWorkItem?.cancel()
+        flushWorkItem = nil
+        flushGeneration = UUID()
+        retryScheduled = false
     }
 
     private func scheduleFlushIfNeeded() {
-        if pendingLines.count >= batchThreshold {
-            flushWorkItem?.cancel()
-            flushWorkItem = nil
-            flushPending()
-            return
+        // 寫入故障期間維持有限記憶體；拒收的紀錄以帶外摘要計數，避免回饋日誌迴圈。
+        var bytes = pendingLines.reduce(0) { $0 + $1.utf8.count + 1 }
+        var dropped = 0
+        while bytes > maxPendingBytes, let last = pendingLines.last {
+            bytes -= last.utf8.count + 1
+            pendingLines.removeLast()
+            dropped += 1
         }
+        if dropped > 0 { recordIOFailure(context: "buffer.drop", lastError: "droppedRecords=\(dropped)") }
+        guard !pendingLines.isEmpty, !retryScheduled else { return }
+        if pendingLines.count >= batchThreshold { flushPending(); return }
+        scheduleFlush(after: flushDelay)
+    }
+
+    private func scheduleFlush(after delay: TimeInterval) {
         guard flushWorkItem == nil else { return }
+        let generation = flushGeneration
         let workItem = DispatchWorkItem { [weak self] in
-            self?.flushPending()
+            guard let self, self.flushGeneration == generation else { return }
+            self.flushPending()
         }
         flushWorkItem = workItem
-        queue.asyncAfter(deadline: .now() + flushDelay, execute: workItem)
+        queue.asyncAfter(deadline: .now() + delay, execute: workItem)
     }
 
     private func flushPending() {
-        flushWorkItem = nil
+        cancelScheduledFlush()
         guard !pendingLines.isEmpty else { return }
-        let lines = pendingLines
-        pendingLines = []
-        let text = lines.joined(separator: "\n") + "\n"
-        guard let data = text.data(using: .utf8) else { return }
-        write(data)
+        let data = Data((pendingLines.joined(separator: "\n") + "\n").utf8)
+        lastFlushSucceeded = appendRaw(data)
+        if lastFlushSucceeded {
+            pendingLines.removeAll(keepingCapacity: true)
+            retryCount = 0
+            if estimatedLineCount > maxLogFileLines + trimMargin || estimatedFileBytes > maxFileBytes {
+                trimNow()
+            }
+        } else {
+            retryCount += 1
+            if retryCount >= 3 || !lastWriteCanRetry {
+                recordIOFailure(context: "write.drop", lastError: "droppedRecords=\(pendingLines.count) attempts=\(retryCount)")
+                pendingLines.removeAll(keepingCapacity: true)
+                retryCount = 0
+            } else {
+                retryScheduled = true
+                scheduleFlush(after: 2)
+            }
+        }
+        if closeAfterFlush { closeWriter(synchronize: true) }
+    }
+
+    /// 關檔錯誤走帶外診斷；背景同步是低頻收尾，不逐筆強制同步磁碟。
+    private func closeWriter(synchronize: Bool = false) {
+        guard let handle = writeHandle else { return }
+        writeHandle = nil
+        if synchronize {
+            do { try handle.synchronize() }
+            catch { recordIOFailure(context: "synchronize", lastError: String(describing: error)) }
+        }
+        do { try handle.close() }
+        catch { recordIOFailure(context: "close", lastError: String(describing: error)) }
     }
 
     func copyFromAppGroup() {
@@ -253,7 +358,7 @@ final class AppLogPersister: @unchecked Sendable {
             if FileManager.default.fileExists(atPath: earlySource.path),
                let earlyData = try? Data(contentsOf: earlySource),
                !earlyData.isEmpty {
-                self.appendRaw(earlyData)
+                guard self.appendRaw(earlyData) else { return }
                 // 合併後清空（截斷而非刪除）：extension 可能正在寫入該檔，
                 // removeItem 會失敗；FileHandle 截斷到 0 與 extension 的
                 // seekToEndOfFile 並存，下次寫入從 0 開始。
@@ -268,7 +373,7 @@ final class AppLogPersister: @unchecked Sendable {
                 self.trimNow()
                 return
             }
-            self.appendRaw(data)
+            guard self.appendRaw(data) else { return }
             // 合併後截斷來源（與 early-log 相同策略），避免下次啟動把同一份
             // group log 再 append 一次造成重複累積。截斷而非刪除：extension
             // 可能正在寫入，其 write 前會 seekToEndOfFile，截斷後從 0 續寫。
@@ -283,11 +388,10 @@ final class AppLogPersister: @unchecked Sendable {
     func clear() {
         queue.async { [weak self] in
             guard let self else { return }
-            self.flushWorkItem?.cancel()
-            self.flushWorkItem = nil
+            self.cancelScheduledFlush()
+            self.retryCount = 0
             self.pendingLines.removeAll()
             self.truncateFile()
-            self.estimatedLineCount = 0
         }
     }
 
@@ -298,16 +402,6 @@ final class AppLogPersister: @unchecked Sendable {
         statisticsLock.lock()
         defer { statisticsLock.unlock() }
         return writtenBytes
-    }
-
-    /// 寫入失敗以帶外 OSLog 記錄，並累積成有界摘要經 SocketServer 群播；
-    /// 不經 log 管線（避免回饋迴圈）。
-    private func safeWrite(_ handle: FileHandle, _ data: Data, context: String) {
-        do {
-            try handle.write(contentsOf: data)
-        } catch {
-            recordIOFailure(context: context, lastError: String(describing: error))
-        }
     }
 
     // MARK: log 寫入失敗的帶外診斷（有界摘要：每 ioFailureFlushDelay 秒最多一則）
@@ -345,31 +439,36 @@ final class AppLogPersister: @unchecked Sendable {
         ])
     }
 
-    private func appendRaw(_ data: Data) {
-        statisticsLock.lock()
-        writtenBytes += UInt64(data.count)
-        statisticsLock.unlock()
-        let newLines = data.reduce(0) { $0 + ($1 == 0x0A ? 1 : 0) }
-        estimatedLineCount += newLines
-        if let handle = writeHandle ?? openWriteHandle() {
-            handle.seekToEndOfFile()
-            safeWrite(handle, data, context: "append")
-            return
-        }
+    private var lastWriteCanRetry = true
 
-        guard let handle = try? FileHandle(forWritingTo: logURL) else {
-            recordIOFailure(context: "open", lastError: logURL.path)
-            return
+    /// 寫入成功才計量；部分寫入失敗先回復原長度，回復失敗不得重送整批。
+    @discardableResult private func appendRaw(_ data: Data) -> Bool {
+        lastWriteCanRetry = true
+        guard let handle = writeHandle ?? openWriteHandle() else {
+            recordIOFailure(context: "open", lastError: "無法開啟主日誌")
+            return false
         }
-        defer { handle.closeFile() }
-        handle.seekToEndOfFile()
-        safeWrite(handle, data, context: "append(fallback)")
-    }
-
-    private func write(_ data: Data) {
-        appendRaw(data)
-        if estimatedLineCount > maxLogFileLines + trimMargin {
-            trimNow()
+        var offset: UInt64?
+        do {
+            offset = try handle.seekToEnd()
+            try handle.write(contentsOf: data)
+            statisticsLock.lock()
+            writtenBytes += UInt64(data.count)
+            statisticsLock.unlock()
+            estimatedFileBytes += data.count
+            estimatedLineCount += data.reduce(0) { $0 + ($1 == 10 ? 1 : 0) }
+            return true
+        } catch {
+            recordIOFailure(context: "append", lastError: String(describing: error))
+            if let offset {
+                do { try handle.truncate(atOffset: offset) }
+                catch {
+                    lastWriteCanRetry = false
+                    recordIOFailure(context: "rollback", lastError: String(describing: error))
+                }
+            }
+            closeWriter()
+            return false
         }
     }
 
@@ -385,55 +484,41 @@ final class AppLogPersister: @unchecked Sendable {
         return handle
     }
 
+    /// 清空成功才重設索引與統計；失敗保留可診斷狀態。
     private func truncateFile() {
-        historyReader.invalidate()
-        if let handle = writeHandle {
-            do {
-                try handle.truncate(atOffset: 0)
-                try handle.seek(toOffset: 0)
-            } catch {
-                recordIOFailure(context: "clear", lastError: String(describing: error))
-            }
-        } else {
-            do {
-                try "".write(to: logURL, atomically: true, encoding: .utf8)
-            } catch {
-                recordIOFailure(context: "clear(atomic)", lastError: String(describing: error))
-            }
-        }
+        do {
+            closeWriter()
+            try Data().write(to: logURL, options: .atomic)
+            historyReader.invalidate()
+            estimatedLineCount = 0
+            estimatedFileBytes = 0
+            lastFlushSucceeded = true
+        } catch { recordIOFailure(context: "clear", lastError: String(describing: error)) }
     }
 
+    /// 只讀有限大小的尾端，再以原子替換更新主日誌；失敗保留原檔。
     private func trimNow() {
-        historyReader.invalidate()
-        guard let handle = try? FileHandle(forReadingFrom: logURL),
-              let currentData = try? handle.readToEnd()
-        else { return }
-        handle.closeFile()
-        guard let content = String(data: currentData, encoding: .utf8) else { return }
-        let lines = content.split(separator: "\n", omittingEmptySubsequences: false)
-
-        estimatedLineCount = lines.count
-
-        guard lines.count > maxLogFileLines else { return }
-
-        // 就地截斷取代整檔原子重寫：seek 回開頭覆寫後 truncate，
-        // 避免 trim 時讀取 + 寫入整個 5000+ 行檔案兩次。
-        let trimmedLines = lines.suffix(maxLogFileLines)
-        let trimmedText = trimmedLines.joined(separator: "\n") + "\n"
-        if let handle = writeHandle ?? openWriteHandle(),
-           let trimmedData = trimmedText.data(using: .utf8) {
-            try? handle.truncate(atOffset: 0)
-            try? handle.seek(toOffset: 0)
-            safeWrite(handle, trimmedData, context: "trim")
-        } else {
-            do {
-                try trimmedText.write(to: logURL, atomically: true, encoding: .utf8)
-            } catch {
-                os_log("[AppLogPersister] trim 重寫失敗: %{public}@", type: .error, String(describing: error))
-            }
-        }
-        estimatedLineCount = maxLogFileLines
+        do {
+            guard FileManager.default.fileExists(atPath: logURL.path) else { return }
+            let reader = try FileHandle(forReadingFrom: logURL)
+            defer { try? reader.close() }
+            let size = try reader.seekToEnd()
+            let start = size > UInt64(retainedFileBytes) ? size - UInt64(retainedFileBytes) : 0
+            try reader.seek(toOffset: start)
+            let tail = try reader.read(upToCount: retainedFileBytes) ?? Data()
+            let data = LogRetention.retainedTail(tail, startsMidFile: start > 0, maximumLines: maxLogFileLines)
+            guard start > 0 || data != tail else { return }
+            closeWriter()
+            try data.write(to: logURL, options: .atomic)
+            historyReader.invalidate()
+            estimatedFileBytes = data.count
+            estimatedLineCount = data.reduce(0) { $0 + ($1 == 10 ? 1 : 0) }
+            statisticsLock.lock()
+            writtenBytes += UInt64(data.count)
+            statisticsLock.unlock()
+        } catch { recordIOFailure(context: "trim", lastError: String(describing: error)) }
     }
+
 }
 
 
@@ -1175,8 +1260,8 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
                         PIPService.shared.releaseNonCriticalMemory()
                         MemorySampler.shared.checkpoint("app.background.afterCleanup")
                         // 日誌頁以檔案為準；背景不清除可見歷史。
-                        // 進入背景前把 pending log 批次落盤，避免被系統暫停/終止時遺失最後一筆
-                        AppLogPersister.shared.flushNow()
+                        // 在短背景視窗內嘗試寫入並關檔；系統終止前仍無法保證零遺失。
+                        Task { await AppLogPersister.shared.setBackground(true) }
 
                         // 先取得短背景窗口收尾 socket 未送出的 log，再排程機會型 refresh。
                         #if os(iOS)
@@ -1185,6 +1270,7 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
                         #endif
 
                     case .active:
+                        Task { await AppLogPersister.shared.setBackground(false) }
                         sendlog(message: "App 回到前景")
                         SocketServer.shared.start()
 
