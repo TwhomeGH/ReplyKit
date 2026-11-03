@@ -447,4 +447,4 @@ if buffer.count > maxBufferSize {
 
 ### 外部日誌通道與訂閱（更新）
 
-`subscribeExternalLogs` 訂閱已建立 Socket 的對外日誌；一般資料使用 `externalLogBatch`。`diagnostic` 現在也只送已訂閱的外部工具，排除來源與擴展，取代舊版「其他所有連線」行為。詳見 [外部日誌傳輸](development/EXTERNAL_LOG_TRANSPORT.md)。
+`subscribeExternalLogs` 訂閱已建立 Socket 的對外日誌；一般資料使用 `externalLogBatch`。`diagnostic` 現在也只送已訂閱的外部工具，排除來源與擴展，取代舊版「其他所有連線」行為。擴展角色由單筆 `log` 或 `logbatch`／`videoHealth`／`audioHealth`／`reconnectStatus` 判定，標記持續到斷線。詳見 [外部日誌傳輸](development/EXTERNAL_LOG_TRANSPORT.md)。

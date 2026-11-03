@@ -1,5 +1,12 @@
 # 變更歷史
 
+## 2026.11.04 01:05 補外部日誌角色與通道切換測試
+
+- 問題：擴展角色只認批次與健康訊息，漏了 ReplyKIT `sendLog` 的單筆 `log`；切換通道時 `clear`／`stop` 皆非同步，舊緩衝可能被下一個 flush 用新通道送出。
+- 根因：角色判定與容量規則散落在 SocketServer 內，無從測試；緩衝項目未記錄產生時的通道。
+- 變更：抽出 `ExternalLogPolicy` 與 `ExternalLogSubscriptions` 純邏輯，角色集合納入單筆 `log`；緩衝項目標記通道，flush 只取當前通道項目，舊通道殘留直接丟棄；補 `ExternalLogPolicyTests`。
+- 行為不變：無訂閱者仍不累積、單筆 `log` 仍只落本地不轉送；待 Apple CI 與實機多連線驗收。
+
 ## 2026.11.04 01:00 修正擴展日誌 I/O 診斷的編譯錯誤
 
 - 問題：擴展日誌封存改寫刪除了 `safeWrite` 與 `ioFailure*` 狀態宣告，卻保留 `recordIOFailure`／`flushIOFailures`，Apple CI 編譯失敗（cannot find in scope）。

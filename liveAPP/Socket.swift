@@ -180,8 +180,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
     @Published private(set) var externalLogSubscribers = 0
     @Published private(set) var externalLogDropped = 0
     private var externalDroppedCount = 0
-    private var externalLogIDs = Set<ObjectIdentifier>()
-    private var extensionLogIDs = Set<ObjectIdentifier>()
+    private var externalLogSessions = ExternalLogSubscriptions<ObjectIdentifier>()
     private let externalCountLock = NSLock()
     private var externalCount = 0
 
@@ -194,9 +193,8 @@ class SocketServer:ObservableObject, @unchecked Sendable {
 
     /// 在服務 queue 更新訂閱數；連線消失即剔除，重連必須重新訂閱。
     private func updateExternalLogCount() {
-        externalLogIDs = externalLogIDs.filter { connections[$0] != nil }
-        extensionLogIDs = extensionLogIDs.filter { connections[$0] != nil }
-        let count = externalLogIDs.count
+        externalLogSessions.retainExisting { connections[$0] != nil }
+        let count = externalLogSessions.count
         externalCountLock.lock()
         externalCount = count
         externalCountLock.unlock()
@@ -1215,19 +1213,17 @@ class SocketServer:ObservableObject, @unchecked Sendable {
 
 
             let connectionID = ObjectIdentifier(connection)
-            if ["logbatch", "videoHealth", "audioHealth", "reconnectStatus"].contains(type) {
-                extensionLogIDs.insert(connectionID)
-                externalLogIDs.remove(connectionID)
+            if ExternalLogPolicy.marksExtension(type) {
+                externalLogSessions.markExtension(connectionID)
                 updateExternalLogCount()
             }
             switch type {
             case "subscribeExternalLogs":
                 let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any]
                 let enabled = payload?["enabled"] as? Bool ?? false
-                if enabled && !extensionLogIDs.contains(connectionID) { externalLogIDs.insert(connectionID) }
-                else { externalLogIDs.remove(connectionID) }
+                let subscribed = externalLogSessions.setSubscribed(enabled, id: connectionID)
                 updateExternalLogCount()
-                sendTo(connection, dictionary: ["type": "externalLogSubscription", "enabled": externalLogIDs.contains(connectionID)])
+                sendTo(connection, dictionary: ["type": "externalLogSubscription", "enabled": subscribed])
             case "externalLogBatch":
                 // 對外訊息若被工具回送，直接忽略，避免再落盤與群播形成迴圈。
                 break
@@ -1661,14 +1657,18 @@ class SocketServer:ObservableObject, @unchecked Sendable {
     func broadcastExternalLogs(_ entries: [[String: String]]) {
         let payload: [String: Any] = ["type": "externalLogBatch", "source": "mainapp",
             "id": UUID().uuidString, "entries": entries]
-        guard let data = try? JSONSerialization.data(withJSONObject: payload), data.count <= 256 * 1024 else { return }
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              ExternalLogPolicy.acceptsBatch(bytes: data.count) else { return }
         queue.async { [weak self] in
             guard let self else { return }
             self.updateExternalLogCount()
-            for id in self.externalLogIDs {
+            for id in self.externalLogSessions.externalIDs {
                 guard let connection = self.connections[id] else { continue }
                 let pending = self.sendQueues[id] ?? []
-                guard pending.count < 32, pending.reduce(0, { $0 + $1.count }) + data.count <= 512 * 1024 else {
+                let pendingBytes = pending.reduce(0) { $0 + $1.count }
+                guard ExternalLogPolicy.canEnqueue(pendingBatches: pending.count,
+                                                   pendingBytes: pendingBytes,
+                                                   newBatchBytes: data.count) else {
                     self.externalDroppedCount += 1
                     let dropped = self.externalDroppedCount
                     DispatchQueue.main.async { self.externalLogDropped = dropped }
@@ -1698,9 +1698,12 @@ class SocketServer:ObservableObject, @unchecked Sendable {
             guard let self else { return }
             for (id, conn) in self.connections {
                 if let originID, id == originID { continue }
-                guard self.externalLogIDs.contains(id), !self.extensionLogIDs.contains(id) else { continue }
+                guard self.externalLogSessions.receivesExternalLogs(id) else { continue }
                 let pending = self.sendQueues[id] ?? []
-                guard pending.count < 32, pending.reduce(0, { $0 + $1.count }) + data.count <= 512 * 1024 else { continue }
+                let pendingBytes = pending.reduce(0) { $0 + $1.count }
+                guard ExternalLogPolicy.canEnqueue(pendingBatches: pending.count,
+                                                   pendingBytes: pendingBytes,
+                                                   newBatchBytes: data.count) else { continue }
                 self.sendQueues[id, default: []].append(data)
                 if self.sendingFlags[id] != true {
                     self.sendingFlags[id] = true

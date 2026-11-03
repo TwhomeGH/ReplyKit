@@ -10,7 +10,7 @@
 {"type":"subscribeExternalLogs","enabled":true}
 ```
 
-回應 `externalLogSubscription` 的 enabled 表示訂閱是否成立；false 可取消，斷線後需重訂閱。未知連線預設不接收。發送擴展專用 logbatch／videoHealth／audioHealth／reconnectStatus 的連線會被標記為擴展並取消訂閱。這是協定角色識別，不是身份驗證；不要向不可信網路公開服務。
+回應 `externalLogSubscription` 的 enabled 表示訂閱是否成立；false 可取消，斷線後需重訂閱。未知連線預設不接收。發送擴展專用單筆 `log` 或 `logbatch`／`videoHealth`／`audioHealth`／`reconnectStatus` 的連線會被標記為擴展並取消訂閱，標記持續到連線結束，重連需重新判定角色。這是協定角色識別，不是身份驗證；不要向不可信網路公開服務。
 
 一般輸出範例：
 
@@ -22,7 +22,7 @@ source 表示轉送者，來源由各筆 title 區分。主 App 及收到的擴�
 
 沒有訂閱者不累積離線日誌，不自動改走 HTTP。沿用每秒最多 150 筆的主 App 外部批次；單批超過 256 KiB 略過，每個接收者排隊達 32 筆或 512 KiB 時略過新批次。介面顯示因慢連線略過的接收者批次次數，不代表對端已處理數。既有非日誌控制訊息不在本次容量政策內。
 
-切換時清除待送緩衝、停止定時器，後續新日誌才重新啟動；已開始的 HTTP 請求／Socket 傳送可能完成，不撤回已發送資料。一般日誌可能含敏感內容，此即時通道不使用診斷檔匯出的遮蔽器。
+切換時清除待送緩衝、停止定時器，後續新日誌才重新啟動；已開始的 HTTP 請求／Socket 傳送可能完成，不撤回已發送資料。每筆緩衝會標記產生時的通道，flush 只送出與當前通道相符的項目，切換前殘留的舊通道資料直接丟棄，不會改由新通道送出（HTTP 舊資料不會外流給 Socket 工具，反向亦然）。一般日誌可能含敏感內容，此即時通道不使用診斷檔匯出的遮蔽器。
 
 ## 帶外 diagnostic
 
@@ -30,4 +30,11 @@ source 表示轉送者，來源由各筆 title 區分。主 App 及收到的擴�
 
 ## 驗收
 
-待 Apple CI／實機：HTTP 預設相容性、訂閱／取消／重連、擴展排除、logbatch 本地保存、回送忽略、慢工具上限及切換不重播。語法檢查不等於上述行為驗證通過。
+`ExternalLogPolicyTests` 已覆蓋角色判定（含單筆 `log`）、訂閱／取消／擴展排除、斷線清理、單批與佇列上限、切換後丟棄舊通道項目。待 Apple CI／實機：HTTP 預設相容性、多連線訂閱／重連、logbatch 本地保存、回送忽略及實際慢工具行為；單元測試不等於上述端到端行為驗證。
+
+## 實作位置
+
+- `liveAPP/Networking/ExternalLogPolicy.swift`：角色與容量純邏輯。
+- `liveAPP/Socket.swift`：訂閱集合、擴展標記、有界待送。
+- `liveAPP/liveAPPApp.swift`：通道標記緩衝與 flush 分流。
+- `liveAPPTests/ExternalLogPolicyTests.swift`：單元測試。

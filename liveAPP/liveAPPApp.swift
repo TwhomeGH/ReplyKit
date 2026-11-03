@@ -813,14 +813,14 @@ final class RemoteLogBuffer {
     static let shared = RemoteLogBuffer()
 
     private let queue = DispatchQueue(label: "remote.log.buffer.queue")
-    private var buffer: [[String: String]] = []
+    private var buffer: [ExternalLogEntry<[String: String]>] = []
 
     /// 最多暫存幾筆，超過就丟
     private let maxBufferSize = 500
 
     func push(title: String, message: String) {
-        if userDefaults?.string(forKey: "externalLogTransport") == "socket",
-           !SocketServer.shared.hasExternalLogSubscribers { return }
+        let transport = userDefaults?.string(forKey: "externalLogTransport") ?? "http"
+        if transport == "socket", !SocketServer.shared.hasExternalLogSubscribers { return }
         let item = [
             "title": title,
             "body": message,
@@ -828,7 +828,7 @@ final class RemoteLogBuffer {
         ]
 
         queue.async {
-            self.buffer.append(item)
+            self.buffer.append(ExternalLogEntry(transport: transport, item: item))
             if self.buffer.count > self.maxBufferSize {
                 let excess = self.buffer.count - self.maxBufferSize
                 self.buffer.removeFirst(excess)
@@ -840,13 +840,10 @@ final class RemoteLogBuffer {
     /// 通道切換不重播尚未送出的舊批次。
     func clear() { queue.async { self.buffer.removeAll() } }
 
-    func drain(max: Int) -> [[String: String]] {
+    /// 只取出與目前通道相符的項目；切換前殘留的舊通道資料直接丟棄。
+    func drain(max: Int, transport: String) -> [[String: String]] {
         queue.sync {
-            guard !buffer.isEmpty else { return [] }
-            let count = min(max, buffer.count)
-            let result = Array(buffer.prefix(count))
-            buffer.removeFirst(count)
-            return result
+            ExternalLogPolicy.takeDrainable(&buffer, transport: transport, limit: max)
         }
     }
 }
@@ -891,11 +888,13 @@ final class RemoteLogSender {
     }
 
     private func flush() {
-        let logs = RemoteLogBuffer.shared.drain(max: batchLimit)
+        let transport = userDefaults?.string(forKey: "externalLogTransport") ?? "http"
+        let logs = RemoteLogBuffer.shared.drain(max: batchLimit, transport: transport)
         guard !logs.isEmpty else { return }
 
         guard LPConfig.shared.logMode == 0 || LPConfig.shared.logMode == 2 else { return }
-        if userDefaults?.string(forKey: "externalLogTransport") == "socket" {
+
+        if transport == "socket" {
             SocketServer.shared.broadcastExternalLogs(logs)
         } else {
             sendBatch(logs)
