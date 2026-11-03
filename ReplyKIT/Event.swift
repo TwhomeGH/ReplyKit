@@ -464,6 +464,14 @@ final class LogManager {
         }
     }
 
+    // MARK: log 寫入失敗的帶外診斷（有界摘要：每 ioFailureFlushDelay 秒最多一則）
+    // logQueue 為 concurrent，故以 ioFailureLock 保護計數與排程。
+    private let ioFailureLock = NSLock()
+    private var ioFailureCount = 0
+    private var ioLastError: String?
+    private var ioFailureFlushItem: DispatchWorkItem?
+    private let ioFailureFlushDelay: TimeInterval = 60
+
     /// 檔案寫入失敗累積成有界摘要（OSLog + socket 診斷），
     /// 不回流 log 管線（sendlog/early-log），避免寫入失敗→再寫 log→再失敗的回饋迴圈。
     private func recordIOFailure(_ context: String, _ error: Error) {
