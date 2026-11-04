@@ -3,7 +3,7 @@ import Foundation
 import Testing
 @testable import liveAPP
 
-/// 用小型合成影片驗證另存契約；需 Apple SDK 與可用 H.264 編碼器。
+/// 用固定合成影片驗證另存契約；真正的壓縮仍需 Apple SDK 與可用編碼器。
 struct VideoCompressionExportTests {
     /// 真實失敗來源只有 matrix #5；不可捏造 primaries／transfer 或誤標 BT.709。
     @Test func partialBT601MetadataRemainsPartial() throws {
@@ -99,67 +99,20 @@ struct VideoCompressionExportTests {
         #expect(known.summary.contains("全範圍"))
     }
 
-    @Test(arguments: [false, true])
+    /// 兩種壓縮路徑都必須保留原檔，並輸出具有效時長、可解碼的影片。
+    @Test(.serialized, arguments: [false, true])
     func separateOutputKeepsSourceBytes(systemQuality: Bool) async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
 
-        let width = 320, height = 240
         let source = folder.appendingPathComponent("source.mp4")
         let destination = folder.appendingPathComponent("output.mp4")
-        let writer = try AVAssetWriter(outputURL: source, fileType: .mp4)
-        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
-            AVVideoCodecKey: AVVideoCodecType.h264,
-            AVVideoWidthKey: width,
-            AVVideoHeightKey: height,
-            AVVideoCompressionPropertiesKey: [
-                AVVideoAverageBitRateKey: 200_000,
-                AVVideoAllowFrameReorderingKey: false,
-                AVVideoMaxKeyFrameIntervalDurationKey: 1
-            ] as [String: Any]
-        ])
-        input.expectsMediaDataInRealTime = false
-        // 交由 adaptor 建立像素緩衝池，取得編碼器需要的 IOSurface-backed 緩衝。
-        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input,
-            sourcePixelBufferAttributes: [
-                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-                kCVPixelBufferWidthKey as String: width,
-                kCVPixelBufferHeightKey as String: height,
-                kCVPixelBufferIOSurfacePropertiesKey as String: [String: Any]()
-            ])
-        guard writer.canAdd(input) else { throw failure("無法加入測試影格輸入") }
-        writer.add(input)
-        guard writer.startWriting() else { throw failure("無法開始寫入測試影片", writer.error) }
-        writer.startSession(atSourceTime: .zero)
-        let pool = try #require(adaptor.pixelBufferPool, "像素緩衝池未建立")
-
-        // 十格足以驗證時長與軌道契約，也縮短模擬器的軟體編碼時間。
-        for frame in 0..<10 {
-            let deadline = Date().addingTimeInterval(10)
-            while !input.isReadyForMoreMediaData {
-                guard writer.status == .writing, Date() < deadline else {
-                    throw failure("等待測試影格輸入逾時", writer.error)
-                }
-                try await Task.sleep(nanoseconds: 1_000_000)
-            }
-            var buffer: CVPixelBuffer?
-            guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer) == kCVReturnSuccess else {
-                throw failure("無法取得測試影格緩衝")
-            }
-            let pixel = try #require(buffer)
-            CVPixelBufferLockBaseAddress(pixel, [])
-            if let base = CVPixelBufferGetBaseAddress(pixel) {
-                memset(base, 128, CVPixelBufferGetBytesPerRow(pixel) * height)
-            }
-            CVPixelBufferUnlockBaseAddress(pixel, [])
-            guard adaptor.append(pixel, withPresentationTime: CMTime(value: Int64(frame), timescale: 30)) else {
-                throw failure("無法附加測試影格", writer.error)
-            }
-        }
-        input.markAsFinished()
-        await writer.finishWriting()
-        guard writer.status == .completed else { throw failure("測試影片未完成", writer.error) }
+        // 樣本隨測試 bundle 複製；不在準備階段額外啟動 Writer，避免將準備逾時誤認為壓縮失敗。
+        let fixture = try #require(Bundle(for: CompressionFixtureBundle.self)
+            .url(forResource: "compression-source", withExtension: "mp4"),
+            "測試 bundle 缺少 compression-source.mp4；請檢查 Resources membership")
+        try FileManager.default.copyItem(at: fixture, to: source)
 
         let original = try Data(contentsOf: source)
         _ = try await RecordingTranscoder.compress(url: source, asset: AVURLAsset(url: source),
@@ -168,19 +121,27 @@ struct VideoCompressionExportTests {
             qualityPreset: systemQuality ? .highest : nil)
         #expect(try Data(contentsOf: source) == original)
         #expect(FileManager.default.fileExists(atPath: destination.path))
-        let tracks = try await AVURLAsset(url: destination).loadTracks(withMediaType: .video)
+        let output = AVURLAsset(url: destination)
+        let tracks = try await output.loadTracks(withMediaType: .video)
+        let track = try #require(tracks.first)
         #expect(tracks.count == 1)
-    }
+        let duration = try await output.load(.duration).seconds
+        #expect(abs(duration - 1) < 0.1)
 
-    /// 保留底層錯誤以指出失敗階段，避免只看到籠統的檔案錯誤。
-    private func failure(_ stage: String, _ error: Error? = nil) -> NSError {
-        guard let error else {
-            return NSError(domain: "VideoCompressionExportTests", code: 1,
-                           userInfo: [NSLocalizedDescriptionKey: stage])
-        }
-        return NSError(domain: "VideoCompressionExportTests", code: 1, userInfo: [
-            NSLocalizedDescriptionKey: "\(stage)：\(error.localizedDescription)",
-            NSUnderlyingErrorKey: error
+        // 讀取解碼後影格，避免只有容器／軌道存在、實際沒有可播放內容也通過。
+        let reader = try AVAssetReader(asset: output)
+        let decoded = AVAssetReaderTrackOutput(track: track, outputSettings: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
         ])
+        try #require(reader.canAdd(decoded))
+        reader.add(decoded)
+        try #require(reader.startReading(), "輸出解碼無法開始：\(String(describing: reader.error))")
+        defer { reader.cancelReading() }
+        let first = try #require(decoded.copyNextSampleBuffer(),
+            "輸出沒有可解碼影格：\(String(describing: reader.error))")
+        #expect(CMSampleBufferGetImageBuffer(first) != nil)
     }
 }
+
+/// 以測試 target 內的類別定位 bundle，避免誤從主 App 尋找測試資源。
+private final class CompressionFixtureBundle: NSObject {}
