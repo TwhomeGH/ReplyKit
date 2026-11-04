@@ -1,6 +1,12 @@
 {
   "sourceLanguage" : "zh-Hant",
   "strings" : {
+    "activity.title": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "即時動態 LiveActivity"}}, "en": {"stringUnit": {"state": "translated", "value": "Live Activities"}}, "ja": {"stringUnit": {"state": "translated", "value": "ライブアクティビティ"}}}},
+    "activity.enabled": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "啟用即時動態"}}, "en": {"stringUnit": {"state": "translated", "value": "Enable Live Activities"}}, "ja": {"stringUnit": {"state": "translated", "value": "ライブアクティビティを有効にする"}}}},
+    "activity.interval": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "摘要更新間隔"}}, "en": {"stringUnit": {"state": "translated", "value": "Summary update interval"}}, "ja": {"stringUnit": {"state": "translated", "value": "概要の更新間隔"}}}},
+    "activity.active": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "正在顯示"}}, "en": {"stringUnit": {"state": "translated", "value": "Active"}}, "ja": {"stringUnit": {"state": "translated", "value": "表示中"}}}},
+    "activity.inactive": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "目前未顯示"}}, "en": {"stringUnit": {"state": "translated", "value": "Inactive"}}, "ja": {"stringUnit": {"state": "translated", "value": "非表示"}}}},
+    "activity.explanation": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "預設每 5 分鐘更新摘要；開播、重連及結束立即更新。計時由系統顯示。背景暫停時更新可能延後；關閉不會停止推流。仍需允許系統的即時動態權限。"}}, "en": {"stringUnit": {"state": "translated", "value": "Summaries update every 5 minutes by default. Start, reconnect and end events update immediately. The system displays elapsed time. Background suspension may delay updates. Disabling does not stop streaming. System permission is required."}}, "ja": {"stringUnit": {"state": "translated", "value": "概要は既定で5分ごとに更新します。開始・再接続・終了時は即時更新し、経過時間はシステムが表示します。バックグラウンドでは更新が遅れる場合があります。無効にしても配信は停止しません。システムの許可が必要です。"}}}},
 "tools.pipShort": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "子母畫面"}}, "en": {"stringUnit": {"state": "translated", "value": "PiP"}}, "ja": {"stringUnit": {"state": "translated", "value": "PiP"}}}},
     "tab.tools": {
     "localizations": {

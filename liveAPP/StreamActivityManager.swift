@@ -21,10 +21,14 @@ final class StreamActivityManager: ObservableObject {
     private var currentActivity: Activity<StreamActivityAttributes>? {
         didSet { isActivityActive = currentActivity != nil }
     }
+    /// 啟動／停止世代，避免等待清理期間舊啟動請求復活。
+    private var generation = UUID()
+    private var streamStartedAt: Date?
     private var updateTask: Task<Void, Never>?
     private var dismissTask: Task<Void, Never>?
 
     func startStreamActivity(streamTitle: String = "直播中") {
+        guard LiveActivitySettings.enabled, currentActivity == nil else { return }
         logLifecycle("== startStreamActivity 開始 ==")
         let env = ProcessInfo.processInfo.operatingSystemVersionString
         logLifecycle("環境: iOS \(env), 裝置: \(DeviceInfo.deviceCode)")
@@ -42,12 +46,15 @@ final class StreamActivityManager: ObservableObject {
         endStreamActivity(reason: "重新啟動前清理")
 
         let attributes = StreamActivityAttributes(streamTitle: streamTitle)
-        let initialState = StreamActivityAttributes.ContentState()
+        let requestGeneration = generation
+        streamStartedAt = LPConfig.shared.streamStartTime ?? Date()
+        let initialState = snapshot()
         let content = ActivityContent(state: initialState, staleDate: nil)
         logLifecycle("準備建立 Activity: title=\(streamTitle), initial=\(describeContent(initialState))")
 
         Task {
             await cleanupStaleActivities()
+            guard generation == requestGeneration, LiveActivitySettings.enabled else { return }
             logWidgetDiagnostics()
 
             do {
@@ -76,14 +83,17 @@ final class StreamActivityManager: ObservableObject {
 
     func updateStreamActivity(_ state: StreamActivityAttributes.ContentState) {
         guard let activity = currentActivity else { return }
-        let content = ActivityContent(state: state, staleDate: Date().addingTimeInterval(30))
+        let content = ActivityContent(state: state, staleDate: Date().addingTimeInterval(LiveActivitySettings.interval + 60))
         logLifecycle("手動 update: \(describeContent(state))")
         Task {
+            guard currentActivity === activity else { return }
             await activity.update(content)
         }
     }
 
+    /// 停止排程並使尚未完成的啟動請求失效；不影響推流。
     func endStreamActivity(reason: String = "活動結束（未提供原因）") {
+        generation = UUID()
         updateTask?.cancel()
         updateTask = nil
         dismissTask?.cancel()
@@ -96,7 +106,9 @@ final class StreamActivityManager: ObservableObject {
         logLifecycle("endStreamActivity (\(reason)): id=\(activity.id), state=\(activity.activityState)")
         currentActivity = nil
         Task {
-            let state = activity.content.state
+            var state = activity.content.state
+            state.streamStatus = .ended
+            state.endedAt = Date()
             await activity.end(ActivityContent(state: state, staleDate: nil), dismissalPolicy: .after(Date().addingTimeInterval(5)))
             logLifecycle("Activity.end 已呼叫，5 秒後移除 id=\(activity.id)")
         }
@@ -168,47 +180,51 @@ final class StreamActivityManager: ObservableObject {
         }
     }
 
+    /// 修改偏好後立即重排；啟用時只在直播中建立活動。
+    func applySettings() {
+        if !LiveActivitySettings.enabled {
+            endStreamActivity(reason: "設定停用")
+        } else if currentActivity != nil {
+            refreshStatus()
+            startPeriodicUpdates()
+        } else if !LPConfig.shared.StreamEnded {
+            startStreamActivity()
+        }
+    }
+
+    /// 重連等狀態事件即時更新，不等待摘要週期。
+    func refreshStatus() {
+        updateStreamActivity(snapshot())
+    }
+
+    /// 所有更新共用同一份快照；時間基準固定，不隨每次取樣漂移。
+    private func snapshot() -> StreamActivityAttributes.ContentState {
+        var state = StreamActivityAttributes.ContentState(
+            streamStatus: LPConfig.shared.StreamEnded ? .ended :
+                (LPConfig.shared.isReconnecting ? .reconnecting(LPConfig.shared.reconnectStatus) : .live),
+            bitrate: LPConfig.shared.streamBitrate,
+            viewerCount: LPConfig.shared.streamViewerCount,
+            cpuUsage: DeviceInfo.cpuUsagePercent,
+            memoryUsage: DeviceInfo.appFootprintMB)
+        state.startedAt = streamStartedAt
+        state.updatedAt = Date()
+        return state
+    }
+
+    /// 只排一個週期任務；取消直接退出，並核對活動身分防止舊任務更新新活動。
     private func startPeriodicUpdates() {
         updateTask?.cancel()
+        guard let activity = currentActivity else { return }
+        let interval = LiveActivitySettings.interval
         updateTask = Task { [weak self] in
-            var cycle = 0
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
-                cycle += 1
-
-                guard let activity = self?.currentActivity else {
-                    self?.logLifecycle("週期更新中斷: currentActivity 已為 nil (cycle=\(cycle))")
-                    break
-                }
-                let totalSeconds = Int(LPConfig.shared.lastStreamTime)
-                let hours = totalSeconds / 3600
-                let minutes = (totalSeconds % 3600) / 60
-                let seconds = totalSeconds % 60
-                let elapsed = String(format: "%02d:%02d:%02d", hours, minutes, seconds)
-
-                var status: StreamStatus = .live
-                if LPConfig.shared.StreamEnded {
-                    status = .ended
-                } else if LPConfig.shared.isReconnecting {
-                    status = .reconnecting(LPConfig.shared.reconnectStatus)
-                }
-
-                let updated = StreamActivityAttributes.ContentState(
-                    streamStatus: status,
-                    bitrate: LPConfig.shared.streamBitrate,
-                    elapsedTime: elapsed,
-                    viewerCount: LPConfig.shared.streamViewerCount,
-                    cpuUsage: DeviceInfo.cpuUsagePercent,
-                    memoryUsage: DeviceInfo.appFootprintMB
-                )
-                if cycle == 1 || cycle % 6 == 0 {
-                    let cpu = String(format: "%.1f", DeviceInfo.cpuUsagePercent)
-                    let mem = String(format: "%.1f", DeviceInfo.appFootprintMB)
-                    let viewers = LPConfig.shared.streamViewerCount.map { String($0) } ?? "nil"
-                    self?.logLifecycle("週期更新 #\(cycle): status=\(status) elapsed=\(elapsed) bitrate=\(LPConfig.shared.streamBitrate) viewers=\(viewers) cpu=\(cpu)% mem=\(mem)MB")
-                }
-                let content = ActivityContent(state: updated, staleDate: Date().addingTimeInterval(30))
-                await activity.update(content)
+                do { try await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000)) }
+                catch { return }
+                guard !Task.isCancelled, let self, self.currentActivity === activity else { return }
+                let state = self.snapshot()
+                await activity.update(ActivityContent(state: state,
+                    staleDate: Date().addingTimeInterval(interval + 60)))
+                self.logLifecycle("週期更新 interval=\(interval)s：\(self.describeContent(state))")
             }
         }
     }

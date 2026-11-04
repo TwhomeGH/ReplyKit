@@ -1536,6 +1536,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
                         break
                     }
                     PIPService.shared.markOverlayDirty()
+                    Task { @MainActor in StreamActivityManager.shared.refreshStatus() }
                 }
 
             default:

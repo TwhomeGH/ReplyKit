@@ -16,14 +16,14 @@ struct StreamActivityWidget: Widget {
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    Text(context.state.elapsedTime)
+                    StreamActivityElapsedView(state: context.state)
                 }
             } compactLeading: {
-                Text(context.state.elapsedTime)
+                StreamActivityElapsedView(state: context.state)
             } compactTrailing: {
                 Text("")
             } minimal: {
-                Text(context.state.elapsedTime)
+                StreamActivityElapsedView(state: context.state)
             }
         }
     }

@@ -61,10 +61,23 @@ import ScreenCaptureKit
             phase = .selecting
             streamTelemetry = CaptureStreamTelemetry()
             let source = ScreenCaptureSource(url: url, key: key, mode: mode, publishingChanged: { [weak self] active, reason in
-                guard let self, self.isPublishing != active else { return }
+                guard let self else { return }
+                guard self.isPublishing != active || (!active && LPConfig.shared.isReconnecting) else { return }
                 self.isPublishing = active
-                if active { SocketServer.shared.StreamStarting() }
-                else { SocketServer.shared.StreamStatusChanged(isLive: false, message: nil, activityEndReason: reason) }
+                if reason == "ScreenCaptureKit 網路重連中" {
+                    // 重連不是直播結束；保留 Activity 與原始開播時間。
+                    LPConfig.shared.isReconnecting = true
+                    LPConfig.shared.reconnectStatus = reason ?? ""
+                    StreamActivityManager.shared.refreshStatus()
+                } else if active, LPConfig.shared.isReconnecting {
+                    LPConfig.shared.isReconnecting = false
+                    LPConfig.shared.reconnectStatus = ""
+                    StreamActivityManager.shared.refreshStatus()
+                } else if active {
+                    SocketServer.shared.StreamStarting()
+                } else {
+                    SocketServer.shared.StreamStatusChanged(isLive: false, message: nil, activityEndReason: reason)
+                }
             }, telemetryChanged: { [weak self] in self?.streamTelemetry = $0 }) { [weak self] phase, message in
                 guard let self else { return }
                 self.phase = phase

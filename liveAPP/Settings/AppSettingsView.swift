@@ -24,6 +24,11 @@ struct AppSettingsView: View {
       }
       Section(AppLanguage.localized("tools.appSettings")) {
         NavigationLink {
+          LiveActivitySettingsView()
+        } label: {
+          row("activity.title", "waveform.circle")
+        }
+        NavigationLink {
           GeneralSettingsView()
         } label: {
           row("settings.category.general", "globe")
