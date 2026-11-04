@@ -7,12 +7,30 @@ struct PIPView: View {
     var body: some View {
         Form {
             Section("子母畫面") {
-                Text(service.isPiPActive ? "目前正在顯示子母畫面" : "子母畫面尚未啟動")
+                // 圖示與文字同時表達狀態，不只依賴顏色判斷。
+                Label {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(service.isPiPActive ? "子母畫面正在顯示" : "子母畫面未啟動")
+                            .font(.headline)
+                        Text(service.isPiPActive ? "可使用下方按鈕停止顯示" : "選擇聊天室或保活模式開始")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                } icon: {
+                    Image(systemName: service.isPiPActive ? "pip.fill" : "pip")
+                        .foregroundStyle(service.isPiPActive ? Color.green : Color.secondary)
+                        .font(.title2)
+                }
+                .padding(.vertical, 6)
+                .accessibilityElement(children: .combine)
                 Button("啟動聊天室 PiP") { service.startPiP(size: CGSize(width: 300, height: 200)) }
                     .disabled(service.isPiPActive)
                 Button("啟動保活 PiP") { service.startKeepalivePiP(size: CGSize(width: 300, height: 200)) }
                     .disabled(service.isPiPActive)
-                Button("停止 PiP", role: .destructive) { service.stopPiP() }
+                Button(role: .destructive) { service.stopPiP() } label: {
+                    Label("停止 PiP", systemImage: "stop.circle")
+                        .foregroundStyle(service.isPiPActive ? Color.red : Color.secondary)
+                }
+                .disabled(!service.isPiPActive)
             }
             PIPKeepaliveSettingsSection()
             Section("外觀") {

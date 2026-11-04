@@ -97,6 +97,7 @@ struct FileLogView: View {
     @State private var confirmClear = false
     @State private var showSearch = false
     @State private var showSelection = false
+    @State private var showDiagnosticExport = false
     @State private var selectionText = ""
 
     private var visible: [(line: Int, text: String)] {
@@ -156,7 +157,9 @@ struct FileLogView: View {
                     Spacer()
                     Button(AppLanguage.localized("logs.latest")) { Task { await state.load(latest: true) } }
                 }
-                NavigationLink("匯出診斷日誌") { LogDiagnosticExportView() }
+                Button { showDiagnosticExport = true } label: {
+                    Label("匯出診斷日誌", systemImage: "square.and.arrow.up")
+                }
                 Button(AppLanguage.localized("logs.selectText")) {
                     state.follow = false
                     selectionText = visible.map(\.text).joined(separator: "\n")
@@ -206,6 +209,17 @@ struct FileLogView: View {
                     if following, let target = state.anchor { proxy.scrollTo(target, anchor: .bottom) }
                 }
                 .simultaneousGesture(DragGesture().onChanged { _ in state.follow = false })
+            }
+        }
+        // 日誌分頁不依賴外層 NavigationStack；匯出自行提供導航與關閉入口。
+        .sheet(isPresented: $showDiagnosticExport) {
+            NavigationStack {
+                LogDiagnosticExportView()
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button(AppLanguage.localized("logs.close")) { showDiagnosticExport = false }
+                        }
+                    }
             }
         }
         .sheet(isPresented: $showSelection) {
