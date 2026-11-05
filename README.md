@@ -86,7 +86,7 @@ ScreenCaptureKit 本地錄影另有壓縮與分段設定
 來源網址（固定，永遠指向最新 Release 上的來源檔）：
 `https://github.com/TwhomeGH/ReplyKit/releases/latest/download/AltStoreTest.json`
 
-[AltStoreTest.json](AltStoreTest.json) 是版控中的樣板，CI 不會改寫它。每次預設分支建置並發布 Release 時，CI 會用樣板加上實際的 `downloadURL`、`size`、`version`、`buildVersion`、`date` 合成一份，附在該 Release；`version`／`buildVersion` 取自封存後的 `Info.plist`，不由 tag 推測。
+[AltStoreTest.json](AltStoreTest.json) 是版控中的樣板，CI 不會改寫它。每次預設分支建置並發布 Release 時，CI 會用樣板加上實際的 `downloadURL`、`size`、`version`、`buildVersion`、`date` 合成一份，附在該 Release；`version`／`buildVersion` 取自封存後的 `Info.plist`，不由 tag 推測。版本的 What's New 取自該次建置最近 10 筆 commit，寫入 `versions[].localizedDescription`；App 層的 `localizedDescription` 仍是商店頁介紹。
 
 > [!NOTE]
 > AltStore 是否提示更新仍取決於 `version`／`buildVersion` 是否改變；CI 只保證下載指向正確，不會自動遞增版本號。

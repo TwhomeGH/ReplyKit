@@ -79,6 +79,24 @@ class AltStoreSourceTests(unittest.TestCase):
             composed = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual(composed["apps"][0]["versions"][0]["version"], "17.3.0")
 
+    def test_notes_file_becomes_version_description(self):
+        source = sample_source()
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "AltStoreTest.json"
+            notes = Path(folder) / "notes.txt"
+            path.write_text(json.dumps(source), encoding="utf-8")
+            notes.write_text("修正 A\n新增 B\n", encoding="utf-8")
+            code = main([
+                "--path", str(path), "--notes-file", str(notes),
+                "--tag", "17.3.0", "--version", "17.3.0", "--build", "2",
+                "--size", "1", "--repo", "o/r",
+                "--date", "2026-01-01T00:00:00+08:00",
+            ])
+            self.assertEqual(code, 0)
+            after = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(after["apps"][0]["versions"][0]["localizedDescription"],
+                             "修正 A\n新增 B")
+
     def test_older_release_is_ignored(self):
         source = sample_source()
         source["apps"][0]["versions"][0]["downloadURL"] = (

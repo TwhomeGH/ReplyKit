@@ -285,6 +285,14 @@ jobs:
         id: ipa_meta
         run: echo "size=$(stat -f%z "build/liveApp_${TAG}.ipa")" >> "$GITHUB_OUTPUT"
 
+      - name: Prepare AltStore notes 準備更新說明
+        run: |
+          mkdir -p build
+          {
+            echo "此版本更新："
+            git log -n 10 --pretty=format:"- %s"
+          } > build/altstore-notes.txt
+
       - name: Compose AltStore source 產生 AltStore 來源
         run: |
           python3 Scripts/update_altstore_source.py \
@@ -294,7 +302,8 @@ jobs:
             --version "${{ steps.app_version.outputs.short }}" \
             --build "${{ steps.app_version.outputs.build }}" \
             --size "$(stat -f%z "build/liveApp_${TAG}.ipa")" \
-            --repo "${{ github.repository }}"
+            --repo "${{ github.repository }}" \
+            --notes-file build/altstore-notes.txt
 
       - name: Upload Release with merged body 上傳 Release 並合併內容
         env:

@@ -1,5 +1,13 @@
 # 變更歷史
 
+## 2026.11.06 06:59 AltStore 版本更新說明改由 CI 產生
+
+- 問題：版本條目的 `localizedDescription` 原本退回 App 層介紹，AltStore 的 What's New 會顯示整個 App 說明，不是這次更新內容。
+- 根因：合成腳本沒有接收版本說明的入口。
+- 變更：`update_altstore_source.py` 新增 `--notes`／`--notes-file`，內容寫入 `versions[].localizedDescription`；`main.yml` 在合成前用最近 10 筆 commit 產生 `build/altstore-notes.txt` 並傳入。
+- App 層 `localizedDescription` 維持商店頁完整介紹；`news[]` 不用於版本更新說明。
+- 待下一次 Release 檢查 AltStore 顯示的多行說明與換行。
+
 ## 2026.11.06 06:52 PiP 計時器併列與精簡版面開關
 
 - 問題：計時器單獨置中在頂端，和左側「直播中／人數」、下方「現在時間」沒有共同對齊線，看起來像漂在上面。

@@ -11,10 +11,13 @@ Usage:
     python3 Scripts/update_altstore_source.py --path AltStoreTest.json \
         --output build/AltStoreTest.json \
         --tag <release tag> --version <CFBundleShortVersionString> \
-        --build <CFBundleVersion> --size <IPA bytes> --repo <owner/name>
+        --build <CFBundleVersion> --size <IPA bytes> --repo <owner/name> \
+        --notes-file build/altstore-notes.txt
 
 CI 的 ``--tag`` 是自動產生的 release tag；``--version`` 與 ``--build``
 來自封存後的 Info.plist，不是從 tag 推測；``--size`` 是 IPA 的實際位元組數。
+``--notes-file`` 的內容會寫入版本的 ``localizedDescription``（AltStore 的
+「What's New」）；沒有提供時才退回 App 層描述。
 """
 
 from __future__ import annotations
@@ -50,6 +53,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="Defaults to the newest existing entry, else 16.0")
     parser.add_argument("--description", default="",
                         help="Defaults to the app's localizedDescription")
+    parser.add_argument("--notes", default="",
+                        help="Version What's New text (versions[].localizedDescription)")
+    parser.add_argument("--notes-file", default=None, type=Path,
+                        help="Read version notes from this file; overrides --notes")
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args(argv)
 
@@ -147,6 +154,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ignored older release {args.tag}; source already has {current}")
         return 0
 
+    notes = args.notes
+    if args.notes_file:
+        notes = args.notes_file.read_text(encoding="utf-8")
+    notes = notes.strip()
+
     entry = make_entry(
         tag=args.tag,
         version=args.version,
@@ -155,7 +167,7 @@ def main(argv: list[str] | None = None) -> int:
         repo=args.repo,
         date=resolve_date(args.date),
         min_os=resolve_min_os(source, args.bundle_id, args.min_os),
-        description=args.description,
+        description=notes or args.description,
     )
     update_source(source, bundle_id=args.bundle_id, entry=entry,
                   max_versions=args.max_versions)
