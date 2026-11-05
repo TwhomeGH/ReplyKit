@@ -32,6 +32,7 @@ struct PIPView: View {
                 }
                 .disabled(!service.isPiPActive)
             }
+            PIPDisplaySettingsSection()
             PIPKeepaliveSettingsSection()
             Section("外觀") {
                 NavigationLink("PiP 排版設定") { PIPLayoutSettingsView() }

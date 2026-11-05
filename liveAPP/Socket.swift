@@ -976,6 +976,8 @@ class SocketServer:ObservableObject, @unchecked Sendable {
 
         if isLive {
             Task { @MainActor in
+                // 全局偏好關閉時連管理器啟動入口也不呼叫；管理器內仍保留防線。
+                guard LiveActivitySettings.enabled else { return }
                 StreamActivityManager.shared.startStreamActivity()
             }
         } else {

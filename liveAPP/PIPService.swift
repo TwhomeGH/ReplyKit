@@ -46,7 +46,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     var isAnimatingMessages = false
     private var needsRedraw = true
     private var lastPeriodicRedraw: CFTimeInterval = CACurrentMediaTime()
-    private let periodicRedrawInterval: CFTimeInterval = 1.0
+    private var periodicRedrawInterval: CFTimeInterval { PIPDisplaySettings.clockSeconds }
 
     private var pixelBufferPool: CVPixelBufferPool?
     private let pixelBufferPoolSize = 3
@@ -197,14 +197,22 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     private var scheduledRender: DispatchWorkItem?
     private var scheduledRenderDeadline: CFTimeInterval?
     private var renderStatsStarted = CACurrentMediaTime()
+    /// 固定容量區間統計；不保存逐幀樣本，不受 PIPLog 開關影響。
+    private var performanceSession = UUID()
+    private var renderWorkSeconds = 0.0
+    private var maxRenderMilliseconds = 0.0
+    private var maxScheduleDelayMilliseconds = 0.0
+    private var backpressureSkips = 0
+    private var renderFailures = 0
+    private var reusedFrames = 0
     private var renderAttempts = 0
     private var drawnFrames = 0
     private var statsInitialFrameCount: Int64 = 0
 
     // MARK: - 保活模式
     private(set) var isKeepaliveMode = false
-    private let animationFPS = PIPRenderPolicy.animationFPS
-    private let activeFPS = PIPRenderPolicy.activeFPS
+    private var animationFPS: Double { PIPDisplaySettings.powerSaving ? 8 : PIPRenderPolicy.animationFPS }
+    private var activeFPS: Double { PIPDisplaySettings.powerSaving ? 3 : PIPRenderPolicy.activeFPS }
     private let idleFPS = PIPRenderPolicy.idleFPS
     private var keepaliveFPS: Double { 1.0 / configuredKeepaliveSeconds }
 
@@ -262,7 +270,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     /// 每幀重新評估目標頻率；下一次單次排程使用更新後的間隔。
     func decayFPSIfNeeded() {
         let now = CACurrentMediaTime()
-        let targetFPS = PIPRenderPolicy.targetFPS(
+        let baseFPS = PIPRenderPolicy.targetFPS(
             keepalive: isKeepaliveMode, overlay: adOverlayActive,
             animating: messagesLayer?.isAnimating == true,
             pendingMessages: messagesLayer.map { !$0.pendingSegments.isEmpty } ?? false,
@@ -270,6 +278,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             keepaliveInterval: configuredKeepaliveSeconds
         )
 
+        let targetFPS = isKeepaliveMode ? baseFPS : (baseFPS == PIPRenderPolicy.animationFPS ? animationFPS : (baseFPS == PIPRenderPolicy.activeFPS ? activeFPS : 1 / periodicRedrawInterval))
         if abs(currentFPS - targetFPS) > 0.000001 {
             currentFPS = targetFPS
             if lastFPS != currentFPS {
@@ -362,6 +371,18 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             return
         }
         guard !isKeepaliveMode else { return }
+        if !isMain {
+            switch PIPDisplaySettings.secondaryMode {
+            case "hidden": return
+            case "summary":
+                // 不推斷事件種類，只顯示最新一筆；長文字單行截斷、不累積通知歷史。
+                secondaryNotice = String("\(user)：\(msg)".split(whereSeparator: { $0.isNewline }).joined(separator: " ").prefix(240))
+                secondaryDeadline = CACurrentMediaTime() + 5
+                markOverlayDirty()
+                return
+            default: break
+            }
+        }
         messagesLayer?
             .addMessage(
                 user: user,
@@ -574,11 +595,39 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         return rect.width
     }
 
-    func currentTimeString() -> String {
-        let f = StaticFormatter.formatter
-        f.dateFormat = "yyyy/MM/dd aHH:mm:ss"
+    /// 固定容量的文字快取；日期／時區／語系變更會使鍵值失效。
+    private var clockTextKey = ""
+    private var clockText = ""
+    private var secondaryNotice: String?
+    private var secondaryDeadline: CFTimeInterval = 0
+    private var chatImage: CGImage?
+    private var chatImageGeneration = -1
+    private var chatImageSize = CGSize.zero
 
-        return f.string(from: Date())
+    /// 設定變更只調整已存在的服務，並作廢畫面快取。
+    func applyDisplaySettings() {
+        secondaryNotice = nil
+        clockTextKey = ""
+        chatImage = nil
+        setNeedsRedraw()
+        decayFPSIfNeeded()
+        rescheduleRenderTimer(fps: currentFPS)
+    }
+
+    /// 依顯示週期分桶，動畫高頻繪製也不會反覆格式化同一秒。
+    func currentTimeString() -> String {
+        let date = Date()
+        let interval = isKeepaliveMode ? 1 : periodicRedrawInterval
+        let key = "\(floor(date.timeIntervalSince1970 / interval))|\(TimeZone.current.identifier)|\(Locale.current.identifier)"
+        if key != clockTextKey {
+            let f = StaticFormatter.formatter
+            f.timeZone = .current
+            f.locale = .current
+            f.dateFormat = "yyyy/MM/dd aHH:mm:ss"
+            clockText = f.string(from: date)
+            clockTextKey = key
+        }
+        return clockText
     }
 
     // MARK: 時間顯示
@@ -667,7 +716,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         let textSize = fullLine.size()
         let paddingX: CGFloat = 6
         let paddingY: CGFloat = 4
-        let spacingY: CGFloat = 28
+        let spacingY: CGFloat = 20
 
         let bgRect = CGRect(
             x: (size.width - textSize.width) / 2 - paddingX,
@@ -676,8 +725,6 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             height: textSize.height + paddingY * 2
         )
 
-        cg.setFillColor(UIColor.black.withAlphaComponent(0.45).cgColor)
-        cg.fill(bgRect)
 
         let textPoint = CGPoint(x: bgRect.minX + paddingX, y: bgRect.maxY - paddingY - textSize.height)
 
@@ -734,6 +781,13 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         }
 
         fullLine.draw(at: textPoint)
+        if let notice = secondaryNotice, CACurrentMediaTime() < secondaryDeadline {
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.lineBreakMode = .byTruncatingTail
+            (notice as NSString).draw(in: CGRect(x: 12, y: 68, width: max(1, size.width - 24), height: 18),
+                withAttributes: [.font: UIFont.systemFont(ofSize: 12),
+                                 .foregroundColor: UIColor.lightGray, .paragraphStyle: paragraph])
+        }
 
         UIGraphicsPopContext()
         cg.restoreGState()
@@ -934,7 +988,26 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         context.translateBy(x: 0, y: size.height)
         context.scaleBy(x: scale, y: -scale)
         if !isKeepaliveMode {
-            messagesLayer?.container.render(in: context)
+            // 動畫直接繪製；靜止後只保留一張圖，不讓純時間更新重畫聊天室。
+            if messagesLayer?.isAnimating == true {
+                chatImage = nil
+                messagesLayer?.container.render(in: context)
+            } else {
+                if chatImage == nil || chatImageGeneration != contentGeneration || chatImageSize != frameSize {
+                    let format = UIGraphicsImageRendererFormat()
+                    format.scale = scale
+                    chatImage = UIGraphicsImageRenderer(size: frameSize, format: format).image { imageContext in
+                        messagesLayer?.container.render(in: imageContext.cgContext)
+                    }.cgImage
+                    chatImageGeneration = contentGeneration
+                    chatImageSize = frameSize
+                }
+                if let chatImage {
+                    UIGraphicsPushContext(context)
+                    UIImage(cgImage: chatImage, scale: scale, orientation: .up).draw(in: CGRect(origin: .zero, size: frameSize))
+                    UIGraphicsPopContext()
+                }
+            }
         }
         context.restoreGState()
 
@@ -1123,6 +1196,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     private func startRenderTimer() {
         cancelRenderTimer()
         renderCancelled = false
+        performanceSession = UUID()
         renderStatsStarted = CACurrentMediaTime()
         renderAttempts = 0
         drawnFrames = 0
@@ -1141,6 +1215,10 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             guard let self else { return }
             Task { @MainActor in
                 guard !self.renderCancelled, self.renderGeneration.accepts(token) else { return }
+                if let deadline = self.scheduledRenderDeadline {
+                    self.maxScheduleDelayMilliseconds = max(self.maxScheduleDelayMilliseconds,
+                        max(0, CACurrentMediaTime() - deadline) * 1000)
+                }
                 self.scheduledRender = nil
                 self.scheduledRenderDeadline = nil
                 _ = self.renderIncremental()
@@ -1164,6 +1242,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
     /// 停止排程並作廢已送入主佇列但尚未執行的回呼。
     private func cancelRenderTimer() {
+        if !renderCancelled { reportPerformance(reason: "scheduleStopped") }
         renderCancelled = true
         renderGeneration.invalidate()
         scheduledRender?.cancel()
@@ -1205,6 +1284,8 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         pixelBufferPool = nil
         cachedFormatDescription = nil
         cachedFormatSize = .zero
+        chatImage = nil
+        secondaryNotice = nil
         cachedPixelBuffer = nil
         cachedTimeString = nil
         cachedElapsedString = nil
@@ -1230,20 +1311,42 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         #endif
     }
 
+    /// 每分鐘及停止時直接走持久化日誌；只統計同步函式佔用，不冒充 CPU／GPU 使用率。
+    /// 背景凍結時無法準時回報，windowSeconds 保留真實經過時間。
+    private func reportPerformance(reason: String) {
+        guard renderAttempts > 0 else { return }
+        let window = max(0.001, CACurrentMediaTime() - renderStatsStarted)
+        let sent = max(0, frameCount - statsInitialFrameCount)
+        let mean = renderWorkSeconds * 1000 / Double(renderAttempts)
+        let busy = renderWorkSeconds / window * 100
+        let chatBytes = chatImage.map { $0.bytesPerRow * $0.height } ?? 0
+        let summary = "[PiPPerformance] schema=1 session=\(performanceSession) reason=\(reason) mode=\(isKeepaliveMode ? "keepalive" : "chat") active=\(isPiPActive) windowSeconds=\(String(format: "%.2f", window)) targetFPS=\(currentFPS) clockSeconds=\(periodicRedrawInterval) keepaliveSeconds=\(configuredKeepaliveSeconds) reducedAnimation=\(PIPDisplaySettings.powerSaving) attempts=\(renderAttempts) redraws=\(drawnFrames) enqueued=\(sent) reused=\(reusedFrames) enqueueFPS=\(String(format: "%.2f", Double(sent) / window)) workMeanMs=\(String(format: "%.3f", mean)) workMaxMs=\(String(format: "%.3f", maxRenderMilliseconds)) workerBusyPercent=\(String(format: "%.2f", busy)) scheduleDelayMaxMs=\(String(format: "%.3f", maxScheduleDelayMilliseconds)) backpressureSkips=\(backpressureSkips) renderFailures=\(renderFailures) chatCacheBytes=\(chatBytes) poolEstimateMB=\(pixelBufferPool == nil ? 0 : estimatedPixelBufferPoolMB)"
+        // 基礎性能摘要不受總日誌開關限制，也不轉送遠端。
+        AppLogPersister.shared.append(line: "\(formatTime()): liveApp:\(summary)")
+        renderStatsStarted = CACurrentMediaTime()
+        renderAttempts = 0
+        drawnFrames = 0
+        statsInitialFrameCount = frameCount
+        renderWorkSeconds = 0
+        maxRenderMilliseconds = 0
+        maxScheduleDelayMilliseconds = 0
+        backpressureSkips = 0
+        renderFailures = 0
+        reusedFrames = 0
+    }
+
     // MARK: - Incremental Render
     @MainActor
     private func renderIncremental() -> Bool {
 
+        let workStarted = CACurrentMediaTime()
         renderAttempts += 1
         defer {
-            let elapsed = CACurrentMediaTime() - renderStatsStarted
-            if elapsed >= 60 {
-                let mode = isKeepaliveMode ? "保活" : "聊天"
-                PIPLogTo("渲染統計 模式=\(mode) 目標FPS=\(currentFPS) 區間=\(Int(elapsed))秒 排程次數=\(renderAttempts) 重繪=\(drawnFrames) 送幀=\(frameCount - statsInitialFrameCount)")
-                renderStatsStarted = CACurrentMediaTime()
-                renderAttempts = 0
-                drawnFrames = 0
-                statsInitialFrameCount = frameCount
+            let work = max(0, CACurrentMediaTime() - workStarted)
+            renderWorkSeconds += work
+            maxRenderMilliseconds = max(maxRenderMilliseconds, work * 1000)
+            if CACurrentMediaTime() - renderStatsStarted >= 60 {
+                reportPerformance(reason: "periodic")
             }
         }
 
@@ -1253,11 +1356,17 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         }
 
         guard displayLayer.isReadyForMoreMediaData else {
+            backpressureSkips += 1
             decayFPSIfNeeded()
             return false
         }
 
+        if secondaryNotice != nil, CACurrentMediaTime() >= secondaryDeadline {
+            secondaryNotice = nil
+            needsRedraw = true
+        }
         let wasAnimating = messagesLayer?.tickAnimation() == true
+        if wasAnimating { chatImage = nil }
         if wasAnimating {
             requestAnimationFPS()
         }
@@ -1277,6 +1386,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         guard needsRedraw || wasAnimating else {
             if let cached = cachedPixelBuffer, let sb = createSampleBuffer(from: cached) {
                 displayLayer.enqueue(sb)
+                reusedFrames += 1
                 frameCount += 1
                 lastRenderTime = CACurrentMediaTime()
                 if !isPiPActive { safeTryStartPiP() }
@@ -1292,6 +1402,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         pixelBuffer = renderIfNeeded()
 
         guard let pixelBuffer = pixelBuffer else {
+            renderFailures += 1
             decayFPSIfNeeded()
             return false
         }
@@ -1302,6 +1413,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         cachedPixelBuffer = pixelBuffer
         lastRenderedGeneration = contentGeneration
         guard let sampleBuffer = createSampleBuffer(from: pixelBuffer) else {
+            renderFailures += 1
             decayFPSIfNeeded()
             return false
         }
@@ -1357,6 +1469,8 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         pixelBufferPool = nil
         cachedFormatDescription = nil
         cachedFormatSize = .zero
+        chatImage = nil
+        secondaryNotice = nil
         cachedPixelBuffer = nil
         messagesLayer?.canncel()
         messagesLayer = nil
