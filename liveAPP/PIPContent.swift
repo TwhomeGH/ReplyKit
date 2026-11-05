@@ -453,6 +453,29 @@ final class PIPServiceMessages {
 
 
     let container = CALayer()
+    /// 只遮罩聊天圖層；時間與狀態由外部 renderer 繪製，不受影響。
+    private let chatEdgeMask = CAGradientLayer()
+
+    /// 頂部殘留續段以短漸層收邊；完整新訊息保持清晰，且不改變閱讀／移除時機。
+    private func updateChatEdgeMask() {
+        let height = container.bounds.height
+        guard height > 0 else { return }
+        let top = min(height, max(0, topMargin))
+        let first = stackedMessages.filter { $0.alpha > 0 }.min { $0.startY < $1.startY }
+        let isTail = first.map { $0.segmentIndex > 0 || $0.isFadingOut } ?? false
+        let fadeHeight: CGFloat = isTail ? min(12, max(0, height - top)) : 0
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        chatEdgeMask.frame = container.bounds
+        chatEdgeMask.startPoint = CGPoint(x: 0.5, y: 0)
+        chatEdgeMask.endPoint = CGPoint(x: 0.5, y: 1)
+        chatEdgeMask.colors = [UIColor.clear.cgColor, UIColor.clear.cgColor,
+                               UIColor.black.cgColor, UIColor.black.cgColor]
+        chatEdgeMask.locations = [0, NSNumber(value: Double(top / height)),
+                                 NSNumber(value: Double((top + fadeHeight) / height)), 1]
+        container.mask = chatEdgeMask
+        CATransaction.commit()
+    }
     private let layerPool = LayerPool()
 
     var stackedMessages: [MessageLayerTuple] = []
@@ -528,6 +551,7 @@ final class PIPServiceMessages {
     init(size: CGSize,scrollSpeed:CGFloat = 0.2) {
         container.frame = CGRect(origin: .zero, size: size)
         container.masksToBounds = true
+        updateChatEdgeMask()
 
         self.scrollSpeed = scrollSpeed
 
@@ -1424,6 +1448,7 @@ final class PIPServiceMessages {
     let snapThreshold: CGFloat = 0.2
 
     func layoutTargetsAndStartAnimation() {
+        defer { updateChatEdgeMask() }
 
         _ = relayoutTargetsOnly(updateTargetY: true)
 
@@ -1769,7 +1794,9 @@ final class PIPServiceMessages {
 
     private func startFadeAnimation(for msg: MessageLayerTuple) {
 
-        let fadeDuration: CGFloat = LPConfig.shared.FadeAlpha
+        // 舊偏好若為零或非有限值，不得產生 NaN alpha 讓圖層永遠無法移除。
+        let configuredDuration: CGFloat = LPConfig.shared.FadeAlpha
+        let fadeDuration = configuredDuration.isFinite && configuredDuration > 0 ? configuredDuration : 0.25
 
         let now = CACurrentMediaTime()
         let elapsed = now - lastFadeTriggerTime
@@ -1807,6 +1834,7 @@ final class PIPServiceMessages {
 
 
     func tickAnimation() -> Bool {
+        defer { updateChatEdgeMask() }
         guard !safeCanncel else {
             stopAnimation()
             return false
