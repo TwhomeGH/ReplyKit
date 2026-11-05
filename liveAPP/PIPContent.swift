@@ -551,12 +551,14 @@ final class PIPServiceMessages {
     init(size: CGSize,scrollSpeed:CGFloat = 0.2) {
         container.frame = CGRect(origin: .zero, size: size)
         container.masksToBounds = true
-        updateChatEdgeMask()
 
+        //先設定scrollSpeed，避免在初始化時使用未設定的值
         self.scrollSpeed = scrollSpeed
 
         logTo("PIPServiceMessages initialized with container size: \(size)")
         
+        updateChatEdgeMask()
+
         updateLogSettings(
             verboseFrame: userDefaults?.bool(forKey: "PIPLayout") ?? false,
             verboseLayout: userDefaults?.bool(forKey: "PIPFrameLog") ?? false
