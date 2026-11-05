@@ -10,29 +10,27 @@ enum PIPOverlayLayout {
     static let controlMargin: CGFloat = 6
     /// 上方系統控制列保留高度；兩顆按鈕都落在此帶內。
     static var controlBandHeight: CGFloat { controlDiameter + controlMargin * 2 }
-    /// 控制帶內左右按鈕的保留寬度（按鈕＋邊距）。
-    static var sideInset: CGFloat { controlDiameter + controlMargin * 2 }
     /// 保留帶以外的內容左緣。
     static let contentLeading: CGFloat = 12
     static let contentTrailing: CGFloat = 12
-    /// 狀態列（計時／直播／觀眾）留在控制帶的左右空檔內。
-    static let statusRowY: CGFloat = 20
-    /// 控制帶以下的列，統一使用 `contentLeading` 左緣。
-    static let nowTimeY: CGFloat = 60
-    static let noticeY: CGFloat = 84
+    /// 控制帶以下的第一列（計時／直播／觀眾），與現在時間共用左緣。
+    static let statusRowY: CGFloat = 58
+    static let nowTimeY: CGFloat = 78
+    static let noticeY: CGFloat = 99
     static let noticeLineHeight: CGFloat = 20
-    /// 聊天室安全頂距；300x200 時為 104。
-    static let minimumChatTopMargin: CGFloat = 104
+    /// 聊天室安全頂距；300x200 時為 120。
+    static let minimumChatTopMargin: CGFloat = 120
 
+    /// 狀態列已移到保留帶下方，可用寬度不再扣掉系統按鈕。
     static func statusRowAvailableWidth(canvasWidth: CGFloat) -> CGFloat {
-        max(0, canvasWidth - sideInset * 2)
+        max(0, canvasWidth - contentLeading - contentTrailing)
     }
 
     static func chatTopMargin(canvasHeight: CGFloat) -> CGFloat {
         max(minimumChatTopMargin, canvasHeight * 0.26)
     }
 
-    /// 狀態列在系統按鈕之間的取捨：優先保留計時與狀態，其次觀眾數，最後才顯示時鐘圖示。
+    /// 狀態列過寬時的取捨：優先保留計時與狀態，其次觀眾數，最後才顯示時鐘圖示。
     static func statusRowPlan(availableWidth: CGFloat,
                               iconWidth: CGFloat,
                               elapsedWidth: CGFloat,

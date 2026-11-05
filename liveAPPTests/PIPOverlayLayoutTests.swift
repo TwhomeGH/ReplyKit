@@ -2,29 +2,30 @@ import Testing
 @testable import liveAPP
 
 struct PIPOverlayLayoutTests {
-    @Test func controlBandClearsSystemButtonsAndKeepsRowsOrdered() {
-        #expect(PIPOverlayLayout.controlBandHeight == PIPOverlayLayout.sideInset)
-        #expect(PIPOverlayLayout.controlBandHeight >= 52)
-        #expect(PIPOverlayLayout.nowTimeY >= PIPOverlayLayout.controlBandHeight)
+    @Test func rowsStartBelowSystemButtonsAndStayOrdered() {
+        #expect(PIPOverlayLayout.controlBandHeight == 56)
+        #expect(PIPOverlayLayout.statusRowY >= PIPOverlayLayout.controlBandHeight)
+        #expect(PIPOverlayLayout.nowTimeY > PIPOverlayLayout.statusRowY)
         #expect(PIPOverlayLayout.noticeY > PIPOverlayLayout.nowTimeY)
         #expect(PIPOverlayLayout.minimumChatTopMargin > PIPOverlayLayout.noticeY)
     }
 
-    @Test func statusRowDropsIconBeforeViewer() {
-        // 300 寬減左右各 56 保留區，剩 188。
-        let available = PIPOverlayLayout.statusRowAvailableWidth(canvasWidth: 300)
-        #expect(available == 188)
+    @Test func statusRowUsesContentWidthBelowTheControlBand() {
+        // 300 寬只扣內容左右邊距，不再扣系統按鈕。
+        #expect(PIPOverlayLayout.statusRowAvailableWidth(canvasWidth: 300) == 276)
+    }
 
-        let plan = PIPOverlayLayout.statusRowPlan(availableWidth: available,
+    @Test func statusRowDropsIconBeforeViewer() {
+        let plan = PIPOverlayLayout.statusRowPlan(availableWidth: 276,
                                                   iconWidth: 17, elapsedWidth: 67,
-                                                  statusWidth: 44, viewerWidth: 56)
+                                                  statusWidth: 130, viewerWidth: 56)
         #expect(!plan.drawIcon)
         #expect(plan.drawViewer)
-        #expect(plan.usedWidth <= available)
+        #expect(plan.usedWidth <= 276)
     }
 
     @Test func statusRowKeepsIconWhenItFits() {
-        let plan = PIPOverlayLayout.statusRowPlan(availableWidth: 188,
+        let plan = PIPOverlayLayout.statusRowPlan(availableWidth: 276,
                                                   iconWidth: 17, elapsedWidth: 67,
                                                   statusWidth: 0, viewerWidth: 0)
         #expect(plan.drawIcon)
@@ -33,11 +34,12 @@ struct PIPOverlayLayoutTests {
     }
 
     @Test func longStatusDropsViewer() {
-        let plan = PIPOverlayLayout.statusRowPlan(availableWidth: 188,
+        let plan = PIPOverlayLayout.statusRowPlan(availableWidth: 276,
                                                   iconWidth: 17, elapsedWidth: 67,
-                                                  statusWidth: 120, viewerWidth: 56)
+                                                  statusWidth: 200, viewerWidth: 56)
         #expect(!plan.drawIcon)
         #expect(!plan.drawViewer)
+        #expect(plan.usedWidth <= 276)
     }
 
     @Test func chatTopRespectsMinimumMargin() {

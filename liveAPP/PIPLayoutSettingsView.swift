@@ -243,20 +243,11 @@ private struct PIPLayoutPreview: View {
                     .frame(width: width - metrics.messageLeading - 10 * scale, alignment: .leading)
                 }
 
-                HStack(spacing: 4 * scale) {
-                    elapsedBadge(scale: scale)
-                        .layoutPriority(3)
-                    statusBadge(scale: scale)
-                        .layoutPriority(4)
-                    viewerBadge(scale: scale)
-                        .layoutPriority(1)
-                    Spacer(minLength: 0)
-                }
-                .padding(.leading, metrics.statusRowX)
-                .padding(.top, metrics.statusRowY - 2 * scale)
-                .frame(width: width - metrics.statusRowX - metrics.sideInset, alignment: .leading)
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
+                // 時間疊加直接顯示正式繪製器的輸出，不再由 SwiftUI 重畫一套。
+                Image(uiImage: timeOverlayImage(mode: mode))
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: width, height: height)
 
                 systemControlBadge(systemName: "xmark", scale: scale)
                     .padding(.leading, PIPOverlayLayout.controlMargin * scale)
@@ -266,14 +257,6 @@ private struct PIPLayoutPreview: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
                     .padding(.trailing, PIPOverlayLayout.controlMargin * scale)
                     .padding(.top, PIPOverlayLayout.controlMargin * scale)
-
-                nowTimeBadge(scale: scale, canvasWidth: width)
-                    .padding(.leading, metrics.contentLeading)
-                    .padding(.top, metrics.nowTimeY)
-
-                secondaryNoticeRow(scale: scale, canvasWidth: width)
-                    .padding(.leading, metrics.contentLeading)
-                    .padding(.top, metrics.noticeY)
 
                 if mode == .adOverlay {
                     sponsorBanner(scale: scale, canvasWidth: width)
@@ -287,29 +270,25 @@ private struct PIPLayoutPreview: View {
         .frame(minHeight: 200)
     }
 
-    private func elapsedBadge(scale: CGFloat) -> some View {
-        HStack(spacing: 4 * scale) {
-            Image(systemName: "clock.fill")
-                .font(.system(size: 14 * scale, weight: .medium))
-                .foregroundStyle(.pink)
-
-            Text("00:12:34")
-                .font(.system(size: 14 * scale, weight: .regular, design: .monospaced))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
+    /// 正式時間疊加在 300x200 設計畫布上渲染，預覽只負責縮放顯示。
+    private func timeOverlayImage(mode: PIPLayoutPreviewMode) -> UIImage {
+        let size = CGSize(width: 300, height: 200)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = UIScreen.main.scale
+        return UIGraphicsImageRenderer(size: size, format: format).image { context in
+            let scene = PIPTimeOverlayRenderer.Scene(
+                elapsedString: "00:12:34",
+                nowTimeText: "2026/09/09 00:48:31",
+                nowTimeLabel: nowTimeLabel,
+                statusText: mode == .normal ? liveLabel : endedLabel,
+                statusEnded: mode == .adOverlay,
+                viewerCount: 128,
+                isReconnecting: false,
+                reconnectText: "",
+                secondaryNotice: "\(AppLanguage.localized("pipLayout.preview.viewerName"))：\(AppLanguage.localized("pipLayout.preview.secondMessage"))"
+            )
+            PIPTimeOverlayRenderer.draw(in: context.cgContext, size: size, scene: scene)
         }
-        .fixedSize(horizontal: true, vertical: false)
-    }
-
-    /// 單行提示在實際 PiP 與現在時間同用 `contentLeading`；這裡顯示假資料供比對。
-    private func secondaryNoticeRow(scale: CGFloat, canvasWidth: CGFloat) -> some View {
-        Text("\(AppLanguage.localized("pipLayout.preview.viewerName"))：\(AppLanguage.localized("pipLayout.preview.secondMessage"))")
-            .font(.system(size: 12 * scale))
-            .foregroundStyle(.white.opacity(0.7))
-            .lineLimit(1)
-            .truncationMode(.tail)
-            .frame(width: canvasWidth - PIPOverlayLayout.contentLeading * 2 * scale, alignment: .leading)
     }
 
     /// 系統關閉／返回鈕由系統繪製，預覽以佔位圈標出保留區。
@@ -322,55 +301,6 @@ private struct PIPLayoutPreview: View {
             .background(Circle().fill(Color.black.opacity(0.75)))
             .overlay(Circle().strokeBorder(.white.opacity(0.25), lineWidth: scale))
             .accessibilityLabel("系統 PiP 控制")
-    }
-
-    private func nowTimeBadge(scale: CGFloat, canvasWidth: CGFloat) -> some View {
-        HStack(spacing: 0) {
-            Text("\(nowTimeLabel) ")
-                .font(.system(size: 16 * scale, weight: .medium))
-                .foregroundStyle(.cyan)
-
-            Text("2026/09/09 00:48:31")
-                .font(.system(size: 16 * scale, weight: .regular, design: .monospaced))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-                .minimumScaleFactor(0.45)
-        }
-        .frame(maxWidth: canvasWidth - PIPOverlayLayout.contentLeading * 2 * scale,
-               alignment: .leading)
-        .lineLimit(1)
-        .minimumScaleFactor(0.35)
-    }
-
-    private func statusBadge(scale: CGFloat) -> some View {
-        Text(mode == .normal ? liveLabel : endedLabel)
-            .font(.system(size: 14 * scale, weight: .medium))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 8 * scale)
-            .padding(.vertical, 2 * scale)
-            .background((mode == .normal ? Color.orange : Color.gray).opacity(0.9))
-            .clipShape(RoundedRectangle(cornerRadius: 4 * scale))
-            .lineLimit(1)
-            .minimumScaleFactor(0.6)
-            .fixedSize(horizontal: true, vertical: false)
-    }
-
-    private func viewerBadge(scale: CGFloat) -> some View {
-        HStack(spacing: 4 * scale) {
-            Image(systemName: "person.2.fill")
-                .font(.system(size: 11 * scale, weight: .medium))
-
-            Text("128")
-                .font(.system(size: 14 * scale, weight: .medium, design: .monospaced))
-        }
-        .foregroundStyle(Color(white: 0.16))
-        .padding(.horizontal, 8 * scale)
-        .padding(.vertical, 2 * scale)
-        .background(Color(white: 0.83))
-        .clipShape(Capsule())
-        .lineLimit(1)
-        .minimumScaleFactor(0.7)
-        .fixedSize(horizontal: true, vertical: false)
     }
 
     private func messageRow(name: String, message: String, fontSize: Double, accent: Color, scale: CGFloat) -> some View {
@@ -433,12 +363,6 @@ private struct PIPLayoutPreview: View {
 private struct PIPPreviewMetrics {
     let scale: CGFloat
 
-    var statusRowX: CGFloat { PIPOverlayLayout.sideInset * scale }
-    var statusRowY: CGFloat { PIPOverlayLayout.statusRowY * scale }
-    var sideInset: CGFloat { PIPOverlayLayout.sideInset * scale }
-    var contentLeading: CGFloat { PIPOverlayLayout.contentLeading * scale }
-    var nowTimeY: CGFloat { PIPOverlayLayout.nowTimeY * scale }
-    var noticeY: CGFloat { PIPOverlayLayout.noticeY * scale }
     var sponsorY: CGFloat { 85 }
     var messageLeading: CGFloat { PIPOverlayLayout.contentLeading * scale }
 
