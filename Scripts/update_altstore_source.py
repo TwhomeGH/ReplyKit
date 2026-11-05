@@ -10,8 +10,11 @@ template is never modified by automation.
 Usage:
     python3 Scripts/update_altstore_source.py --path AltStoreTest.json \
         --output build/AltStoreTest.json \
-        --tag 17.2.3 --version 17.2.2 --build 2026100601 \
-        --size 2950000 --repo TwhomeGH/ReplyKit
+        --tag <release tag> --version <CFBundleShortVersionString> \
+        --build <CFBundleVersion> --size <IPA bytes> --repo <owner/name>
+
+CI 的 ``--tag`` 是自動產生的 release tag；``--version`` 與 ``--build``
+來自封存後的 Info.plist，不是從 tag 推測；``--size`` 是 IPA 的實際位元組數。
 """
 
 from __future__ import annotations
@@ -36,7 +39,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--tag", required=True)
     parser.add_argument("--version", required=True)
     parser.add_argument("--build", required=True)
-    parser.add_argument("--size", required=True, type=int)
+    parser.add_argument("--size", required=True, type=int,
+                        help="IPA file size in bytes")
     parser.add_argument("--repo", required=True, help="owner/name")
     parser.add_argument("--bundle-id", default="nuclear.liveAPP")
     parser.add_argument("--max-versions", default=10, type=int)
