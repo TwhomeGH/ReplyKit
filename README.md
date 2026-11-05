@@ -81,12 +81,16 @@ ScreenCaptureKit 本地錄影另有壓縮與分段設定
 
 ### AltStore 來源
 
-可透過 [加入 AltStore 來源](https://stikstore.app/altdirect/?url=https://raw.githubusercontent.com/TwhomeGH/ReplyKit/refs/heads/main/AltStoreTest.json) 開啟來源加入入口。
+可透過 [加入 AltStore 來源](https://stikstore.app/altdirect/?url=https://github.com/TwhomeGH/ReplyKit/releases/latest/download/AltStoreTest.json) 開啟來源加入入口。
 
-來源設定檔：[AltStoreTest.json](AltStoreTest.json)。
+來源網址（固定，永遠指向最新 Release 上的來源檔）：
+`https://github.com/TwhomeGH/ReplyKit/releases/latest/download/AltStoreTest.json`
+
+[AltStoreTest.json](AltStoreTest.json) 是版控中的樣板，CI 不會改寫它。每次預設分支建置並發布 Release 時，CI 會用樣板加上實際的 `downloadURL`、`size`、`version`、`buildVersion`、`date` 合成一份，附在該 Release；`version`／`buildVersion` 取自封存後的 `Info.plist`，不由 tag 推測。
 
 > [!NOTE]
-> AltStore 來源與 GitHub Releases 的更新時間可能不同，安裝前請確認版本號。
+> AltStore 是否提示更新仍取決於 `version`／`buildVersion` 是否改變；CI 只保證下載指向正確，不會自動遞增版本號。
+> 第一次改用 Release asset 後，請等下一次 Release 產生 `AltStoreTest.json`；在那之前舊的 raw main 來源仍是唯一可用入口。
 > 安裝後的連線與設定同步注意事項，請參閱下方「側載用戶說明」。
 
 ## 贊助支持

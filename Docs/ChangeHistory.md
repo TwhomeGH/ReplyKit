@@ -1,5 +1,14 @@
 # 變更歷史
 
+## 2026.11.06 05:04 AltStore 來源改由 CI 自動更新
+
+- 問題：每次 Release 都要手動改 `AltStoreTest.json` 的 `downloadURL`、`size`、`date` 與版本，容易出現 tag 與版本指向不一致。
+- 根因：建置流程沒有把封存後的 `Info.plist` 版本與實際 IPA 大小帶回來源檔。
+- 變更：`main.yml` 的 build job 讀取 `CFBundleShortVersionString`／`CFBundleVersion` 與 IPA 位元組數；以版控中的 `AltStoreTest.json` 為樣板，用 `Scripts/update_altstore_source.py` 合成 `build/AltStoreTest.json`，附在該次 Release。樣板不被改寫，CI 不產生 commit。
+- AltStore 來源固定指向 `releases/latest/download/AltStoreTest.json`，版本鍵 `(version, buildVersion)` 會就地更新，最多保留 10 筆，並保留 App 層描述與 `minOSVersion`。
+- `version`／`buildVersion` 仍忠實反映 App 二進位；AltStore 是否提示更新取決於這兩個值是否遞增，CI 不自動改版號。
+- 待下一次實際 Release 驗證 asset 上傳與 AltStore 端顯示；首次產生 asset 前，舊的 raw main 來源仍是唯一入口。
+
 ## 2026.11.06 04:13 修正scrollSpeed初始化順序錯誤
 
 **類型**: 修復 · **檔案**: `liveAPP/PIPContent.swift`

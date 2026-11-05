@@ -100,6 +100,9 @@ jobs:
       - name: Verify CI summary parser
         run: python3 Scripts/test_ci_test_summary.py
 
+      - name: Verify AltStore source updater
+        run: python3 Scripts/test_update_altstore_source.py
+
       - name: Run liveAPP unit tests
         env:
           SIMULATOR_ID: ${{ steps.simulator.outputs.id }}

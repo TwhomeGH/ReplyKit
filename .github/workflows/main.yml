@@ -214,6 +214,13 @@ jobs:
             build/archive-summary.md
           if-no-files-found: warn
 
+      - name: Read app version 讀取 App 版本
+        id: app_version
+        run: |
+          PLIST="build/liveApp.xcarchive/Products/Applications/liveAPP.app/Info.plist"
+          echo "short=$(plutil -extract CFBundleShortVersionString raw "$PLIST")" >> "$GITHUB_OUTPUT"
+          echo "build=$(plutil -extract CFBundleVersion raw "$PLIST")" >> "$GITHUB_OUTPUT"
+
       # 4️⃣ Extract symbols for crash symbolication
       - name: Extract symbol map 提取符號表
         run: |
@@ -273,8 +280,21 @@ jobs:
 
           echo "Listing build directory contents"
           ls -al build/
-          
-          
+
+      - name: Read IPA metadata 讀取 IPA 大小
+        id: ipa_meta
+        run: echo "size=$(stat -f%z "build/liveApp_${TAG}.ipa")" >> "$GITHUB_OUTPUT"
+
+      - name: Compose AltStore source 產生 AltStore 來源
+        run: |
+          python3 Scripts/update_altstore_source.py \
+            --path AltStoreTest.json \
+            --output build/AltStoreTest.json \
+            --tag "$TAG" \
+            --version "${{ steps.app_version.outputs.short }}" \
+            --build "${{ steps.app_version.outputs.build }}" \
+            --size "$(stat -f%z "build/liveApp_${TAG}.ipa")" \
+            --repo "${{ github.repository }}"
 
       - name: Upload Release with merged body 上傳 Release 並合併內容
         env:
@@ -351,9 +371,9 @@ jobs:
           # 已略過上傳 build/liveApp_${{ steps.get_tag.outputs.tag }}.xcarchive.zip
 
           tag_name: ${{ steps.get_tag.outputs.tag }}
+          overwrite_files: true
           files: |
             build/*.ipa
-            
-          
+            build/AltStoreTest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
