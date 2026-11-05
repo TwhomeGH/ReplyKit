@@ -1,4 +1,22 @@
+import AVKit
 import SwiftUI
+
+/// PiP 系統控制列樣式；隱藏全部控制後，關閉與返回改由 App 內的「停止 PiP」負責。
+enum PIPSystemControls {
+    static let hideAllKey = "pipHideSystemControls"
+
+    /// 與 `@AppStorage` 相同：沒有 App Group（側載）時退回標準 UserDefaults。
+    static var hidesAll: Bool { (userDefaults ?? .standard).bool(forKey: hideAllKey) }
+
+    /// 1 保留關閉／返回；2（iOS 16+）隱藏全部控制項。此為系統私有樣式，非公開 API。
+    static func styleValue(hidesAll: Bool) -> Int { hidesAll ? 2 : 1 }
+
+    /// 只在主執行緒呼叫；設定變更與建立控制器時都走這裡。
+    static func apply(to controller: AVPictureInPictureController?) {
+        guard let controller else { return }
+        controller.setValue(styleValue(hidesAll: hidesAll), forKey: "controlsStyle")
+    }
+}
 
 /// 一般 PiP 偏好；保活模式維持自己的更新間隔。
 enum PIPDisplaySettings {

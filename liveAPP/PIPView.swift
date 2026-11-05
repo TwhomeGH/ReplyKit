@@ -3,6 +3,7 @@ import SwiftUI
 /// 日常 PiP 操作入口，與測試工具分離。
 struct PIPView: View {
     @ObservedObject private var service = PIPService.shared
+    @AppStorage("pipHideSystemControls", store: userDefaults) private var hideSystemControls = false
 
     var body: some View {
         Form {
@@ -32,6 +33,23 @@ struct PIPView: View {
                 }
                 .disabled(!service.isPiPActive)
             }
+
+            Section("PiP 系統控制列") {
+                Toggle("隱藏關閉與返回按鈕", isOn: $hideSystemControls)
+                if hideSystemControls {
+                    Text("PiP 視窗內將沒有關閉或返回 App 的按鈕；請回到 App 的「子母畫面」頁按「停止 PiP」。「停止 PiP」會真正結束系統 PiP，不會留下無法關閉的視窗。")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text("保留系統的關閉與返回按鈕；畫面內容會避開這兩個按鈕。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Text("設定立即套用；若目前 PiP 沒有反應，請停止後重新啟動。此樣式使用系統非公開設定，需要 iOS 16 以上。")
+                    .font(.caption).foregroundStyle(.orange)
+            }
+            .onChange(of: hideSystemControls) { _ in
+                PIPService.diagnosticInstance?.applySystemControlsStyle()
+            }
+
             PIPDisplaySettingsSection()
             PIPKeepaliveSettingsSection()
             Section("外觀") {
@@ -39,7 +57,6 @@ struct PIPView: View {
             }
             Section("進階") {
                 NavigationLink("訊息與畫面測試") { PIPDebugView() }
-                    .disabled(service.isPiPActive)
             }
         }
         .navigationTitle("子母畫面 PiP")

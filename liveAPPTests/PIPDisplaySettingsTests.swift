@@ -11,4 +11,9 @@ struct PIPDisplaySettingsTests {
     func supportedClockIsPreserved(value: Double) {
         #expect(PIPDisplaySettings.validatedClock(value) == value)
     }
+
+    @Test func systemControlStyleMapping() {
+        #expect(PIPSystemControls.styleValue(hidesAll: false) == 1)
+        #expect(PIPSystemControls.styleValue(hidesAll: true) == 2)
+    }
 }

@@ -527,6 +527,14 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     }
 
     // MARK: 直播結束訊息框
+    /// 與 `drawBadge` 使用相同的寬度公式，供排版先行取捨。
+    private func badgeWidth(text: String, font: UIFont, icon: UIImage?) -> CGFloat {
+        let textSize = (text as NSString).size(withAttributes: [.font: font])
+        let iconSize = icon == nil ? 0 : max(font.lineHeight - 2, 10)
+        let iconSpacing: CGFloat = icon == nil ? 0 : 4
+        return ceil(textSize.width + 8 + 8 + iconSize + iconSpacing)
+    }
+
     private func drawBadge(
         in cg: CGContext,
         text: String,
@@ -603,6 +611,15 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     private var chatImage: CGImage?
     private var chatImageGeneration = -1
     private var chatImageSize = CGSize.zero
+
+    /// 設定變更時立即套用控制列樣式；未啟動 PiP 時只保存偏好。
+    func applySystemControlsStyle() {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { self.applySystemControlsStyle() }
+            return
+        }
+        PIPSystemControls.apply(to: pipController)
+    }
 
     /// 設定變更只調整已存在的服務，並作廢畫面快取。
     func applyDisplaySettings() {
@@ -702,7 +719,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
         let imageHeight: CGFloat = elapsedLabelFont.lineHeight
         let imageWidth: CGFloat = imageHeight
-        let elapsedPoint = CGPoint(x: 50, y: 20)
+        let elapsedPoint = CGPoint(x: PIPOverlayLayout.sideInset, y: PIPOverlayLayout.statusRowY)
 
         let fontSize: CGFloat = 16
         let timeFont = UIFont.monospacedDigitSystemFont(ofSize: fontSize, weight: .regular)
@@ -716,35 +733,46 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         let textSize = fullLine.size()
         let paddingX: CGFloat = 6
         let paddingY: CGFloat = 4
-        let spacingY: CGFloat = 20
 
+        // 系統 PiP 控制列以下才放內容；左緣與次要提示共用，不再置中。
         let bgRect = CGRect(
-            x: (size.width - textSize.width) / 2 - paddingX,
-            y: elapsedPoint.y + spacingY,
+            x: PIPOverlayLayout.contentLeading - paddingX,
+            y: PIPOverlayLayout.nowTimeY - paddingY,
             width: textSize.width + paddingX * 2,
             height: textSize.height + paddingY * 2
         )
-
 
         let textPoint = CGPoint(x: bgRect.minX + paddingX, y: bgRect.maxY - paddingY - textSize.height)
 
         UIGraphicsPushContext(cg)
 
-        clockIcon?.draw(in: CGRect(
-            x: elapsedPoint.x,
-            y: elapsedPoint.y + (elapsedFont.capHeight - imageHeight) * 0.5,
-            width: imageWidth,
-            height: imageHeight
-        ))
+        let elapsedTextSize = (elapsedString as NSString).size(withAttributes: [.font: elapsedFont])
+        let statusWidth = endMes.isEmpty ? 0 : badgeWidth(text: endMes, font: elapsedLabelFont, icon: nil)
+        let viewerWidth = viewerCount.map { badgeWidth(text: "\($0)", font: elapsedLabelFont, icon: viewerIcon) } ?? 0
+        let plan = PIPOverlayLayout.statusRowPlan(
+            availableWidth: PIPOverlayLayout.statusRowAvailableWidth(canvasWidth: size.width),
+            iconWidth: imageWidth,
+            elapsedWidth: elapsedTextSize.width,
+            statusWidth: statusWidth,
+            viewerWidth: viewerWidth
+        )
+
+        if plan.drawIcon {
+            clockIcon?.draw(in: CGRect(
+                x: elapsedPoint.x,
+                y: elapsedPoint.y + (elapsedFont.capHeight - imageHeight) * 0.5,
+                width: imageWidth,
+                height: imageHeight
+            ))
+        }
 
         let timeTextPoint = CGPoint(
-            x: elapsedPoint.x + imageWidth + 4,
+            x: elapsedPoint.x + (plan.drawIcon ? imageWidth + 4 : 0),
             y: elapsedPoint.y + (elapsedFont.capHeight - elapsedFont.lineHeight) * 0.5
         )
 
         (elapsedString as NSString).draw(at: timeTextPoint, withAttributes: [.font: elapsedFont, .foregroundColor: UIColor.white])
 
-        let elapsedTextSize = (elapsedString as NSString).size(withAttributes: [.font: elapsedFont])
         var badgeX = timeTextPoint.x + elapsedTextSize.width + 8
         let badgeY = timeTextPoint.y + (elapsedFont.capHeight - elapsedLabelFont.lineHeight) * 0.5
 
@@ -752,14 +780,14 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             var endColor = #colorLiteral(red: 1, green: 0.4538183808, blue: 0.1835401952, alpha: 1)
             if ended { endColor = #colorLiteral(red: 0.2549019754, green: 0.2745098174, blue: 0.3019607961, alpha: 1) }
 
-            let statusWidth = drawBadge(in: cg, text: endMes, font: elapsedLabelFont,
-                                        origin: CGPoint(x: badgeX, y: badgeY),
-                                        textColor: .white, bgColor: endColor,
-                                        padding: UIEdgeInsets(top: 2, left: 8, bottom: 2, right: 8))
-            badgeX += statusWidth + 6
+            let drawnStatusWidth = drawBadge(in: cg, text: endMes, font: elapsedLabelFont,
+                                             origin: CGPoint(x: badgeX, y: badgeY),
+                                             textColor: .white, bgColor: endColor,
+                                             padding: UIEdgeInsets(top: 2, left: 8, bottom: 2, right: 8))
+            badgeX += drawnStatusWidth + 6
         }
 
-        if let viewerCount = viewerCount {
+        if plan.drawViewer, let viewerCount = viewerCount {
             _ = drawBadge(in: cg, text: "\(viewerCount)", font: elapsedLabelFont,
                           origin: CGPoint(x: badgeX, y: badgeY),
                           textColor: UIColor(white: 0.16, alpha: 1.0),
@@ -769,22 +797,28 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
                           padding: UIEdgeInsets(top: 2, left: 8, bottom: 2, right: 8))
         }
 
+        fullLine.draw(at: textPoint)
+
         if isReconnecting {
-            let reconnectBadgeY = bgRect.maxY + 8
             badgeX = timeTextPoint.x + elapsedTextSize.width + 8
             _ = drawBadge(in: cg, text: LPConfig.shared.reconnectStatus, font: elapsedLabelFont,
-                          origin: CGPoint(x: badgeX, y: reconnectBadgeY),
+                          origin: CGPoint(x: badgeX, y: PIPOverlayLayout.noticeY),
                           textColor: .white,
                           bgColor: #colorLiteral(red: 1, green: 0.6, blue: 0, alpha: 1),
                           icon: reconnectIcon, iconTintColor: .white,
                           padding: UIEdgeInsets(top: 2, left: 8, bottom: 2, right: 8))
         }
 
-        fullLine.draw(at: textPoint)
         if let notice = secondaryNotice, CACurrentMediaTime() < secondaryDeadline {
             let paragraph = NSMutableParagraphStyle()
             paragraph.lineBreakMode = .byTruncatingTail
-            (notice as NSString).draw(in: CGRect(x: 12, y: 68, width: max(1, size.width - 24), height: 18),
+            let noticeY = PIPOverlayLayout.noticeY
+                + (isReconnecting ? PIPOverlayLayout.noticeLineHeight : 0)
+            (notice as NSString).draw(in: CGRect(
+                x: PIPOverlayLayout.contentLeading,
+                y: noticeY,
+                width: max(1, size.width - PIPOverlayLayout.contentLeading - PIPOverlayLayout.contentTrailing),
+                height: 18),
                 withAttributes: [.font: UIFont.systemFont(ofSize: 12),
                                  .foregroundColor: UIColor.lightGray, .paragraphStyle: paragraph])
         }
@@ -1065,7 +1099,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         )
 
         self.pipController?.requiresLinearPlayback = false
-        self.pipController?.setValue(1, forKey: "controlsStyle")
+        PIPSystemControls.apply(to: self.pipController)
 
         self.pipController?.delegate = self
 
@@ -1106,7 +1140,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             contentSource: .init(sampleBufferDisplayLayer: layer, playbackDelegate: self.dummyDelegate)
         )
         self.pipController?.requiresLinearPlayback = false
-        self.pipController?.setValue(1, forKey: "controlsStyle")
+        PIPSystemControls.apply(to: self.pipController)
         self.pipController?.delegate = self
 
         let session = pipSession.value

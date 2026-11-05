@@ -252,14 +252,28 @@ private struct PIPLayoutPreview: View {
                         .layoutPriority(1)
                     Spacer(minLength: 0)
                 }
-                .padding(.leading, metrics.elapsedX)
-                .padding(.top, metrics.elapsedY - 2 * scale)
-                .frame(width: width - metrics.elapsedX - 8 * scale, alignment: .leading)
+                .padding(.leading, metrics.statusRowX)
+                .padding(.top, metrics.statusRowY - 2 * scale)
+                .frame(width: width - metrics.statusRowX - metrics.sideInset, alignment: .leading)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
 
+                systemControlBadge(systemName: "xmark", scale: scale)
+                    .padding(.leading, PIPOverlayLayout.controlMargin * scale)
+                    .padding(.top, PIPOverlayLayout.controlMargin * scale)
+
+                systemControlBadge(systemName: "rectangle.on.rectangle", scale: scale)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.trailing, PIPOverlayLayout.controlMargin * scale)
+                    .padding(.top, PIPOverlayLayout.controlMargin * scale)
+
                 nowTimeBadge(scale: scale, canvasWidth: width)
-                    .position(x: width * 0.5, y: metrics.nowTimeCenterY)
+                    .padding(.leading, metrics.contentLeading)
+                    .padding(.top, metrics.nowTimeY)
+
+                secondaryNoticeRow(scale: scale, canvasWidth: width)
+                    .padding(.leading, metrics.contentLeading)
+                    .padding(.top, metrics.noticeY)
 
                 if mode == .adOverlay {
                     sponsorBanner(scale: scale, canvasWidth: width)
@@ -288,6 +302,28 @@ private struct PIPLayoutPreview: View {
         .fixedSize(horizontal: true, vertical: false)
     }
 
+    /// 單行提示在實際 PiP 與現在時間同用 `contentLeading`；這裡顯示假資料供比對。
+    private func secondaryNoticeRow(scale: CGFloat, canvasWidth: CGFloat) -> some View {
+        Text("\(AppLanguage.localized("pipLayout.preview.viewerName"))：\(AppLanguage.localized("pipLayout.preview.secondMessage"))")
+            .font(.system(size: 12 * scale))
+            .foregroundStyle(.white.opacity(0.7))
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .frame(width: canvasWidth - PIPOverlayLayout.contentLeading * 2 * scale, alignment: .leading)
+    }
+
+    /// 系統關閉／返回鈕由系統繪製，預覽以佔位圈標出保留區。
+    private func systemControlBadge(systemName: String, scale: CGFloat) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 17 * scale, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: PIPOverlayLayout.controlDiameter * scale,
+                   height: PIPOverlayLayout.controlDiameter * scale)
+            .background(Circle().fill(Color.black.opacity(0.75)))
+            .overlay(Circle().strokeBorder(.white.opacity(0.25), lineWidth: scale))
+            .accessibilityLabel("系統 PiP 控制")
+    }
+
     private func nowTimeBadge(scale: CGFloat, canvasWidth: CGFloat) -> some View {
         HStack(spacing: 0) {
             Text("\(nowTimeLabel) ")
@@ -300,10 +336,8 @@ private struct PIPLayoutPreview: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.45)
         }
-        .padding(.horizontal, 6 * scale)
-        .padding(.vertical, 4 * scale)
-        .frame(maxWidth: canvasWidth - 12 * scale)
-        .background(Color.black.opacity(0.45))
+        .frame(maxWidth: canvasWidth - PIPOverlayLayout.contentLeading * 2 * scale,
+               alignment: .leading)
         .lineLimit(1)
         .minimumScaleFactor(0.35)
     }
@@ -399,14 +433,17 @@ private struct PIPLayoutPreview: View {
 private struct PIPPreviewMetrics {
     let scale: CGFloat
 
-    var elapsedX: CGFloat { 50 * scale }
-    var elapsedY: CGFloat { 20 * scale }
-    var nowTimeCenterY: CGFloat { (48 + 13) * scale }
+    var statusRowX: CGFloat { PIPOverlayLayout.sideInset * scale }
+    var statusRowY: CGFloat { PIPOverlayLayout.statusRowY * scale }
+    var sideInset: CGFloat { PIPOverlayLayout.sideInset * scale }
+    var contentLeading: CGFloat { PIPOverlayLayout.contentLeading * scale }
+    var nowTimeY: CGFloat { PIPOverlayLayout.nowTimeY * scale }
+    var noticeY: CGFloat { PIPOverlayLayout.noticeY * scale }
     var sponsorY: CGFloat { 85 }
-    var messageLeading: CGFloat { 10 * scale }
+    var messageLeading: CGFloat { PIPOverlayLayout.contentLeading * scale }
 
     func chatTopY(mode: PIPLayoutPreviewMode) -> CGFloat {
-        let base = max(88, 200 * 0.26)
+        let base = PIPOverlayLayout.chatTopMargin(canvasHeight: 200)
         let adOffset = mode == .adOverlay ? 145.0 : 0
         return (base + adOffset) * scale
     }
