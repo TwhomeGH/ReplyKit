@@ -55,37 +55,44 @@ enum PIPTimeOverlayRenderer {
 
         UIGraphicsPushContext(cg)
 
-        // 計時獨立置中於兩側控制鈕之間，不把整片內容推到控制帶下方。
-        let timerWidth = max(1, size.width - PIPOverlayLayout.controlSideInset * 2)
-        let timerStyle = NSMutableParagraphStyle()
-        timerStyle.alignment = .center
-        timerStyle.lineBreakMode = .byTruncatingTail
-        (scene.elapsedString as NSString).draw(in: CGRect(x: PIPOverlayLayout.controlSideInset,
-            y: PIPOverlayLayout.timerY, width: timerWidth, height: 20),
-            withAttributes: [.font: elapsedFont, .foregroundColor: UIColor.white, .paragraphStyle: timerStyle])
+        let controlsVisible = !PIPSystemControls.hidesAll
+        let rowLeading = controlsVisible
+            ? PIPOverlayLayout.controlSideInset
+            : PIPOverlayLayout.contentLeading
+        let rowTrailing = controlsVisible
+            ? PIPOverlayLayout.controlSideInset
+            : PIPOverlayLayout.contentTrailing
+        let rowRight = size.width - rowTrailing
+        let rowY = PIPOverlayLayout.statusRowY
 
-        // 狀態與人數使用自己的第二列；重連狀態取代普通狀態，不新增遮住聊天室的行。
+        // 計時器併入直播狀態列：與徽章同高、靠左，不再單獨置中。
+        let elapsedSize = (scene.elapsedString as NSString).size(withAttributes: [.font: elapsedFont])
+        (scene.elapsedString as NSString).draw(at: CGPoint(x: rowLeading, y: rowY + 2),
+            withAttributes: [.font: elapsedFont, .foregroundColor: UIColor.white])
+        var badgeX = rowLeading + elapsedSize.width + 8
+
+        // 重連狀態取代普通狀態，不新增遮住聊天室的行。
         let status = scene.isReconnecting ? scene.reconnectText : scene.statusText
         let viewers = scene.viewerCount.map { $0 >= 10000 ? String(format: "%.1f萬", Double($0) / 10000) : String($0) }
         let viewerWidth = viewers.map { badgeWidth(text: $0, font: elapsedLabelFont, icon: viewerIcon) } ?? 0
-        let available = max(1, size.width - PIPOverlayLayout.contentLeading - PIPOverlayLayout.contentTrailing)
-        let statusLimit = max(1, available - viewerWidth - 8)
+        let viewerGap: CGFloat = viewers == nil ? 0 : 8
+        let statusLimit = max(0, rowRight - badgeX - viewerWidth - viewerGap)
         var shortStatus = status
         while !shortStatus.isEmpty && badgeWidth(text: shortStatus + "…", font: elapsedLabelFont, icon: nil) > statusLimit {
             shortStatus.removeLast()
         }
         if shortStatus != status { shortStatus += "…" }
-        var badgeX = PIPOverlayLayout.contentLeading
-        if !status.isEmpty {
+        if !shortStatus.isEmpty {
             badgeX += drawBadge(in: cg, text: shortStatus, font: elapsedLabelFont,
-                origin: CGPoint(x: badgeX, y: PIPOverlayLayout.statusRowY), textColor: .white,
+                origin: CGPoint(x: badgeX, y: rowY), textColor: .white,
                 bgColor: scene.statusEnded ? .darkGray : .systemOrange) + 6
         }
-        if let viewers, badgeX + viewerWidth <= size.width - PIPOverlayLayout.contentTrailing {
+        if let viewers, badgeX + viewerWidth <= rowRight {
             _ = drawBadge(in: cg, text: viewers, font: elapsedLabelFont,
-                origin: CGPoint(x: badgeX, y: PIPOverlayLayout.statusRowY), textColor: .darkGray,
+                origin: CGPoint(x: badgeX, y: rowY), textColor: .darkGray,
                 bgColor: .lightGray, icon: viewerIcon)
         }
+        let available = max(1, size.width - PIPOverlayLayout.contentLeading - PIPOverlayLayout.contentTrailing)
 
         // 長日期或自訂標籤限制在內容寬度內，不讓尾端超出視窗。
         let timeParagraph = NSMutableParagraphStyle()

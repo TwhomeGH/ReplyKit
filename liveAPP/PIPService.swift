@@ -534,6 +534,17 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     private var chatImageGeneration = -1
     private var chatImageSize = CGSize.zero
 
+    /// 版面高度或控制列避讓變更時，重畫並把既有聊天訊息排到新頂距。
+    func applyOverlayLayoutChange() {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { self.applyOverlayLayoutChange() }
+            return
+        }
+        messagesLayer?.refreshTopMargin()
+        chatImage = nil
+        setNeedsRedraw()
+    }
+
     /// 設定變更時立即套用控制列樣式；未啟動 PiP 時只保存偏好。
     func applySystemControlsStyle() {
         guard Thread.isMainThread else {

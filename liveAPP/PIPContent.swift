@@ -1242,6 +1242,17 @@ final class PIPServiceMessages {
                    isMain: isMain, fontSizeOverride: fontSize, animates: false)
     }
 
+    /// 版面高度改變（例如精簡模式上移）時立即重排，不等下一則訊息。
+    func refreshTopMargin() {
+        _ = relayoutTargetsOnly(updateTargetY: true, changeSY: false)
+        for msg in stackedMessages where msg.alpha > 0 {
+            msg.startY = msg.targetY
+            msg.initialStartY = msg.targetY
+            layout(msg: msg, y: msg.targetY)
+        }
+        updateChatEdgeMask()
+    }
+
     private func snapToTargets() {
         _ = relayoutTargetsOnly(updateTargetY: true)
         for msg in stackedMessages {

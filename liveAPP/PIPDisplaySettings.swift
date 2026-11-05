@@ -4,9 +4,17 @@ import SwiftUI
 /// PiP 系統控制列樣式；隱藏全部控制後，關閉與返回改由 App 內的「停止 PiP」負責。
 enum PIPSystemControls {
     static let hideAllKey = "pipHideSystemControls"
+    static let compactOverlayKey = "pipCompactOverlay"
 
     /// 與 `@AppStorage` 相同：沒有 App Group（側載）時退回標準 UserDefaults。
     static var hidesAll: Bool { (userDefaults ?? .standard).bool(forKey: hideAllKey) }
+
+    /// 只在控制列全隱藏時才有意義；一般模式仍要保留按鈕空間。
+    static var compactsWhenControlsHidden: Bool {
+        (userDefaults ?? .standard).bool(forKey: compactOverlayKey)
+    }
+
+    static var usesCompactOverlay: Bool { hidesAll && compactsWhenControlsHidden }
 
     /// 1 保留關閉／返回；2（iOS 16+）隱藏全部控制項。此為系統私有樣式，非公開 API。
     static func styleValue(hidesAll: Bool) -> Int { hidesAll ? 2 : 1 }

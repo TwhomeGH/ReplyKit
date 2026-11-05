@@ -223,14 +223,16 @@ private struct PIPLayoutPreview: View {
                     .interpolation(.high)
                     .frame(width: width, height: height)
 
-                systemControlBadge(systemName: "xmark", scale: scale)
-                    .padding(.leading, PIPOverlayLayout.controlMargin * scale)
-                    .padding(.top, PIPOverlayLayout.controlMargin * scale)
+                if !PIPSystemControls.hidesAll {
+                    systemControlBadge(systemName: "xmark", scale: scale)
+                        .padding(.leading, PIPOverlayLayout.controlMargin * scale)
+                        .padding(.top, PIPOverlayLayout.controlMargin * scale)
 
-                systemControlBadge(systemName: "rectangle.on.rectangle", scale: scale)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-                    .padding(.trailing, PIPOverlayLayout.controlMargin * scale)
-                    .padding(.top, PIPOverlayLayout.controlMargin * scale)
+                    systemControlBadge(systemName: "rectangle.on.rectangle", scale: scale)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .padding(.trailing, PIPOverlayLayout.controlMargin * scale)
+                        .padding(.top, PIPOverlayLayout.controlMargin * scale)
+                }
             }
             .frame(width: width, height: height)
             .clipShape(RoundedRectangle(cornerRadius: 8))

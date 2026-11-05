@@ -5,6 +5,7 @@ struct PIPView: View {
     @ObservedObject private var service = PIPService.shared
     @ObservedObject private var testService = PIPTestService.shared
     @AppStorage("pipHideSystemControls", store: userDefaults) private var hideSystemControls = false
+    @AppStorage("pipCompactOverlay", store: userDefaults) private var compactOverlay = false
 
     var body: some View {
         Form {
@@ -44,11 +45,19 @@ struct PIPView: View {
                     Text("保留系統的關閉與返回按鈕；畫面內容會避開這兩個按鈕。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
+                Toggle("隱藏控制列時將資訊列上移", isOn: $compactOverlay)
+                    .disabled(!hideSystemControls)
+                Text("僅在上一項開啟時有效。開啟後計時／狀態、現在時間與聊天會上移約 24pt，把原本留給按鈕的空間還給聊天。")
+                    .font(.caption).foregroundStyle(.secondary)
                 Text("設定立即套用；若目前 PiP 沒有反應，請停止後重新啟動。此樣式使用系統非公開設定，需要 iOS 16 以上。")
                     .font(.caption).foregroundStyle(.orange)
             }
             .onChange(of: hideSystemControls) { _ in
                 PIPService.diagnosticInstance?.applySystemControlsStyle()
+                PIPService.diagnosticInstance?.applyOverlayLayoutChange()
+            }
+            .onChange(of: compactOverlay) { _ in
+                PIPService.diagnosticInstance?.applyOverlayLayoutChange()
             }
 
             if testService.isRunning {
