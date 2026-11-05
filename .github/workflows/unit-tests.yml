@@ -79,6 +79,7 @@ jobs:
           mkdir -p TestResults
           xcrun simctl list devices available --json > TestResults/devices.json
           xcrun simctl list runtimes --json > TestResults/runtimes.json
+          xcrun simctl list devicetypes --json > TestResults/devicetypes.json
           xcodebuild -skipPackagePluginValidation -skipMacroValidation \
             -clonedSourcePackagesDirPath "$BUILD_INFO_PACKAGES_DIR" \
             -project liveAPP.xcodeproj -scheme liveAPP -configuration Debug \
@@ -87,16 +88,65 @@ jobs:
           python3 Scripts/select_test_simulator.py \
             --sdk="$(xcrun --sdk iphonesimulator --show-sdk-version)"
 
-      - name: Boot simulator
-        timeout-minutes: 5
-        env:
-          SIMULATOR_ID: ${{ steps.simulator.outputs.id }}
-          ALREADY_BOOTED: ${{ steps.simulator.outputs.booted }}
+      - name: Boot simulator (with fallback)
+        id: boot
+        timeout-minutes: 10
         run: |
-          if [ "$ALREADY_BOOTED" != "true" ]; then
-            xcrun simctl boot "$SIMULATOR_ID"
+          set -euo pipefail
+
+          boot_until_ready() {
+            local udid="$1"
+            local limit="$2"
+            xcrun simctl boot "$udid" >/dev/null 2>&1 || true
+            local deadline=$((SECONDS + limit))
+            while [ $SECONDS -lt $deadline ]; do
+              if xcrun simctl list devices | grep -F "$udid" | grep -q '(Booted)'; then
+                return 0
+              fi
+              sleep 3
+            done
+            return 1
+          }
+
+          CHOSEN=""
+          ATTEMPTS=0
+          while read -r CANDIDATE; do
+            [ -z "$CANDIDATE" ] && continue
+            # 只試前兩台標準候選，避免把時間預算花在一連串壞掉的裝置。
+            [ $ATTEMPTS -ge 2 ] && break
+            ATTEMPTS=$((ATTEMPTS + 1))
+            echo "Trying existing simulator $CANDIDATE"
+            if boot_until_ready "$CANDIDATE" 120; then
+              CHOSEN="$CANDIDATE"
+              break
+            fi
+            xcrun simctl shutdown "$CANDIDATE" >/dev/null 2>&1 || true
+          done < TestResults/simulator-candidates.txt
+
+          if [ -z "$CHOSEN" ] && [ -f TestResults/simulator-runtime.txt ] \
+             && [ -f TestResults/simulator-device-types.txt ]; then
+            RUNTIME=$(head -n1 TestResults/simulator-runtime.txt)
+            while read -r DEVICE_TYPE; do
+              [ -z "$RUNTIME" ] && break
+              [ -z "$DEVICE_TYPE" ] && continue
+              FRESH=$(xcrun simctl create "ReplyKit-CI-${GITHUB_RUN_ID}" \
+                "$DEVICE_TYPE" "$RUNTIME" 2>/dev/null || true)
+              [ -z "$FRESH" ] && continue
+              echo "Created fresh simulator $FRESH ($DEVICE_TYPE on $RUNTIME)"
+              if boot_until_ready "$FRESH" 240; then
+                CHOSEN="$FRESH"
+                break
+              fi
+              xcrun simctl shutdown "$FRESH" >/dev/null 2>&1 || true
+            done < TestResults/simulator-device-types.txt
           fi
-          xcrun simctl bootstatus "$SIMULATOR_ID" -b
+
+          if [ -z "$CHOSEN" ]; then
+            echo "::error::No simulator could be booted"
+            exit 1
+          fi
+          echo "id=$CHOSEN" >> "$GITHUB_OUTPUT"
+          echo "Simulator: $CHOSEN" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify CI summary parser
         run: python3 Scripts/test_ci_test_summary.py
@@ -105,8 +155,9 @@ jobs:
         run: python3 Scripts/test_update_altstore_source.py
 
       - name: Run liveAPP unit tests
+        timeout-minutes: 20
         env:
-          SIMULATOR_ID: ${{ steps.simulator.outputs.id }}
+          SIMULATOR_ID: ${{ steps.boot.outputs.id }}
         run: |
           set -o pipefail
           xcodebuild -skipPackagePluginValidation -skipMacroValidation \

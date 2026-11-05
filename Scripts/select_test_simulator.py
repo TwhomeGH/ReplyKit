@@ -1,8 +1,34 @@
-"""從 simctl 與 Xcode scheme 的相容目的地交集中選取可實際啟動的 iPhone。"""
+"""從 simctl 與 Xcode scheme 的相容目的地交集中排序可實際啟動的 iPhone。
+
+CI 會逐台嘗試開機；全部失敗時再依輸出的 runtime/device type 建一台新的。
+"""
 import json
 import os
 import re
+from dataclasses import dataclass
 from pathlib import Path
+
+PREFERRED_MODELS = ("iPhone 17", "iPhone 16", "iPhone 15", "iPhone 14", "iPhone SE")
+
+
+@dataclass(frozen=True)
+class Candidate:
+    version: tuple[int, ...]
+    booted: bool
+    name: str
+    udid: str
+    runtime: str
+
+    def legacy(self):
+        """回傳既有測試/呼叫端使用的四元組。"""
+        return (self.version, self.booted, self.name, self.udid)
+
+
+def model_rank(name: str) -> int:
+    for index, prefix in enumerate(PREFERRED_MODELS):
+        if name == prefix or name.startswith(prefix + " "):
+            return index
+    return len(PREFERRED_MODELS)
 
 
 def available_ios_runtimes(runtimes):
@@ -33,12 +59,8 @@ def available_ios_runtimes(runtimes):
     return result
 
 
-def select_device(devices, destinations, runtimes, sdk_version=None):
-    """回傳版本、開機狀態、名稱及 UUID；無交集時拋出 ValueError。
-
-    僅解析相容區段，避免將錯誤訊息中的 UUID 或 generic placeholder 當成裝置。
-    優先與建置 SDK 同版本的 runtime，其次 iOS 27，最後才是其他可用 iOS。
-    """
+def eligible_ids(destinations: str) -> set[str]:
+    """解析 scheme 相容區段，避免把錯誤訊息 UUID 或 placeholder 當裝置。"""
     eligible = set()
     active = False
     for line in destinations.splitlines():
@@ -53,53 +75,110 @@ def select_device(devices, destinations, runtimes, sdk_version=None):
         match = re.search(r"\bid:\s*([0-9A-Fa-f-]{36})(?:\s*,|\s*})", line)
         if match:
             eligible.add(match.group(1).upper())
+    return eligible
 
+
+def ordered_candidates(devices, destinations, runtimes, sdk_version=None):
+    """回傳排序後的候選裝置；順序即為 CI 嘗試開機的順序。"""
+    eligible = eligible_ids(destinations)
     available = available_ios_runtimes(runtimes)
+
+    try:
+        target = (tuple(int(part) for part in str(sdk_version).split("."))
+                  if sdk_version else None)
+    except ValueError:
+        target = None
+
     candidates = []
     for runtime, items in devices.get("devices", {}).items():
         version = available.get(runtime)
         if version is None:
             continue
         for item in items:
-            if (item.get("isAvailable") and item["name"].startswith("iPhone")
-                    and item["udid"].upper() in eligible):
-                candidates.append((version, item.get("state") == "Booted", item["name"], item["udid"]))
+            if not item.get("isAvailable"):
+                continue
+            if not item["name"].startswith("iPhone"):
+                continue
+            if item["udid"].upper() not in eligible:
+                continue
+            candidates.append(Candidate(
+                version=version,
+                booted=item.get("state") == "Booted",
+                name=item["name"],
+                udid=item["udid"],
+                runtime=runtime,
+            ))
+
+    def sort_key(candidate: Candidate):
+        group = 0 if target and candidate.version == target else (
+            1 if candidate.version[0] == 27 else 2)
+        return (
+            group,
+            tuple(-part for part in candidate.version),
+            0 if candidate.booted else 1,
+            model_rank(candidate.name),
+            candidate.name,
+            candidate.udid,
+        )
+
+    return sorted(candidates, key=sort_key)
+
+
+def select_device(devices, destinations, runtimes, sdk_version=None):
+    """回傳版本、開機狀態、名稱及 UUID；無交集時拋出 ValueError。"""
+    candidates = ordered_candidates(devices, destinations, runtimes, sdk_version)
+    if not candidates:
+        raise ValueError("找不到 scheme 接受且 runtime 已安裝的 iOS iPhone；"
+                         "請查看 devices.json、runtimes.json 與 destinations.log。")
+    return candidates[0].legacy()
+
+
+def device_type_candidates(devicetypes):
+    """回傳可建立的 iPhone device type identifier，標準機型優先。"""
+    items = [item for item in devicetypes.get("devicetypes", [])
+             if item.get("name", "").startswith("iPhone") and item.get("identifier")]
+    items.sort(key=lambda item: (model_rank(item["name"]), item["name"]))
+    return [item["identifier"] for item in items]
+
+
+def _arg_value(prefix):
+    for argument in os.sys.argv[1:]:
+        if argument.startswith(prefix):
+            return argument.split("=", 1)[1]
+    return None
+
+
+def main():
+    """輸出嘗試順序、最佳裝置、runtime 與可建立的 device type。"""
+    sdk_version = _arg_value("--sdk=")
+    devicetypes_arg = _arg_value("--devicetypes=")
+
+    folder = Path("TestResults")
+    devices = json.loads((folder / "devices.json").read_text())
+    runtimes = json.loads((folder / "runtimes.json").read_text())
+    destinations = (folder / "destinations.log").read_text()
+
+    candidates = ordered_candidates(devices, destinations, runtimes, sdk_version)
     if not candidates:
         raise ValueError("找不到 scheme 接受且 runtime 已安裝的 iOS iPhone；"
                          "請查看 devices.json、runtimes.json 與 destinations.log。")
 
-    if sdk_version:
-        try:
-            target = tuple(int(part) for part in str(sdk_version).split("."))
-        except ValueError:
-            target = None
-        if target:
-            exact = [candidate for candidate in candidates if candidate[0] == target]
-            if exact:
-                return max(exact)
-
-    ios27 = [candidate for candidate in candidates if candidate[0][0] == 27]
-    return max(ios27 or candidates)
-
-
-def main():
-    """讀取 CI 診斷檔，輸出後續步驟使用的 UUID，並保存選取結果。"""
-    sdk_version = None
-    for argument in os.sys.argv[1:]:
-        if argument.startswith("--sdk="):
-            sdk_version = argument.split("=", 1)[1]
-
-    folder = Path("TestResults")
-    version, booted, name, udid = select_device(
-        json.loads((folder / "devices.json").read_text()),
-        (folder / "destinations.log").read_text(),
-        json.loads((folder / "runtimes.json").read_text()),
-        sdk_version=sdk_version)
-    description = f"Using {name}, iOS {version}, {udid}"
+    best = candidates[0]
+    description = f"Using {best.name}, iOS {best.version}, {best.udid}"
     print(description)
     (folder / "selected-simulator.txt").write_text(description + "\n")
+    (folder / "simulator-candidates.txt").write_text(
+        "".join(f"{candidate.udid}\n" for candidate in candidates))
+    (folder / "simulator-runtime.txt").write_text(best.runtime + "\n")
+
+    devicetypes_path = Path(devicetypes_arg) if devicetypes_arg else folder / "devicetypes.json"
+    if devicetypes_path.exists():
+        types = device_type_candidates(json.loads(devicetypes_path.read_text()))
+        (folder / "simulator-device-types.txt").write_text(
+            "".join(f"{identifier}\n" for identifier in types))
+
     with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-        output.write(f"id={udid}\nbooted={str(booted).lower()}\n")
+        output.write(f"id={best.udid}\nbooted={str(best.booted).lower()}\n")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 """裝置選擇回歸：新 runtime 或殘留裝置都不能繞過實際安裝狀態。"""
 import unittest
-from select_test_simulator import select_device
+from select_test_simulator import (device_type_candidates, ordered_candidates,
+                                   select_device)
 
 OLD = "EDEEE952-145B-48B2-BFB4-A31429F8FB04"
 NEW = "4C56FCAC-377C-469C-B415-8ABBC4375CBA"
@@ -68,6 +69,26 @@ class SelectionTests(unittest.TestCase):
         text = (f"Available destinations for scheme:\n {{ platform:iOS Simulator, id:{OLD}, OS:27.0 }}"
                 f"\n {{ platform:iOS Simulator, id:{NEW}, OS:27.1 }}")
         self.assertEqual(select_device(self.devices, text, self.runtimes)[3], OLD)
+
+    def test_standard_model_is_preferred_over_air(self):
+        devices = {"devices": {
+            "com.apple.CoreSimulator.SimRuntime.iOS-27-0": [
+                {"name": "iPhone Air", "udid": STALE, "isAvailable": True},
+                {"name": "iPhone 17", "udid": OLD, "isAvailable": True}]}}
+        text = (f"Available destinations for scheme:\n {{ platform:iOS Simulator, id:{STALE}, OS:27.0 }}"
+                f"\n {{ platform:iOS Simulator, id:{OLD}, OS:27.0 }}")
+        self.assertEqual(select_device(devices, text, self.runtimes, sdk_version="27.0")[3], OLD)
+        ordered = ordered_candidates(devices, text, self.runtimes, sdk_version="27.0")
+        self.assertEqual([candidate.udid for candidate in ordered], [OLD, STALE])
+
+    def test_device_type_candidates_prefer_standard_models(self):
+        devicetypes = {"devicetypes": [
+            {"name": "iPhone Air", "identifier": "type.air"},
+            {"name": "iPhone 17e", "identifier": "type.17e"},
+            {"name": "iPhone 17", "identifier": "type.17"},
+            {"name": "iPhone 16", "identifier": "type.16"},
+        ]}
+        self.assertEqual(device_type_candidates(devicetypes)[0], "type.17")
 
     def test_falls_back_to_newest_available_ios_runtime(self):
         runtimes = {"runtimes": [

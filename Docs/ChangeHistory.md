@@ -1,6 +1,13 @@
 # 變更歷史
 
-## 2026.11.06 06:59 AltStore 版本更新說明改由 CI 產生
+## 2026.11.06 07:15 模擬器開機加入候選順序與重建 fallback
+
+- 問題：CI 選到 iPhone Air（iOS 27.0）後 `simctl bootstatus` 超過 5 分鐘；selector 用 `max(...)` 會用名稱字典序挑，像 Air 這種非常規機型可能先被選中，而且沒有備援。
+- 根因：選機與開機是兩步、單一 UUID 決策；沒有嘗試其他裝置，也沒有標準機型偏好。
+- 變更：selector 輸出排序過的候選清單（SDK 同版本優先、已開機優先、iPhone 17/16/15 等標準機型優先），並輸出所屬 runtime 與可建立的 device type；workflow 逐台嘗試前兩台（每台最多 120 秒），都失敗再用該 runtime 建一台全新 iPhone 開機（240 秒）。
+- 開機步驟上限 10 分鐘、單元測試步驟上限 20 分鐘；整個 job 仍是 40 分鐘，避免 fallback 吃掉後續測試時間。測試步驟改用實際開機成功的 UUID。
+- 回歸測試涵蓋標準機型優先、候選排序與 device type 選擇。
+- 待下一次 CI 驗證 runner 上現有裝置的開機狀況與 fallback 流程。
 
 - 問題：版本條目的 `localizedDescription` 原本退回 App 層介紹，AltStore 的 What's New 會顯示整個 App 說明，不是這次更新內容。
 - 根因：合成腳本沒有接收版本說明的入口。
