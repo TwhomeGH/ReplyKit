@@ -56,7 +56,7 @@ PiP 排版頁使用現有 `@AppStorage` key：
 - 系統按鈕只在 PiP 視窗被點擊時暫時出現，但無法偵測顯示時機，佈局一律以它們存在來保留上方空間。
 - 聊天訊息安全頂距為 `max(120, height * 0.26)`；300x200 時是 `120`。
 - 贊助覆蓋顯示時，聊天訊息額外下移 `145`，與實際 `setAdOverlayOffset(145)` 保持一致。
-- 預覽的時間疊加直接呼叫 `PIPTimeOverlayRenderer` 的正式繪製程式，顯示同一份輸出；聊天與贊助目前仍是示意元件，後續再共用正式繪製。
+- 預覽整幀由 `PIPPreviewFrameRenderer` 走正式繪製：聊天用 `PIPServiceMessages` 快照、時間用 `PIPTimeOverlayRenderer`、贊助用 `PIPAdOverlayRenderer`；SwiftUI 只負責縮放顯示與系統按鈕佔位，不再各畫一套。
 - 預覽在窄畫面中必須使用實際可用寬度縮放，不應硬套 `300` 寬度，避免右側被裁切。
 - 預覽會畫出兩顆系統控制鈕的佔位圈，所見即所得。
 - 直播時長、狀態與觀眾數徽章必須單行顯示；時間文字不可自動換行。

@@ -668,134 +668,21 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
         let alpha: CGFloat = min(1.0, max(0, remaining / 0.5))
 
-        cg.saveGState()
-        cg.translateBy(x: 0, y: size.height)
-        cg.scaleBy(x: 1.0, y: -1.0)
-        cg.setAlpha(alpha)
-
-        let bannerW = size.width * 0.88
-        let bannerX = (size.width - bannerW) / 2
-        let bannerY: CGFloat = 85
-
-        let labelFont = UIFont.boldSystemFont(ofSize: max(1, CGFloat(LPConfig.shared.PIPAdOverlayUserFontSize)))
-        let overlayFontSize = max(1, CGFloat(LPConfig.shared.PIPAdOverlayFontSize))
-        let textFont = UIFont.systemFont(ofSize: overlayFontSize)
-        let overlaySpacing = max(0, CGFloat(LPConfig.shared.PIPAdOverlaySpacing))
-        let bannerH: CGFloat = max(52, 6 + labelFont.lineHeight + overlaySpacing + textFont.lineHeight * 2 + 4 + 4)
-
-        let bgRect = CGRect(x: bannerX, y: bannerY, width: bannerW, height: bannerH)
-        let path = UIBezierPath(roundedRect: bgRect, cornerRadius: 10)
-        cg.setFillColor(UIColor(red: 0.9, green: 0.55, blue: 0.05, alpha: 0.88).cgColor)
-        path.fill()
-
-        UIGraphicsPushContext(cg)
-
-        let iconSize: CGFloat = 28
-        let iconX = bannerX + 8
-
-        let textX = iconX + iconSize + 8
-        let textW = bannerW - (textX - bannerX) - 8
-
-        let msgY = bannerY + 6 + labelFont.lineHeight + overlaySpacing
-        let msgH = bannerY + bannerH - 4 - msgY
-
-        let msgRect = CGRect(x: textX, y: msgY, width: textW, height: msgH)
-
-        // 先建立 CTFrame 算出實際渲染色高度，再決定 icon 位置
-        let attrStr = NSAttributedString(string: pageText, attributes: [.font: textFont, .foregroundColor: UIColor(white: 1, alpha: 0.9)])
-        let framesetter = CTFramesetterCreateWithAttributedString(attrStr)
-        let cgPathRect = CGRect(origin: .zero, size: msgRect.size)
-        let cgPath = CGPath(rect: cgPathRect, transform: nil)
-        let ctFrame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: attrStr.length), cgPath, nil)
-        let lines = CTFrameGetLines(ctFrame) as! [CTLine]
-        var lineOrigins = [CGPoint](repeating: .zero, count: lines.count)
-        CTFrameGetLineOrigins(ctFrame, CFRange(location: 0, length: lines.count), &lineOrigins)
-
-        // 計算實際文字底部（最後一行 baseline + lineHeight）
-        let lastLineY: CGFloat
-        if let lastOrigin = lineOrigins.last {
-            lastLineY = msgRect.origin.y + msgRect.height - lastOrigin.y
-        } else {
-            lastLineY = msgY + textFont.lineHeight
-        }
-
-        // icon 垂直置中於名稱區塊與文字區塊各自的視覺中心平均值
-        let nameCenterY = bannerY + 6 + labelFont.lineHeight / 2
-        let textCenterY = msgY + (lastLineY - msgY) / 2
-        let iconCenterY = (nameCenterY + textCenterY) / 2
-        let iconY = iconCenterY - iconSize / 2
-        let iconRect = CGRect(x: iconX, y: iconY, width: iconSize, height: iconSize)
-
-        if let icon = adOverlayIconImage {
-            cg.saveGState()
-            cg.addEllipse(in: iconRect)
-            cg.clip()
-            icon.draw(in: iconRect)
-            cg.restoreGState()
-        } else {
-            UIImage(systemName: "star.fill")?.withTintColor(.white, renderingMode: .alwaysOriginal).draw(in: iconRect)
-        }
-
-        let user = adOverlayUser ?? "贊助訊息"
-        (user as NSString).draw(at: CGPoint(x: textX, y: bannerY + 6), withAttributes: [
-            .font: labelFont,
-            .foregroundColor: UIColor.white
-        ])
-
-        if adOverlayLogSkipCounter.isMultiple(of: 30) { PIPLogTo("AdOverlay: drawing page=\(adOverlayPageIndex)/\(adOverlayPages.count) range=\(page.range) text='\(pageText)' positions=\(adOverlayEmojiPositions) emojiLoaded=\(adOverlayEmojiImages.compactMap({ $0 != nil }).count)/\(adOverlayEmojiImages.count)") }
-
-        for (li, line) in lines.enumerated() {
-            let lineOrigin = lineOrigins[li]
-            let lineY = msgRect.origin.y + msgRect.height - lineOrigin.y - textFont.lineHeight
-            let lineRange = CTLineGetStringRange(line)
-            let lineStart = lineRange.location
-            let lineEnd = lineRange.location + lineRange.length
-            let nsPageText = pageText as NSString
-
-            if li == 0 {
-                if adOverlayLogSkipCounter.isMultiple(of: 30) { PIPLogTo("AdOverlay: msgRect=\(msgRect) lineOrigin=\(lineOrigin) lineHeight=\(textFont.lineHeight) lineY=\(lineY)") }
-            }
-
-            var charIdx = lineStart
-            while charIdx < lineEnd {
-                let globalPos = page.range.location + charIdx
-                let foundEmojiPos = adOverlayEmojiPositionMap[globalPos]
-
-
-                if adOverlayLogSkipCounter.isMultiple(of: 30) { PIPLogTo("AdOverlay: charIdx=\(charIdx) globalPos=\(globalPos) posMatch=\(foundEmojiPos ?? -1) imgCount=\(adOverlayEmojiImages.count) imgLoaded=\(foundEmojiPos.map { $0 < adOverlayEmojiImages.count && adOverlayEmojiImages[$0] != nil } ?? false)") }
-
-                if let emojiIdx = foundEmojiPos,
-                   emojiIdx < adOverlayEmojiImages.count,
-                   let img = adOverlayEmojiImages[emojiIdx] {
-                    let emojiX = msgRect.origin.x + CTLineGetOffsetForStringIndex(line, charIdx, nil)
-                    let emojiSize: CGFloat = overlayFontSize * 1.2
-                    let emojiY = lineY + (textFont.lineHeight - emojiSize) / 2
-                    img.draw(in: CGRect(x: emojiX, y: emojiY, width: emojiSize, height: emojiSize))
-                    if adOverlayLogSkipCounter.isMultiple(of: 30) { PIPLogTo("AdOverlay: emoji[\(emojiIdx)] at line=\(li) x=\(emojiX) y=\(emojiY)") }
-                    charIdx += 1
-                } else {
-                    var segEnd = charIdx + 1
-                    while segEnd < lineEnd {
-                        let nextGlobalPos = page.range.location + segEnd
-                        if adOverlayEmojiPositionMap[nextGlobalPos] != nil { break }
-
-
-                        segEnd += 1
-                    }
-                    let segRange = NSRange(location: charIdx, length: segEnd - charIdx)
-                    let segStr = nsPageText.substring(with: segRange)
-                    let textX = msgRect.origin.x + CTLineGetOffsetForStringIndex(line, charIdx, nil)
-                    (segStr as NSString).draw(at: CGPoint(x: textX, y: lineY), withAttributes: [
-                        .font: textFont,
-                        .foregroundColor: UIColor(white: 1, alpha: 0.9)
-                    ])
-                    charIdx = segEnd
-                }
-            }
-        }
-
-        UIGraphicsPopContext()
-        cg.restoreGState()
+        PIPAdOverlayRenderer.draw(in: cg, size: size, scene: PIPAdOverlayRenderer.Scene(
+            user: adOverlayUser ?? "贊助訊息",
+            text: pageText,
+            range: page.range,
+            emojiPositionMap: adOverlayEmojiPositionMap,
+            emojiImages: adOverlayEmojiImages,
+            icon: adOverlayIconImage,
+            alpha: alpha,
+            userFontSize: CGFloat(LPConfig.shared.PIPAdOverlayUserFontSize),
+            textFontSize: CGFloat(LPConfig.shared.PIPAdOverlayFontSize),
+            spacing: CGFloat(LPConfig.shared.PIPAdOverlaySpacing),
+            pageIndex: adOverlayPageIndex,
+            pageCount: adOverlayPages.count,
+            logSkipCounter: adOverlayLogSkipCounter
+        ))
     }
 
     // CPU

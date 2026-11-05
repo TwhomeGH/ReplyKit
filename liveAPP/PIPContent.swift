@@ -1127,28 +1127,25 @@ final class PIPServiceMessages {
         message: String,
         imgURL: String? = nil,
         giftURL: String? = nil,
-        isMain: Bool = true
+        isMain: Bool = true,
+        fontSizeOverride: CGFloat? = nil,
+        animates: Bool = true
     ) {
 
 
         let type: MessageType = isMain ? .primary : .secondary
 
-        var fontSize: CGFloat = (
+        var fontSize: CGFloat = fontSizeOverride ?? ((
             type == .primary
-        ) ? LPConfig.shared.PIPChatFontMainSize : LPConfig.shared.PIPChatFontSecondSize
+        ) ? LPConfig.shared.PIPChatFontMainSize : LPConfig.shared.PIPChatFontSecondSize)
 
         if fontSize < 1.0 {
             PIPChatLog("子母窗口fontSize異常需要更新 需要重新設定")
             fontSize = 1.0
         }
-        
-        let avatarSizeLocal: CGFloat = (
-            type == .primary
-        ) ? LPConfig.shared.PIPChatFontMainSize : LPConfig.shared.PIPChatFontSecondSize
 
-        let giftSizeLocal: CGFloat = (
-            type == .primary
-        ) ? LPConfig.shared.PIPChatFontMainSize : LPConfig.shared.PIPChatFontSecondSize
+        let avatarSizeLocal = fontSize
+        let giftSizeLocal = fontSize
 
 
         let font = UIFont.systemFont(ofSize: fontSize)
@@ -1184,7 +1181,27 @@ final class PIPServiceMessages {
 
             populateVisibleMessagesIfNeeded()
 
-            layoutTargetsAndStartAnimation()
+            if animates {
+                layoutTargetsAndStartAnimation()
+            } else {
+                snapToTargets()
+            }
+    }
+
+    /// 預覽／快照用：不觸發動畫或 `PIPService` 全域狀態，直接排到定位。
+    func snapshotMessage(user: String, message: String, isMain: Bool, fontSize: CGFloat) {
+        addMessage(user: user, message: message, isMain: isMain,
+                   fontSizeOverride: fontSize, animates: false)
+    }
+
+    private func snapToTargets() {
+        _ = relayoutTargetsOnly(updateTargetY: true)
+        for msg in stackedMessages {
+            msg.startY = msg.targetY
+            msg.initialStartY = msg.targetY
+            layout(msg: msg, y: msg.targetY)
+        }
+        phase = .idle
 
 
 

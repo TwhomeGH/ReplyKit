@@ -212,39 +212,13 @@ private struct PIPLayoutPreview: View {
             let width = proxy.size.width
             let height = width * 2 / 3
             let scale = width / 300
-            let metrics = PIPPreviewMetrics(scale: scale)
-            let topMargin = metrics.chatTopY(mode: mode)
 
             ZStack(alignment: .topLeading) {
                 Rectangle()
                     .fill(Color(red: 0.07, green: 0.08, blue: 0.09))
 
-                if mode == .normal {
-                    VStack(alignment: .leading, spacing: 4 * scale) {
-                        messageRow(
-                            name: AppLanguage.localized("pipLayout.preview.hostName"),
-                            message: AppLanguage.localized("pipLayout.preview.mainMessage"),
-                            fontSize: mainFontSize,
-                            accent: .cyan,
-                            scale: scale
-                        )
-
-                        messageRow(
-                            name: AppLanguage.localized("pipLayout.preview.viewerName"),
-                            message: AppLanguage.localized("pipLayout.preview.secondMessage"),
-                            fontSize: secondFontSize,
-                            accent: .green,
-                            scale: scale
-                        )
-                        .opacity(0.82)
-                    }
-                    .padding(.leading, metrics.messageLeading)
-                    .padding(.top, topMargin)
-                    .frame(width: width - metrics.messageLeading - 10 * scale, alignment: .leading)
-                }
-
-                // 時間疊加直接顯示正式繪製器的輸出，不再由 SwiftUI 重畫一套。
-                Image(uiImage: timeOverlayImage(mode: mode))
+                // 整幀由正式繪製器輸出（聊天＋時間＋贊助），預覽只負責縮放。
+                Image(uiImage: previewFrame(mode: mode))
                     .resizable()
                     .interpolation(.high)
                     .frame(width: width, height: height)
@@ -257,11 +231,6 @@ private struct PIPLayoutPreview: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
                     .padding(.trailing, PIPOverlayLayout.controlMargin * scale)
                     .padding(.top, PIPOverlayLayout.controlMargin * scale)
-
-                if mode == .adOverlay {
-                    sponsorBanner(scale: scale, canvasWidth: width)
-                        .position(x: width * 0.5, y: sponsorCenterY(metrics: metrics))
-                }
             }
             .frame(width: width, height: height)
             .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -270,25 +239,59 @@ private struct PIPLayoutPreview: View {
         .frame(minHeight: 200)
     }
 
-    /// 正式時間疊加在 300x200 設計畫布上渲染，預覽只負責縮放顯示。
-    private func timeOverlayImage(mode: PIPLayoutPreviewMode) -> UIImage {
-        let size = CGSize(width: 300, height: 200)
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = UIScreen.main.scale
-        return UIGraphicsImageRenderer(size: size, format: format).image { context in
-            let scene = PIPTimeOverlayRenderer.Scene(
-                elapsedString: "00:12:34",
-                nowTimeText: "2026/09/09 00:48:31",
-                nowTimeLabel: nowTimeLabel,
-                statusText: mode == .normal ? liveLabel : endedLabel,
-                statusEnded: mode == .adOverlay,
-                viewerCount: 128,
-                isReconnecting: false,
-                reconnectText: "",
-                secondaryNotice: "\(AppLanguage.localized("pipLayout.preview.viewerName"))：\(AppLanguage.localized("pipLayout.preview.secondMessage"))"
+    /// 整幀由正式繪製器輸出：聊天用 `PIPServiceMessages` 快照，時間與贊助用共用 renderer。
+    private func previewFrame(mode: PIPLayoutPreviewMode) -> UIImage {
+        let secondaryMode = PIPDisplaySettings.secondaryMode
+        let notice: String? = secondaryMode == "summary"
+            ? "\(AppLanguage.localized("pipLayout.preview.viewerName"))：\(AppLanguage.localized("pipLayout.preview.secondMessage"))"
+            : nil
+        let showSecondaryChat = secondaryMode == "normal"
+        let time = PIPTimeOverlayRenderer.Scene(
+            elapsedString: "00:12:34",
+            nowTimeText: "2026/09/09 00:48:31",
+            nowTimeLabel: nowTimeLabel,
+            statusText: mode == .normal ? liveLabel : endedLabel,
+            statusEnded: mode == .adOverlay,
+            viewerCount: 128,
+            isReconnecting: false,
+            reconnectText: "",
+            secondaryNotice: notice
+        )
+
+        var ad: PIPAdOverlayRenderer.Scene?
+        if mode == .adOverlay {
+            let text = AppLanguage.localized("pipLayout.preview.adMessage")
+            ad = PIPAdOverlayRenderer.Scene(
+                user: AppLanguage.localized("pipLayout.preview.sponsorName"),
+                text: text,
+                range: NSRange(location: 0, length: (text as NSString).length),
+                emojiPositionMap: [:],
+                emojiImages: [],
+                icon: nil,
+                alpha: 1,
+                userFontSize: CGFloat(adUserFontSize),
+                textFontSize: CGFloat(adFontSize),
+                spacing: CGFloat(adSpacing),
+                pageIndex: 0,
+                pageCount: 1,
+                logSkipCounter: 1
             )
-            PIPTimeOverlayRenderer.draw(in: context.cgContext, size: size, scene: scene)
         }
+
+        let main: (user: String, message: String, fontSize: CGFloat)? = mode == .normal
+            ? (AppLanguage.localized("pipLayout.preview.hostName"),
+               AppLanguage.localized("pipLayout.preview.mainMessage"),
+               CGFloat(mainFontSize))
+            : nil
+        let secondary: (user: String, message: String, fontSize: CGFloat)? = (mode == .normal && showSecondaryChat)
+            ? (AppLanguage.localized("pipLayout.preview.viewerName"),
+               AppLanguage.localized("pipLayout.preview.secondMessage"),
+               CGFloat(secondFontSize))
+            : nil
+
+        return PIPPreviewFrameRenderer.render(
+            scene: .init(time: time, ad: ad, chatMain: main, chatSecondary: secondary)
+        )
     }
 
     /// 系統關閉／返回鈕由系統繪製，預覽以佔位圈標出保留區。
@@ -302,73 +305,5 @@ private struct PIPLayoutPreview: View {
             .overlay(Circle().strokeBorder(.white.opacity(0.25), lineWidth: scale))
             .accessibilityLabel("系統 PiP 控制")
     }
-
-    private func messageRow(name: String, message: String, fontSize: Double, accent: Color, scale: CGFloat) -> some View {
-        HStack(alignment: .top, spacing: 6 * scale) {
-            Circle()
-                .fill(accent.opacity(0.82))
-                .frame(width: 18 * scale, height: 18 * scale)
-
-            VStack(alignment: .leading, spacing: 1 * scale) {
-                Text(name)
-                    .font(.system(size: max(7, CGFloat(fontSize) * 0.75 * scale), weight: .bold))
-                    .foregroundStyle(accent)
-
-                Text(message)
-                    .font(.system(size: max(7, CGFloat(fontSize) * scale), weight: .regular))
-                    .foregroundStyle(.white)
-                    .lineLimit(2)
-            }
-        }
-    }
-
-    private func sponsorBanner(scale: CGFloat, canvasWidth: CGFloat) -> some View {
-        HStack(alignment: .top, spacing: 8 * scale) {
-            Circle()
-                .fill(Color.white.opacity(0.92))
-                .overlay {
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 12 * scale, weight: .bold))
-                        .foregroundStyle(Color.orange)
-                }
-                .frame(width: 28 * scale, height: 28 * scale)
-
-            VStack(alignment: .leading, spacing: max(0, CGFloat(adSpacing) * scale)) {
-                Text("pipLayout.preview.sponsorName")
-                    .font(.system(size: max(7, CGFloat(adUserFontSize) * scale), weight: .bold))
-                    .foregroundStyle(.white)
-
-                Text("pipLayout.preview.adMessage")
-                    .font(.system(size: max(7, CGFloat(adFontSize) * scale), weight: .regular))
-                    .foregroundStyle(.white.opacity(0.92))
-                    .lineLimit(2)
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(8 * scale)
-        .frame(width: canvasWidth * 0.88, alignment: .leading)
-        .background(Color.orange.opacity(0.86))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-
-    private func sponsorCenterY(metrics: PIPPreviewMetrics) -> CGFloat {
-        let labelHeight = UIFont.boldSystemFont(ofSize: max(1, CGFloat(adUserFontSize))).lineHeight
-        let textHeight = UIFont.systemFont(ofSize: max(1, CGFloat(adFontSize))).lineHeight
-        let bannerHeight = max(52, 6 + labelHeight + CGFloat(adSpacing) + textHeight * 2 + 4 + 4)
-        return (metrics.sponsorY + bannerHeight * 0.5) * metrics.scale
-    }
 }
 
-private struct PIPPreviewMetrics {
-    let scale: CGFloat
-
-    var sponsorY: CGFloat { 85 }
-    var messageLeading: CGFloat { PIPOverlayLayout.contentLeading * scale }
-
-    func chatTopY(mode: PIPLayoutPreviewMode) -> CGFloat {
-        let base = PIPOverlayLayout.chatTopMargin(canvasHeight: 200)
-        let adOffset = mode == .adOverlay ? 145.0 : 0
-        return (base + adOffset) * scale
-    }
-}
