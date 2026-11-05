@@ -1,165 +1,75 @@
 import SwiftUI
 
-/// 手動測試工具；離頁停止獨立的 30 FPS 測試服務。
+/// 本機畫面測試：未啟動時只更新預覽；不呼叫 TTS 或向外傳送訊息。
 struct PIPDebugView: View {
-
-    @ObservedObject private var pipService = PIPService.shared
-
-    @State private var isTestPiPActive = false
-
-    @State private var manualMessage: String = "test"
-    @State private var manualUser: String = "User33"
+    @ObservedObject private var service = PIPService.shared
+    @State private var user = "測試觀眾"
+    @State private var message = "這是測試訊息"
+    @State private var primary = true
+    @State private var previewMessage = "這是測試訊息"
+    @ObservedObject private var testService = PIPTestService.shared
 
     var body: some View {
-        ScrollView {
-        VStack(spacing: 20) {
-            Text("Chat")
-
-            HStack(spacing: 20) {
-                VStack(spacing: 10) {
-                    Button("[聊天組]啟動 PiP") {
-                        let pipSize = CGSize(width: 300, height: 200)
-                        PIPService.shared.startPiP(size: pipSize)
-                    }
-                    .disabled((pipService.isPiPActive && !pipService.isKeepaliveMode) || isTestPiPActive)
-
-                    Button("[保活組]啟動 PiP 保活") {
-                        let pipSize = CGSize(width: 300, height: 200)
-                        PIPService.shared.startKeepalivePiP(size: pipSize)
-                    }
-                    .disabled(pipService.isPiPActive || isTestPiPActive)
-
-                    Button("[聊天室]停止 PiP") {
-                        PIPService.shared.stopPiP()
-                    }
-                    .disabled(!pipService.isPiPActive)
-                }
-
-                VStack(spacing: 10) {
-                    Button("[測試組]啟動 PiP") {
+        Form {
+            Section("畫面預覽") {
+                Image(uiImage: preview).resizable().aspectRatio(1.5, contentMode: .fit)
+                    .frame(maxWidth: 420).frame(maxWidth: .infinity)
+                Text("預覽使用固定範例，不會啟動 PiP；系統控制鈕不包含在輸出影像中。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section("PiP 控制") {
+                Button("啟動聊天室 PiP") { service.startPiP(size: CGSize(width: 300, height: 200)) }
+                    .disabled(service.isPiPActive || testService.isRunning)
+                Button("停止目前 PiP", role: .destructive) { service.stopPiP() }
+                    .disabled(!service.isPiPActive)
+                Text(service.isPiPActive ? "測試訊息會送進目前聊天室；保活模式只更新下方預覽。" : "尚未啟動：測試只更新預覽。")
+                    .font(.caption)
+            }
+            Section("測試訊息") {
+                TextField("名稱", text: $user)
+                TextField("內容", text: $message)
+                Toggle("主要訊息", isOn: $primary)
+                Button("顯示測試訊息") { submit(message) }
+                Button("測試長文字") { submit(String(repeating: "長訊息換行測試。", count: 12)) }
+                Button("測試表情符號") { submit("🎉 測試訊息 ☕️ 🐿️") }
+                Text("測試名稱會加上標記，不觸發朗讀。次要訊息遵循目前的顯示設定。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section("獨立播放器測試") {
+                DisclosureGroup("30 FPS 測試播放器") {
+                    Button("啟動獨立播放器") {
                         PIPTestService.shared.startPiPTest(size: CGSize(width: 300, height: 200))
-                        isTestPiPActive = true
-                    }
-                    .disabled(pipService.isPiPActive || isTestPiPActive)
-
-                    Button("[測試組]停止 PiP") {
+                    }.disabled(service.isPiPActive || testService.isRunning)
+                    Button("停止獨立播放器") {
                         PIPTestService.shared.stopPiP()
-                        isTestPiPActive = false
-                    }
-                    .disabled(!isTestPiPActive)
+                    }.disabled(!testService.isRunning)
+                    Text("與正式 PiP 互斥，離開此頁會持續運行，請按停止或使用系統關閉鈕。")
+                        .font(.caption)
                 }
             }
-
-            VStack(spacing: 10) {
-                TextField("輸入手動用戶名", text: $manualUser)
-                    .textFieldStyle(.roundedBorder)
-                    .padding(.horizontal)
-
-                TextField("輸入手動訊息", text: $manualMessage)
-                    .textFieldStyle(.roundedBorder)
-                    .padding(.horizontal)
-
-                Button("新增訊息") {
-                    let imgA = "https://img.icons8.com/?size=100&id=12860&format=png&color=000000"
-                    let imgG = "https://img.icons8.com/?size=100&id=y5xu7jml0MTU&format=png&color=000000"
-
-                    PIPService.shared
-                        .addMessage(
-                            user: manualUser,
-                            msg: manualMessage,
-                            imgURL: imgA,
-                            giftURL: imgG
-                        )
-
-                    TTSService.shared.speakStreamMessage(
-                        user: manualUser,
-                        message: manualMessage
-                    )
-
-                }
-
-            }
-
-
-
-            Button("測試長訊息") {
-
-                let user =  "1阿呵呵呵阿呵呵呵阿呵呵呵阿呵呵呵2阿呵呵呵阿3呵呵呵阿呵呵4呵阿呵呵呵阿呵呵呵阿呵呵呵阿5呵呵呵阿呵呵呵阿呵呵呵阿呵呵呵阿呵呵呵測試5"
-
-                let msg =  "1阿呵呵呵阿呵呵呵2阿呵呵呵阿3呵呵呵阿呵呵呵阿呵呵呵阿呵4呵呵阿呵呵呵阿呵呵呵阿呵呵呵5阿呵呵呵阿呵呵呵阿呵呵呵測試6"
-                let img = "https://img.icons8.com/?size=100&id=L8HgZUgz2jWS&format=png&color=000000"
-
-                let gift = "https://img.icons8.com/?size=100&id=tgLepcPbp6mP&format=png&color=000000"
-
-                PIPService.shared
-                    .addMessage(user: user, msg: msg,imgURL: img,giftURL: gift)
-
-
-                TTSService.shared.speakStreamMessage(
-                    user: user,
-                    message: msg
-                )
-
-            }
-            Button("TestB") {
-                let imgA = "https://img.icons8.com/?size=100&id=12860&format=png&color=000000"
-                let imgG = "https://img.icons8.com/?size=100&id=y5xu7jml0MTU&format=png&color=000000"
-
-
-                let UNAME = "小明3"
-                let UMSG = "Hello!"
-
-                PIPService.shared.addMessage(user: UNAME, msg: UMSG, imgURL: imgA, giftURL: imgG)
-
-                TTSService.shared.speakStreamMessage(
-                    user: UNAME,
-                    message: UMSG
-                )
-
-            }
-
-            Button("Test次要訊息") {
-                let imgA = "https://img.icons8.com/?size=100&id=12860&format=png&color=000000"
-                let imgG = "https://img.icons8.com/?size=100&id=y5xu7jml0MTU&format=png&color=000000"
-
-                let UNAME = "小明2"
-                let UMSG = "Hello!"
-
-                PIPService.shared.addMessage(user: UNAME , msg: UMSG , imgURL: imgA, giftURL: imgG, isMain: false)
-
-                TTSService.shared.speakStreamMessage(
-                    user: UNAME,
-                    message: UMSG,
-                    isMain:false
-                )
-
-            }
-
-            Button("新增訊息") {
-
-                let UNAME = ""
-                let UMSG = "測試訊息圖片"
-                let GIFTURL = "https://img.icons8.com/?size=100&id=y5xu7jml0MTU&format=png&color=000000"
-                
-                PIPService.shared.addMessage(
-                    msg: UMSG,
-                    imgURL: "https://img.icons8.com/?size=100&id=12860&format=png&color=000000",
-                    giftURL: GIFTURL
-                )
-
-
-                TTSService.shared.speakStreamMessage(
-                    user: UNAME,
-                    message: UMSG
-                )
-
-            }
-
         }
-        .padding()
+        .navigationTitle("訊息與畫面測試")
+
+    }
+
+    /// 只注入現有聊天室；不偷偷建立服務工作階段或送出遠端訊息。
+    private func submit(_ text: String) {
+        previewMessage = text
+        if service.isPiPActive && !service.isKeepaliveMode {
+            service.addMessage(user: "[測試] \(user)", msg: text, isMain: primary)
         }
-        .onDisappear {
-            if isTestPiPActive { PIPTestService.shared.stopPiP(); isTestPiPActive = false }
-        }
+    }
+
+    /// 與正式畫面共用 renderer，預覽不改動目前聊天佇列。
+    private var preview: UIImage {
+        let summary = !primary && PIPDisplaySettings.secondaryMode == "summary"
+        let hidden = !primary && PIPDisplaySettings.secondaryMode == "hidden"
+        return PIPPreviewFrameRenderer.render(scene: .init(
+            time: .init(elapsedString: "00:12:34", nowTimeText: "12:34:56", nowTimeLabel: "現在時間",
+                statusText: "直播中", statusEnded: false, viewerCount: 128,
+                isReconnecting: false, reconnectText: "", secondaryNotice: summary ? "[測試] \(user)：\(previewMessage)" : nil),
+            ad: nil,
+            chatMain: primary ? ("[測試] \(user)", previewMessage, 18) : nil,
+            chatSecondary: !primary && !summary && !hidden ? ("[測試] \(user)", previewMessage, 15) : nil))
     }
 }

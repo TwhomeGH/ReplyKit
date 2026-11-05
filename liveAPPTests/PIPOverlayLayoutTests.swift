@@ -3,7 +3,7 @@ import Testing
 
 struct PIPOverlayLayoutTests {
     @Test func rowsStartBelowSystemButtonsAndStayOrdered() {
-        #expect(PIPOverlayLayout.controlBandHeight == 56)
+        #expect(PIPOverlayLayout.controlBandHeight == 36)
         #expect(PIPOverlayLayout.statusRowY >= PIPOverlayLayout.controlBandHeight)
         #expect(PIPOverlayLayout.nowTimeY > PIPOverlayLayout.statusRowY)
         #expect(PIPOverlayLayout.noticeY > PIPOverlayLayout.nowTimeY)

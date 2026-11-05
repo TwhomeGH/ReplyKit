@@ -3,6 +3,7 @@ import SwiftUI
 /// 日常 PiP 操作入口，與測試工具分離。
 struct PIPView: View {
     @ObservedObject private var service = PIPService.shared
+    @ObservedObject private var testService = PIPTestService.shared
     @AppStorage("pipHideSystemControls", store: userDefaults) private var hideSystemControls = false
 
     var body: some View {
@@ -24,9 +25,9 @@ struct PIPView: View {
                 .padding(.vertical, 6)
                 .accessibilityElement(children: .combine)
                 Button("啟動聊天室 PiP") { service.startPiP(size: CGSize(width: 300, height: 200)) }
-                    .disabled(service.isPiPActive)
+                    .disabled(service.isPiPActive || testService.isRunning)
                 Button("啟動保活 PiP") { service.startKeepalivePiP(size: CGSize(width: 300, height: 200)) }
-                    .disabled(service.isPiPActive)
+                    .disabled(service.isPiPActive || testService.isRunning)
                 Button(role: .destructive) { service.stopPiP() } label: {
                     Label("停止 PiP", systemImage: "stop.circle")
                         .foregroundStyle(service.isPiPActive ? Color.red : Color.secondary)
@@ -50,6 +51,12 @@ struct PIPView: View {
                 PIPService.diagnosticInstance?.applySystemControlsStyle()
             }
 
+            if testService.isRunning {
+                Section("獨立測試播放器") {
+                    Label(testService.isPiPActive ? "測試 PiP 正在顯示" : "測試 PiP 啟動中", systemImage: "pip")
+                    Button("停止測試 PiP", role: .destructive) { testService.stopPiP() }
+                }
+            }
             PIPDisplaySettingsSection()
             PIPKeepaliveSettingsSection()
             Section("外觀") {

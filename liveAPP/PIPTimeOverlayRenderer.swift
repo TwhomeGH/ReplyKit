@@ -30,9 +30,6 @@ enum PIPTimeOverlayRenderer {
         let elapsedFont = UIFont.monospacedDigitSystemFont(ofSize: 14, weight: .regular)
         let elapsedLabelFont = UIFont.systemFont(ofSize: 14, weight: .medium)
 
-        let imageHeight: CGFloat = elapsedLabelFont.lineHeight
-        let imageWidth: CGFloat = imageHeight
-        let elapsedPoint = CGPoint(x: PIPOverlayLayout.contentLeading, y: PIPOverlayLayout.statusRowY)
 
         let fontSize: CGFloat = 16
         let timeFont = UIFont.monospacedDigitSystemFont(ofSize: fontSize, weight: .regular)
@@ -58,74 +55,48 @@ enum PIPTimeOverlayRenderer {
 
         UIGraphicsPushContext(cg)
 
-        let elapsedTextSize = (scene.elapsedString as NSString).size(withAttributes: [.font: elapsedFont])
-        let statusWidth = scene.statusText.isEmpty ? 0 : badgeWidth(text: scene.statusText, font: elapsedLabelFont, icon: nil)
-        let viewerWidth = scene.viewerCount.map { badgeWidth(text: "\($0)", font: elapsedLabelFont, icon: viewerIcon) } ?? 0
-        let plan = PIPOverlayLayout.statusRowPlan(
-            availableWidth: PIPOverlayLayout.statusRowAvailableWidth(canvasWidth: size.width),
-            iconWidth: imageWidth,
-            elapsedWidth: elapsedTextSize.width,
-            statusWidth: statusWidth,
-            viewerWidth: viewerWidth
-        )
+        // 計時獨立置中於兩側控制鈕之間，不把整片內容推到控制帶下方。
+        let timerWidth = max(1, size.width - PIPOverlayLayout.controlSideInset * 2)
+        let timerStyle = NSMutableParagraphStyle()
+        timerStyle.alignment = .center
+        timerStyle.lineBreakMode = .byTruncatingTail
+        (scene.elapsedString as NSString).draw(in: CGRect(x: PIPOverlayLayout.controlSideInset,
+            y: PIPOverlayLayout.timerY, width: timerWidth, height: 20),
+            withAttributes: [.font: elapsedFont, .foregroundColor: UIColor.white, .paragraphStyle: timerStyle])
 
-        if plan.drawIcon {
-            clockIcon?.draw(in: CGRect(
-                x: elapsedPoint.x,
-                y: elapsedPoint.y + (elapsedFont.capHeight - imageHeight) * 0.5,
-                width: imageWidth,
-                height: imageHeight
-            ))
+        // 狀態與人數使用自己的第二列；重連狀態取代普通狀態，不新增遮住聊天室的行。
+        let status = scene.isReconnecting ? scene.reconnectText : scene.statusText
+        let viewers = scene.viewerCount.map { $0 >= 10000 ? String(format: "%.1f萬", Double($0) / 10000) : String($0) }
+        let viewerWidth = viewers.map { badgeWidth(text: $0, font: elapsedLabelFont, icon: viewerIcon) } ?? 0
+        let available = max(1, size.width - PIPOverlayLayout.contentLeading - PIPOverlayLayout.contentTrailing)
+        let statusLimit = max(1, available - viewerWidth - 8)
+        var shortStatus = status
+        while !shortStatus.isEmpty && badgeWidth(text: shortStatus + "…", font: elapsedLabelFont, icon: nil) > statusLimit {
+            shortStatus.removeLast()
+        }
+        if shortStatus != status { shortStatus += "…" }
+        var badgeX = PIPOverlayLayout.contentLeading
+        if !status.isEmpty {
+            badgeX += drawBadge(in: cg, text: shortStatus, font: elapsedLabelFont,
+                origin: CGPoint(x: badgeX, y: PIPOverlayLayout.statusRowY), textColor: .white,
+                bgColor: scene.statusEnded ? .darkGray : .systemOrange) + 6
+        }
+        if let viewers, badgeX + viewerWidth <= size.width - PIPOverlayLayout.contentTrailing {
+            _ = drawBadge(in: cg, text: viewers, font: elapsedLabelFont,
+                origin: CGPoint(x: badgeX, y: PIPOverlayLayout.statusRowY), textColor: .darkGray,
+                bgColor: .lightGray, icon: viewerIcon)
         }
 
-        let timeTextPoint = CGPoint(
-            x: elapsedPoint.x + (plan.drawIcon ? imageWidth + 4 : 0),
-            y: elapsedPoint.y + (elapsedFont.capHeight - elapsedFont.lineHeight) * 0.5
-        )
-
-        (scene.elapsedString as NSString).draw(at: timeTextPoint, withAttributes: [.font: elapsedFont, .foregroundColor: UIColor.white])
-
-        var badgeX = timeTextPoint.x + elapsedTextSize.width + 8
-        let badgeY = timeTextPoint.y + (elapsedFont.capHeight - elapsedLabelFont.lineHeight) * 0.5
-
-        if !scene.statusText.isEmpty {
-            var endColor = #colorLiteral(red: 1, green: 0.4538183808, blue: 0.1835401952, alpha: 1)
-            if scene.statusEnded { endColor = #colorLiteral(red: 0.2549019754, green: 0.2745098174, blue: 0.3019607961, alpha: 1) }
-
-            let drawnStatusWidth = drawBadge(in: cg, text: scene.statusText, font: elapsedLabelFont,
-                                             origin: CGPoint(x: badgeX, y: badgeY),
-                                             textColor: .white, bgColor: endColor,
-                                             padding: UIEdgeInsets(top: 2, left: 8, bottom: 2, right: 8))
-            badgeX += drawnStatusWidth + 6
-        }
-
-        if plan.drawViewer, let viewerCount = scene.viewerCount {
-            _ = drawBadge(in: cg, text: "\(viewerCount)", font: elapsedLabelFont,
-                          origin: CGPoint(x: badgeX, y: badgeY),
-                          textColor: UIColor(white: 0.16, alpha: 1.0),
-                          bgColor: UIColor(white: 0.83, alpha: 1.0),
-                          icon: viewerIcon,
-                          iconTintColor: UIColor(white: 0.22, alpha: 1.0),
-                          padding: UIEdgeInsets(top: 2, left: 8, bottom: 2, right: 8))
-        }
-
-        fullLine.draw(at: textPoint)
-
-        if scene.isReconnecting {
-            badgeX = timeTextPoint.x + elapsedTextSize.width + 8
-            _ = drawBadge(in: cg, text: scene.reconnectText, font: elapsedLabelFont,
-                          origin: CGPoint(x: badgeX, y: PIPOverlayLayout.noticeY),
-                          textColor: .white,
-                          bgColor: #colorLiteral(red: 1, green: 0.6, blue: 0, alpha: 1),
-                          icon: reconnectIcon, iconTintColor: .white,
-                          padding: UIEdgeInsets(top: 2, left: 8, bottom: 2, right: 8))
-        }
+        // 長日期或自訂標籤限制在內容寬度內，不讓尾端超出視窗。
+        let timeParagraph = NSMutableParagraphStyle()
+        timeParagraph.lineBreakMode = .byTruncatingTail
+        fullLine.addAttribute(.paragraphStyle, value: timeParagraph, range: NSRange(location: 0, length: fullLine.length))
+        fullLine.draw(in: CGRect(origin: textPoint, size: CGSize(width: available, height: 20)))
 
         if let notice = scene.secondaryNotice {
             let paragraph = NSMutableParagraphStyle()
             paragraph.lineBreakMode = .byTruncatingTail
             let noticeY = PIPOverlayLayout.noticeY
-                + (scene.isReconnecting ? PIPOverlayLayout.noticeLineHeight : 0)
             (notice as NSString).draw(in: CGRect(
                 x: PIPOverlayLayout.contentLeading,
                 y: noticeY,

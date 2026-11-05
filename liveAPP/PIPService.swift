@@ -186,6 +186,8 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     private let pipStartThreshold: Int64 = 1
 
     private var renderCancelled = true
+    /// 包含正式播放器啟動等待階段，供測試服務互斥檢查。
+    var isRunningOrStarting: Bool { !renderCancelled || isPiPActive || pipController != nil }
     private var renderGeneration = PIPRenderGeneration()
     private var pipSession = PIPRenderGeneration()
     private var scheduledRender: DispatchWorkItem?
@@ -767,6 +769,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     func startPiP(
         size: CGSize = CGSize(width: 300, height: 200)
     ) {
+        guard !PIPTestService.shared.isRunning else { return }
         stopPiP()
         setupAudioSession()
         currentFPS = idleFPS
@@ -818,6 +821,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
     @MainActor
     func startKeepalivePiP(size: CGSize = CGSize(width: 300, height: 200)) {
+        guard !PIPTestService.shared.isRunning else { return }
         stopPiP()
         isKeepaliveMode = true
         setupAudioSession()
@@ -1256,7 +1260,8 @@ extension PIPService: AVPictureInPictureControllerDelegate {
     }
 }
 
-final class PIPTestService: NSObject {
+/// 獨立測試播放器；生命週期由服務持有，離開操作頁不停止。
+final class PIPTestService: NSObject, ObservableObject {
     static let shared = PIPTestService()
     private override init() {}
 
@@ -1264,7 +1269,11 @@ final class PIPTestService: NSObject {
     private var pipController: AVPictureInPictureController?
     private var renderTimer: DispatchSourceTimer?
     private var frameCount: Int64 = 0
-    private var isPiPActive = false
+    /// 包含準備及啟動中；UI 依此禁止衝突操作，停止與失敗都清空。
+    @Published private(set) var isRunning = false
+    @Published private(set) var isPiPActive = false
+    private var startRequested = false
+    private var session = UUID()
     private let pipStartThreshold: Int64 = 3
     private var frameSize: CGSize = CGSize(width: 300, height: 200)
 
@@ -1284,7 +1293,20 @@ final class PIPTestService: NSObject {
     }
     // MARK: - Start PiP
     func startPiPTest(size: CGSize = CGSize(width: 300, height: 200)) {
-        stopPiP()
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { self.startPiPTest(size: size) }
+            return
+        }
+        guard !isRunning, PIPService.diagnosticInstance?.isRunningOrStarting != true else { return }
+        session = UUID()
+        let token = session
+        isRunning = true
+        startRequested = false
+        // 啟動未得到成功回呼時釋放互斥與計時器，不讓測試永久卡住。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
+            guard let self, self.session == token, self.isRunning, !self.isPiPActive else { return }
+            self.stopPiP()
+        }
         setupAudioSession()
 
         self.frameSize = size
@@ -1341,7 +1363,8 @@ final class PIPTestService: NSObject {
 
     // MARK: - Render Timer
     private func startRenderTimer() {
-        let queue = DispatchQueue(label: "com.pip.render", qos: .userInteractive)
+        // 測試狀態、顯示層與 UI 統一由主佇列管理。
+        let queue = DispatchQueue.main
         renderTimer = DispatchSource.makeTimerSource(queue: queue)
         renderTimer?.schedule(deadline: .now(), repeating: 1.0 / 30.0)
         renderTimer?.setEventHandler { [weak self] in
@@ -1352,6 +1375,14 @@ final class PIPTestService: NSObject {
 
     // MARK: - Stop PiP
     func stopPiP() {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { self.stopPiP() }
+            return
+        }
+        guard isRunning || pipController != nil else { return }
+        session = UUID()
+        isRunning = false
+        startRequested = false
         renderTimer?.cancel()
         renderTimer = nil
         pipController?.stopPictureInPicture()
@@ -1370,7 +1401,8 @@ final class PIPTestService: NSObject {
 
     // MARK: - 渲染白畫面幀
     private func renderWhiteFrame() {
-        guard let displayLayer = displayLayer else { return }
+        guard isRunning, let displayLayer = displayLayer else { return }
+        let token = session
 
         let width = Int(frameSize.width)
         let height = Int(frameSize.height)
@@ -1429,20 +1461,16 @@ final class PIPTestService: NSObject {
         }
 
         DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-
-            print("[R]status:", displayLayer.status.rawValue)
-            print("ready:", displayLayer.isReadyForMoreMediaData)
-            print("pip active:", pipController?.isPictureInPictureActive as Any)
+            guard let self, self.isRunning, self.session == token else { return }
 
             if displayLayer.isReadyForMoreMediaData {
                 displayLayer.enqueue(sampleBuffer)
                 self.frameCount += 1
-                logTo("FrameC:\(frameCount)")
 
-                if !self.isPiPActive && self.frameCount >= self.pipStartThreshold {
+
+                if !self.startRequested && self.frameCount >= self.pipStartThreshold {
+                    self.startRequested = true
                     self.pipController?.startPictureInPicture()
-                    self.isPiPActive = true
                 }
             }
         }
@@ -1456,16 +1484,20 @@ extension PIPTestService: AVPictureInPictureControllerDelegate {
     internal func pictureInPictureControllerDidStartPictureInPicture(
         _ pictureInPictureController: AVPictureInPictureController
     ) {
-        logTo("PIP Open")
+        guard pictureInPictureController === pipController, isRunning else { return }
+        isPiPActive = true
+        logTo("測試 PiP 已啟動")
     }
     internal func pictureInPictureControllerDidStopPictureInPicture(
         _ pictureInPictureController: AVPictureInPictureController
     ) {
-        logTo("PIP Stop")
-        PIPService.shared.stopPiP()
+        guard pictureInPictureController === pipController else { return }
+        stopPiP()
     }
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController,
                                     failedToStartPictureInPictureWithError error: Error) {
-        logTo("PIP Error \(error)")
+        guard pictureInPictureController === pipController else { return }
+        logTo("測試 PiP 啟動失敗：\(error)")
+        stopPiP()
     }
 }

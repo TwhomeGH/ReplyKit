@@ -6,20 +6,23 @@ import Foundation
 /// 因此把它們佔用的上緣與左右角落視為固定保留區，內容一律避開。
 enum PIPOverlayLayout {
     /// 系統 PiP 按鈕直徑與邊距；兩顆按鈕都落在上方保留帶內。
-    static let controlDiameter: CGFloat = 44
+    static let controlDiameter: CGFloat = 24
     static let controlMargin: CGFloat = 6
+    /// 內容避讓獨立於示意按鈕大小；不是系統回傳的安全區。
+    static let controlSideInset: CGFloat = 38
+    static let timerY: CGFloat = 12
     /// 上方系統控制列保留高度；兩顆按鈕都落在此帶內。
     static var controlBandHeight: CGFloat { controlDiameter + controlMargin * 2 }
     /// 保留帶以外的內容左緣。
     static let contentLeading: CGFloat = 12
     static let contentTrailing: CGFloat = 12
     /// 控制帶以下的第一列（計時／直播／觀眾），與現在時間共用左緣。
-    static let statusRowY: CGFloat = 58
-    static let nowTimeY: CGFloat = 78
-    static let noticeY: CGFloat = 99
+    static let statusRowY: CGFloat = 36
+    static let nowTimeY: CGFloat = 58
+    static let noticeY: CGFloat = 78
     static let noticeLineHeight: CGFloat = 20
-    /// 聊天室安全頂距；300x200 時為 120。
-    static let minimumChatTopMargin: CGFloat = 120
+    /// 聊天室安全頂距；300x200 時為 100。
+    static let minimumChatTopMargin: CGFloat = 100
 
     /// 狀態列已移到保留帶下方，可用寬度不再扣掉系統按鈕。
     static func statusRowAvailableWidth(canvasWidth: CGFloat) -> CGFloat {

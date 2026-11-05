@@ -14,6 +14,9 @@ enum PIPPreviewFrameRenderer {
         format.scale = UIScreen.main.scale
         return UIGraphicsImageRenderer(size: size, format: format).image { context in
             let cg = context.cgContext
+            // 正式 renderer 接受左下原點；UIKit 預覽先轉一次，避免各圖層二次翻轉。
+            cg.translateBy(x: 0, y: size.height)
+            cg.scaleBy(x: 1, y: -1)
             cg.setFillColor(UIColor.black.cgColor)
             cg.fill(CGRect(origin: .zero, size: size))
 
