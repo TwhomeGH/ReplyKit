@@ -1,6 +1,12 @@
 # 變更歷史
 
-## 2026.11.06 05:23 PiP 頭貼測試與長訊息動畫優化
+## 2026.11.06 05:53 修正 CI 模擬器選取忽略 runtime 狀態
+
+- 問題：unit tests 選到 iOS 27.2 的 iPhone Air，但該 runtime 路徑不存在，`xcodebuild test` 直接失敗；`devices.json` 仍把裝置標成 available。
+- 根因：selector 只看 `devices.json` 的 `isAvailable`，沒有使用 workflow 已抓好的 `runtimes.json`，且硬性只選 iOS 27，沒有安裝狀態與 SDK 版本的取捨。
+- 變更：selector 只接受實際安裝且可用的 iOS runtime（含路徑存在檢查）；優先選與建置 SDK 同版本的 runtime，其次 iOS 27，最後才退到最新可用的其他 iOS runtime。`unit-tests.yml` 會把 `xcrun --sdk iphonesimulator --show-sdk-version` 傳給 selector。
+- 補回歸測試：殘留但 runtime 已移除的裝置、runtime 路徑不存在、SDK 版本優先、26.x fallback。
+- 待下一次 CI 驗證實際 runner 的 runtime 清單與選機結果。
 
 - 問題：測試頁只有純文字表情，沒有頭貼可驗證；長訊息捲動時聊天邊緣遮罩每幀重建，動畫明顯變卡。
 - 根因：頭貼只支援 URL 載入；`updateChatEdgeMask` 在每個動畫 tick 都做整層 filter、CATransaction 與遮罩指定，且沒有續段時仍掛著遮罩做 offscreen 合成。

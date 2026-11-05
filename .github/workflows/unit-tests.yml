@@ -84,7 +84,8 @@ jobs:
             -project liveAPP.xcodeproj -scheme liveAPP -configuration Debug \
             -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile \
             -showdestinations 2>&1 | tee TestResults/destinations.log
-          python3 Scripts/select_test_simulator.py
+          python3 Scripts/select_test_simulator.py \
+            --sdk="$(xcrun --sdk iphonesimulator --show-sdk-version)"
 
       - name: Boot simulator
         timeout-minutes: 5
