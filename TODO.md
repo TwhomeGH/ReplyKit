@@ -329,3 +329,8 @@ API 遷移屬後續技術評估，不作為以上功能完成的條件；需要�
 - [ ] ReplayKit／ScreenCaptureKit 實機：核對 publish timeline schema=2、alignment=observeOnly、videoCompensation=0、audioResyncs=0，測試影音不同時開始、長停頓及重連；比對未轉碼接收樣本的聲畫內容，不以最新 PTS 差取代同步驗證。
 - [ ] 底層共同時間原點：先核對來源時鐘與首包等待、單軌發布、後加入軌道及重連策略；目前仍各軌獨立歸零。
 - [ ] 影格跨階段追蹤：保存原始擷取時間、各階段耗時及重複畫面標記，定位內容延遲來源。
+
+## 分類文件靜態站
+
+- [x] .changelog.toml 分組現有 Markdown，驗證路徑存在及唯一。
+- [ ] 固定 ChangeLogKit 可安裝版本，接入既有 DocC workflow 的 site/project 子目錄；補首頁跳轉、觸發條件及子路徑連結驗收。

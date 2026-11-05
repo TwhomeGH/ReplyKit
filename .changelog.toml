@@ -1,0 +1,116 @@
+# ReplyKit 文件分類；路徑相對於專案根目錄，不搬動文件。
+[tool.changelog]
+title = "ReplyKit 變更歷史與開發文件"
+project = "ReplyKit"
+history = "Docs/ChangeHistory.md"
+features = "Docs/development/features.json"
+
+[[tool.changelog.docs.groups]]
+id = "guide"
+title = "使用指南"
+color = "green"
+order = 10
+paths = [
+  "Docs/development/README.md",
+  "Docs/README.md",
+  "Docs/sponsor.md",
+  "Docs/tts-filter-configuration.md",
+  "Docs/version.md",
+  "README.md",
+]
+
+[[tool.changelog.docs.groups]]
+id = "media"
+title = "影音與錄製"
+color = "blue"
+order = 20
+paths = [
+  "Docs/bitrate_mode.md",
+  "Docs/development/COMPRESSED_VIDEO_LIBRARY.md",
+  "Docs/development/COMPRESSION_TEST_FIXTURE.md",
+  "Docs/development/ENCODING_CAPABILITIES.md",
+  "Docs/development/RECORDING_COMPRESSION.md",
+  "Docs/development/SCREEN_CAPTURE_CALLBACKS.md",
+  "Docs/development/VIDEO_COMPRESSION.md",
+  "Docs/haishinkit-fixes.md",
+  "Docs/metal-shader-optimizations.md",
+  "Docs/screencapturekit-integration.md",
+  "Docs/video-dimensions.md",
+  "Docs/video-output-pool-lifetime.md",
+]
+
+[[tool.changelog.docs.groups]]
+id = "pip"
+title = "PiP 與介面"
+color = "violet"
+order = 30
+paths = [
+  "Docs/audio-volume-page.md",
+  "Docs/av-pipeline.md",
+  "Docs/development/HOME_MODULES.md",
+  "Docs/development/LIVE_ACTIVITY.md",
+  "Docs/development/PIP_KEEPALIVE.md",
+  "Docs/development/PIP_REFRESH.md",
+  "Docs/development/SETTINGS_NAVIGATION.md",
+  "Docs/home-layout.md",
+  "Docs/overlay-scene-config.md",
+  "Docs/pip-keepalive-performance.md",
+  "Docs/pip-layout-config.md",
+  "Docs/pip-performance-improvements.md",
+]
+
+[[tool.changelog.docs.groups]]
+id = "diagnostics"
+title = "診斷與效能"
+color = "orange"
+order = 40
+paths = [
+  "Docs/cooperative-queue-stack-overflow.md",
+  "Docs/coroutine-frame-recursion.md",
+  "Docs/crash-tracing.md",
+  "Docs/development/DEVICE_DIAGNOSTICS.md",
+  "Docs/development/LOG49_DIAGNOSTICS.md",
+  "Docs/development/LOG58_DISCONNECT.md",
+  "Docs/development/LOG_DIAGNOSTIC_EXPORT.md",
+  "Docs/development/LOG_PERSISTENCE.md",
+  "Docs/development/METRICKIT.md",
+  "Docs/development/STREAM_DIAGNOSTICS.md",
+  "Docs/generic-specialization-recursion.md",
+  "Docs/log-system-improvements.md",
+  "Docs/log-view.md",
+  "Docs/memory-warning-removal.md",
+  "Docs/nw-recursion.md",
+  "Docs/page-switch-crash-analysis.md",
+  "Docs/uint32-overflow-2026.md",
+]
+
+[[tool.changelog.docs.groups]]
+id = "network"
+title = "Socket 與 RTMP"
+color = "cyan"
+order = 50
+paths = [
+  "Docs/development/EXTERNAL_LOG_TRANSPORT.md",
+  "Docs/development/RTMP_TIMELINE_DIAGNOSTICS.md",
+  "Docs/development/SOCKET_MODULES.md",
+  "Docs/replykit-log-socket-stability.md",
+  "Docs/socket-wire-protocol.md",
+]
+
+[[tool.changelog.docs.groups]]
+id = "development"
+title = "開發與維護"
+color = "gray"
+order = 60
+paths = [
+  "Docs/apple-feedback-template.md",
+  "Docs/build-information.md",
+  "Docs/ChangeHistory.md",
+  "Docs/design-issues.md",
+  "Docs/development/CI_CONCURRENCY.md",
+  "Docs/github-alerts.md",
+  "Docs/localization.md",
+  "Docs/replykit-core-fixes-summary.md",
+  "Docs/workflow.md",
+  "TODO.md",
+]

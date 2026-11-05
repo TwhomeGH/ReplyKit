@@ -5,6 +5,12 @@
 - 新增**修復紀錄** → 執行 `python Scripts/change_log.py`（或雙擊 `Scripts/change_log.cmd`）開本機網頁 GUI，或直接寫進 [ChangeHistory.md](ChangeHistory.md)
 - 新增**主題文件** → 在下面對應分類加一行連結
 
+## 分類設定與靜態站規劃
+
+根目錄 `.changelog.toml` 依使用指南、影音、PiP／介面、診斷、網路協定及開發維護分類。新增文件時同步加入分類。舊版 Scripts/change_log.py 不保證會讀取新設定。
+
+Pages 建議沿用既有 documentation.yml 單一部署，ChangeLogKit 匯出到 site/project/，DocC 保留原路徑，首頁再加入分類文件與歷史入口。CI 接入尚未完成：需先固定可安裝的工具版本、補文件觸發條件，並驗證子路徑連結與圖片；不能使用本機 ChangeLogTools 絕對路徑。
+
 ## 開發索引入口
 
 執行 `Scripts/change_log.cmd`，點「功能／API／近期改動索引」。[使用方式與維護規則](development/README.md)涵蓋功能接入狀態、Git 版本與 DocC 文件。
