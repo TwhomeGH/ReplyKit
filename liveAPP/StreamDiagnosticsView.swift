@@ -159,8 +159,8 @@ struct StreamDiagnosticsSections: View {
                         detail("音訊編碼設定", value.audioSettings)
                         detail("實際音訊編碼輸出格式", encodedAudio(value))
                         if let encoding = value.encoding {
-                            detail("影片 RTMP 入列時間", mediaTiming(encoding.videoTiming))
-                            detail("音訊 RTMP 入列時間", mediaTiming(encoding.audioTiming))
+                            mediaTimingSection("影片 RTMP 入列紀錄", encoding.videoTiming, sampledAt: value.sampledAt)
+                            mediaTimingSection("音訊 RTMP 入列紀錄", encoding.audioTiming, sampledAt: value.sampledAt)
                             detail("編碼觀測世代", "\(encoding.generation) · 取樣時 publishing=\(encoding.isPublishing)")
                             detail("影片格式變更時間", encoding.videoFormatChangedAt?.formatted())
                             detail("音訊格式變更時間", encoding.audioFormatChangedAt?.formatted())
@@ -184,14 +184,59 @@ struct StreamDiagnosticsSections: View {
         }
     }
 
-    /// 明確區分來源時間、RTMP 相對時間與本機入列結果；不推算跨軌口型差。
-    private func mediaTiming(_ value: RTMPMediaTimingDiagnostics?) -> String? {
-        guard let value else { return nil }
-        func sample(_ value: RTMPMediaTimingSample?) -> String {
-            guard let value else { return "尚無資料" }
-            return "#\(value.sequence) 來源 PTS/DTS：\(seconds(value.sourcePTSSeconds)) / \(seconds(value.sourceDTSSeconds))；RTMP PTS/DTS：\(seconds(value.generatedPTSSeconds)) / \(seconds(value.generatedDTSSeconds))；入列：\(value.accepted)；音訊整批 duration：\(seconds(value.preferredDurationSeconds))"
+    /// 最新嘗試預設可見；首筆資料保留為起始診斷，不與目前進展混排。
+    @ViewBuilder
+    private func mediaTimingSection(_ title: String, _ value: RTMPMediaTimingDiagnostics?, sampledAt: Date) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title).font(.subheadline.bold())
+            if let value {
+                Text("成功入列 \(value.accepted)／拒絕入列 \(value.rejected)")
+                    .font(.caption).foregroundStyle(.secondary)
+                detail("快照取樣時間", sampledAt.formatted(date: .numeric, time: .standard))
+                timingSample("最新入列嘗試", value.lastAttempt)
+                DisclosureGroup("起始紀錄（首次嘗試／首次成功）") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        timingSample("首次嘗試入列", value.firstAttempt)
+                        timingSample("首次成功入列", value.firstAccepted)
+                        Text("RTMP 時間是本次發布世代的相對位置；首筆為 0 秒可以是正常起點，不表示沒有資料。")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    .padding(.top, 8)
+                }
+                .font(.caption)
+                Text("成功入列只表示本機佇列接受，不表示伺服器收到；兩軌最新樣本不能直接比較影音同步。")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                Text("未提供入列紀錄").font(.caption).foregroundStyle(.secondary)
+            }
         }
-        return "接受 \(value.accepted)／拒絕 \(value.rejected)\n首筆嘗試：\(sample(value.firstAttempt))\n首筆成功：\(sample(value.firstAccepted))\n最新：\(sample(value.lastAttempt))\n入列不代表伺服器收到；兩軌最新樣本不能直接比較同步。"
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// 分列呈現同一筆樣本的兩種時基；缺少 DTS 保持未提供，不以零或 PTS 代替。
+    private func timingSample(_ title: String, _ sample: RTMPMediaTimingSample?) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title).font(.caption.bold())
+            if let sample {
+                detail("樣本序號／本機入列結果", "#\(sample.sequence) · \(sample.accepted ? "成功入列" : "拒絕入列")")
+                detail("來源 PTS", timingSeconds(sample.sourcePTSSeconds))
+                detail("來源 DTS", timingSeconds(sample.sourceDTSSeconds))
+                detail("RTMP 相對 PTS", timingSeconds(sample.generatedPTSSeconds))
+                detail("RTMP 相對 DTS", timingSeconds(sample.generatedDTSSeconds))
+                if let duration = sample.preferredDurationSeconds {
+                    detail("音訊整批時長", timingSeconds(duration))
+                }
+            } else {
+                Text("尚無紀錄").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// 有效零值照常顯示，只有缺漏或非有限值才標記未提供。
+    private func timingSeconds(_ value: Double?) -> String {
+        guard let value, value.isFinite else { return "未提供" }
+        return String(format: "%.6f s", value)
     }
 
     /// 顯示 VT 同次提交／回呼，耗時包含編碼器內部等待。
