@@ -318,6 +318,8 @@ struct MessageSegmentData {
     let showGift: Bool
 
     let avatarURL: String?
+    /// 測試／預覽用：直接提供圖片，不經網路載入。
+    let avatarImage: UIImage?
     let avatarSizeLocal: CGFloat?
 
     let giftURL: String?
@@ -455,6 +457,8 @@ final class PIPServiceMessages {
     let container = CALayer()
     /// 只遮罩聊天圖層；時間與狀態由外部 renderer 繪製，不受影響。
     private let chatEdgeMask = CAGradientLayer()
+    /// 遮罩幾何只在頂端訊息角色改變時變動，不必每幀重建。
+    private var lastChatEdgeMaskKey: String?
 
     /// 頂部殘留續段以短漸層收邊；完整新訊息保持清晰，且不改變閱讀／移除時機。
     private func updateChatEdgeMask() {
@@ -464,6 +468,16 @@ final class PIPServiceMessages {
         let first = stackedMessages.filter { $0.alpha > 0 }.min { $0.startY < $1.startY }
         let isTail = first.map { $0.segmentIndex > 0 || $0.isFadingOut } ?? false
         let fadeHeight: CGFloat = isTail ? min(12, max(0, height - top)) : 0
+        let key = "\(height)|\(top)|\(fadeHeight)"
+        guard key != lastChatEdgeMaskKey else { return }
+        lastChatEdgeMaskKey = key
+
+        // 沒有續段需要收邊時直接移除遮罩，避免每幀為整層做 offscreen 合成。
+        guard fadeHeight > 0 else {
+            container.mask = nil
+            return
+        }
+
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         chatEdgeMask.frame = container.bounds
@@ -734,6 +748,7 @@ final class PIPServiceMessages {
         user: String,
         message: String,
         imgURL: String?,
+        avatarImage: UIImage? = nil,
         giftURL: String?,
         emojiURLs: [String] = [],
         emojiPositions: [Int] = [],
@@ -744,6 +759,8 @@ final class PIPServiceMessages {
         hSpacing:CGFloat = 4.0
     ) -> [MessageSegmentData] {
 
+        let parentHasAvatar = imgURL != nil || avatarImage != nil
+
 
         var result: [MessageSegmentData] = []
 
@@ -751,16 +768,16 @@ final class PIPServiceMessages {
         
         let parentID = UUID()
 
-
-        let maxMessageWidth = container.bounds.width
-            - vSpacing * 2
-            - avatarSizeLocal
-            - hSpacing
-            - giftSizeLocal
-
-        let maxNameWidth = container.bounds.width
-            - hSpacing * 2
-            - avatarSizeLocal
+        // 只保留實際存在的頭貼／禮物寬度，無頭貼訊息與時間列同用 contentLeading。
+        let nameInset = parentHasAvatar
+            ? (avatarSizeLocal + hSpacing)
+            : PIPOverlayLayout.contentLeading
+        // 次要訊息在 layout 額外縮進 hSpacing；先扣掉才不會把右緣推出去。
+        let messageInset = nameInset + (type == .secondary ? hSpacing : 0)
+        let rightInset = PIPOverlayLayout.contentTrailing
+            + (giftURL != nil ? (giftSizeLocal + 8) : 0)
+        let maxMessageWidth = max(1, container.bounds.width - messageInset - rightInset)
+        let maxNameWidth = max(1, container.bounds.width - nameInset - PIPOverlayLayout.contentTrailing)
 
         let (nameLines,nameCTLine) = breakMessageIntoLines(
             user,
@@ -797,15 +814,16 @@ final class PIPServiceMessages {
 
             let data = MessageSegmentData(
                     parentID: parentID,
-                    segmentIndex: seg, parentHasAvatar: imgURL != nil, maxMessageWidth:  maxMessageWidth,
+                    segmentIndex: seg, parentHasAvatar: parentHasAvatar, maxMessageWidth:  maxMessageWidth,
                     type: type,
                     user: line,
                     message: "",
-                    showAvatar: isFirst,
+                    showAvatar: isFirst && parentHasAvatar,
                     showName: true,
                     showMessage: false,
                     showGift: false,
                     avatarURL: isFirst ? imgURL : nil,
+                    avatarImage: isFirst ? avatarImage : nil,
                     avatarSizeLocal: avatarSizeLocal,
                     giftURL: nil,
                     giftSizeLocal:giftSizeLocal,
@@ -879,7 +897,7 @@ final class PIPServiceMessages {
 
             let data = MessageSegmentData(
                     parentID: parentID,
-                    segmentIndex: seg, parentHasAvatar: imgURL != nil, maxMessageWidth:  maxMessageWidth,
+                    segmentIndex: seg, parentHasAvatar: parentHasAvatar, maxMessageWidth:  maxMessageWidth,
                     type: type,
                     user: "",
                     message: line,
@@ -888,6 +906,7 @@ final class PIPServiceMessages {
                     showMessage: true,
                     showGift: isLast,
                     avatarURL: nil,
+                    avatarImage: nil,
                     avatarSizeLocal: avatarSizeLocal,
                     giftURL: isLast ? giftURL : nil,
                     giftSizeLocal: giftSizeLocal,
@@ -1059,7 +1078,7 @@ final class PIPServiceMessages {
         let avatarSlotWidth =
             data.parentHasAvatar
             ? (avatarSizeLocal + horizontalSpacing)
-            : horizontalSpacing
+            : PIPOverlayLayout.contentLeading
 
         tuple.textX = avatarSlotWidth
 
@@ -1152,6 +1171,7 @@ final class PIPServiceMessages {
         user: String,
         message: String,
         imgURL: String? = nil,
+        avatarImage: UIImage? = nil,
         giftURL: String? = nil,
         isMain: Bool = true,
         fontSizeOverride: CGFloat? = nil,
@@ -1188,6 +1208,7 @@ final class PIPServiceMessages {
                 type: type, user: user,
                 message: messageToShow,
                 imgURL:imgURL,
+                avatarImage: avatarImage,
                 giftURL: giftURL,
                 emojiURLs: emojiURLs,
                 emojiPositions: emojiPositions,
@@ -1215,9 +1236,10 @@ final class PIPServiceMessages {
     }
 
     /// 預覽／快照用：不觸發動畫或 `PIPService` 全域狀態，直接排到定位。
-    func snapshotMessage(user: String, message: String, isMain: Bool, fontSize: CGFloat) {
-        addMessage(user: user, message: message, isMain: isMain,
-                   fontSizeOverride: fontSize, animates: false)
+    func snapshotMessage(user: String, message: String, isMain: Bool, fontSize: CGFloat,
+                         avatarImage: UIImage? = nil) {
+        addMessage(user: user, message: message, avatarImage: avatarImage,
+                   isMain: isMain, fontSizeOverride: fontSize, animates: false)
     }
 
     private func snapToTargets() {
@@ -1334,7 +1356,7 @@ final class PIPServiceMessages {
                     type: data.type,
                     user: data.user,
                     message: data.message,
-                    img: nil,
+                    img: data.avatarImage,
                     giftImg: nil,
                     showAvatar: data.showAvatar,
                     showName: data.showName,
@@ -1806,7 +1828,11 @@ final class PIPServiceMessages {
 
         lastFadeTriggerTime = now
 
+        let wasFadingOut = msg.isFadingOut
         msg.isFadingOut = true
+        if !wasFadingOut {
+            updateChatEdgeMask()
+        }
 
         if msg.alpha > 0 {
             let nextAlpha = max(0, msg.alpha - fadeStep)
@@ -1836,7 +1862,6 @@ final class PIPServiceMessages {
 
 
     func tickAnimation() -> Bool {
-        defer { updateChatEdgeMask() }
         guard !safeCanncel else {
             stopAnimation()
             return false

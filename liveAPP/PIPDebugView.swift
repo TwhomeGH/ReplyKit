@@ -7,6 +7,7 @@ struct PIPDebugView: View {
     @State private var message = "這是測試訊息"
     @State private var primary = true
     @State private var previewMessage = "這是測試訊息"
+    @State private var previewAvatar: UIImage?
     @ObservedObject private var testService = PIPTestService.shared
 
     var body: some View {
@@ -32,6 +33,7 @@ struct PIPDebugView: View {
                 Button("顯示測試訊息") { submit(message) }
                 Button("測試長文字") { submit(String(repeating: "長訊息換行測試。", count: 12)) }
                 Button("測試表情符號") { submit("🎉 測試訊息 ☕️ 🐿️") }
+                Button("測試頭貼＋表情") { submit("🎉 測試訊息 ☕️ 🐿️", avatar: Self.testAvatar) }
                 Text("測試名稱會加上標記，不觸發朗讀。次要訊息遵循目前的顯示設定。")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -53,12 +55,32 @@ struct PIPDebugView: View {
     }
 
     /// 只注入現有聊天室；不偷偷建立服務工作階段或送出遠端訊息。
-    private func submit(_ text: String) {
+    private func submit(_ text: String, avatar: UIImage? = nil) {
         previewMessage = text
+        previewAvatar = avatar
         if service.isPiPActive && !service.isKeepaliveMode {
-            service.addMessage(user: "[測試] \(user)", msg: text, isMain: primary)
+            service.addMessage(user: "[測試] \(user)", msg: text,
+                               avatarImage: avatar, isMain: primary)
         }
     }
+
+    /// 本機測試頭貼，避免測試訊息依賴網路圖片。
+    private static let testAvatar: UIImage = {
+        let size = CGSize(width: 60, height: 60)
+        return UIGraphicsImageRenderer(size: size).image { context in
+            UIColor.systemTeal.setFill()
+            context.cgContext.fillEllipse(in: CGRect(origin: .zero, size: size))
+            let text = "測" as NSString
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.boldSystemFont(ofSize: 30),
+                .foregroundColor: UIColor.white,
+            ]
+            let textSize = text.size(withAttributes: attributes)
+            text.draw(at: CGPoint(x: (size.width - textSize.width) / 2,
+                                  y: (size.height - textSize.height) / 2),
+                      withAttributes: attributes)
+        }
+    }()
 
     /// 與正式畫面共用 renderer，預覽不改動目前聊天佇列。
     private var preview: UIImage {
@@ -69,7 +91,7 @@ struct PIPDebugView: View {
                 statusText: "直播中", statusEnded: false, viewerCount: 128,
                 isReconnecting: false, reconnectText: "", secondaryNotice: summary ? "[測試] \(user)：\(previewMessage)" : nil),
             ad: nil,
-            chatMain: primary ? ("[測試] \(user)", previewMessage, 18) : nil,
-            chatSecondary: !primary && !summary && !hidden ? ("[測試] \(user)", previewMessage, 15) : nil))
+            chatMain: primary ? ("[測試] \(user)", previewMessage, 18, previewAvatar) : nil,
+            chatSecondary: !primary && !summary && !hidden ? ("[測試] \(user)", previewMessage, 15, previewAvatar) : nil))
     }
 }

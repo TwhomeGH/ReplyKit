@@ -357,12 +357,14 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         user: String = "測試",
         msg: String,
         imgURL: String? = nil,
+        avatarImage: UIImage? = nil,
         giftURL: String? = nil,
         isMain: Bool = true
     ) {
         guard Thread.isMainThread else {
             DispatchQueue.main.async {
-                self.addMessage(user: user, msg: msg, imgURL: imgURL, giftURL: giftURL, isMain: isMain)
+                self.addMessage(user: user, msg: msg, imgURL: imgURL,
+                                avatarImage: avatarImage, giftURL: giftURL, isMain: isMain)
             }
             return
         }
@@ -384,6 +386,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
                 user: user,
                 message: msg,
                 imgURL: imgURL,
+                avatarImage: avatarImage,
                 giftURL: giftURL,isMain:isMain
             )
         setNeedsRedraw()

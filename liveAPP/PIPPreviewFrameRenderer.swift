@@ -5,8 +5,8 @@ enum PIPPreviewFrameRenderer {
     struct Scene {
         let time: PIPTimeOverlayRenderer.Scene
         let ad: PIPAdOverlayRenderer.Scene?
-        let chatMain: (user: String, message: String, fontSize: CGFloat)?
-        let chatSecondary: (user: String, message: String, fontSize: CGFloat)?
+        let chatMain: (user: String, message: String, fontSize: CGFloat, avatar: UIImage?)?
+        let chatSecondary: (user: String, message: String, fontSize: CGFloat, avatar: UIImage?)?
     }
 
     static func render(size: CGSize = CGSize(width: 300, height: 200), scene: Scene) -> UIImage {
@@ -24,11 +24,13 @@ enum PIPPreviewFrameRenderer {
                 let messages = PIPServiceMessages(size: size, scrollSpeed: LPConfig.shared.ScrollTime)
                 if let main = scene.chatMain {
                     messages.snapshotMessage(user: main.user, message: main.message,
-                                             isMain: true, fontSize: main.fontSize)
+                                             isMain: true, fontSize: main.fontSize,
+                                             avatarImage: main.avatar)
                 }
                 if let secondary = scene.chatSecondary {
                     messages.snapshotMessage(user: secondary.user, message: secondary.message,
-                                             isMain: false, fontSize: secondary.fontSize)
+                                             isMain: false, fontSize: secondary.fontSize,
+                                             avatarImage: secondary.avatar)
                 }
                 cg.saveGState()
                 cg.translateBy(x: 0, y: size.height)

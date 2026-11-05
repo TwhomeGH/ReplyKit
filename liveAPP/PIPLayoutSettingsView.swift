@@ -278,15 +278,15 @@ private struct PIPLayoutPreview: View {
             )
         }
 
-        let main: (user: String, message: String, fontSize: CGFloat)? = mode == .normal
+        let main: (user: String, message: String, fontSize: CGFloat, avatar: UIImage?)? = mode == .normal
             ? (AppLanguage.localized("pipLayout.preview.hostName"),
                AppLanguage.localized("pipLayout.preview.mainMessage"),
-               CGFloat(mainFontSize))
+               CGFloat(mainFontSize), nil)
             : nil
-        let secondary: (user: String, message: String, fontSize: CGFloat)? = (mode == .normal && showSecondaryChat)
+        let secondary: (user: String, message: String, fontSize: CGFloat, avatar: UIImage?)? = (mode == .normal && showSecondaryChat)
             ? (AppLanguage.localized("pipLayout.preview.viewerName"),
                AppLanguage.localized("pipLayout.preview.secondMessage"),
-               CGFloat(secondFontSize))
+               CGFloat(secondFontSize), nil)
             : nil
 
         return PIPPreviewFrameRenderer.render(

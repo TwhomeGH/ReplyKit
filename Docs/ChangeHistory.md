@@ -1,6 +1,13 @@
 # 變更歷史
 
-## 2026.11.06 05:04 AltStore 來源改由 CI 自動更新
+## 2026.11.06 05:23 PiP 頭貼測試與長訊息動畫優化
+
+- 問題：測試頁只有純文字表情，沒有頭貼可驗證；長訊息捲動時聊天邊緣遮罩每幀重建，動畫明顯變卡。
+- 根因：頭貼只支援 URL 載入；`updateChatEdgeMask` 在每個動畫 tick 都做整層 filter、CATransaction 與遮罩指定，且沒有續段時仍掛著遮罩做 offscreen 合成。
+- 變更：`addMessage`／`snapshotMessage` 支援直接傳入 `UIImage` 頭貼，測試頁新增「測試頭貼＋表情」並同步顯示在預覽；沒有頭貼時不再建立空的 avatar layer。
+- 訊息寬度不再固定預留 avatar＋gift：無頭貼訊息左緣改為 `contentLeading`，右側只扣實際存在的禮物與 `contentTrailing`，避免提前換行與右側空白；無頭貼訊息也不再被永遠開啟的遮罩淡出名字。
+- 邊緣遮罩改成只在幾何（高度、頂距、收邊高度）變動時更新，並在沒有需收邊的續段時把 `container.mask` 設回 `nil`；`tickAnimation` 不再每幀更新遮罩，只在開始淡出與重新排版時更新。
+- 待 Apple CI 與實機確認頭貼測試、長訊息／多段訊息動畫流暢度及頂端收邊時機。
 
 - 問題：每次 Release 都要手動改 `AltStoreTest.json` 的 `downloadURL`、`size`、`date` 與版本，容易出現 tag 與版本指向不一致。
 - 根因：建置流程沒有把封存後的 `Info.plist` 版本與實際 IPA 大小帶回來源檔。
