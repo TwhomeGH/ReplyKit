@@ -218,7 +218,9 @@ API 遷移屬後續技術評估，不作為以上功能完成的條件；需要�
 - [x] 圖示頁宣告診斷與複製；CI 封存與最終 IPA 包體報告、`inspect_app_bundle.py`、`app_icon_tool.py` 及對應測試。
 - [x] **CI 圖示宣告檢查修正**：實際 archive 仍是 `CFBundleIconName` + Assets.car；檢查改為接受此標準形式，並仍要求 iPhone／iPad 都有 PersonalIcon 宣告。
 - [x] 包體報告新增「套件內容」與「預期排除清單」；`Scripts/package_exclusions.txt` 列出 18 個開發檔／`.last_build`，任一被包含就失敗並列出路徑；`AudioProcess.swift.new` 與 `.last_build` 已排除在 target 外。
+- [x] App 圖示診斷補上 version／build／UIDeviceFamily 與 `CFBundleIcons`／`CFBundleIcons~ipad` presence，區分整個 key 不存在、沒有 PersonalIcon、缺 PNG。
 - [ ] 下一次 archive 驗證修正後的圖示檢查、18 項排除狀態與包體報告。
+- [ ] **iPad 圖示宣告驗收**：安裝含替換圖示的新建置，確認診斷的 version/build 與 CI IPA 一致、兩個 CFBundleIcons presence 為 true；若重簽後仍為 false，比對簽署前後 Info.plist。
 - [ ] **App 圖示實機驗收**：iPhone／iPad 切換、恢復預設、`supportsAlternateIcons`、重新開啟 App 後目前標記與診斷內容。
 - [ ] 16 個開發腳本／`.bak`／`.edit` 仍以 pbxproj membership exceptions 排除；若清理 repo，需另案移動或刪除。
 

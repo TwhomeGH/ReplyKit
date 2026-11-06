@@ -1,5 +1,12 @@
 # 變更歷史
 
+## 2026.11.06 23:47 App 圖示診斷補版本與 CFBundleIcons 狀態
+
+- 問題：iPad 診斷只顯示空的 alternates，無法區分是舊建置、重簽換掉 Info.plist，還是 asset catalog 沒有帶入。
+- 變更：診斷報告加上 version／build／bundle／UIDeviceFamily，以及 `CFBundleIcons`、`CFBundleIcons~ipad` 是否存在；說明分開處理「整個 key 不存在」「有 key 但沒有 PersonalIcon」「有宣告但缺 PNG」。
+- 目前 CI archive 已有 PersonalIcon；裝置端若整個 key 都不存在，應先確認安裝的版本與重簽後的 Info.plist，再談 supportsAlternateIcons。
+- 待安裝含替換圖示的新建置後比對版本與 presence。
+
 ## 2026.11.06 23:45 RTMP 樣本可編輯名稱與網址
 
 - 問題：使用者樣本建立後只能刪除重建，無法修正顯示名稱或 RTMP 網址。
