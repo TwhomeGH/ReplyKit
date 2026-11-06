@@ -467,8 +467,6 @@ class SocketServer:ObservableObject, @unchecked Sendable {
 
                 if self.connections[ObjectIdentifier(connection)] != nil {
                     self.logTo("Connection ready: \(self.connectionLogContext(connection))")
-                    self.replayFailedPayloads(for: connection)
-
                 }
 
 
@@ -1181,6 +1179,8 @@ class SocketServer:ObservableObject, @unchecked Sendable {
     }
 
     private func dictionary<T: Encodable>(from payload: T) -> [String: Any]? {
+        // 此入口可能由 UI／任意執行緒呼叫，不可共用 Socket queue 的 encoder。
+        let encoder = JSONEncoder()
         guard let data = try? encoder.encode(payload),
               let object = try? JSONSerialization.jsonObject(with: data),
               let dictionary = object as? [String: Any] else {
@@ -1190,6 +1190,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
     }
 
     // MARK:JSON 處理
+    /// encoder 只允許在 queue 內使用；decoder 只在接收 queue 使用。
     let encoder = JSONEncoder()
     let decoder = JSONDecoder()
 
@@ -1555,7 +1556,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
     private var sendingFlags: [ObjectIdentifier: Bool] = [:]
 
 
-    /// 將 Encodable 轉為 JSON；失敗回傳 nil，尚未加入傳輸換行。
+    /// 將 Encodable 轉為 JSON；僅可在 queue 內呼叫。失敗回傳 nil，尚未加入傳輸換行。
     private func encodedData<T: Encodable>(_ payload: T) -> Data? {
         try? encoder.encode(payload)
     }
@@ -1564,11 +1565,11 @@ class SocketServer:ObservableObject, @unchecked Sendable {
     // MARK: 群播
     /// 編碼一次後排入各連線的傳送佇列；返回不代表已送達。
     func queueSend(payload: some Encodable) {
-        guard let data = encodedData(payload) else { return }
         queue.async { [weak self] in
-            guard let self else { return }
-            for conn in self.connections.values {
-                self.enqueue(data, to: conn)
+            guard let self, let data = self.encodedData(payload) else { return }
+            // 快照避免 enqueueLocked 因超限移除連線時改動正在迭代的字典。
+            for conn in Array(self.connections.values) {
+                self.enqueueLocked(data, to: conn)
             }
         }
     }
@@ -1578,24 +1579,42 @@ class SocketServer:ObservableObject, @unchecked Sendable {
         guard let data = try? JSONSerialization.data(withJSONObject: dictionary, options: []) else { return }
         queue.async { [weak self] in
             guard let self else { return }
-            for conn in self.connections.values {
-                self.enqueue(data, to: conn)
+            // 同上，使用快照避免移除連線時與迭代衝突。
+            for conn in Array(self.connections.values) {
+                self.enqueueLocked(data, to: conn)
             }
         }
     }
 
-    /// 為指定連線排入待送資料，僅在沒有傳送工作時啟動消費。
+    /// 為指定連線排入待送資料；實際入列與上限檢查只在 queue 內執行。
     private func enqueue(_ data: Data, to conn: NWConnection) {
-        let id = ObjectIdentifier(conn)
-        queue.async {
-            var queue = self.sendQueues[id] ?? []
-            queue.append(data)
-            self.sendQueues[id] = queue
+        queue.async { [weak self] in
+            self?.enqueueLocked(data, to: conn)
+        }
+    }
 
-            if self.sendingFlags[id] != true {
-                self.sendingFlags[id] = true
-                self.sendNextPayload(for: conn)
-            }
+    /// 一般訊息每連線有上限；超過視為慢速連線，關閉而不是丟掉任意訊息。
+    private func enqueueLocked(_ data: Data, to conn: NWConnection) {
+        dispatchPrecondition(condition: .onQueue(queue))
+        let id = ObjectIdentifier(conn)
+        guard connections[id] != nil else { return }
+        let pending = sendQueues[id] ?? []
+        let pendingBytes = pending.reduce(0) { $0 + $1.count }
+        guard SocketSendQueuePolicy.decision(
+            pendingBytes: pendingBytes,
+            pendingPayloads: pending.count,
+            newBytes: data.count) == .enqueue else {
+            logTo("Socket send queue limit reached; closing slow connection pendingBytes=\(pendingBytes) newBytes=\(data.count)")
+            removeConnection(conn)
+            return
+        }
+        var updated = pending
+        updated.append(data)
+        sendQueues[id] = updated
+
+        if sendingFlags[id] != true {
+            sendingFlags[id] = true
+            sendNextPayload(for: conn)
         }
     }
 
@@ -1718,17 +1737,9 @@ class SocketServer:ObservableObject, @unchecked Sendable {
 
     // MARK: 一對一
     private func sendTo(_ connection: NWConnection, payload: some Encodable) {
-        guard let data = encodedData(payload) else { return }
-        let id = ObjectIdentifier(connection)
-        queue.async {
-            var queue = self.sendQueues[id] ?? []
-            queue.append(data)
-            self.sendQueues[id] = queue
-
-            if self.sendingFlags[id] != true {
-                self.sendingFlags[id] = true
-                self.sendNextPayload(for: connection)
-            }
+        queue.async { [weak self] in
+            guard let self, let data = self.encodedData(payload) else { return }
+            self.enqueueLocked(data, to: connection)
         }
     }
 
@@ -1760,7 +1771,8 @@ class SocketServer:ObservableObject, @unchecked Sendable {
     func sendKeepalive() {
         let payload: [String: Any] = ["type": "keepalive"]
         let now = Date()
-        for (id, conn) in connections {
+        // 快照避免 removeConnection 在迭代中改動 connections。
+        for (id, conn) in Array(connections) {
             if let lastRx = lastReceiveTimes[id], now.timeIntervalSince(lastRx) > staleConnectionTimeout {
                 logTo("Connection stale (no data for \(Int(now.timeIntervalSince(lastRx)))s), removing")
                 removeConnection(conn)
@@ -1781,7 +1793,6 @@ class SocketServer:ObservableObject, @unchecked Sendable {
     }
 
     // MARK: - Connection Cleanup
-    private var pendingFailedPayloads: [ObjectIdentifier: [Data]] = [:]
 
     private func removeConnection(_ connection: NWConnection) {
         if DispatchQueue.getSpecific(key: queueKey) == nil {
@@ -1798,11 +1809,6 @@ class SocketServer:ObservableObject, @unchecked Sendable {
         connection.stateUpdateHandler = nil
         connection.cancel()
 
-        if let pendingQueue = sendQueues[id], !pendingQueue.isEmpty {
-            pendingFailedPayloads[id] = pendingQueue
-            self.logTo("Saved \(pendingQueue.count) pending payloads for re-queue")
-        }
-
         connections[id] = nil
         updateExternalLogCount()
         receiveBuffers[id] = nil
@@ -1815,16 +1821,6 @@ class SocketServer:ObservableObject, @unchecked Sendable {
         }
 
         logTo("Connection removed. \(connectionLogContext(connection))｜Remaining: \(self.connections.count)")
-    }
-
-    private func replayFailedPayloads(for connection: NWConnection) {
-        let id = ObjectIdentifier(connection)
-        guard let failedPayloads = pendingFailedPayloads.removeValue(forKey: id),
-              !failedPayloads.isEmpty else { return }
-        self.logTo("Re-playing \(failedPayloads.count) saved payloads")
-        for payload in failedPayloads {
-            enqueue(payload, to: connection)
-        }
     }
 
     /// 明確停止並使所有排程恢復失效；後續通知不能重新啟動服務。
@@ -1856,7 +1852,6 @@ class SocketServer:ObservableObject, @unchecked Sendable {
             self.lastReceiveTimes.removeAll()
             self.sendQueues.removeAll()
             self.sendingFlags.removeAll()
-            self.pendingFailedPayloads.removeAll()
         }
     }
 
@@ -1926,7 +1921,6 @@ class SocketServer:ObservableObject, @unchecked Sendable {
             lastReceiveTimes[id] = nil
             sendQueues[id] = nil
             sendingFlags[id] = nil
-            pendingFailedPayloads[id] = nil
         }
 
         if connections.isEmpty {
@@ -1994,7 +1988,6 @@ class SocketServer:ObservableObject, @unchecked Sendable {
         lastReceiveTimes.removeAll()
         sendQueues.removeAll()
         sendingFlags.removeAll()
-        pendingFailedPayloads.removeAll()
 
         logTo("SocketServer stopped")
     }

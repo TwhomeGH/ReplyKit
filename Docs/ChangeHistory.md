@@ -1,5 +1,11 @@
 # 變更歷史
 
+## 2026.11.07 01:12 Socket 送出佇列上限與 encoder 收斂
+
+- 問題：`SocketServer` 的共享 `JSONEncoder` 會被 `queueSend`／`sendTo` 在序列 queue 外呼叫；一般訊息的 `sendQueues` 沒有上限，慢速工具可讓非日誌訊息無限累積；移除連線時保存的 `pendingFailedPayloads` 沒有實際重放路徑，會保留資料。
+- 變更：`queueSend`／`sendTo` 移到 queue 內編碼，`dictionary(from:)` 改用區域 encoder；新增 `SocketSendQueuePolicy`（1 MiB／128 筆），超限時記錄並關閉慢連線；外部日誌批次仍使用可丟棄的 `ExternalLogPolicy`。迭代連線時改用快照，移除不會被使用的 pending replay 儲存。
+- `SocketSendQueuePolicyTests` 覆蓋邊界、超限與負值；Swift 語法檢查通過。Apple 慢速工具、關閉連線日誌與 `@unchecked Sendable` 全面稽核仍待驗收。
+
 ## 2026.11.07 00:55 診斷匯出新增本次啟動範圍
 
 - 問題：診斷匯出只有今天／最近一小時／自訂，無法保證只包含本次程序的日誌；App 啟動也沒有專屬標記。
