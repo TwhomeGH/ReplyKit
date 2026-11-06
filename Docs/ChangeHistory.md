@@ -1,5 +1,11 @@
 # 變更歷史
 
+## 2026.11.06 23:57 DocC 只在文件相關變更時重建
+
+- 問題：DocC workflow 對任何 `*.swift` push 都啟動 12 分鐘以上的 macOS docbuild，即使只是實作內容變更，沒有動到文件註釋或公開 API。
+- 變更：新增 `changes` preflight job，只在 `.docc`／xcodeproj／Package.resolved／DocC 腳本變更，或 Swift diff 含 `///`／`/**`／`public`／`open`／`@_spi`／新增刪除檔案時執行 `documentation` job；手動觸發一律執行。
+- 取捨：公開 extension 內未標 `public` 的簽名變更可能被視為實作變更而跳過；需要時用 workflow_dispatch 重建。預期節省大部分純實作 push 的 runner 時間。
+
 ## 2026.11.06 23:52 修正樣本管理空狀態的 iOS 17 API
 
 - 問題：`PresetManagementView` 使用 `ContentUnavailableView`，但 App deployment target 是 iOS 16.6，CI 編譯失敗。

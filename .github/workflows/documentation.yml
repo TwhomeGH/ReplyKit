@@ -26,7 +26,51 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      docs: ${{ steps.filter.outputs.docs }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - id: filter
+        name: Check whether documentation changed 檢查文件相關變更
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "push" ]; then
+            echo "docs=true" >> "$GITHUB_OUTPUT"
+            echo "手動觸發：執行 DocC" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          BASE="${{ github.event.before }}"
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
+             || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            BASE=$(git rev-parse HEAD^ 2>/dev/null || true)
+          fi
+          [ -n "$BASE" ] || BASE=$(git rev-list --max-parents=0 HEAD | head -n 1)
+          FILES=$(git diff --name-only "$BASE" HEAD)
+          DOCS=false
+          if printf '%s\n' "$FILES" | grep -Eq '\.docc/|^liveAPP\.xcodeproj/|^Package\.resolved$|^Scripts/docc_|^\.github/workflows/documentation\.yml$'; then
+            DOCS=true
+          fi
+          if [ "$DOCS" = false ] && git diff -U0 "$BASE" HEAD -- '*.swift' | grep -Eq '^[+-][[:space:]]*(///|/\*\*|public([[:space:]]|$)|open([[:space:]]|$)|@_spi)'; then
+            DOCS=true
+          fi
+          if [ "$DOCS" = false ] && git diff --name-status "$BASE" HEAD -- '*.swift' | grep -Eq '^[AD]'; then
+            DOCS=true
+          fi
+          echo "docs=$DOCS" >> "$GITHUB_OUTPUT"
+          if [ "$DOCS" = true ]; then
+            echo "有文件相關變更：執行 DocC" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "沒有 .docc／public／/// 等文件變更：跳過 macOS DocC job" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   documentation:
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
     runs-on: xcode-27
     timeout-minutes: 40
     env:

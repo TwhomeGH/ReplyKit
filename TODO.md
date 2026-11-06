@@ -298,6 +298,8 @@ API 遷移屬後續技術評估，不作為以上功能完成的條件；需要�
 
 - [x] 本機功能／API／文件／近期改動索引與清單連結驗證。
 - [x] DocC 初始目錄與手動 CI 工作流程。
+- [x] DocC workflow 新增 `changes` preflight：沒有 `.docc`／公開文件變更時跳過 macOS docbuild；手動觸發仍會重建。
+- [ ] 下一次 Swift-only 與 docs-only push 驗證 skip／run 與 Pages 部署。
 - [ ] 首次 Xcode DocC 建置與 archive 閱讀驗收。
 - [ ] 擴充功能清單覆蓋其他模組，補齊 API 語意文件及底層 DocC 連結。
 

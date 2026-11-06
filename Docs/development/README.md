@@ -49,7 +49,7 @@
 
 ## DocC 建置
 
-macOS Xcode 使用 Product → Build Documentation。另提供 DocC documentation workflow（`.github/workflows/documentation.yml`：手動觸發，或 push 到 main 且動到 `.docc`／Swift 時執行），使用專案既有 xcode-27 runner，產出 doccarchive、App revision、Package.resolved 與建置日誌，並部署到 GitHub Pages。
+macOS Xcode 使用 Product → Build Documentation。另提供 DocC documentation workflow（`.github/workflows/documentation.yml`：手動觸發，或 push 到 main 且動到 `.docc`／專案／Package.resolved／DocC 腳本，或 Swift 的 `///`／`public`／`open` 等文件相關變更時執行），使用專案既有 xcode-27 runner，產出 doccarchive、App revision、Package.resolved 與建置日誌，並部署到 GitHub Pages。單純 Swift 實作變更會由輕量的 `changes` preflight 跳過，不啟動 macOS docbuild；需要強制重建時用手動觸發。
 
 **目前 `xcodebuild docbuild` 只產出 HaishinKit（相依套件）的模組文件**——App 的 `liveAPP/Documentation.docc` 目錄尚未加入 Xcode 專案，`docbuild` 因此不為 App target 產生模組頁。要讓 App 自身有文件，需把該 `.docc` 目錄加入 `liveAPP` target。Windows 的宣告搜尋不需要 Xcode。
 
