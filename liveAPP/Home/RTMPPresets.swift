@@ -75,6 +75,24 @@ final class RTMPPresetStore: ObservableObject {
         saveUser()
     }
 
+    /// 就地更新名稱與網址；保留原 id 與備註，重複或無效時不改資料。
+    @discardableResult
+    func updateUserPreset(id: String, name: String, rtmpURL: String) -> RTMPPreset? {
+        guard let index = userPresets.firstIndex(where: { $0.id == id }) else { return nil }
+        var candidate = userPresets[index]
+        candidate.name = name
+        candidate.rtmpURL = rtmpURL
+        guard let valid = Self.validated(candidate, requireID: true) else { return nil }
+        let key = Self.identity(valid)
+        let duplicate = userPresets.enumerated().contains {
+            $0.offset != index && Self.identity($0.element) == key
+        }
+        guard !duplicate else { return nil }
+        userPresets[index] = valid
+        saveUser()
+        return valid
+    }
+
     /// 接受標準 envelope 或單純 preset 陣列；匯入項目一律換新 user id 並略過重複。
     func importPresets(from data: Data) -> ImportResult {
         guard data.count <= 1_000_000 else { return ImportResult(added: 0, skipped: 0) }

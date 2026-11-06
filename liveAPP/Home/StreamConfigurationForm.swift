@@ -49,6 +49,7 @@ struct FormView: View {
     @State private var newPresetName = ""
     @State private var showingPresetImporter = false
     @State private var showingPresetExporter = false
+    @State private var showingPresetManager = false
     @State private var presetExportDocument: RTMPPresetExportDocument?
 
     var body: some View {
@@ -89,12 +90,8 @@ struct FormView: View {
                                 ForEach(presetStore.userPresets) { preset in
                                     Button(preset.name) { apply(preset) }
                                 }
-                                Menu(AppLanguage.localized("preset.manage")) {
-                                    ForEach(presetStore.userPresets) { preset in
-                                        Button(AppLanguage.localized("preset.delete") + " " + preset.name) {
-                                            presetStore.removeUserPreset(preset)
-                                        }
-                                    }
+                                Button(AppLanguage.localized("preset.manage")) {
+                                    showingPresetManager = true
                                 }
                             }
                         }
@@ -166,6 +163,9 @@ struct FormView: View {
                     self.error = error.localizedDescription
                     notice = nil
                 }
+            }
+            .sheet(isPresented: $showingPresetManager) {
+                PresetManagementView(store: presetStore)
             }
             .alert(AppLanguage.localized("preset.saveTitle"), isPresented: $showingSavePreset) {
                 TextField(AppLanguage.localized("preset.namePlaceholder"), text: $newPresetName)

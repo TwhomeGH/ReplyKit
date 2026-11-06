@@ -39,6 +39,35 @@ struct RTMPPresetStoreTests {
         #expect(reloaded.userPresets.first?.rtmpURL == "rtmp://host/live")
     }
 
+    @Test func updatesNameAndURLInPlace() {
+        let (store, defaults, name) = makeStore()
+        defer { defaults.removePersistentDomain(forName: name) }
+        _ = store.addUserPreset(name: "Mine", rtmpURL: "rtmp://host/old")
+        let original = store.userPresets[0]
+        let updated = store.updateUserPreset(id: original.id, name: "Renamed",
+                                             rtmpURL: "rtmp://host/new")
+        #expect(updated?.id == original.id)
+        #expect(updated?.name == "Renamed")
+        #expect(updated?.rtmpURL == "rtmp://host/new")
+        #expect(store.userPresets.count == 1)
+        let reloaded = RTMPPresetStore(defaults: defaults)
+        #expect(reloaded.userPresets.first?.name == "Renamed")
+        #expect(reloaded.userPresets.first?.rtmpURL == "rtmp://host/new")
+    }
+
+    @Test func updateRejectsDuplicateAndInvalidValues() {
+        let (store, defaults, name) = makeStore()
+        defer { defaults.removePersistentDomain(forName: name) }
+        _ = store.addUserPreset(name: "First", rtmpURL: "rtmp://host/one")
+        _ = store.addUserPreset(name: "Second", rtmpURL: "rtmp://host/two")
+        let second = store.userPresets[1]
+        #expect(store.updateUserPreset(id: second.id, name: "First",
+                                       rtmpURL: "rtmp://host/one") == nil)
+        #expect(store.updateUserPreset(id: second.id, name: "Second",
+                                       rtmpURL: "http://host/two") == nil)
+        #expect(store.userPresets[1].rtmpURL == "rtmp://host/two")
+    }
+
     @Test func importsEnvelopeAndSkipsInvalidItems() {
         let (store, defaults, name) = makeStore()
         defer { defaults.removePersistentDomain(forName: name) }
