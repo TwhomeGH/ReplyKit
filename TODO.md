@@ -375,7 +375,8 @@ API 遷移屬後續技術評估，不作為以上功能完成的條件；需要�
 - [ ] ReplayKit／ScreenCaptureKit 實機：持續推流並觸發數秒畫面停頓，核對恢復後沒有因時間戳縮短造成新增影音偏移；保留 App 日誌及未經轉碼的接收端樣本。來源時鐘重設與伺服器轉碼造成的偏移需另行判讀。
 - [ ] **2026-11-07 02:58 音訊 discontinuity 追查**：ScreenCaptureKit 推流約 1.5 小時後，系統音訊 track0 的 `discontinuities` 由 1→2、`spanMinusContentSeconds` 由 +0.020→-0.127，`CaptureCallbacks.audio.regress=1`；同一時刻 video inFPS 短暫 60→47.8，`publish avOffset` 約 -0.2s。RTMP transport `failedBatches=0`、queue 為空，mic track1 乾淨；影片 PTS regress=0。3.1 秒 video max gap 的 lastDiscontinuity 是早期 7154.7，不是這次起點。
   - [x] `ScreenAudioProbe` 已加逐筆 `[CaptureAudioAnomaly]`（PTS 回退或 gap >0.5s，含 prev/current/delta/frames/rate）。
-  - [ ] 底層 `RTMPTimestamp.update` 以 wire `updatedAt` 比對來源；音訊 `preferredDelta` 對負向 gap 只做每包 ≤5ms 慢速修正，`allowJump` 只處理正向 >500ms，`sourceRegressions` 不參與決策。需確認 RTMP 使用的 mixed 音訊是否帶入此 gap，再決定 drop／rebase／補靜音或調整策略。
+  - [x] HaishinKit fork 本地 `fedcf2a0`：分離來源/wire 時鐘；音訊來源倒退 >80ms 重新建立來源基準、保留正常 wire 節奏；`allowJump` 的正向缺口超過 80ms 直接保留來源 gap；新增 `sourceRebases` 診斷與測試。尚未 push，ReplyKit 仍鎖 `9df0d77`。
+  - [ ] Push HaishinKit fork、跑 macOS 測試、把 ReplyKit `Package.resolved` 更新到 `fedcf2a0`，再驗證 02:58 同情境；若 raw track0 gap 未進入 mixed/RTMP，則還要處理 mixer 端。
 
 ## 共用音量監測與閒置比較
 
