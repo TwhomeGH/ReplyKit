@@ -363,7 +363,9 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                     guard !Task.isCancelled else { return }
                     let tracks = health.tracks.map { "track=\($0.trackId) converted=\($0.outputFrames) noData=\($0.resampleNoDataCount) buffered=\($0.ringBufferCounts) overflow=\($0.overflowDroppedSamples) gap=\($0.skipInsertedSamples)" }.joined(separator: " | ")
                     self.telemetry.mixerAudio = "mixed=\(health.mixerOutputFrames) ready=\(health.mixerReady) channels=\(health.outputChannels) \(self.audioProbe?.summary() ?? "probe=none")"
-                    sendlog(message: "[CaptureAudioPipeline] session=\(token) mixed=\(health.mixerOutputFrames) ready=\(health.mixerReady) error=\(health.lastError ?? "none") channels=\(health.outputChannels) rms=\(health.outputChannelRMS) \(self.audioProbe?.summary() ?? "probe=none") \(tracks)")
+                    if detailedLog {
+                        sendlog(message: "[CaptureAudioPipeline] session=\(token) mixed=\(health.mixerOutputFrames) ready=\(health.mixerReady) error=\(health.lastError ?? "none") channels=\(health.outputChannels) rms=\(health.outputChannelRMS) \(self.audioProbe?.summary() ?? "probe=none") \(tracks)")
+                    }
                 }
                 if let probe = self.streamDiagnosticsProbe {
                     var snapshot: StreamDiagnosticsSnapshot
@@ -829,3 +831,4 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     }
 }
 #endif
+

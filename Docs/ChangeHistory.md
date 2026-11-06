@@ -1,5 +1,11 @@
 # 變更歷史
 
+## 2026.11.07 05:11 降低週期診斷頻率
+
+- 問題：2.5 小時的診斷檔約 14,166 行，其中約 10,000 行來自每 5 秒一次的 `CaptureSource`、`CaptureVideoProcessing`、`CaptureCallbacks`、`CaptureAudioPipeline` 等例行摘要，不利事後掃讀。
+- 變更：擷取週期日誌在啟動 60 秒後，`CaptureSource` 降為 15 秒、詳細管線摘要降為 30 秒；UI 遙測仍每 5 秒更新。HaishinKit `VideoQueue` 由 5 秒改為 15 秒，`publish timeline`／`media timing`／`throughput` 由 10 秒改為 30 秒。
+- 例外：錯誤、狀態轉換、`[CaptureAudioAnomaly]` 等事件仍即時記錄；預估同樣 2.5 小時可降到約 2–3 千行。
+
 ## 2026.11.07 04:07 音訊逐筆異常日誌與底層時間戳檢查
 
 - 問題：02:58 只知道系統音訊 track0 發生 PTS 回退／discontinuity，聚合日誌無法指出是哪一個 sample；也無法判斷 RTMP timestamp 層是否有補償。
