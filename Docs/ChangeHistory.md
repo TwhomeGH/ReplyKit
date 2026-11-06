@@ -1,5 +1,11 @@
 # 變更歷史
 
+## 2026.11.06 23:52 修正樣本管理空狀態的 iOS 17 API
+
+- 問題：`PresetManagementView` 使用 `ContentUnavailableView`，但 App deployment target 是 iOS 16.6，CI 編譯失敗。
+- 變更：改用 iOS 16 可用的置中圖示＋標題＋說明 VStack，不再需要對整個管理頁加 `@available`。
+- Swift 語法檢查通過；實機畫面待確認。
+
 ## 2026.11.06 23:47 App 圖示診斷補版本與 CFBundleIcons 狀態
 
 - 問題：iPad 診斷只顯示空的 alternates，無法區分是舊建置、重簽換掉 Info.plist，還是 asset catalog 沒有帶入。

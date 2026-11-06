@@ -10,10 +10,19 @@ struct PresetManagementView: View {
         NavigationStack {
             Group {
                 if store.userPresets.isEmpty {
-                    ContentUnavailableView(
-                        AppLanguage.localized("preset.manager.title"),
-                        systemImage: "bookmark.slash",
-                        description: Text(AppLanguage.localized("preset.manager.empty")))
+                    VStack(spacing: 12) {
+                        Image(systemName: "bookmark.slash")
+                            .font(.system(size: 36))
+                            .foregroundStyle(.secondary)
+                        Text(AppLanguage.localized("preset.manager.title"))
+                            .font(.headline)
+                        Text(AppLanguage.localized("preset.manager.empty"))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     List {
                         Section {
