@@ -219,7 +219,7 @@ jobs:
       - name: Verify archived app icons 檢查封存圖示宣告
         run: |
           python3 -m unittest discover -s Scripts -p test_inspect_app_bundle.py
-          python3 Scripts/inspect_app_bundle.py "build/liveApp.xcarchive/Products/Applications/liveAPP.app" --output build/app-bundle-report.md --github-summary
+          python3 Scripts/inspect_app_bundle.py "build/liveApp.xcarchive/Products/Applications/liveAPP.app" --output build/app-bundle-report.md --github-summary --expect-excluded Scripts/package_exclusions.txt
 
       - name: Upload app bundle report
         if: always()
@@ -300,7 +300,7 @@ jobs:
 
       - name: Inspect IPA contents 分析最終 IPA 包體
         run: |
-          python3 Scripts/inspect_app_bundle.py "build/liveApp_${TAG}.ipa" --output build/ipa-size-report.md --github-summary
+          python3 Scripts/inspect_app_bundle.py "build/liveApp_${TAG}.ipa" --output build/ipa-size-report.md --github-summary --expect-excluded Scripts/package_exclusions.txt
 
       - name: Upload IPA size report
         if: always()

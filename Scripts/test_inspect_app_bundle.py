@@ -5,7 +5,8 @@ import tempfile
 import unittest
 import zipfile
 
-from inspect_app_bundle import report, check_icons
+from inspect_app_bundle import (check_icons, content_report, report,
+                                suspicious_reason)
 
 
 class BundleReportTests(unittest.TestCase):
@@ -43,6 +44,23 @@ class BundleReportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             result = report(self.make_ipa(root, resource=False))
             self.assertTrue(any('找不到圖示檔案' in error for error in result['errors']))
+
+    def test_suspicious_file_detection(self):
+        self.assertEqual(suspicious_reason('_fix_video.py'), 'dev/source')
+        self.assertEqual(suspicious_reason('PlugIns/ReplyKIT.appex/AudioProcess.swift.new'), 'dev/source')
+        self.assertEqual(suspicious_reason('.last_build'), 'dotfile')
+        self.assertIsNone(suspicious_reason('Assets.car'))
+        self.assertIsNone(suspicious_reason('RTMPPresets.json'))
+
+    def test_expected_exclusions_report_included_and_excluded(self):
+        suspicious, exclusions = content_report({
+            'PlugIns/ReplyKIT.appex/AudioProcess.swift.new': (10, None),
+            'Assets.car': (100, 80),
+        }, ['AudioProcess.swift.new', 'PIPContent.swift.bak'])
+        self.assertEqual([item['path'] for item in suspicious],
+                         ['PlugIns/ReplyKIT.appex/AudioProcess.swift.new'])
+        self.assertEqual(exclusions['included'], ['AudioProcess.swift.new'])
+        self.assertEqual(exclusions['excluded'], ['PIPContent.swift.bak'])
 
     def test_name_only_catalog_with_assets_passes(self):
         icons = {'CFBundleAlternateIcons': {'PersonalIcon': {'CFBundleIconName': 'PersonalIcon'}}}

@@ -1,5 +1,12 @@
 # 變更歷史
 
+## 2026.11.06 22:06 包體內容與排除清單摘要
+
+- 問題：原本只把開發檔加總成一個分類，無法直接看出哪些多餘檔案被包進去、哪些預期排除的檔案已正確消失。
+- 變更：`inspect_app_bundle.py` 新增「套件內容」與「預期排除清單」；`--expect-excluded` 讀取 `Scripts/package_exclusions.txt`（18 項），逐項列出 ✅ 已排除／❌ 仍包含。任何 `.py`／`.bak`／`.edit`／`.swift`／`.new`／dotfile 被包含，或預期排除項目仍存在，CI 會失敗。
+- `AudioProcess.swift.new` 與 `.last_build` 已加入 target 排除；CI 的 archive 與最終 IPA 檢查都使用同一份清單。
+- 待下一次 archive 驗證 18 項排除狀態與報告內容。
+
 ## 2026.11.06 22:02 修正 CI 圖示檢查誤判並排除殘留開發檔
 
 - 問題：新的 archive 圖示檢查要求 `CFBundleIconFiles` 與獨立 PNG，但 Xcode 的 asset catalog 產物是 `CFBundleIconName` + Assets.car，導致正常 archive 被判定失敗；報告另顯示 `AudioProcess.swift.new` 被包進 ReplyKIT.appex。

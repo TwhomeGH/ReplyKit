@@ -1,0 +1,19 @@
+# 不應打進 App／extension 的開發檔；CI 會逐一確認已排除。
+PIPContent.swift.bak
+Setting.swift.edit
+_edit_pip.py
+_edit_pip2.py
+_edit_pipcontent.py
+_fix_audio_task.py
+_fix_pip_draw.py
+_fix_render.py
+_fix_task.py
+_fix_video.py
+_fix_video_final.py
+_fix_video_final2.py
+_fix_vp.py
+_fix_vp2.py
+_fix_vp3.py
+fix_blend.py
+AudioProcess.swift.new
+.last_build

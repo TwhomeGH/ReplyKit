@@ -27,7 +27,7 @@ Assets.car 增加 2,506,743 bytes，占整個 IPA 增量約 97.8%；主程式增
 靜態連結的套件程式碼屬於執行檔的一部分，不能以此清單再拆算 HaishinKit 的精確占比。
 
 原產物也確實包含修改腳本與 .bak／.edit 檔，壓縮後合計約 34 KB。
-本次從 App target 排除 17 個開發用檔案（含 `AudioProcess.swift.new`），保留專案原檔；此項不是主要體積來源。
+本次從 App target 排除 18 個開發用檔案（含 `AudioProcess.swift.new`、`.last_build`），保留專案原檔；此項不是主要體積來源。
 Artwork 原稿目錄不在原始 IPA 中。
 
 ## 圖示切換
@@ -48,11 +48,13 @@ App 圖示頁提供診斷展開與複製：系統支援狀態、目前圖示、i
 
 Scripts/inspect_app_bundle.py 可讀取 .app 或 IPA，不修改內容。
 CI 封存後驗證兩個裝置分支的 PersonalIcon 宣告；接受 `CFBundleIconName` + Assets.car，或 `CFBundleIconFiles` + 對應獨立 PNG。缺少 Assets.car／PNG 時失敗；報告仍上傳。
-打包後再次輸出最終 IPA 的壓縮大小、檔案加總、分類與最大 30 個檔案。
+報告另列「套件內容」與「預期排除清單」：任何 `.py`／`.bak`／`.edit`／`.swift`／`.new`／dotfile 被包進去，或 `Scripts/package_exclusions.txt` 內應排除的檔案仍存在，CI 都會失敗並列出路徑。
+打包後再次輸出最終 IPA 的壓縮大小、檔案加總、分類與最大 30 個檔案，並重跑同一份排除清單。
 報告附於 GitHub Actions 摘要及 app-bundle-report／ipa-size-report artifact。
 
 ```sh
-python3 Scripts/inspect_app_bundle.py path/to/app.ipa --output report.md
+python3 Scripts/inspect_app_bundle.py path/to/app.ipa --output report.md \
+  --expect-excluded Scripts/package_exclusions.txt
 python3 -m unittest discover -s Scripts -p test_inspect_app_bundle.py
 ```
 

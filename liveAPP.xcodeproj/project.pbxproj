@@ -124,6 +124,7 @@
 		CE281A0E2E5AE7FC0023BBC4 /* Exceptions for "liveAPP" folder in "liveAPP" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				.last_build,
 				Documentation.docc,
 				PIPContent.swift.bak,
 				Setting.swift.edit,
