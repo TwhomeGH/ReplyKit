@@ -1,5 +1,12 @@
 # 變更歷史
 
+## 2026.11.07 01:19 App 圖示診斷辨識 CFBundleIconName 與建置身分
+
+- 問題：17.3.8 IPA 的 PersonalIcon 只有 `CFBundleIconName`，圖示在 Assets.car；診斷卻把沒有 `CFBundleIconFiles` 說成缺 PNG。另 `MARKETING_VERSION`／build 跨 tag 沒遞增，只看版本無法判斷安裝的是哪個產物。
+- 變更：診斷新增 iPhone／iPad 的 `CFBundleIconName`，只有 name 時說明「圖示在 Assets.car，缺少獨立 PNG 不代表缺漏」；報告加入 `appRevision`、`buildID`、`ciRun`。測試同步調整。
+- 已用 17.3.8 IPA（commit `7a2dae`）確認兩個 device 分支都有 PersonalIcon；若簽名工具的 alternative icons 清單只認 `CFBundleIconFiles`／PNG，空白屬工具限制。
+- 待重裝該 IPA 後確認診斷顯示正確 commit 與 PersonalIcon；若仍為空，才判定重簽替換了 Info.plist。
+
 ## 2026.11.07 01:12 Socket 送出佇列上限與 encoder 收斂
 
 - 問題：`SocketServer` 的共享 `JSONEncoder` 會被 `queueSend`／`sendTo` 在序列 queue 外呼叫；一般訊息的 `sendQueues` 沒有上限，慢速工具可讓非日誌訊息無限累積；移除連線時保存的 `pendingFailedPayloads` 沒有實際重放路徑，會保留資料。

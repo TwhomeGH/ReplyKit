@@ -11,8 +11,17 @@ struct AppIconDiagnosticsTests {
         let declared = AppIconDiagnostics(info: ["CFBundleIcons": phone, "CFBundleIcons~ipad": phone],
             isPad: true, supported: false, current: nil)
         #expect(declared.padIconsPresent)
-        #expect(declared.explanation.contains("缺少此裝置的替換 PNG"))
+        #expect(declared.padIconName == "PersonalIcon")
+        #expect(declared.explanation.contains("Assets.car"))
         #expect(!declared.supported)
+    }
+
+    @Test func nameWithoutAnyImageSourceIsReported() {
+        let info: [String: Any] = [
+            "CFBundleIcons~ipad": ["CFBundleAlternateIcons": ["PersonalIcon": [:]]]
+        ]
+        let diagnostics = AppIconDiagnostics(info: info, isPad: true, supported: false, current: nil)
+        #expect(diagnostics.explanation.contains("CFBundleIconName"))
     }
 
     @Test func reportsVersionBuildAndFamilyPresence() {
