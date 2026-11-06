@@ -13,6 +13,7 @@ struct PIPLayoutSettingsView: View {
     @AppStorage("PIPNowTimeLabelOverride", store: userDefaults) private var nowTimeLabelOverride = ""
     @AppStorage("PIPLiveLabelOverride", store: userDefaults) private var liveLabelOverride = ""
     @AppStorage("PIPEndedLabelOverride", store: userDefaults) private var endedLabelOverride = ""
+    @AppStorage("pipNoticeAvatar", store: userDefaults) private var noticeAvatar = false
     @State private var previewMode: PIPLayoutPreviewMode = .normal
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -106,6 +107,16 @@ struct PIPLayoutSettingsView: View {
                     }
 
                 Text("pipLayout.statusText.warning")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+            }
+
+            Section(header: Text("pipLayout.notice.section")) {
+                Toggle(AppLanguage.localized("pipLayout.notice.avatar"), isOn: $noticeAvatar)
+                    .onChange(of: noticeAvatar) { _ in
+                        PIPService.diagnosticInstance?.applyNoticeDisplaySettings()
+                    }
+                Text("pipLayout.notice.avatarFooter")
                     .font(.footnote)
                     .foregroundColor(.secondary)
             }
@@ -257,7 +268,10 @@ private struct PIPLayoutPreview: View {
             viewerCount: 128,
             isReconnecting: false,
             reconnectText: "",
-            secondaryNotice: notice
+            secondaryNotice: notice,
+            secondaryNoticeAvatar: noticeAvatar ? Self.sampleNoticeAvatar : nil,
+            secondaryNoticePageIndex: 0,
+            secondaryNoticePageCount: notice == nil ? 0 : 1
         )
 
         var ad: PIPAdOverlayRenderer.Scene?
@@ -295,6 +309,24 @@ private struct PIPLayoutPreview: View {
             scene: .init(time: time, ad: ad, chatMain: main, chatSecondary: secondary)
         )
     }
+
+    /// 預覽沒有真實頭貼時使用的示意圖；實際 PiP 仍用訊息提供的圖片。
+    private static let sampleNoticeAvatar: UIImage = {
+        let size = CGSize(width: 32, height: 32)
+        return UIGraphicsImageRenderer(size: size).image { context in
+            UIColor.systemGreen.setFill()
+            context.cgContext.fillEllipse(in: CGRect(origin: .zero, size: size))
+            let text = "測" as NSString
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.boldSystemFont(ofSize: 15),
+                .foregroundColor: UIColor.white,
+            ]
+            let textSize = text.size(withAttributes: attributes)
+            text.draw(at: CGPoint(x: (size.width - textSize.width) / 2,
+                                  y: (size.height - textSize.height) / 2),
+                      withAttributes: attributes)
+        }
+    }()
 
     /// 系統關閉／返回鈕由系統繪製，預覽以佔位圈標出保留區。
     private func systemControlBadge(systemName: String, scale: CGFloat) -> some View {

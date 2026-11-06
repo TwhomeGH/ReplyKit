@@ -20,6 +20,12 @@ enum PIPOverlayLayout {
     static func nowTimeY(compact: Bool) -> CGFloat { compact ? 34 : 58 }
     static func noticeY(compact: Bool) -> CGFloat { compact ? 54 : 78 }
     static let noticeLineHeight: CGFloat = 20
+    static let noticeAvatarSize: CGFloat = 16
+    static let noticeAvatarGap: CGFloat = 6
+    static let noticePageDotSize: CGFloat = 3
+    static let noticePageDotGap: CGFloat = 3
+    /// 最多 4 頁的圓點保留寬度（含與文字的間距）。
+    static let noticePageDotsReserve: CGFloat = 24
     /// 聊天室安全頂距；300x200 時一般為 100、精簡為 76。
     static func minimumChatTopMargin(compact: Bool) -> CGFloat { compact ? 76 : 100 }
 

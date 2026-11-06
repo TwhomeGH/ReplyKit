@@ -89,7 +89,11 @@ struct PIPDebugView: View {
         return PIPPreviewFrameRenderer.render(scene: .init(
             time: .init(elapsedString: "00:12:34", nowTimeText: "12:34:56", nowTimeLabel: "現在時間",
                 statusText: "直播中", statusEnded: false, viewerCount: 128,
-                isReconnecting: false, reconnectText: "", secondaryNotice: summary ? "[測試] \(user)：\(previewMessage)" : nil),
+                isReconnecting: false, reconnectText: "",
+                secondaryNotice: summary ? "[測試] \(user)：\(previewMessage)" : nil,
+                secondaryNoticeAvatar: summary && PIPDisplaySettings.noticeShowsAvatar ? previewAvatar : nil,
+                secondaryNoticePageIndex: 0,
+                secondaryNoticePageCount: summary ? 1 : 0),
             ad: nil,
             chatMain: primary ? ("[測試] \(user)", previewMessage, 18, previewAvatar) : nil,
             chatSecondary: !primary && !summary && !hidden ? ("[測試] \(user)", previewMessage, 15, previewAvatar) : nil))

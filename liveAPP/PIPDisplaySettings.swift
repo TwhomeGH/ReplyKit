@@ -30,6 +30,8 @@ enum PIPSystemControls {
 enum PIPDisplaySettings {
     static var clockSeconds: Double { validatedClock(userDefaults?.double(forKey: "pipClockSeconds") ?? 1) }
     static var powerSaving: Bool { userDefaults?.bool(forKey: "pipPowerSaving") ?? false }
+    /// 次要提示是否把頭貼排在文字左側；預設關閉以維持原本單行寬度。
+    static var noticeShowsAvatar: Bool { userDefaults?.bool(forKey: "pipNoticeAvatar") ?? false }
     static var secondaryMode: String {
         let value = userDefaults?.string(forKey: "pipSecondaryMode") ?? "summary"
         return ["normal", "summary", "hidden"].contains(value) ? value : "summary"

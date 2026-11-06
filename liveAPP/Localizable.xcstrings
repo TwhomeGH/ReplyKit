@@ -4784,6 +4784,27 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "現在時間" } }
       }
     },
+    "pipLayout.notice.section" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Secondary Notice" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "セカンダリ通知" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "次要訊息提示" } }
+      }
+    },
+    "pipLayout.notice.avatar" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Show avatar" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "アイコンを表示" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "顯示頭貼" } }
+      }
+    },
+    "pipLayout.notice.avatarFooter" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "When a message provides an avatar, place it to the left of the paged notice. Long notices split into up to four pages." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "メッセージにアイコンがある場合、ページ分割された通知の左に表示します。長い通知は最大4ページに分割されます。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "訊息有提供頭貼時，會排在分段提示左側；過長提示最多分成 4 頁。" } }
+      }
+    },
     "pipLayout.statusText.section" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Status Text" } },

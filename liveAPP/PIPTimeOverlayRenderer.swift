@@ -13,6 +13,9 @@ enum PIPTimeOverlayRenderer {
         let isReconnecting: Bool
         let reconnectText: String
         let secondaryNotice: String?
+        var secondaryNoticeAvatar: UIImage? = nil
+        var secondaryNoticePageIndex: Int = 0
+        var secondaryNoticePageCount: Int = 0
     }
 
     private static let clockIcon = UIImage(systemName: "clock.fill")?.withTintColor(
@@ -104,13 +107,43 @@ enum PIPTimeOverlayRenderer {
             let paragraph = NSMutableParagraphStyle()
             paragraph.lineBreakMode = .byTruncatingTail
             let noticeY = PIPOverlayLayout.noticeY
+            var textX = PIPOverlayLayout.contentLeading
+
+            if let avatar = scene.secondaryNoticeAvatar {
+                let avatarSize = PIPOverlayLayout.noticeAvatarSize
+                let avatarRect = CGRect(x: textX, y: noticeY + 1,
+                                        width: avatarSize, height: avatarSize)
+                cg.saveGState()
+                cg.addEllipse(in: avatarRect)
+                cg.clip()
+                avatar.draw(in: avatarRect)
+                cg.restoreGState()
+                textX += avatarSize + PIPOverlayLayout.noticeAvatarGap
+            }
+
+            let pageCount = scene.secondaryNoticePageCount
+            let dotsWidth = pageCount > 1
+                ? CGFloat(pageCount) * (PIPOverlayLayout.noticePageDotSize + PIPOverlayLayout.noticePageDotGap)
+                : 0
+            let rightReserve = PIPOverlayLayout.contentTrailing + (dotsWidth > 0 ? dotsWidth + 6 : 0)
             (notice as NSString).draw(in: CGRect(
-                x: PIPOverlayLayout.contentLeading,
-                y: noticeY,
-                width: max(1, size.width - PIPOverlayLayout.contentLeading - PIPOverlayLayout.contentTrailing),
-                height: 18),
+                x: textX, y: noticeY,
+                width: max(1, size.width - textX - rightReserve), height: 18),
                 withAttributes: [.font: UIFont.systemFont(ofSize: 12),
                                  .foregroundColor: UIColor.lightGray, .paragraphStyle: paragraph])
+
+            if pageCount > 1 {
+                let dotSize = PIPOverlayLayout.noticePageDotSize
+                let dotGap = PIPOverlayLayout.noticePageDotGap
+                var dotX = size.width - PIPOverlayLayout.contentTrailing - dotsWidth
+                let dotY = noticeY + 7
+                for index in 0..<pageCount {
+                    cg.setFillColor((index == scene.secondaryNoticePageIndex
+                        ? UIColor.white : UIColor(white: 1, alpha: 0.3)).cgColor)
+                    cg.fillEllipse(in: CGRect(x: dotX, y: dotY, width: dotSize, height: dotSize))
+                    dotX += dotSize + dotGap
+                }
+            }
         }
 
         UIGraphicsPopContext()

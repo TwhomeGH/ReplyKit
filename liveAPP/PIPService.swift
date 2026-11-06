@@ -373,10 +373,12 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             switch PIPDisplaySettings.secondaryMode {
             case "hidden": return
             case "summary":
-                // 不推斷事件種類，只顯示最新一筆；長文字單行截斷、不累積通知歷史。
-                secondaryNotice = String("\(user)：\(msg)".split(whereSeparator: { $0.isNewline }).joined(separator: " ").prefix(240))
-                secondaryDeadline = CACurrentMediaTime() + 5
-                markOverlayDirty()
+                // 不推斷事件種類，只顯示最新一筆；長文字分段顯示，不累積通知歷史。
+                let text = String("\(user)：\(msg)"
+                    .split(whereSeparator: { $0.isNewline })
+                    .joined(separator: " ")
+                    .prefix(240))
+                startSecondaryNotice(text: text, avatarImage: avatarImage, avatarURL: imgURL)
                 return
             default: break
             }
@@ -528,8 +530,15 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     /// 固定容量的文字快取；日期／時區／語系變更會使鍵值失效。
     private var clockTextKey = ""
     private var clockText = ""
-    private var secondaryNotice: String?
-    private var secondaryDeadline: CFTimeInterval = 0
+    private var secondaryNoticePages: [String] = []
+    private var secondaryNoticeFullText = ""
+    private var secondaryNoticePageStart: CFTimeInterval = 0
+    private var secondaryNoticeDeadline: CFTimeInterval = 0
+    private let secondaryNoticePageDuration: CFTimeInterval = 2.5
+    private var secondaryNoticeAvatar: UIImage?
+    private var secondaryNoticeAvatarURL: String?
+    private var secondaryNoticeUsesAvatar = false
+    private var secondaryNoticeToken = UUID()
     private var chatImage: CGImage?
     private var chatImageGeneration = -1
     private var chatImageSize = CGSize.zero
@@ -545,6 +554,79 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         setNeedsRedraw()
     }
 
+    /// 次要提示的頭貼選項變更時，重算頁寬並重新開始分段。
+    func applyNoticeDisplaySettings() {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { self.applyNoticeDisplaySettings() }
+            return
+        }
+        guard !secondaryNoticePages.isEmpty,
+              CACurrentMediaTime() < secondaryNoticeDeadline else { return }
+        secondaryNoticeUsesAvatar = PIPDisplaySettings.noticeShowsAvatar
+        loadSecondaryNoticeAvatarIfNeeded()
+        repaginateSecondaryNotice()
+        secondaryNoticePageStart = CACurrentMediaTime()
+        secondaryNoticeDeadline = secondaryNoticePageStart
+            + Double(max(1, secondaryNoticePages.count)) * secondaryNoticePageDuration
+        markOverlayDirty()
+    }
+
+    private func clearSecondaryNotice() {
+        secondaryNoticePages = []
+        secondaryNoticeFullText = ""
+        secondaryNoticeAvatarURL = nil
+        secondaryNoticeDeadline = 0
+        secondaryNoticeAvatar = nil
+        secondaryNoticeUsesAvatar = false
+        secondaryNoticeToken = UUID()
+    }
+
+    private func startSecondaryNotice(text: String, avatarImage: UIImage?, avatarURL: String?) {
+        clearSecondaryNotice()
+        secondaryNoticeFullText = text
+        secondaryNoticeAvatarURL = avatarURL
+        secondaryNoticeUsesAvatar = PIPDisplaySettings.noticeShowsAvatar
+        secondaryNoticeAvatar = secondaryNoticeUsesAvatar ? avatarImage : nil
+        repaginateSecondaryNotice()
+        secondaryNoticePageStart = CACurrentMediaTime()
+        secondaryNoticeDeadline = secondaryNoticePageStart
+            + Double(max(1, secondaryNoticePages.count)) * secondaryNoticePageDuration
+        markOverlayDirty()
+        loadSecondaryNoticeAvatarIfNeeded()
+    }
+
+    /// 頭貼只在選項開啟且目前沒有直接圖片時才非同步載入。
+    private func loadSecondaryNoticeAvatarIfNeeded() {
+        guard secondaryNoticeUsesAvatar, secondaryNoticeAvatar == nil,
+              let avatarURL = secondaryNoticeAvatarURL else { return }
+        let token = secondaryNoticeToken
+        Task { [weak self] in
+            await PiPImageCache.shared.loadImage(urlString: avatarURL) { image in
+                Task { @MainActor [weak self] in
+                    guard let self, self.secondaryNoticeToken == token,
+                          CACurrentMediaTime() < self.secondaryNoticeDeadline else { return }
+                    self.secondaryNoticeAvatar = image
+                    self.secondaryNoticeUsesAvatar = image != nil
+                    self.repaginateSecondaryNotice()
+                    self.secondaryNoticeDeadline = self.secondaryNoticePageStart
+                        + Double(max(1, self.secondaryNoticePages.count)) * self.secondaryNoticePageDuration
+                    self.markOverlayDirty()
+                }
+            }
+        }
+    }
+
+    private func repaginateSecondaryNotice() {
+        guard !secondaryNoticeFullText.isEmpty else {
+            secondaryNoticePages = []
+            return
+        }
+        secondaryNoticePages = PIPNoticePagination.pages(
+            secondaryNoticeFullText,
+            canvasWidth: frameSize.width,
+            showAvatar: secondaryNoticeUsesAvatar && secondaryNoticeAvatar != nil)
+    }
+
     /// 設定變更時立即套用控制列樣式；未啟動 PiP 時只保存偏好。
     func applySystemControlsStyle() {
         guard Thread.isMainThread else {
@@ -556,7 +638,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
     /// 設定變更只調整已存在的服務，並作廢畫面快取。
     func applyDisplaySettings() {
-        secondaryNotice = nil
+        clearSecondaryNotice()
         clockTextKey = ""
         chatImage = nil
         setNeedsRedraw()
@@ -643,7 +725,18 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         lastOverlayViewerCount = viewerCount
         lastOverlayIsReconnecting = isReconnecting
 
-        let notice = CACurrentMediaTime() < secondaryDeadline ? secondaryNotice : nil
+        let now = CACurrentMediaTime()
+        var notice: String?
+        var noticePageIndex = 0
+        var noticePageCount = 0
+        var noticeAvatar: UIImage?
+        if now < secondaryNoticeDeadline, !secondaryNoticePages.isEmpty {
+            noticePageCount = secondaryNoticePages.count
+            let page = Int(max(0, now - secondaryNoticePageStart) / secondaryNoticePageDuration)
+            noticePageIndex = min(noticePageCount - 1, page)
+            notice = secondaryNoticePages[noticePageIndex]
+            if PIPDisplaySettings.noticeShowsAvatar { noticeAvatar = secondaryNoticeAvatar }
+        }
         let scene = PIPTimeOverlayRenderer.Scene(
             elapsedString: elapsedString,
             nowTimeText: timeText,
@@ -653,7 +746,10 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             viewerCount: viewerCount,
             isReconnecting: isReconnecting,
             reconnectText: LPConfig.shared.reconnectStatus,
-            secondaryNotice: notice
+            secondaryNotice: notice,
+            secondaryNoticeAvatar: noticeAvatar,
+            secondaryNoticePageIndex: noticePageIndex,
+            secondaryNoticePageCount: noticePageCount
         )
         PIPTimeOverlayRenderer.draw(in: cg, size: size, scene: scene)
     }
@@ -1039,7 +1135,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         cachedFormatDescription = nil
         cachedFormatSize = .zero
         chatImage = nil
-        secondaryNotice = nil
+        clearSecondaryNotice()
         cachedPixelBuffer = nil
         cachedTimeString = nil
         cachedElapsedString = nil
@@ -1118,8 +1214,8 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             return false
         }
 
-        if secondaryNotice != nil, CACurrentMediaTime() >= secondaryDeadline {
-            secondaryNotice = nil
+        if secondaryNoticeDeadline > 0, CACurrentMediaTime() >= secondaryNoticeDeadline {
+            clearSecondaryNotice()
             needsRedraw = true
         }
         let wasAnimating = messagesLayer?.tickAnimation() == true
@@ -1227,7 +1323,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         cachedFormatDescription = nil
         cachedFormatSize = .zero
         chatImage = nil
-        secondaryNotice = nil
+        clearSecondaryNotice()
         cachedPixelBuffer = nil
         messagesLayer?.canncel()
         messagesLayer = nil
