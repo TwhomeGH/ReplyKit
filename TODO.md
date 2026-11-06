@@ -373,7 +373,9 @@ API 遷移屬後續技術評估，不作為以上功能完成的條件；需要�
 - [x] 主 App 兩份套件鎖定更新至 `03c77703`，接入保留影片真實向前時間間隔的底層修正；底層 CI 通過。
 - [ ] 主 App CI：確認新套件可建置並通過單元測試。
 - [ ] ReplayKit／ScreenCaptureKit 實機：持續推流並觸發數秒畫面停頓，核對恢復後沒有因時間戳縮短造成新增影音偏移；保留 App 日誌及未經轉碼的接收端樣本。來源時鐘重設與伺服器轉碼造成的偏移需另行判讀。
-- [ ] **2026-11-07 02:58 音訊 discontinuity 追查**：ScreenCaptureKit 推流約 1.5 小時後，系統音訊 track0 的 `discontinuities` 由 1→2、`spanMinusContentSeconds` 由 +0.020→-0.127，`CaptureCallbacks.audio.regress=1`；同一時刻 video inFPS 短暫 60→47.8，`publish avOffset` 約 -0.2s。RTMP transport `failedBatches=0`、queue 為空，mic track1 乾淨；影片 PTS regress=0。需補每個音訊 callback 的 prev/current PTS、gap 與是否丟棄／resync 日誌，並決定 publish 端要如何處理系統音訊時間回退。3.1 秒 video max gap 的 lastDiscontinuity 是早期 7154.7，不是這次起點。
+- [ ] **2026-11-07 02:58 音訊 discontinuity 追查**：ScreenCaptureKit 推流約 1.5 小時後，系統音訊 track0 的 `discontinuities` 由 1→2、`spanMinusContentSeconds` 由 +0.020→-0.127，`CaptureCallbacks.audio.regress=1`；同一時刻 video inFPS 短暫 60→47.8，`publish avOffset` 約 -0.2s。RTMP transport `failedBatches=0`、queue 為空，mic track1 乾淨；影片 PTS regress=0。3.1 秒 video max gap 的 lastDiscontinuity 是早期 7154.7，不是這次起點。
+  - [x] `ScreenAudioProbe` 已加逐筆 `[CaptureAudioAnomaly]`（PTS 回退或 gap >0.5s，含 prev/current/delta/frames/rate）。
+  - [ ] 底層 `RTMPTimestamp.update` 以 wire `updatedAt` 比對來源；音訊 `preferredDelta` 對負向 gap 只做每包 ≤5ms 慢速修正，`allowJump` 只處理正向 >500ms，`sourceRegressions` 不參與決策。需確認 RTMP 使用的 mixed 音訊是否帶入此 gap，再決定 drop／rebase／補靜音或調整策略。
 
 ## 共用音量監測與閒置比較
 

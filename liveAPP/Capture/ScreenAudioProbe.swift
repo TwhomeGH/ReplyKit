@@ -12,6 +12,7 @@ final class ScreenAudioProbe: MediaMixerOutput, @unchecked Sendable {
     private var mixedTimeline = AudioTimelineObservation()
     private var mixedBuffers = 0
     private var mixedFormat = "unknown"
+    private var lastSourcePTS: [UInt8: Double] = [:]
     private var lastMeterTime: [String: TimeInterval] = [:]
     private var meterInterval: TimeInterval = 1
     private let session: String
@@ -51,14 +52,28 @@ final class ScreenAudioProbe: MediaMixerOutput, @unchecked Sendable {
         if shouldMeasure(channel) { report(AudioMeterPCM.rms(sample), channel: channel) }
         let a = pointer.pointee
         let signature = "formatID=\(a.mFormatID) sampleRate=\(a.mSampleRate) channels=\(a.mChannelsPerFrame) bits=\(a.mBitsPerChannel) flags=\(a.mFormatFlags) bytesPerFrame=\(a.mBytesPerFrame) framesPerPacket=\(a.mFramesPerPacket) float=\((a.mFormatFlags & kAudioFormatFlagIsFloat) != 0) nonInterleaved=\((a.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0)"
+        let pts = sample.presentationTimeStamp.seconds
+        var anomaly: String?
         lock.lock()
         let changed = formats[track] != signature
         formats[track] = signature
         var timeline = timelines[track] ?? AudioTimelineObservation()
-        timeline.record(pts: sample.presentationTimeStamp.seconds, frames: sample.numSamples,
+        timeline.record(pts: pts, frames: sample.numSamples,
                         rate: a.mSampleRate, signature: signature)
         timelines[track] = timeline
+        if pts.isFinite {
+            if let previous = lastSourcePTS[track] {
+                let delta = pts - previous
+                if delta < 0 || delta > 0.5 {
+                    anomaly = "prevPTS=\(previous) pts=\(pts) deltaMs=\(delta * 1000) frames=\(sample.numSamples) rate=\(a.mSampleRate)"
+                }
+            }
+            lastSourcePTS[track] = pts
+        }
         lock.unlock()
+        if let anomaly {
+            sendlog(message: "[CaptureAudioAnomaly] session=\(session) track=\(track) \(anomaly)")
+        }
         if changed {
             let check = inspectPCM(sample, asbd: a)
             sendlog(message: "[CaptureAudioRead] session=\(session) track=\(track) \(check)")

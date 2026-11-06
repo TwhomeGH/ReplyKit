@@ -1,5 +1,12 @@
 # 變更歷史
 
+## 2026.11.07 04:07 音訊逐筆異常日誌與底層時間戳檢查
+
+- 問題：02:58 只知道系統音訊 track0 發生 PTS 回退／discontinuity，聚合日誌無法指出是哪一個 sample；也無法判斷 RTMP timestamp 層是否有補償。
+- 變更：`ScreenAudioProbe` 對每個來源音訊 callback 記錄上一筆 PTS；PTS 回退或前進超過 0.5 秒時寫 `[CaptureAudioAnomaly] prevPTS/current/deltaMs/frames/rate`。
+- 底層檢查：`RTMPTimestamp.update` 以 wire `updatedAt` 計算來源 delta；音訊使用 `preferredDelta` 時，負向來源 drift 只做每包最多 5ms 的慢速修正（`SlowsLargeNegativeSourceDrift` 測試明定此行為），`allowJump` 只處理正向 >500ms，`sourceRegressions` 僅供診斷，不會觸發 resync。`alignment=observeOnly`、`audioResyncs=0`。
+- 尚未改 RTMP timestamp 策略；需先確認 RTMP 音訊來源（mixed）是否真的帶入此 gap，再決定 drop／rebase／補靜音。
+
 ## 2026.11.07 01:26 修正圖示診斷 build 參數命名
 
 - 問題：`AppIconDiagnostics` 的初始化參數 `build` 與 `CFBundleVersion` 屬性同名，導致 `build = info["CFBundleVersion"]` 指派到 let 參數而編譯失敗。
