@@ -957,6 +957,9 @@ final class PIPServiceMessages {
 
     ) -> MessageLayerTuple {
 
+        let textColor = type == .secondary
+            ? PIPDisplaySettings.secondaryTextColor
+            : PIPDisplaySettings.mainTextColor
 
         var avatarLayer :CALayer?
 
@@ -989,7 +992,7 @@ final class PIPServiceMessages {
                 string:user,
                 attributes: [
                    .font: font,
-                   .foregroundColor: UIColor.white
+                   .foregroundColor: textColor
                 ]
             )
             
@@ -1013,7 +1016,7 @@ final class PIPServiceMessages {
                 string:message,
                 attributes: [
                    .font: font,
-                   .foregroundColor: UIColor.white
+                   .foregroundColor: textColor
                 ]
             )
             
@@ -1251,6 +1254,23 @@ final class PIPServiceMessages {
             layout(msg: msg, y: msg.targetY)
         }
         updateChatEdgeMask()
+    }
+
+    /// 顏色設定變更時直接更新現有圖層，不必重建整個聊天佇列。
+    func applyTextColors() {
+        let main = PIPDisplaySettings.mainTextColor
+        let secondary = PIPDisplaySettings.secondaryTextColor
+        for msg in stackedMessages {
+            let color = msg.type == .secondary ? secondary : main
+            for layer in [msg.name, msg.message] {
+                guard let layer,
+                      let attributed = layer.string as? NSAttributedString else { continue }
+                let mutable = NSMutableAttributedString(attributedString: attributed)
+                mutable.addAttribute(.foregroundColor, value: color,
+                                     range: NSRange(location: 0, length: mutable.length))
+                layer.string = mutable
+            }
+        }
     }
 
     private func snapToTargets() {

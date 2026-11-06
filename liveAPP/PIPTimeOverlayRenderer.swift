@@ -130,7 +130,8 @@ enum PIPTimeOverlayRenderer {
                 x: textX, y: noticeY,
                 width: max(1, size.width - textX - rightReserve), height: 18),
                 withAttributes: [.font: UIFont.systemFont(ofSize: 12),
-                                 .foregroundColor: UIColor.lightGray, .paragraphStyle: paragraph])
+                                 .foregroundColor: PIPDisplaySettings.secondaryTextColor,
+                                 .paragraphStyle: paragraph])
 
             if pageCount > 1 {
                 let dotSize = PIPOverlayLayout.noticePageDotSize

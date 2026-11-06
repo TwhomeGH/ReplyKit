@@ -32,6 +32,22 @@ enum PIPDisplaySettings {
     static var powerSaving: Bool { userDefaults?.bool(forKey: "pipPowerSaving") ?? false }
     /// 次要提示是否把頭貼排在文字左側；預設關閉以維持原本單行寬度。
     static var noticeShowsAvatar: Bool { userDefaults?.bool(forKey: "pipNoticeAvatar") ?? false }
+
+    /// 主要聊天文字；預設白。
+    static var mainTextColor: UIColor {
+        guard let hex = userDefaults?.string(forKey: "pipMainTextColor"),
+              let color = UIColor(hex: hex) else { return .white }
+        return color
+    }
+
+    /// 次要提示與次要聊天文字；預設比 lightGray 亮，避免在黑色 PiP 上過暗。
+    static var secondaryTextColor: UIColor {
+        guard let hex = userDefaults?.string(forKey: "pipSecondaryTextColor"),
+              let color = UIColor(hex: hex) else {
+            return UIColor(white: 0.86, alpha: 1)
+        }
+        return color
+    }
     static var secondaryMode: String {
         let value = userDefaults?.string(forKey: "pipSecondaryMode") ?? "summary"
         return ["normal", "summary", "hidden"].contains(value) ? value : "summary"

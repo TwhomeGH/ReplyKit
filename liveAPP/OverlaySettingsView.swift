@@ -279,29 +279,3 @@ func uiFontWeight(_ weight: OverlayFontWeight) -> UIFont.Weight {
     }
 }
 
-private extension Color {
-    init?(hex: String) {
-        var raw = hex.trimmingCharacters(in: .whitespacesAndNewlines)
-        if raw.hasPrefix("#") {
-            raw.removeFirst()
-        }
-        guard raw.count == 6, let value = Int(raw, radix: 16) else { return nil }
-        self.init(
-            red: Double((value >> 16) & 0xff) / 255.0,
-            green: Double((value >> 8) & 0xff) / 255.0,
-            blue: Double(value & 0xff) / 255.0
-        )
-    }
-
-    var hexString: String {
-        let uiColor = UIColor(self)
-        var red: CGFloat = 0
-        var green: CGFloat = 0
-        var blue: CGFloat = 0
-        var alpha: CGFloat = 0
-        guard uiColor.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else {
-            return "#FFFFFF"
-        }
-        return String(format: "#%02X%02X%02X", Int(red * 255), Int(green * 255), Int(blue * 255))
-    }
-}

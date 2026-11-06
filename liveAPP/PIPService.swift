@@ -554,6 +554,17 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         setNeedsRedraw()
     }
 
+    /// 文字顏色變更時更新現有聊天圖層，並重畫次要提示。
+    func applyTextColorSettings() {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { self.applyTextColorSettings() }
+            return
+        }
+        messagesLayer?.applyTextColors()
+        chatImage = nil
+        setNeedsRedraw()
+    }
+
     /// 次要提示的頭貼選項變更時，重算頁寬並重新開始分段。
     func applyNoticeDisplaySettings() {
         guard Thread.isMainThread else {

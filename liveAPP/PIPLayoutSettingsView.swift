@@ -14,6 +14,8 @@ struct PIPLayoutSettingsView: View {
     @AppStorage("PIPLiveLabelOverride", store: userDefaults) private var liveLabelOverride = ""
     @AppStorage("PIPEndedLabelOverride", store: userDefaults) private var endedLabelOverride = ""
     @AppStorage("pipNoticeAvatar", store: userDefaults) private var noticeAvatar = false
+    @AppStorage("pipMainTextColor", store: userDefaults) private var mainTextColorHex = "#FFFFFF"
+    @AppStorage("pipSecondaryTextColor", store: userDefaults) private var secondaryTextColorHex = "#DBDBDB"
     @State private var previewMode: PIPLayoutPreviewMode = .normal
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -76,6 +78,7 @@ struct PIPLayoutSettingsView: View {
                     endedLabel: effectiveLabel(endedLabelOverride, localizedKey: "pip.default.endedLabel"),
                     showsNoticeAvatar: noticeAvatar
                 )
+                .id(mainTextColorHex + secondaryTextColorHex)
     }
 
     @ViewBuilder private var controlSections: some View {
@@ -118,6 +121,26 @@ struct PIPLayoutSettingsView: View {
                         PIPService.diagnosticInstance?.applyNoticeDisplaySettings()
                     }
                 Text("pipLayout.notice.avatarFooter")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+            }
+
+            Section(header: Text("pipLayout.color.section")) {
+                ColorPicker(AppLanguage.localized("pipLayout.color.main"), selection: Binding(
+                    get: { Color(hex: mainTextColorHex) ?? .white },
+                    set: { color in
+                        mainTextColorHex = color.hexRGB
+                        PIPService.diagnosticInstance?.applyTextColorSettings()
+                    }), supportsOpacity: false)
+
+                ColorPicker(AppLanguage.localized("pipLayout.color.secondary"), selection: Binding(
+                    get: { Color(hex: secondaryTextColorHex) ?? Color(white: 0.86) },
+                    set: { color in
+                        secondaryTextColorHex = color.hexRGB
+                        PIPService.diagnosticInstance?.applyTextColorSettings()
+                    }), supportsOpacity: false)
+
+                Text("pipLayout.color.footer")
                     .font(.footnote)
                     .foregroundColor(.secondary)
             }
