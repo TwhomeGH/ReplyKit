@@ -21,6 +21,8 @@
   - 2026-11-07 已取得一次正常停止：`capture.finished`、`finish stage=complete elapsedMs=5368`、driver／lease=false；停止後 0／10／19.6／49.7 秒 footprint 約 144.8→141→140.5→142.3MB，`reachedStopSeconds=[30]`。尚未達 60 秒，且 PiP／TTS 沒有單獨開關對照。
 - [ ] **停止後殘留追查**：同一筆診斷的 pre-capture idle 為 109.2MB，停止後 49.7 秒仍 142.3MB（約 +33.1MB；internal 65→104）；PiP pool 僅約 2.75MB，因此差值不在 PiP pool。需先建立 warm idle 基準，再定位是聊天／日誌／診斷歷史、SCK／Metal 快取或其他子系統。
 - [ ] **建議量測順序**：A. 冷啟動不開播，前景等 60～120 秒（背景 60 秒再回前景），匯出這一段，取得 warm idle；B. 短開播約 5 分鐘後停止，等 60／120 秒再匯出；C. 只開 PiP；D. 只跑 TTS。每段用精確時間範圍匯出，不要先用一小時混合視窗；確認 baseline 後再另外做一小時 idle soak。
+- [x] App init 寫入 `[AppSession] launch` 標記；診斷匯出新增「本次啟動到現在」，以 `launchDate - 1s` 為起點並顯示啟動時間。
+- [ ] **本次啟動匯出驗收**：重新啟動 App、等待再匯出，確認只含本次程序、包含 launch marker、背景返回不改變起點。
 - [ ] 對照同期間 JetsamEvent 確認終止原因；每日峰值與接收報告時的版本不能代表終止當下的用量／版本。
 
 ## MetricKit

@@ -1191,6 +1191,9 @@ struct liveAPPApp: App {
 
     init() {
 
+        // 先留下本次啟動標記，診斷匯出才能只取這個 process 的日誌。
+        AppSession.markLaunch()
+
         #if os(iOS)
         MetricReports.shared.start()
         SettingsBackupManager.shared.start()

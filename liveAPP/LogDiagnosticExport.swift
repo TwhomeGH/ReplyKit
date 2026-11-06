@@ -105,7 +105,7 @@ enum LogDiagnosticExport {
 
 /// 範圍匯出與分享入口；檔案置於快取，不改動 log.txt。
 struct LogDiagnosticExportView: View {
-    @State private var mode = 0
+    @State private var mode = 3
     @State private var start = Calendar.current.startOfDay(for: Date())
     @State private var end = Date()
     @State private var busy = false
@@ -117,16 +117,22 @@ struct LogDiagnosticExportView: View {
         Form {
             Section("匯出範圍") {
                 Picker("時間", selection: $mode) {
-                    Text("今天").tag(0)
+                    Text("本次啟動到現在").tag(3)
                     Text("最近一小時").tag(1)
+                    Text("今天").tag(0)
                     Text("自訂範圍").tag(2)
                 }
                 if mode == 2 {
                     DatePicker("開始", selection: $start)
                     DatePicker("結束", selection: $end)
                 }
+                if mode == 3 {
+                    Text("本次啟動：" + AppSession.launchDate.formatted(date: .abbreviated, time: .standard))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Text("時區：" + TimeZone.current.identifier)
-                Text("保留範圍內所有紀錄及多行續文。今天與最近一小時以按下產生時為準。原始日誌不變。")
+                Text("保留範圍內所有紀錄及多行續文。本次啟動以 App 啟動標記為起點；今天與最近一小時以按下產生時為準。原始日誌不變。")
                     .font(.caption)
             }.disabled(busy)
             Section {
@@ -149,7 +155,18 @@ struct LogDiagnosticExportView: View {
     private func export() {
         let now = Date(), zone = TimeZone.current
         let upper = mode == 2 ? end : now
-        let lower = mode == 0 ? Calendar.current.startOfDay(for: now) : mode == 1 ? now.addingTimeInterval(-3600) : start
+        let lower: Date
+        switch mode {
+        case 0:
+            lower = Calendar.current.startOfDay(for: now)
+        case 1:
+            lower = now.addingTimeInterval(-3600)
+        case 3:
+            // 日誌時間只有秒精度；往前 1 秒確保啟動標記本身也被選入。
+            lower = AppSession.launchDate.addingTimeInterval(-1)
+        default:
+            lower = start
+        }
         busy = true; result = nil; error = nil
         work = Task {
             defer { busy = false }
