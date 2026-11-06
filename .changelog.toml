@@ -13,6 +13,7 @@ order = 10
 paths = [
   "Docs/development/README.md",
   "Docs/development/SETTINGS_BACKUP.md",
+  "Docs/development/APP_ICON_AND_PACKAGE_SIZE.md",
   "Docs/README.md",
   "Docs/sponsor.md",
   "Docs/tts-filter-configuration.md",

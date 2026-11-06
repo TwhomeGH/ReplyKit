@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>App 圖示工具</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#10151f;color:#edf2fa}body{max-width:1040px;margin:40px auto;padding:0 24px}h1{font-size:30px;margin-bottom:8px}p{color:#bbc8da;line-height:1.7}.card{padding:24px;background:#1c2533;border:1px solid #344156;border-radius:18px;margin:20px 0}label{display:block;margin:14px 0 8px}select,button{font:inherit;border-radius:9px;padding:11px 15px;border:1px solid #526580;background:#263449;color:inherit}select{width:100%}button{cursor:pointer;margin:12px 8px 0 0}button.primary{background:#336fdf;border-color:#6699ff}button:disabled{opacity:.45;cursor:default}.grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}.preview{display:flex;gap:22px;align-items:center;flex-wrap:wrap}.preview img{width:180px;height:180px;border-radius:38px;object-fit:contain;background:#111}.preview img.small{width:60px;height:60px;border-radius:13px}#status{white-space:pre-wrap;overflow-wrap:anywhere;padding:14px 0;color:#a9d4ff}#sizes{font-size:17px;line-height:1.8}summary{cursor:pointer}table{width:100%;text-align:left;font-size:13px;word-break:break-word}td{padding:6px;border-bottom:1px solid #344156}th{padding:6px} @media(max-width:720px){.grid{grid-template-columns:1fr}body{margin-top:20px}}
+</style>
+<h1>App 圖示工具</h1><p>從原稿挑選圖片，更新同一組「個人精選」。原稿保留，預設圖示不變。</p>
+<div class="grid"><section class="card"><h2>1. 選擇原稿</h2>
+<label for="source">Artwork/AppIcons</label><select id="source"></select>
+<label for="mode">輸出方式</label><select id="mode"><option value="lossless">標準：縮至指定尺寸＋PNG 無損壓縮</option><option value="colors256">較小：減至 256 色（有損，請檢查漸層）</option></select>
+<p>需為 1024～8192 px 正方形、不透明的靜態圖片。過大圖片縮至 1024 px，不自動裁切或放大；有色彩描述檔時轉為 sRGB。</p>
+<button id="previewButton" class="primary">產生預覽</button></section>
+<section class="card"><h2>2. 檢查效果與大小</h2><div class="preview"><img id="large" alt="輸出圖示預覽" hidden><img class="small" id="small" alt="小尺寸效果" hidden></div><p id="sizes">選擇圖片並產生預覽。</p>
+<button id="applyButton" class="primary" disabled>套用為個人精選</button>
+<p>套用前保存舊資源副本。不會提交 Git 或建立新的圖示選項。</p></section></div>
+<div id="status" role="status" aria-live="polite"></div>
+<section class="card"><details><summary>產物明細與限制</summary><p>資源檔大小不等於 Assets.car 或 IPA 增量；實際包體請看 CI 報告。圓角僅為預覽效果，PNG 原圖仍保留方形。備份在 .build/app-icon-tool/backups，需長期保存請另外搬走。</p><table><thead><tr><th>輸出檔案</th><th>大小</th></tr></thead><tbody id="files"></tbody></table></details></section>
+<script>
+const token='__TOKEN__';let draft=null;const $=id=>document.getElementById(id);
+const bytes=n=>n>=1000000?(n/1000000).toFixed(3)+' MB':(n/1000).toFixed(1)+' KB';
+function busy(value){$('previewButton').disabled=value;$('source').disabled=value;$('mode').disabled=value;$('applyButton').disabled=value||!draft;}
+async function api(path,body){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Icon-Token':token},body:JSON.stringify(body)});const result=await r.json();if(!r.ok)throw Error(result.error);return result;}
+function invalidate(){draft=null;$('applyButton').disabled=true;$('large').hidden=true;$('small').hidden=true;$('sizes').textContent='選項已變更，請重新預覽。';$('files').replaceChildren();$('status').textContent='';}
+$('source').onchange=invalidate;$('mode').onchange=invalidate;
+$('previewButton').onclick=async()=>{draft=null;busy(true);$('status').textContent='正在產生各尺寸圖示…';try{const d=await api('/api/preview',{name:$('source').value,mode:$('mode').value});draft=d.draftID;for(const id of ['large','small']){$(id).src='data:image/png;base64,'+d.preview;$(id).hidden=false;}$('sizes').textContent=d.source+' · '+d.sourceSize.join(' × ')+' px\n原稿 '+bytes(d.sourceBytes)+'；目前資源 '+bytes(d.beforeBytes)+' → 新資源 '+bytes(d.afterBytes);$('files').replaceChildren();for(const f of d.files){const tr=document.createElement('tr');for(const text of [f.path,bytes(f.bytes)]){const td=document.createElement('td');td.textContent=text;tr.append(td);}$('files').append(tr);}$('status').textContent='預覽完成。確認效果後再套用。';}catch(e){$('status').textContent='無法預覽：'+e.message;}finally{busy(false);}};
+$('applyButton').onclick=async()=>{if(!draft||!confirm('以目前預覽取代「個人精選」圖示？會先備份舊資源。'))return;busy(true);try{const d=await api('/api/apply',{draftID:draft});draft=null;$('status').textContent='已套用。舊資源備份：'+d.backup+'\n請查看 Git 差異，並由 CI 驗證實際包體及圖示宣告。';}catch(e){draft=null;$('status').textContent='未完成：'+e.message+'；請重新預覽。';}finally{busy(false);}};
+fetch('/api/list').then(r=>r.json()).then(d=>{for(const name of d.files){const option=document.createElement('option');option.value=name;option.textContent=name;$('source').append(option);}if(!d.files.length){$('previewButton').disabled=true;$('status').textContent='請先將圖片放入 Artwork/AppIcons。';}}).catch(e=>{$('status').textContent='無法載入原稿清單：'+e.message;});
+</script></html>

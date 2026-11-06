@@ -8,6 +8,8 @@ struct AppIconSettingsView: View {
   @State private var selectedName = UIApplication.shared.alternateIconName
   @State private var isChanging = false
   @State private var errorMessage: String?
+  @State private var diagnostics: AppIconDiagnostics?
+  @State private var lastReport: String?
 
   var body: some View {
     Form {
@@ -21,15 +23,25 @@ struct AppIconSettingsView: View {
         ProgressView(AppLanguage.localized("appIcon.changing"))
       }
       if !UIApplication.shared.supportsAlternateIcons {
-        Text(AppLanguage.localized("appIcon.unsupported"))
+        Text(diagnostics?.explanation ?? AppLanguage.localized("appIcon.unsupported"))
           .foregroundStyle(.secondary)
+      }
+      if let diagnostics {
+        Section {
+          DisclosureGroup(AppLanguage.localized("appIcon.diagnostics")) {
+            Text(diagnostics.report).font(.caption.monospaced()).textSelection(.enabled)
+            Button(AppLanguage.localized("appIcon.copyDiagnostics")) {
+              UIPasteboard.general.string = diagnostics.report
+            }
+          }
+        }
       }
     }
     .navigationTitle(AppLanguage.localized("appIcon.title"))
     .navigationBarTitleDisplayMode(.inline)
-    .onAppear { selectedName = UIApplication.shared.alternateIconName }
+    .onAppear { refreshDiagnostics() }
     .onChange(of: scenePhase) { phase in
-      if phase == .active { selectedName = UIApplication.shared.alternateIconName }
+      if phase == .active { refreshDiagnostics() }
     }
     .alert(AppLanguage.localized("appIcon.failed"), isPresented: Binding(
       get: { errorMessage != nil },
@@ -38,6 +50,29 @@ struct AppIconSettingsView: View {
       Button(AppLanguage.localized("appIcon.ok")) { errorMessage = nil }
     } message: {
       Text(errorMessage ?? "")
+    }
+  }
+
+  /// 讀原始 plist 保留 ~ipad 分支；只在診斷改變時寫摘要，避免每次刷新重複記錄。
+  private func refreshDiagnostics() {
+    selectedName = UIApplication.shared.alternateIconName
+    var info = Bundle.main.infoDictionary ?? [:]
+    do {
+      if let url = Bundle.main.url(forResource: "Info", withExtension: "plist") {
+        let data = try Data(contentsOf: url)
+        if let raw = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] {
+          info = raw
+        }
+      }
+    } catch {
+      sendlog(title: "AppIcon", message: "讀取原始 plist 失敗，改用 Bundle 資訊：\((error as NSError).code)")
+    }
+    let snapshot = AppIconDiagnostics(info: info, isPad: UIDevice.current.userInterfaceIdiom == .pad,
+      supported: UIApplication.shared.supportsAlternateIcons, current: selectedName)
+    diagnostics = snapshot
+    if lastReport != snapshot.report {
+      sendlog(title: "AppIcon", message: snapshot.report.replacingOccurrences(of: "\n", with: " | "))
+      lastReport = snapshot.report
     }
   }
 
@@ -74,6 +109,7 @@ struct AppIconSettingsView: View {
         selectedName = UIApplication.shared.alternateIconName
         isChanging = false
         errorMessage = message
+        refreshDiagnostics()
       }
     }
   }

@@ -214,6 +214,21 @@ jobs:
             build/archive-summary.md
           if-no-files-found: warn
 
+      - name: Verify archived app icons 檢查封存圖示宣告
+        run: |
+          python3 -m unittest discover -s Scripts -p test_inspect_app_bundle.py
+          python3 Scripts/inspect_app_bundle.py "build/liveApp.xcarchive/Products/Applications/liveAPP.app" --output build/app-bundle-report.md --github-summary
+
+      - name: Upload app bundle report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: app-bundle-report
+          path: |
+            build/app-bundle-report.md
+            build/app-bundle-report.json
+          if-no-files-found: warn
+
       - name: Read app version 讀取 App 版本
         id: app_version
         run: |
@@ -280,6 +295,20 @@ jobs:
 
           echo "Listing build directory contents"
           ls -al build/
+
+      - name: Inspect IPA contents 分析最終 IPA 包體
+        run: |
+          python3 Scripts/inspect_app_bundle.py "build/liveApp_${TAG}.ipa" --output build/ipa-size-report.md --github-summary
+
+      - name: Upload IPA size report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ipa-size-report
+          path: |
+            build/ipa-size-report.md
+            build/ipa-size-report.json
+          if-no-files-found: warn
 
       - name: Read IPA metadata 讀取 IPA 大小
         id: ipa_meta

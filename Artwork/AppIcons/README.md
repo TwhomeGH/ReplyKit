@@ -19,9 +19,13 @@
 
 ## 目前接入
 
-- 選用 `Exp2.PNG`，正式資源名稱為 `PersonalIcon`，顯示名稱為「個人精選」。
-- `Exp1.PNG` 僅保留為原稿，不加入 App 資源。此資料夾不屬於 App target。
+- 選用 `Exp3.png`，正式資源名稱為 `PersonalIcon`，顯示名稱為「個人精選」。
+- `Exp1.PNG`、`Exp2.PNG` 僅保留為原稿，不加入 App 資源。此資料夾不屬於 App target。
 - 入口：工具 → 外觀設定 → App 圖示；可切換預設與個人精選。
 - 正式 PNG 去除未使用的 Alpha 通道；設定頁使用 168 × 168 預覽，避免重複內建完整原圖。
 - 原稿更新後需同步正式圖示與預覽，不會自動同步。
 - 待 iPhone／iPad 實機驗收：切換、恢復預設、重新開啟頁面及 App 後的選用標記。
+
+正式 PersonalIcon 現在使用明確 iPhone／iPad 尺寸；更新原稿時需同步 appiconset 各尺寸與預覽。包體與診斷詳見 [說明](../../Docs/development/APP_ICON_AND_PACKAGE_SIZE.md)。
+
+更新圖示可用 `python Scripts/app_icon_tool.py` 開啟本機預覽（需要 Pillow）；確認後才按套用，工具會先備份舊檔。也可用 `--source Exp3.png --apply` 直接產生固定尺寸。

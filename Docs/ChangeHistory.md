@@ -17,6 +17,14 @@
 - 變更（SCK）：`finish` 對 diagnostics、operation、publishing、stopCapture、錄製完成與管線停止加上有上限的等待；每一步記錄 `finish stage=... elapsedMs=...`，超過上限仍繼續收尾並回到 idle，不再無限停在 stopping。
 - 待實機確認：備份在損壞檔後能恢復、PiP 摘要頻率、SCK 停止（含啟動中取消與錄製收尾）的最後狀態與新 stage 日誌。
 
+## 2026.11.06 19:31 補強替換圖示相容性與包體產物檢查
+
+- App 圖示頁新增宣告診斷、複製與變更時日誌，區分 iPad 宣告缺失及系統拒絕。
+- PersonalIcon 補明確 iPhone／iPad 尺寸，CI 檢查產物圖示檔案宣告與 PNG，失敗保留報告。
+- 新增 IPA 分類大小與最大檔案報告。實際比較 17.2.8／17.2.9，增量約 97.8% 位於 Assets.car。
+- 排除 16 個開發腳本與備份檔的 App target 成員資格，不刪除來源。
+- Python 產物檢查測試、YAML 解析、專案結構與 Swift 語法檢查通過；新版圖示切換及編譯結果仍待 CI／實機驗收。
+
 ## 2026.11.06 12:11 新增設定備份與還原，公開本地錄影目錄
 
 - 工具新增備份入口；偏好變更合併保存至 Documents/ConfigBackups，保留最新與前一份，顯示成功時間及分享入口。
