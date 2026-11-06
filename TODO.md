@@ -171,7 +171,9 @@ API 遷移屬後續技術評估，不作為以上功能完成的條件；需要�
 - [x] **首次 CI 實跑**：hosted runner 已完成建置與 `liveAPPTests` 執行；2026-10-05 由使用者確認。
 - [x] **Xcode 27 CI 覆蓋**：Xcode 27 CI 與 ScreenCaptureKit 建置路徑已實跑，2026-10-05 由使用者確認。模擬器執行核心單元測試；ScreenCaptureKit 實機限定路徑由裝置建置涵蓋。
 - [x] 模擬器 selector 改用已安裝 runtime、SDK 同版本優先、標準機型排序與開機 fallback；9 個 selector 測試。
+- [x] Archive concurrency 不再取消進行中建置，避免接近完成的 archive 因新 tag 白費；新觸發只排隊並取代較舊 pending。
 - [ ] 下一次 CI 驗證新選機與 fallback，特別是 iPhone Air 開機失敗、27.2 runtime 缺失與全新裝置重建。
+- [ ] 若需要讓最新 tag 更早開始，評估在 archive 啟動前跳過已被新 tag 取代的工作，而不是取消已開始的建置。
 
 ## AltStore 來源
 

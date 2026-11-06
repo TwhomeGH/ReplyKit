@@ -8,9 +8,11 @@ on:
 
 # workflow_run 的 github.ref 不代表來源分支，必須使用上游 head_branch。
 # 失敗／取消的上游只產生略過工作，不得取消正在執行的正常發布。
+# 進行中的 archive 不取消；新觸發排隊，GitHub 只會取代較舊的 pending，
+# 避免接近完成的建置因下一次 push 白費 20 多分鐘。
 concurrency:
   group: archive-${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch || github.run_id }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   unit-tests:

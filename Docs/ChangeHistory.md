@@ -1,5 +1,11 @@
 # 變更歷史
 
+## 2026.11.06 21:34 Archive 不取消進行中建置
+
+- 問題：Archive workflow 使用 `cancel-in-progress: true`；新推送建立新 tag 時，會取消已跑約 24 分鐘、接近完成的舊 archive，浪費建置時間且可能留下已建立但沒有 Release 的 tag。
+- 變更：archive 的 concurrency 保留 `archive-<branch>` 分組，但改為 `cancel-in-progress: false`；進行中的建置完成並發布，新觸發排隊，GitHub 只取代較舊的 pending。
+- 取捨：最新版本要等目前建置結束才開始；若之後需要更早切換，可再加「啟動前檢查是否已被新 tag 取代」的 preflight，而不是中止已開始的 archive。
+
 ## 2026.11.06 21:26 PiP 文字顏色可調與次要提示預設提亮
 
 - 問題：次要提示使用 `UIColor.lightGray`，在黑色 PiP 上偏暗；主要聊天與次要文字也無法由使用者調整。
