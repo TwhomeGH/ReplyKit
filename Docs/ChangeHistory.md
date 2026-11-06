@@ -4,6 +4,7 @@
 
 - 問題：舊的 `settings-latest.json` 若損壞或超過 2 MB，`SettingsBackupStorage.save` 會在輪替時拋錯，之後的自動備份永遠寫不進去；PiP 每分鐘寫一筆效能摘要，長場次日誌過度膨脹；SCK 停止時任一 await 卡住，UI 會一直停在「正在停止擷取」。
 - 變更（備份）：`save` 寫入前檢查 2 MB 上限；舊 latest 無法讀取時不再中斷，改為整檔移到 `settings-previous.json` 後再寫新檔，損壞的舊檔不會永久阻塞備份。新增 oversized latest 回歸測試。
+- 變更（備份頻率）：`SettingsBackupManager` 新增 `needsSave`；只有收到偏好變更才在節流到期或背景時重新 capture。前景／背景反覆切換但設定沒變時直接跳過，不再每次背景都做一次完整備份檢查。
 - 變更（PiP 診斷）：一般摘要改為每 5 分鐘；只有 renderFailures 或 backpressureSkips 才在滿 1 分鐘時提前回報。排程延遲尖峰不再單獨觸發摘要。
 - 變更（SCK）：`finish` 對 diagnostics、operation、publishing、stopCapture、錄製完成與管線停止加上有上限的等待；每一步記錄 `finish stage=... elapsedMs=...`，超過上限仍繼續收尾並回到 idle，不再無限停在 stopping。
 - 待實機確認：備份在損壞檔後能恢復、PiP 摘要頻率、SCK 停止（含啟動中取消與錄製收尾）的最後狀態與新 stage 日誌。

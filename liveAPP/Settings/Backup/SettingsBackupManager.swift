@@ -14,6 +14,8 @@ final class SettingsBackupManager: ObservableObject {
     private var observers: [NSObjectProtocol] = []
     private var scheduled: Task<Void, Never>?
     private var lastContent: Data?
+    /// 收到偏好變更才需要在下一次背景／節流到期時實際檢查內容。
+    private var needsSave = true
 
     /// 只註冊一次；背景前補存已收到的偏好，凍結期間不假裝能執行備份。
     func start() {
@@ -32,6 +34,7 @@ final class SettingsBackupManager: ObservableObject {
 
     /// 節流而非無限延後：連續操作仍約每兩秒檢查一次設定快照。
     private func schedule() {
+        needsSave = true
         guard scheduled == nil else { return }
         scheduled = Task { [weak self] in
             do { try await Task.sleep(nanoseconds: 2_000_000_000) } catch { return }
@@ -46,12 +49,16 @@ final class SettingsBackupManager: ObservableObject {
         scheduled = nil
         // 還原待下次啟動期間保留確認時的備份，不用舊服務狀態覆蓋它。
         guard !restorePending else { return }
+        let latest = SettingsBackupStorage.directory.appendingPathComponent("settings-latest.json")
+        // 沒有待存變更、已有內容快取且檔案還在時，前景／背景反覆切換不必重新 capture。
+        guard needsSave || lastContent == nil || !FileManager.default.fileExists(atPath: latest.path) else {
+            return
+        }
         do {
             let document = try SettingsBackupRegistry.capture(shared: userDefaults ?? .standard,
                 standard: .standard, includesSecrets: false)
             let content = try JSONSerialization.data(withJSONObject: ["shared": document.shared,
                 "standard": document.standard], options: [.sortedKeys])
-            let latest = SettingsBackupStorage.directory.appendingPathComponent("settings-latest.json")
             if lastContent == nil, FileManager.default.fileExists(atPath: latest.path) {
                 do {
                     let previous = try SettingsBackupStorage.read(latest)
@@ -62,9 +69,14 @@ final class SettingsBackupManager: ObservableObject {
                     report(error)
                 }
             }
-            guard content != lastContent || !FileManager.default.fileExists(atPath: latest.path) else { return }
+            guard content != lastContent || !FileManager.default.fileExists(atPath: latest.path) else {
+                lastContent = content
+                needsSave = false
+                return
+            }
             _ = try SettingsBackupStorage.save(document)
             lastContent = content
+            needsSave = false
             lastSaved = document.createdAt
             refresh()
         } catch { report(error) }
