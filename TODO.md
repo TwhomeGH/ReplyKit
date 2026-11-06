@@ -16,7 +16,10 @@
 
 - [x] 新增 IdleResources 與生命週期快照，列出擷取、PiP、TTS 的實際狀態或持有資訊。
 - [ ] 冷啟動不開播，前景等待 60 秒後進背景，再返回並匯出日誌；對照 app.start／periodic／app.background.afterCleanup／app.foreground 的 footprint 與工作狀態。
+  - 2026-11-07 日誌的 `coldIdleBaselineMB=11.0` 是啟動初期值；UI 載入後、未開播的 idle footprint 已約 109MB。這個差距不是擷取造成，需先定義「UI 完成載入後」的 warm idle 基準，否則 deltaBaseline 會高估。
 - [ ] 開播後停止，等待至少 60 秒；確認 capture.finished 的 driver／lease 已釋放，並比較後續 footprint。另測 PiP、TTS 分別開關，避免把有背景工作的狀態當作完全閒置。
+  - 2026-11-07 已取得一次正常停止：`capture.finished`、`finish stage=complete elapsedMs=5368`、driver／lease=false；停止後 0／10／19.6／49.7 秒 footprint 約 144.8→141→140.5→142.3MB，`reachedStopSeconds=[30]`。尚未達 60 秒，且 PiP／TTS 沒有單獨開關對照。
+- [ ] **停止後殘留追查**：同一筆診斷的 pre-capture idle 為 109.2MB，停止後 49.7 秒仍 142.3MB（約 +33.1MB；internal 65→104）；PiP pool 僅約 2.75MB，因此差值不在 PiP pool。需先建立 warm idle 基準，再定位是聊天／日誌／診斷歷史、SCK／Metal 快取或其他子系統。
 - [ ] 對照同期間 JetsamEvent 確認終止原因；每日峰值與接收報告時的版本不能代表終止當下的用量／版本。
 
 ## MetricKit
@@ -50,6 +53,7 @@ API 遷移屬後續技術評估，不作為以上功能完成的條件；需要�
 - [x] 推流與可控錄製共用 Mixer，即時套用 appVolume／micVolume；RTMP 清理與擷取管線分離。
 - [x] 停止收尾的 diagnostics／operation／publishing／stopCapture／錄製完成與管線停止都有上限，逾時仍回 idle；每一步記錄 `finish stage=... elapsedMs=...`。
 - [ ] **SCK 停止實機驗收**：啟動中取消、串流中停止、錄製收尾、背景切換與重複停止，確認不會停在「正在停止擷取」，並用 stage 日誌定位慢步驟。
+  - 2026-11-07 已驗證一次正常停止：`finish stage=complete elapsedMs=5368`、driver／lease 釋放、deinit；啟動中取消、錄製收尾與重複停止仍待。
 - [x] 可控分段錄製：AVAssetWriter 直接編碼、可指定／自動碼率、獨立片段索引及中斷檔案驗證入口。
 - [x] 錄後系統高品質預設與多次編碼請求；與手動平均碼率模式分開。
 - [x] **分段錄製曾實機產出**：使用者提供 `FB1BA24D-A002-4848-BEA0-14F01B8AEC0F.mp4` 並確認分段有效；同時回報尾端無聲，因此不代表切段音訊已驗收。
@@ -89,6 +93,7 @@ API 遷移屬後續技術評估，不作為以上功能完成的條件；需要�
 - [ ] **PiP 實機排版驗收**：小／大視窗檢查時間列、次要提示及主要聊天不重疊；本次新增的計時器併列、分段換頁、頭貼與精簡版面也要逐項確認；快取前後方向與文字一致，動畫結束不殘留舊圖。
 - [x] PiP 固定性能摘要直接寫本機日誌，一般每 5 分鐘、失敗／背壓最快 1 分鐘與停止尾段回報，不依賴總日誌／PiP 詳細開關；包含耗時、排程延遲、重用與背壓，待實機核對。
 - [ ] **PiP 排程與資源驗收**：關閉總日誌與 PiP 詳細日誌後，確認仍有 PiPPerformance 週期／停止尾段；逐一切換時間刷新與動畫設定，確認新訊息提前更新、停止重啟正常；比較重繪／送幀計數、CPU 與記憶體，不將降低 FPS 直接視為省電已驗證。
+  - 2026-11-07 日誌已出現 `scheduleStopped`：attempts=99、redraws=90、work mean≈5.17ms、pool≈2.75MB；設定切換與長時間週期仍待。
 - [ ] **PiP 時間圖層進一步快取**：目前已快取文字與靜態聊天室，時間／狀態圖層仍在合成時繪製；評估獨立圖層快取，須包含狀態、觀眾數、重連與版面失效條件。
 - [ ] **次要事件分類／合併**：協定提供明確事件類型後，再合併加入通知；不可僅憑 isMain=false 猜測事件。切換模式不回溯刪除已入列訊息。
 
@@ -366,7 +371,9 @@ API 遷移屬後續技術評估，不作為以上功能完成的條件；需要�
 - [ ] Apple CI：執行 AudioMeterTests；實機分別播放 App 音訊、說話、靜音、停止與重啟，核對來源音量和混音後值。
 - [ ] ReplayKit 舊傳輸沒有 session／來源取樣時間；需擴展協定一起升級，才能拒絕跨連線延遲封包。目前收到時間只能用於 UI 過期判斷，本機 ScreenCaptureKit 持有期間會拒收 ReplayKit 值。
 - [ ] 冷啟動不開播至少 60 秒後取得基準，再比較停止後 30／60／120 秒；背景暫停會延後採樣，以 stopElapsedSeconds 為準。
+  - 2026-11-07 的 11MB cold baseline 太低；UI 載入後 idle 已 109MB。停止後 49.7 秒仍 142.3MB，比 pre-capture 高約 33MB，尚未取得 60／120 秒。
 - [ ] 進一步補各子系統持有量（診斷歷史、待處理工作等）；目前 footprint 差值不能歸因到個別物件，也不等於洩漏判定。
+  - 上述 +33MB 不能在 PiP pool（約 2.75MB）解釋；需補聊天快取、日誌／診斷歷史、SCK／Metal 快取等持有量。
 
 ## 跨軌時間補償策略驗收
 
