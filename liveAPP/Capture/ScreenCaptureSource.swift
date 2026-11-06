@@ -344,13 +344,18 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             while !Task.isCancelled {
                 guard let self else { return }
                 let queues = self.pump.map { "video{\($0.video.summary)} audio{\($0.audio.summary)} mic{\($0.mic.summary)}" } ?? "sampleQueues=none"
-                sendlog(message: "[CaptureSource] backend=screenCaptureKit session=\(token) mode=\(self.mode.rawValue) capturePhase=\(self.state.phase.rawValue) publishPhase=\(self.publishingStage) \(queues)")
-                if let sink = self.recordingSink { sendlog(message: "[SegmentedRecordingQueue] \(sink.summary)") }
+                // UI 仍每 5 秒更新；日誌在啟動 60 秒後降為 15／30 秒，異常由事件日誌負責。
+                let sourceLog = sampleCount < 12 || sampleCount % 3 == 0
+                let detailedLog = sampleCount < 12 || sampleCount % 6 == 0
+                if sourceLog {
+                    sendlog(message: "[CaptureSource] backend=screenCaptureKit session=\(token) mode=\(self.mode.rawValue) capturePhase=\(self.state.phase.rawValue) publishPhase=\(self.publishingStage) \(queues)")
+                }
+                if let sink = self.recordingSink, detailedLog { sendlog(message: "[SegmentedRecordingQueue] \(sink.summary)") }
                 let processingLoad = self.pump?.processing.sampleLoad()
-                if let load = processingLoad {
+                if let load = processingLoad, detailedLog {
                     sendlog(message: "[CaptureVideoProcessingLoad] session=\(token) intervalSeconds=\(load.intervalSeconds) busySeconds=\(load.busySeconds) workerBusyPercent=\(load.busyPercent) inFlight=\(load.inFlight)")
                 }
-                if let pump = self.pump {
+                if let pump = self.pump, detailedLog {
                     sendlog(message: "[CaptureVideoProcessing] session=\(token) schema=1 \(pump.processing.summary)")
                     sendlog(message: "[CaptureCallbacks] session=\(token) schema=1 clockComparison=unverified \(pump.callbacks.summary(now: CMClockGetTime(CMClockGetHostTimeClock()).seconds))")
                 }
