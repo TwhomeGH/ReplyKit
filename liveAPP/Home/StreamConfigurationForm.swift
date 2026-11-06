@@ -3,6 +3,7 @@ import SwiftUI
 import Combine
 import os
 import Foundation
+import UniformTypeIdentifiers
 
 /// 金鑰顯示狀態僅存在於當次畫面，不寫入偏好設定。
 private struct StreamKeyField: View {
@@ -35,12 +36,20 @@ private struct StreamKeyField: View {
 }
 
 /// RTMP 設定使用獨立草稿；離開畫面不自動保存或覆寫啟用中的配置。
+@MainActor
 struct FormView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var manager = StreamConfigManager()
+    @StateObject private var presetStore = RTMPPresetStore()
     @State private var draft = StreamConfigurationDraft()
     @State private var loaded = false
     @State private var error: String?
+    @State private var notice: String?
+    @State private var showingSavePreset = false
+    @State private var newPresetName = ""
+    @State private var showingPresetImporter = false
+    @State private var showingPresetExporter = false
+    @State private var presetExportDocument: RTMPPresetExportDocument?
 
     var body: some View {
         NavigationView {
@@ -67,9 +76,36 @@ struct FormView: View {
 #endif
                         .autocorrectionDisabled(true)
                     StreamKeyField(text: $draft.streamKey)
-                    Menu("快速選擇樣本") {
-                        Button("自訂SRS") { draft.rtmpURL = "rtmp://192.168.0.102/live" }
-                        Button("Twitch") { draft.rtmpURL = "rtmp://live.twitch.tv/app" }
+                    Menu(AppLanguage.localized("preset.quickSelect")) {
+                        if !presetStore.builtIn.isEmpty {
+                            Section(AppLanguage.localized("preset.builtIn")) {
+                                ForEach(presetStore.builtIn) { preset in
+                                    Button(preset.name) { apply(preset) }
+                                }
+                            }
+                        }
+                        if !presetStore.userPresets.isEmpty {
+                            Section(AppLanguage.localized("preset.mine")) {
+                                ForEach(presetStore.userPresets) { preset in
+                                    Button(preset.name) { apply(preset) }
+                                }
+                                Menu(AppLanguage.localized("preset.manage")) {
+                                    ForEach(presetStore.userPresets) { preset in
+                                        Button(AppLanguage.localized("preset.delete") + " " + preset.name) {
+                                            presetStore.removeUserPreset(preset)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Divider()
+                        Button(AppLanguage.localized("preset.saveCurrent")) { prepareSaveCurrent() }
+                        Button(AppLanguage.localized("preset.import")) { showingPresetImporter = true }
+                        Button(AppLanguage.localized("preset.export")) { prepareExport() }
+                            .disabled(presetStore.userPresets.isEmpty)
+                    }
+                    if let notice {
+                        Text(notice).font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 Section("配置設定") {
@@ -115,7 +151,115 @@ struct FormView: View {
                     draft.streamKey = getUserDefault(forKey: "rtmpKey") ?? ""
                 }
             }
+            .fileImporter(isPresented: $showingPresetImporter,
+                          allowedContentTypes: [.json]) { result in
+                importPresets(result)
+            }
+            .fileExporter(isPresented: $showingPresetExporter,
+                          document: presetExportDocument,
+                          contentType: .json,
+                          defaultFilename: "RTMPPresets") { result in
+                switch result {
+                case .success:
+                    notice = AppLanguage.localized("preset.exported")
+                case .failure(let error):
+                    self.error = error.localizedDescription
+                    notice = nil
+                }
+            }
+            .alert(AppLanguage.localized("preset.saveTitle"), isPresented: $showingSavePreset) {
+                TextField(AppLanguage.localized("preset.namePlaceholder"), text: $newPresetName)
+                Button(AppLanguage.localized("preset.save")) { saveCurrentPreset() }
+                Button(AppLanguage.localized("preset.cancel"), role: .cancel) {}
+            } message: {
+                Text(AppLanguage.localized("preset.saveMessage"))
+            }
         }
+    }
+
+    private func apply(_ preset: RTMPPreset) {
+        let oldHost = URLComponents(string: draft.rtmpURL)?.host?.lowercased()
+        let newHost = URLComponents(string: preset.rtmpURL)?.host?.lowercased()
+        draft.rtmpURL = preset.rtmpURL
+        if oldHost != newHost {
+            draft.streamKey = ""
+            notice = AppLanguage.localized("preset.keyCleared")
+        } else {
+            notice = nil
+        }
+        error = nil
+    }
+
+    private func prepareSaveCurrent() {
+        let endpoint = draft.rtmpURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let components = URLComponents(string: endpoint),
+              ["rtmp", "rtmps"].contains(components.scheme?.lowercased() ?? ""),
+              let host = components.host, !host.isEmpty else {
+            error = AppLanguage.localized("preset.invalidURL")
+            notice = nil
+            return
+        }
+        newPresetName = host
+        showingSavePreset = true
+    }
+
+    private func saveCurrentPreset() {
+        if presetStore.addUserPreset(name: newPresetName, rtmpURL: draft.rtmpURL) {
+            notice = AppLanguage.localized("preset.saved")
+            error = nil
+        } else {
+            error = AppLanguage.localized("preset.saveFailed")
+            notice = nil
+        }
+    }
+
+    private func importPresets(_ result: Result<URL, Error>) {
+        switch result {
+        case .success(let url):
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            do {
+                let data = try Data(contentsOf: url)
+                let imported = presetStore.importPresets(from: data)
+                notice = String(format: AppLanguage.localized("preset.importResult"),
+                                imported.added, imported.skipped)
+                error = nil
+            } catch {
+                self.error = error.localizedDescription
+                notice = nil
+            }
+        case .failure(let error):
+            self.error = error.localizedDescription
+            notice = nil
+        }
+    }
+
+    private func prepareExport() {
+        guard let data = presetStore.exportData() else {
+            notice = AppLanguage.localized("preset.exportEmpty")
+            return
+        }
+        presetExportDocument = RTMPPresetExportDocument(data: data)
+        showingPresetExporter = true
+    }
+}
+
+/// 只匯出使用者樣本的 JSON；不包含任何串流金鑰。
+struct RTMPPresetExportDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.json] }
+
+    var data: Data
+
+    init(data: Data) {
+        self.data = data
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        data = configuration.file.regularFileContents ?? Data()
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
     }
 }
 

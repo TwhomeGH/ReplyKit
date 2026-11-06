@@ -100,7 +100,8 @@ enum SettingsBackupRegistry {
         "liveActivityEnabled": .boolean, "liveActivityInterval": .integer(60...900),
         "gpuConfigs": .jsonData, "gpuConfigsSelect": .jsonData,
         "SpeechFilterSettings": .dictionary,
-        "streamConfigs": .jsonData, "activeStreamConfigID": .text
+        "streamConfigs": .jsonData, "activeStreamConfigID": .text,
+        "rtmpUserPresets": .jsonData
     ]
 
     /// 擷取已保存的值；沒有設定的鍵不創造預設值，還原時採合併而非清空整個 domain。

@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "presets": [
+    {
+      "id": "builtin.srs",
+      "name": "自訂 SRS",
+      "rtmpURL": "rtmp://192.168.0.102/live",
+      "note": "區網 SRS 測試端點"
+    },
+    {
+      "id": "builtin.twitch",
+      "name": "Twitch",
+      "rtmpURL": "rtmp://live.twitch.tv/app",
+      "note": "Twitch 推流網址；金鑰請向 Twitch 取得"
+    }
+  ]
+}
