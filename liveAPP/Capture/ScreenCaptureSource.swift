@@ -11,6 +11,24 @@ private struct SelectedCaptureFilter: @unchecked Sendable { let filter: SCConten
 
 private struct CapturedSample: @unchecked Sendable { let buffer: CMSampleBuffer }
 
+/// 收尾等待的單次續接；工作完成或逾時只有一方能恢復。
+private final class FinishResumeOnce: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    init(_ continuation: CheckedContinuation<Void, Never>) {
+        self.continuation = continuation
+    }
+
+    func resume() {
+        lock.lock()
+        let continuation = self.continuation
+        self.continuation = nil
+        lock.unlock()
+        continuation?.resume()
+    }
+}
+
 /// 回呼只交付樣本，消費端各自保序；總排隊預算 14 MiB，不含消費端/GPU/編碼器。
 @available(iOS 27.0, *)
 private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Sendable {
@@ -742,30 +760,48 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     /// - Parameter message: 收尾完成後顯示的訊息；正常停止可傳 nil。
     private func finish(message: String?) async {
         guard let token = state.id, state.phase != .stopping else { return }
+        let started = CACurrentMediaTime()
+        func mark(_ stage: String) {
+            sendlog(message: "[CaptureSource] session=\(token) finish stage=\(stage) elapsedMs=\(Int((CACurrentMediaTime() - started) * 1000))")
+        }
+        mark("begin")
         sendlog(message: "[CaptureSource] session=\(token) stopping publishPhase=\(publishingStage)")
         state.stopping(); update(.stopping, nil)
         operation?.cancel(); diagnostics?.cancel()
-        // 等待跨 actor 的診斷查詢返回，避免停止後仍發布晚到快照。
-        await diagnostics?.value; diagnostics = nil
-        // 等待啟動中的 await 結束，避免停止後又建立擷取或 RTMP 連線。
-        await operation?.value; operation = nil
+        mark("diagnostics.wait")
+        await awaitAtMost(2, task: diagnostics); diagnostics = nil
+        mark("operation.wait")
+        await awaitAtMost(3, task: operation); operation = nil
         publishingTask?.cancel()
-        await publishingTask?.value; publishingTask = nil
-        // 若輸出失敗清理已在進行，讓其結束，避免對 RTMP/Mixer 重複 close。
-        while cleaningPublishing { try? await Task.sleep(nanoseconds: 10_000_000) }
+        mark("publishing.wait")
+        await awaitAtMost(3, task: publishingTask); publishingTask = nil
+        let cleaningDeadline = CACurrentMediaTime() + 3
+        while cleaningPublishing && CACurrentMediaTime() < cleaningDeadline {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        mark("cleaningPublishing.end")
         if let capture {
             recording?.detach(from: capture)
             logAudioSession("capture.stopBegin")
-            do { try await capture.stopCapture() }
-            catch { logFailure(error, stage: "capture.stop") }
+            let stopper = Task { try? await capture.stopCapture() }
+            await awaitAtMost(5, task: stopper)
             logAudioSession("capture.stopEnd")
         }
         if let recordingOrientation, let capture {
             try? capture.removeStreamOutput(recordingOrientation, type: .screen)
         }
-        await recording?.awaitCompletion(); recording = nil; recordingOrientation = nil
-        await stopPublishing()
-        await stopMediaPipeline(); capture = nil
+        if let recording {
+            let waiter = Task { await recording.awaitCompletion() }
+            await awaitAtMost(20, task: waiter)
+        }
+        recording = nil; recordingOrientation = nil
+        mark("stopPublishing")
+        let publishStop = Task { await self.stopPublishing() }
+        await awaitAtMost(5, task: publishStop)
+        mark("stopMediaPipeline")
+        let mediaStop = Task { await self.stopMediaPipeline() }
+        await awaitAtMost(5, task: mediaStop)
+        capture = nil
         let picker = SCContentSharingPicker.shared
         picker.remove(self); picker.isActive = false
         restoreMixingAudioSession()
@@ -773,7 +809,23 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         for observer in audioObservers { NotificationCenter.default.removeObserver(observer) }
         audioObservers.removeAll()
         CaptureAudioOwnership.shared.end()
-        state.finish(token); update(.idle, message)
+        mark("complete")
+        let wasCurrent = state.id == token
+        state.finish(token)
+        if wasCurrent { update(.idle, message) }
+    }
+
+    /// 等待背景工作最多 N 秒；逾時仍繼續收尾，避免 UI 永久停在 stopping。
+    private func awaitAtMost<T>(_ seconds: Double, task: Task<T, Never>?) async {
+        guard let task else { return }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let once = FinishResumeOnce(continuation)
+            Task { _ = await task.value; once.resume() }
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                once.resume()
+            }
+        }
     }
 }
 #endif

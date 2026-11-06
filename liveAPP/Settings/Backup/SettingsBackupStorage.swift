@@ -18,9 +18,17 @@ enum SettingsBackupStorage {
         try fm.createDirectory(at: directory, withIntermediateDirectories: true)
         let destination = directory.appendingPathComponent(name)
         let data = try document.encoded()
+        guard data.count <= 2_097_152 else { throw SettingsBackupError.invalid("檔案超過 2 MB") }
         if name == "settings-latest.json", fm.fileExists(atPath: destination.path) {
-            let old = try readData(destination)
-            try old.write(to: directory.appendingPathComponent("settings-previous.json"), options: .atomic)
+            let previous = directory.appendingPathComponent("settings-previous.json")
+            do {
+                let old = try readData(destination)
+                try old.write(to: previous, options: .atomic)
+            } catch {
+                // 損壞或過大的舊 latest 不能永久擋住新備份；整檔移到 previous 供人工取回。
+                try? fm.removeItem(at: previous)
+                try? fm.moveItem(at: destination, to: previous)
+            }
         }
         try data.write(to: destination, options: .atomic)
         return destination

@@ -1065,8 +1065,8 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         #endif
     }
 
-    /// 每分鐘及停止時直接走持久化日誌；只統計同步函式佔用，不冒充 CPU／GPU 使用率。
-    /// 背景凍結時無法準時回報，windowSeconds 保留真實經過時間。
+    /// 每五分鐘、出現異常（最快一分鐘）及停止時直接走持久化日誌。
+    /// 只統計同步函式佔用，不冒充 CPU／GPU 使用率；背景凍結時 windowSeconds 保留真實經過時間。
     private func reportPerformance(reason: String) {
         guard renderAttempts > 0 else { return }
         let window = max(0.001, CACurrentMediaTime() - renderStatsStarted)
@@ -1099,8 +1099,11 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             let work = max(0, CACurrentMediaTime() - workStarted)
             renderWorkSeconds += work
             maxRenderMilliseconds = max(maxRenderMilliseconds, work * 1000)
-            if CACurrentMediaTime() - renderStatsStarted >= 60 {
-                reportPerformance(reason: "periodic")
+            let elapsed = CACurrentMediaTime() - renderStatsStarted
+            // 排程延遲偶發尖峰很常見，不單獨當異常；只看實際失敗與背壓。
+            let hasAnomaly = renderFailures > 0 || backpressureSkips > 0
+            if elapsed >= 300 || (hasAnomaly && elapsed >= 60) {
+                reportPerformance(reason: hasAnomaly ? "anomaly" : "periodic")
             }
         }
 

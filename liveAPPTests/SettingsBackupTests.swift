@@ -70,6 +70,21 @@ struct SettingsBackupTests {
         #expect(latest.shared["pipClockSeconds"] as? Int == 5)
     }
 
+    @Test func oversizedLatestDoesNotBlockNextSave() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let latest = directory.appendingPathComponent("settings-latest.json")
+        try Data(repeating: 0x41, count: 2_097_153).write(to: latest)
+        let next = SettingsBackupDocument(createdAt: Date(), includesSecrets: false,
+            shared: ["pipClockSeconds": 5], standard: [:])
+        _ = try SettingsBackupStorage.save(next, directory: directory)
+        let restored = try SettingsBackupStorage.read(latest)
+        #expect(restored.shared["pipClockSeconds"] as? Int == 5)
+        #expect(FileManager.default.fileExists(
+            atPath: directory.appendingPathComponent("settings-previous.json").path))
+    }
+
     @Test func rejectsFutureVersion() throws {
         let data = Data(#"{"format":"ReplyKit.settings","version":999,"createdAt":"2026-11-06T00:00:00Z","includesSecrets":false,"shared":{},"standard":{}}"#.utf8)
         #expect(throws: (any Error).self) { try SettingsBackupDocument.decode(data) }
