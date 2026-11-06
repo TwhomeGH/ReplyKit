@@ -16,9 +16,9 @@ enum PIPOverlayLayout {
     static let contentLeading: CGFloat = 12
     static let contentTrailing: CGFloat = 12
     /// 控制帶以下的第一列（計時／直播／觀眾），與現在時間共用左緣。
-    static func statusRowY(compact: Bool) -> CGFloat { compact ? 12 : 36 }
-    static func nowTimeY(compact: Bool) -> CGFloat { compact ? 34 : 58 }
-    static func noticeY(compact: Bool) -> CGFloat { compact ? 54 : 78 }
+    static func statusRowY(compact: Bool) -> CGFloat { compact ? 20 : 36 }
+    static func nowTimeY(compact: Bool) -> CGFloat { compact ? 42 : 58 }
+    static func noticeY(compact: Bool) -> CGFloat { compact ? 62 : 78 }
     static let noticeLineHeight: CGFloat = 20
     static let noticeAvatarSize: CGFloat = 16
     static let noticeAvatarGap: CGFloat = 6
@@ -26,8 +26,9 @@ enum PIPOverlayLayout {
     static let noticePageDotGap: CGFloat = 3
     /// 最多 4 頁的圓點保留寬度（含與文字的間距）。
     static let noticePageDotsReserve: CGFloat = 24
-    /// 聊天室安全頂距；300x200 時一般為 100、精簡為 76。
-    static func minimumChatTopMargin(compact: Bool) -> CGFloat { compact ? 76 : 100 }
+    /// 聊天室安全頂距；300x200 時一般為 100、精簡為 84。
+    /// 精簡模式仍保留 20pt 上緣，避開系統圓角造成的視覺壓邊。
+    static func minimumChatTopMargin(compact: Bool) -> CGFloat { compact ? 84 : 100 }
 
     /// 隱藏系統控制列且使用者選擇精簡版面時，整組往上收。
     static var usesCompactLayout: Bool { PIPSystemControls.usesCompactOverlay }

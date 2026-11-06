@@ -11,10 +11,10 @@ struct PIPOverlayLayoutTests {
     }
 
     @Test func compactRowsReclaimTheControlBandSpace() {
-        #expect(PIPOverlayLayout.statusRowY(compact: true) == 12)
-        #expect(PIPOverlayLayout.nowTimeY(compact: true) == 34)
-        #expect(PIPOverlayLayout.noticeY(compact: true) == 54)
-        #expect(PIPOverlayLayout.minimumChatTopMargin(compact: true) == 76)
+        #expect(PIPOverlayLayout.statusRowY(compact: true) == 20)
+        #expect(PIPOverlayLayout.nowTimeY(compact: true) == 42)
+        #expect(PIPOverlayLayout.noticeY(compact: true) == 62)
+        #expect(PIPOverlayLayout.minimumChatTopMargin(compact: true) == 84)
         #expect(PIPOverlayLayout.statusRowY(compact: true) < PIPOverlayLayout.statusRowY(compact: false))
     }
 
