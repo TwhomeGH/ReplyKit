@@ -11,6 +11,10 @@
 
 Pages 建議沿用既有 documentation.yml 單一部署，ChangeLogKit 匯出到 site/project/，DocC 保留原路徑，首頁再加入分類文件與歷史入口。CI 接入尚未完成：需先固定可安裝的工具版本、補文件觸發條件，並驗證子路徑連結與圖片；不能使用本機 ChangeLogTools 絕對路徑。
 
+## 設定與資料保留
+
+- [設定備份、還原與側載到期搬移](development/SETTINGS_BACKUP.md)
+
 ## 開發索引入口
 
 執行 `Scripts/change_log.cmd`，點「功能／API／近期改動索引」。[使用方式與維護規則](development/README.md)涵蓋功能接入狀態、Git 版本與 DocC 文件。

@@ -24,6 +24,11 @@ struct AppSettingsView: View {
       }
       Section(AppLanguage.localized("tools.appSettings")) {
         NavigationLink {
+          SettingsBackupView()
+        } label: {
+          Label("備份與還原", systemImage: "externaldrive.badge.timemachine")
+        }
+        NavigationLink {
           LiveActivitySettingsView()
         } label: {
           row("activity.title", "waveform.circle")
@@ -45,6 +50,11 @@ struct AppSettingsView: View {
         }
       }
       Section(AppLanguage.localized("settings.category.appearance")) {
+        NavigationLink {
+          AppIconSettingsView()
+        } label: {
+          row("appIcon.title", "app.badge")
+        }
         NavigationLink(AppLanguage.localized("settings.outputOverlay.title")) {
           OverlaySettingsView()
         }

@@ -26,25 +26,52 @@ import Photos
         try persist(recordings[index])
     }
     private let directory: URL
+    /// 舊庫搬移失敗仍可讀；每筆錄影保留真正的位置，避免分享指向不存在的新路徑。
+    private var itemDirectories: [UUID: URL] = [:]
     init(directory: URL? = nil) {
-        self.directory = directory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        self.directory = directory ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("ScreenRecordings", isDirectory: true)
+        let sources: [URL]
+        if directory == nil {
+            let legacy = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("ScreenRecordings", isDirectory: true)
+            let result = RecordingStorageMigration.migrate(legacy: legacy, destination: self.directory)
+            sources = result.readableDirectories
+            errorMessage = result.warning
+            if result.warning != nil {
+                sendlog(title: "錄影搬移", message: "部分舊錄影尚未搬至 Documents；原檔保留，請查看本地錄影頁。")
+            }
+        } else { sources = [self.directory] }
         do {
             try FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true)
-            for url in try FileManager.default.contentsOfDirectory(at: self.directory, includingPropertiesForKeys: nil) where url.pathExtension == "json" {
+        } catch { errorMessage = "無法建立共享錄影目錄，舊錄影仍嘗試讀取。" }
+        for source in sources { loadRecordings(from: source) }
+        recordings.sort { $0.created > $1.created }
+    }
+
+    /// 各目錄分別讀取；其中一處失敗不能阻止其他舊錄影的分享與恢復。
+    private func loadRecordings(from source: URL) {
+        do {
+            for url in try FileManager.default.contentsOfDirectory(at: source, includingPropertiesForKeys: nil)
+                where url.pathExtension == "json" {
                 do {
                     var item = try JSONDecoder().decode(LocalRecording.self, from: Data(contentsOf: url))
                     guard url.deletingPathExtension().lastPathComponent == item.id.uuidString else { continue }
+                    guard itemDirectories[item.id] == nil else {
+                        errorMessage = "發現重複錄影識別碼，原檔均已保留，請從檔案檢查新舊目錄。"
+                        continue
+                    }
+                    itemDirectories[item.id] = source
                     item.recoverAfterRelaunch()
                     recordings.append(item)
                     try persist(item)
                 } catch { errorMessage = "部分錄影紀錄無法讀取，原檔案仍保留。" }
             }
-            recordings.sort { $0.created > $1.created }
-        } catch { errorMessage = "無法開啟錄影目錄。" }
+        } catch { errorMessage = "部分錄影目錄無法開啟，原檔案仍保留。" }
     }
-    func fileURL(for id: UUID) -> URL { directory.appendingPathComponent(id.uuidString).appendingPathExtension("mp4") }
-    private func manifestURL(_ id: UUID) -> URL { directory.appendingPathComponent(id.uuidString).appendingPathExtension("json") }
+
+    func fileURL(for id: UUID) -> URL { (itemDirectories[id] ?? directory).appendingPathComponent(id.uuidString).appendingPathExtension("mp4") }
+    private func manifestURL(_ id: UUID) -> URL { (itemDirectories[id] ?? directory).appendingPathComponent(id.uuidString).appendingPathExtension("json") }
     private func persist(_ item: LocalRecording) throws {
         try JSONEncoder().encode(item).write(to: manifestURL(item.id), options: .atomic)
     }
@@ -183,6 +210,8 @@ import Photos
     var body: some View {
         NavigationStack {
             List {
+                Text("檔案位置：我的 iPhone／iPad → 松鼠推流 → ScreenRecordings。分段影片與 JSON 索引請一起保留；刪除 App 前先複製到其他位置。")
+                    .font(.footnote).foregroundStyle(.secondary)
                 if library.recordings.isEmpty { Text("尚無本地錄影") }
                 if let error = library.errorMessage { Text(error).foregroundStyle(.red) }
                 ForEach(groups) { group in

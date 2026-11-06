@@ -1193,6 +1193,9 @@ struct liveAPPApp: App {
 
         #if os(iOS)
         MetricReports.shared.start()
+        SettingsBackupManager.shared.start()
+        // 更新後第一次啟動即搬移舊錄影，避免必須先開錄影清單才能在「檔案」找到它。
+        _ = RecordingLibrary.shared
         #endif
 
         // 與關於頁共用同一份建置快照，便於從 log.txt 辨識產物。

@@ -12,6 +12,7 @@ color = "green"
 order = 10
 paths = [
   "Docs/development/README.md",
+  "Docs/development/SETTINGS_BACKUP.md",
   "Docs/README.md",
   "Docs/sponsor.md",
   "Docs/tts-filter-configuration.md",

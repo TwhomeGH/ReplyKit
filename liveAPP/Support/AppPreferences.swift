@@ -10,9 +10,12 @@ let cfCenter = CFNotificationCenterGetDarwinNotifyCenter()
 
 
 #if os(iOS)
-let userDefaults: UserDefaults? = UserDefaults(
-    suiteName: "group.nuclear.liveAPP"
-) ?? .standard
+let userDefaults: UserDefaults? = {
+    let defaults = UserDefaults(suiteName: "group.nuclear.liveAPP") ?? .standard
+    // 在依賴共享偏好的服務初始化前處理已確認還原，避免服務讀到半套設定。
+    SettingsBackupStorage.restorePending(shared: defaults, standard: .standard)
+    return defaults
+}()
 
 #else
 let userDefaults: UserDefaults = .standard

@@ -7,6 +7,23 @@
   },
   "features": [
     {
+      "id": "settings.backup",
+      "name": "設定備份與還原",
+      "summary": "共享與主 App 白名單偏好自動備份至 Documents；敏感設定選擇匯出，驗證後下次啟動還原。",
+      "replaykit": "還原前檢查擷取鎖與近期狀態",
+      "screencapturekit": "擷取期間禁止排定還原；本地錄影搬至共享文件",
+      "ui": "工具 → 備份與還原",
+      "verification": "已補回歸測試；Xcode／實機驗收見 TODO。",
+      "files": [
+        "liveAPP/Settings/Backup/SettingsBackupFormat.swift",
+        "liveAPP/Settings/Backup/SettingsBackupManager.swift",
+        "liveAPP/Capture/RecordingStorageMigration.swift"
+      ],
+      "docs": [
+        "Docs/development/SETTINGS_BACKUP.md"
+      ]
+    },
+    {
       "id": "capture.backends",
       "name": "雙擷取來源與工作模式",
       "summary": "保留 ReplayKit；ScreenCaptureKit 支援推流、錄製及兩者並行。",
