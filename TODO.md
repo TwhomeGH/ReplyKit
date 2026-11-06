@@ -376,8 +376,9 @@ API 遷移屬後續技術評估，不作為以上功能完成的條件；需要�
 - [x] **降低擷取／RTMP 週期診斷頻率**：`CaptureSource` 15 秒、詳細管線摘要 30 秒（啟動 60 秒內維持 5 秒），UI 遙測仍 5 秒；HaishinKit `VideoQueue` 15 秒、publish timeline／throughput 30 秒。2.5 小時預估由 14,166 行降到約 2–3 千行，仍需實機統計確認。
 - [ ] **2026-11-07 02:58 音訊 discontinuity 追查**：ScreenCaptureKit 推流約 1.5 小時後，系統音訊 track0 的 `discontinuities` 由 1→2、`spanMinusContentSeconds` 由 +0.020→-0.127，`CaptureCallbacks.audio.regress=1`；同一時刻 video inFPS 短暫 60→47.8，`publish avOffset` 約 -0.2s。RTMP transport `failedBatches=0`、queue 為空，mic track1 乾淨；影片 PTS regress=0。3.1 秒 video max gap 的 lastDiscontinuity 是早期 7154.7，不是這次起點。
   - [x] `ScreenAudioProbe` 已加逐筆 `[CaptureAudioAnomaly]`（PTS 回退或 gap >0.5s，含 prev/current/delta/frames/rate）。
-  - [x] HaishinKit fork 本地 `fedcf2a0`：分離來源/wire 時鐘；音訊來源倒退 >80ms 重新建立來源基準、保留正常 wire 節奏；`allowJump` 的正向缺口超過 80ms 直接保留來源 gap；新增 `sourceRebases` 診斷與測試。尚未 push，ReplyKit 仍鎖 `9df0d77`。
-  - [ ] Push HaishinKit fork、跑 macOS 測試、把 ReplyKit `Package.resolved` 更新到 `fedcf2a0`，再驗證 02:58 同情境；若 raw track0 gap 未進入 mixed/RTMP，則還要處理 mixer 端。
+  - [x] HaishinKit fork `384e35d3` 已 push；`Swift Tests` run 42300582476 六個 job 全綠（RTMP iOS 9m2、HaishinKit iOS 9m13、TSan iOS/macOS）。ReplyKit `Package.resolved` 已更新到 `384e35d3`（本地 `b5f15b4`）。
+  - [x] CI 摘要現在會列出 `[Runner infrastructure]`／`ci-summary.md`；iOS 測試日誌會記錄實際 `name`／`type`／`runtime`／`UDID`（本次為 iPhone 17、iOS 27.0）。
+  - [ ] 實機驗證 02:58 同情境的 `audioResyncs`／A/V 是否穩定；若 raw track0 gap 未進入 mixed/RTMP，還要處理 mixer 端。
 
 ## 共用音量監測與閒置比較
 
