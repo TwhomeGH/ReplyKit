@@ -16,10 +16,11 @@
 
 - [x] 新增 IdleResources 與生命週期快照，列出擷取、PiP、TTS 的實際狀態或持有資訊。
 - [ ] 冷啟動不開播，前景等待 60 秒後進背景，再返回並匯出日誌；對照 app.start／periodic／app.background.afterCleanup／app.foreground 的 footprint 與工作狀態。
-  - 2026-11-07 日誌的 `coldIdleBaselineMB=11.0` 是啟動初期值；UI 載入後、未開播的 idle footprint 已約 109MB。這個差距不是擷取造成，需先定義「UI 完成載入後」的 warm idle 基準，否則 deltaBaseline 會高估。
+  - 2026-11-07 兩筆要分開看：舊 process `A79F…` 在 uptime 1986 的 idle 是 109MB，但日誌從 12:02 才開始，不知道它前 33 分鐘做了什麼，不能當冷啟動。新 process `17505…` 在 12:51:52 冷啟動：footprint **3.9 → 29.7MB**，60 秒內穩定在 29.5～29.8MB；這才是目前可用的 warm idle 基準。`resident` 約 122MB 是 external mapped frameworks，不是 footprint。舊 process 的 109MB 累積原因仍待查。
 - [ ] 開播後停止，等待至少 60 秒；確認 capture.finished 的 driver／lease 已釋放，並比較後續 footprint。另測 PiP、TTS 分別開關，避免把有背景工作的狀態當作完全閒置。
   - 2026-11-07 已取得一次正常停止：`capture.finished`、`finish stage=complete elapsedMs=5368`、driver／lease=false；停止後 0／10／19.6／49.7 秒 footprint 約 144.8→141→140.5→142.3MB，`reachedStopSeconds=[30]`。尚未達 60 秒，且 PiP／TTS 沒有單獨開關對照。
-- [ ] **停止後殘留追查**：同一筆診斷的 pre-capture idle 為 109.2MB，停止後 49.7 秒仍 142.3MB（約 +33.1MB；internal 65→104）；PiP pool 僅約 2.75MB，因此差值不在 PiP pool。需先建立 warm idle 基準，再定位是聊天／日誌／診斷歷史、SCK／Metal 快取或其他子系統。
+- [ ] **停止後殘留追查**：舊 process `A79F…` 的 pre-capture idle 為 109.2MB，停止後 49.7 秒仍 142.3MB（約 +33.1MB；internal 65→104）；PiP pool 僅約 2.75MB，因此差值不在 PiP pool。這個 109MB 本身也不是冷啟動基準；需用新 process 的 ~30MB warm idle 重做短開播停止比較，再定位是聊天／日誌／診斷歷史、SCK／Metal 快取或其他子系統。
+- [ ] **舊 process 累積原因**：`A79F…` 在無 capture 狀態下到 109MB，但新冷啟動 `17505…` 只有 ~30MB；需從舊 process 啟動就開始的日誌確認是 UI 狀態、日誌／診斷歷史、圖片快取或先前活動留下，不能只用 12:02 之後的片段判斷。
 - [ ] **建議量測順序**：A. 冷啟動不開播，前景等 60～120 秒（背景 60 秒再回前景），匯出這一段，取得 warm idle；B. 短開播約 5 分鐘後停止，等 60／120 秒再匯出；C. 只開 PiP；D. 只跑 TTS。每段用精確時間範圍匯出，不要先用一小時混合視窗；確認 baseline 後再另外做一小時 idle soak。
 - [x] App init 寫入 `[AppSession] launch` 標記；診斷匯出新增「本次啟動到現在」，以 `launchDate - 1s` 為起點並顯示啟動時間。
 - [ ] **本次啟動匯出驗收**：重新啟動 App、等待再匯出，確認只含本次程序、包含 launch marker、背景返回不改變起點。
@@ -374,7 +375,7 @@ API 遷移屬後續技術評估，不作為以上功能完成的條件；需要�
 - [ ] Apple CI：執行 AudioMeterTests；實機分別播放 App 音訊、說話、靜音、停止與重啟，核對來源音量和混音後值。
 - [ ] ReplayKit 舊傳輸沒有 session／來源取樣時間；需擴展協定一起升級，才能拒絕跨連線延遲封包。目前收到時間只能用於 UI 過期判斷，本機 ScreenCaptureKit 持有期間會拒收 ReplayKit 值。
 - [ ] 冷啟動不開播至少 60 秒後取得基準，再比較停止後 30／60／120 秒；背景暫停會延後採樣，以 stopElapsedSeconds 為準。
-  - 2026-11-07 的 11MB cold baseline 太低；UI 載入後 idle 已 109MB。停止後 49.7 秒仍 142.3MB，比 pre-capture 高約 33MB，尚未取得 60／120 秒。
+  - 2026-11-07 的 11MB cold baseline 太低；新冷啟動 process 的 warm idle 約 29.7MB（舊 process 109MB 是另一段累積狀態）。舊 process 停止後 49.7 秒仍 142.3MB，比它的 pre-capture 109.2MB 高約 33MB；需用新的 ~30MB warm idle 重做短開播停止比較。
 - [ ] 進一步補各子系統持有量（診斷歷史、待處理工作等）；目前 footprint 差值不能歸因到個別物件，也不等於洩漏判定。
   - 上述 +33MB 不能在 PiP pool（約 2.75MB）解釋；需補聊天快取、日誌／診斷歷史、SCK／Metal 快取等持有量。
 
