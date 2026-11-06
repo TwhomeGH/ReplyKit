@@ -358,7 +358,9 @@ API 遷移屬後續技術評估，不作為以上功能完成的條件；需要�
 
 - [x] 拆出純資料轉換與日誌格式，補充生命週期註釋、null 相容與音量邊界測試。
 - [ ] 全面檢查 SocketServer 佇列隔離、共享 encoder／decoder 與 UI 狀態更新；目前仍為 @unchecked Sendable。
+  - 2026-11-07 初查：`decoder` 只在接收 queue 使用；`listenerStatus`／`isStopping` 等 UI 多已派回 main。**`encodedData` 的共享 `JSONEncoder` 會在 queue 外被 `queueSend`／`sendTo` 呼叫**，仍是資料競爭缺口。
 - [ ] 評估每連線待送佇列上限與背壓，避免慢速連線無限累積資料。
+  - 2026-11-07 初查：外部日誌批次已有 `ExternalLogPolicy` 上限，但一般 `sendQueues`／`queueSend`／`sendTo` 沒有；慢速工具可讓非日誌訊息無限累積。應抽成 `SocketSendQueuePolicy`，一般訊息超限時關閉慢連線，只有可丟棄的外部日誌批次才丟棄。
 
 - [x] 統一 Socket 被動恢復入口，移除裸 observer 指標，停止／端口切換使舊工作失效。
 - [ ] Apple 整合驗收：Darwin 重複提示、setup／waiting 保留、stop 後提示、占用端口重試、切換端口中停止與物件釋放。
