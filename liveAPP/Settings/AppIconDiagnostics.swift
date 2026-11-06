@@ -22,7 +22,7 @@ struct AppIconDiagnostics {
     let ciRun: String?
 
     init(info: [String: Any], isPad: Bool, supported: Bool, current: String?,
-         build: BuildInformation = .current) {
+         buildInfo: BuildInformation = .current) {
         func names(_ key: String) -> [String] {
             let icons = info[key] as? [String: Any]
             let alternatives = icons?["CFBundleAlternateIcons"] as? [String: Any]
@@ -57,9 +57,9 @@ struct AppIconDiagnostics {
         deviceFamily = families?.joined(separator: ",") ?? "unknown"
         phoneIconsPresent = info["CFBundleIcons"] is [String: Any]
         padIconsPresent = info["CFBundleIcons~ipad"] is [String: Any]
-        buildID = build.buildID
-        appRevision = build.appRevision
-        ciRun = build.ciRun
+        buildID = buildInfo.buildID
+        appRevision = buildInfo.appRevision
+        ciRun = buildInfo.ciRun
         self.isPad = isPad
         self.supported = supported
         self.current = current

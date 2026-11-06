@@ -1,5 +1,10 @@
 # 變更歷史
 
+## 2026.11.07 01:26 修正圖示診斷 build 參數命名
+
+- 問題：`AppIconDiagnostics` 的初始化參數 `build` 與 `CFBundleVersion` 屬性同名，導致 `build = info["CFBundleVersion"]` 指派到 let 參數而編譯失敗。
+- 變更：初始化參數改名 `buildInfo`，屬性仍為 `build`；Swift 語法檢查通過。
+
 ## 2026.11.07 01:19 App 圖示診斷辨識 CFBundleIconName 與建置身分
 
 - 問題：17.3.8 IPA 的 PersonalIcon 只有 `CFBundleIconName`，圖示在 Assets.car；診斷卻把沒有 `CFBundleIconFiles` 說成缺 PNG。另 `MARKETING_VERSION`／build 跨 tag 沒遞增，只看版本無法判斷安裝的是哪個產物。
