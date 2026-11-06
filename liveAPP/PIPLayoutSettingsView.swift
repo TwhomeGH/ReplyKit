@@ -73,7 +73,8 @@ struct PIPLayoutSettingsView: View {
                     adSpacing: PIPAdOverlaySpacing,
                     nowTimeLabel: effectiveLabel(nowTimeLabelOverride, localizedKey: "pip.default.nowTimeLabel"),
                     liveLabel: effectiveLabel(liveLabelOverride, localizedKey: "pip.default.liveLabel"),
-                    endedLabel: effectiveLabel(endedLabelOverride, localizedKey: "pip.default.endedLabel")
+                    endedLabel: effectiveLabel(endedLabelOverride, localizedKey: "pip.default.endedLabel"),
+                    showsNoticeAvatar: noticeAvatar
                 )
     }
 
@@ -217,6 +218,7 @@ private struct PIPLayoutPreview: View {
     let nowTimeLabel: String
     let liveLabel: String
     let endedLabel: String
+    let showsNoticeAvatar: Bool
 
     var body: some View {
         GeometryReader { proxy in
@@ -269,7 +271,7 @@ private struct PIPLayoutPreview: View {
             isReconnecting: false,
             reconnectText: "",
             secondaryNotice: notice,
-            secondaryNoticeAvatar: noticeAvatar ? Self.sampleNoticeAvatar : nil,
+            secondaryNoticeAvatar: showsNoticeAvatar ? Self.sampleNoticeAvatar : nil,
             secondaryNoticePageIndex: 0,
             secondaryNoticePageCount: notice == nil ? 0 : 1
         )
