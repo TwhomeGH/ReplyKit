@@ -1,5 +1,12 @@
 # 變更歷史
 
+## 2026.11.06 22:02 修正 CI 圖示檢查誤判並排除殘留開發檔
+
+- 問題：新的 archive 圖示檢查要求 `CFBundleIconFiles` 與獨立 PNG，但 Xcode 的 asset catalog 產物是 `CFBundleIconName` + Assets.car，導致正常 archive 被判定失敗；報告另顯示 `AudioProcess.swift.new` 被包進 ReplyKIT.appex。
+- 變更：`inspect_app_bundle.py` 接受兩種標準形式：`CFBundleIconName` + Assets.car，或 `CFBundleIconFiles` + 對應獨立 PNG；缺少 Assets.car／PNG 才失敗。更新對應測試與文件。
+- 把 `AudioProcess.swift.new` 加入 ReplyKIT target 的 membership exceptions；包體分類也把 `.new` 視為開發用檔案。
+- 待下一次 archive 驗證圖示檢查通過、App 圖示仍待實機確認 `supportsAlternateIcons`。
+
 ## 2026.11.06 21:34 Archive 不取消進行中建置
 
 - 問題：Archive workflow 使用 `cancel-in-progress: true`；新推送建立新 tag 時，會取消已跑約 24 分鐘、接近完成的舊 archive，浪費建置時間且可能留下已建立但沒有 Release 的 tag。

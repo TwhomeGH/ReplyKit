@@ -109,6 +109,7 @@
 		CE281A002E5ACD680023BBC4 /* Exceptions for "ReplyKIT" folder in "ReplyKIT" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				AudioProcess.swift.new,
 				Info.plist,
 			);
 			target = CE2819E62E5ACD670023BBC4 /* ReplyKIT */;

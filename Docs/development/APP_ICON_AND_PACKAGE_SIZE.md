@@ -27,7 +27,7 @@ Assets.car 增加 2,506,743 bytes，占整個 IPA 增量約 97.8%；主程式增
 靜態連結的套件程式碼屬於執行檔的一部分，不能以此清單再拆算 HaishinKit 的精確占比。
 
 原產物也確實包含修改腳本與 .bak／.edit 檔，壓縮後合計約 34 KB。
-本次從 App target 排除 16 個開發用檔案，保留專案原檔；此項不是主要體積來源。
+本次從 App target 排除 17 個開發用檔案（含 `AudioProcess.swift.new`），保留專案原檔；此項不是主要體積來源。
 Artwork 原稿目錄不在原始 IPA 中。
 
 ## 圖示切換
@@ -36,9 +36,10 @@ Artwork 原稿目錄不在原始 IPA 中。
 但替換圖示項目只有 CFBundleIconName，沒有 CFBundleIconFiles，也沒有替換圖示的獨立 PNG。
 因此已排除「CI 原始 IPA 完全漏掉 iPad 宣告」；尚不能證明是側載或重簽工具造成。
 
-本次 PersonalIcon 改用明確 iPhone 60pt（2x／3x）、iPad 76pt（1x／2x）、83.5pt（2x）及 1024px marketing 資源，
-要求編譯產物提供可檢查的圖示檔案宣告。是否解決實機 supportsAlternateIcons=false 仍需新版驗證。
-不手動繞過 supportsAlternateIcons，也不把系統回報改成成功。
+本次 PersonalIcon 改用明確 iPhone 60pt（2x／3x）、iPad 76pt（1x／2x）、83.5pt（2x）及 1024px marketing 資源。
+Xcode 會把這些 renditions 編進 Assets.car，Info.plist 仍使用 `CFBundleIconName`，通常不會產生替換圖示的獨立 PNG；
+因此 17.2.9 的宣告形式本身不是缺漏。CI 檢查接受 `CFBundleIconName` + Assets.car，或 `CFBundleIconFiles` + 對應 PNG。
+是否解決實機 supportsAlternateIcons=false 仍需新版驗證；不手動繞過系統回報。
 
 App 圖示頁提供診斷展開與複製：系統支援狀態、目前圖示、iPhone／iPad 宣告名稱與 PNG 檔案名稱。
 若原始 CI 通過但實機宣告不同，需比對重新簽署後 IPA；若相同仍不支援，再調查系統與資源相容性。
@@ -46,7 +47,7 @@ App 圖示頁提供診斷展開與複製：系統支援狀態、目前圖示、i
 ## CI 與離線工具
 
 Scripts/inspect_app_bundle.py 可讀取 .app 或 IPA，不修改內容。
-CI 封存後驗證兩個裝置分支的 PersonalIcon 與 CFBundleIconFiles，找不到對應 PNG 時失敗；報告仍上傳。
+CI 封存後驗證兩個裝置分支的 PersonalIcon 宣告；接受 `CFBundleIconName` + Assets.car，或 `CFBundleIconFiles` + 對應獨立 PNG。缺少 Assets.car／PNG 時失敗；報告仍上傳。
 打包後再次輸出最終 IPA 的壓縮大小、檔案加總、分類與最大 30 個檔案。
 報告附於 GitHub Actions 摘要及 app-bundle-report／ipa-size-report artifact。
 

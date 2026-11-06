@@ -45,14 +45,20 @@ def check_icons(info, entries):
             errors.append(key + ' 缺少 PersonalIcon 宣告')
             continue
         names = entry.get('CFBundleIconFiles', [])
+        icon_name = entry.get('CFBundleIconName')
         if names:
             for name in names:
                 stem = str(name).removesuffix('.png')
                 if not any('/' not in file and (file == stem + '.png' or file.startswith(stem + '@')
                                                 or file.startswith(stem + '~')) for file in entries):
                     errors.append(key + ' 找不到圖示檔案：' + str(name))
+        elif icon_name:
+            # asset catalog 的標準產物：圖示編進 Assets.car，Info.plist 使用
+            # CFBundleIconName，不會產生 PersonalIcon 的獨立 PNG。
+            if 'Assets.car' not in entries:
+                errors.append(key + ' 使用 CFBundleIconName 但找不到 Assets.car')
         else:
-            errors.append(key + ' 缺少 CFBundleIconFiles；本專案要求明確尺寸的替換 PNG，不只檢查 Assets.car 存在')
+            errors.append(key + ' 缺少 CFBundleIconName 或 CFBundleIconFiles')
     return errors, declarations
 
 
@@ -68,7 +74,7 @@ def category(name, executable):
         return '主 App 資源目錄 Assets.car（無法僅按檔案拆出個別圖示）'
     if name.lower().endswith('.png'):
         return '主 App 獨立 PNG／圖示'
-    if name.lower().endswith(('.py', '.bak', '.edit', '.swift')):
+    if name.lower().endswith(('.py', '.bak', '.edit', '.swift', '.new')):
         return '疑似開發用檔案'
     return '其他資源／中繼資料／簽章'
 

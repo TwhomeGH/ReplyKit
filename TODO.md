@@ -216,7 +216,8 @@ API 遷移屬後續技術評估，不作為以上功能完成的條件；需要�
 
 - [x] PersonalIcon 明確 iPhone／iPad 尺寸、設定頁切換、`Exp3.png` 原稿與 appiconset／預覽同步。
 - [x] 圖示頁宣告診斷與複製；CI 封存與最終 IPA 包體報告、`inspect_app_bundle.py`、`app_icon_tool.py` 及對應測試。
-- [ ] **CI 首次圖示宣告檢查**：確認新產物是否提供 `CFBundleIconFiles` 與可檢查的 PNG；若仍只有 `CFBundleIconName`／`Assets.car`，需決定放寬檢查或確保輸出獨立檔。
+- [x] **CI 圖示宣告檢查修正**：實際 archive 仍是 `CFBundleIconName` + Assets.car；檢查改為接受此標準形式，並仍要求 iPhone／iPad 都有 PersonalIcon 宣告；另把 `AudioProcess.swift.new` 排除在 extension target 外。
+- [ ] 下一次 archive 驗證修正後的圖示檢查與包體報告。
 - [ ] **App 圖示實機驗收**：iPhone／iPad 切換、恢復預設、`supportsAlternateIcons`、重新開啟 App 後目前標記與診斷內容。
 - [ ] 16 個開發腳本／`.bak`／`.edit` 仍以 pbxproj membership exceptions 排除；若清理 repo，需另案移動或刪除。
 

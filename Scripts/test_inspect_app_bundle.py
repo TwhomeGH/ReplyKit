@@ -44,12 +44,18 @@ class BundleReportTests(unittest.TestCase):
             result = report(self.make_ipa(root, resource=False))
             self.assertTrue(any('找不到圖示檔案' in error for error in result['errors']))
 
-    def test_name_only_catalog_does_not_pass_project_policy(self):
+    def test_name_only_catalog_with_assets_passes(self):
         icons = {'CFBundleAlternateIcons': {'PersonalIcon': {'CFBundleIconName': 'PersonalIcon'}}}
         errors, _ = check_icons({'UIDeviceFamily': [1, 2], 'CFBundleIcons': icons,
                                 'CFBundleIcons~ipad': icons}, {'Assets.car': (100, 80)})
+        self.assertEqual(errors, [])
+
+    def test_name_only_catalog_without_assets_fails(self):
+        icons = {'CFBundleAlternateIcons': {'PersonalIcon': {'CFBundleIconName': 'PersonalIcon'}}}
+        errors, _ = check_icons({'UIDeviceFamily': [1, 2], 'CFBundleIcons': icons,
+                                'CFBundleIcons~ipad': icons}, {})
         self.assertEqual(len(errors), 2)
-        self.assertTrue(all('CFBundleIconFiles' in error for error in errors))
+        self.assertTrue(all('Assets.car' in error for error in errors))
 
 
 if __name__ == '__main__':
