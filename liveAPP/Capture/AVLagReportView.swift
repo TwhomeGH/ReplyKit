@@ -36,14 +36,16 @@ struct AVLagReportView: View {
             }
 
             Section(AppLanguage.localized("avLag.report")) {
-                HStack {
-                    Button(copied ? AppLanguage.localized("avLag.copied") : AppLanguage.localized("avLag.copy")) {
-                        UIPasteboard.general.string = reportText
-                        copied = true
-                    }
-                    ShareLink(item: reportText) {
-                        Label(AppLanguage.localized("avLag.share"), systemImage: "square.and.arrow.up")
-                    }
+                Button {
+                    UIPasteboard.general.string = reportText
+                    copied = true
+                } label: {
+                    Label(
+                        copied ? AppLanguage.localized("avLag.copied") : AppLanguage.localized("avLag.copy"),
+                        systemImage: copied ? "checkmark" : "doc.on.doc")
+                }
+                ShareLink(item: reportText) {
+                    Label(AppLanguage.localized("avLag.share"), systemImage: "square.and.arrow.up")
                 }
                 Text(String(format: AppLanguage.localized("avLag.sampleCount"), model.samples.count))
                     .font(.caption).foregroundStyle(.secondary)
