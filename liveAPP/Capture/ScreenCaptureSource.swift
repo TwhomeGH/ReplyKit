@@ -9,7 +9,11 @@ import VideoToolbox
 @available(iOS 27.0, *)
 private struct SelectedCaptureFilter: @unchecked Sendable { let filter: SCContentFilter }
 
-private struct CapturedSample: @unchecked Sendable { let buffer: CMSampleBuffer }
+private struct CapturedSample: @unchecked Sendable {
+    let buffer: CMSampleBuffer
+    let arrival: Double
+    let pts: Double
+}
 
 /// 收尾等待的單次續接；工作完成或逾時只有一方能恢復。
 private final class FinishResumeOnce: @unchecked Sendable {
@@ -39,6 +43,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     private var loggedFrameSize = CGSize.zero
     let callbacks = CaptureCallbackDiagnostics()
     let processing: VideoProcessingDiagnostics
+    let avLag = AVLagDiagnostics()
     init(mixer: MediaMixer, probe: ScreenAudioProbe, rotateLeft: Bool,
          canvas: CGSize? = nil, fills: Bool = false) throws {
         let compositor = try ScreenStreamVideoRotator(rotateLeft: rotateLeft, overlay: ScreenOverlayComposer(),
@@ -51,14 +56,27 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                 for await sample in queue.stream() {
                     guard !Task.isCancelled else { break }
                     if isVideo {
-                        do { await mixer.append(try compositor.rotate(sample.buffer), track: track) }
-                        catch {
+                        let now = CMClockGetTime(CMClockGetHostTimeClock()).seconds
+                        avLag.recordVideo(arrival: sample.arrival, pts: sample.pts, at: now,
+                                          queue: video.summary,
+                                          queueOldestAge: video.oldestAgeSeconds)
+                        do {
+                            let rotated = try compositor.rotate(sample.buffer)
+                            let processedAt = CMClockGetTime(CMClockGetHostTimeClock()).seconds
+                            avLag.recordVideoProcessed(arrival: sample.arrival, pts: sample.pts,
+                                                       at: processedAt, queue: video.summary,
+                                                       queueOldestAge: video.oldestAgeSeconds)
+                            await mixer.append(rotated, track: track)
+                        } catch {
                             rotationFailures += 1
                             if rotationFailures == 1 || rotationFailures % 300 == 0 {
                                 sendlog(message: "[CaptureVideoRotation] dropped=\(rotationFailures) error=\(error)")
                             }
                         }
                     } else {
+                        let now = CMClockGetTime(CMClockGetHostTimeClock()).seconds
+                        avLag.recordAudio(arrival: sample.arrival, pts: sample.pts, at: now,
+                                          isMic: track == 1)
                         probe.observe(sample.buffer, track: track)
                         await mixer.append(sample.buffer, track: track)
                     }
@@ -68,6 +86,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     }
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         let arrival = CMClockGetTime(CMClockGetHostTimeClock()).seconds
+        let pts = sampleBuffer.presentationTimeStamp.seconds
         let track: CaptureCallbackDiagnostics.Track
         switch type {
         case .screen: track = .video
@@ -80,13 +99,13 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         // defer 覆蓋每個提早返回；入口計數與 mailbox 接受量是不同層次。
         defer {
             callbacks.record(track: track, outcome: outcome, state: frameState,
-                             arrival: arrival, pts: sampleBuffer.presentationTimeStamp.seconds)
+                             arrival: arrival, pts: pts)
         }
         guard CMSampleBufferIsValid(sampleBuffer) else { return }
         outcome = .notReady
         guard CMSampleBufferDataIsReady(sampleBuffer) else { return }
         outcome = .offered
-        let sample = CapturedSample(buffer: sampleBuffer)
+        let sample = CapturedSample(buffer: sampleBuffer, arrival: arrival, pts: pts)
         switch type {
         case .screen:
             outcome = .missingStatus
@@ -341,6 +360,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         // RTMP 失敗但本地可控錄製繼續時，仍能回報 Mixer 資料。
         diagnostics = Task { [weak self] in
             var sampleCount = 0
+            AVLagModel.shared.begin(session: token)
             while !Task.isCancelled {
                 guard let self else { return }
                 let queues = self.pump.map { "video{\($0.video.summary)} audio{\($0.audio.summary)} mic{\($0.mic.summary)}" } ?? "sampleQueues=none"
@@ -358,6 +378,16 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                 if let pump = self.pump, detailedLog {
                     sendlog(message: "[CaptureVideoProcessing] session=\(token) schema=1 \(pump.processing.summary)")
                     sendlog(message: "[CaptureCallbacks] session=\(token) schema=1 clockComparison=unverified \(pump.callbacks.summary(now: CMClockGetTime(CMClockGetHostTimeClock()).seconds))")
+                }
+                if let av = self.pump?.avLag.snapshot(
+                    session: token,
+                    now: CMClockGetTime(CMClockGetHostTimeClock()).seconds) {
+                    AVLagModel.shared.record(av)
+                    let shouldLog = sampleCount < 12 || sampleCount % 2 == 0
+                        || (av.videoContentAge ?? 0) >= 1 || av.contentAgeJump != nil
+                    if shouldLog {
+                        sendlog(message: "[AVLag] session=\(token) \(av.logLine)")
+                    }
                 }
                 self.telemetry.sourceQueues = queues
                 self.telemetry.pipelineSampledAt = Date()
@@ -667,10 +697,18 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         logResources(stage: "pump.finish.begin")
         await pump?.finish()
         if let pump {
-            sendlog(message: "[CaptureVideoProcessing] session=\(state.id?.uuidString ?? "unknown") stage=finished schema=1 \(pump.processing.summary)")
-            sendlog(message: "[CaptureCallbacks] session=\(state.id?.uuidString ?? "unknown") stage=finished schema=1 clockComparison=unverified \(pump.callbacks.summary(now: CMClockGetTime(CMClockGetHostTimeClock()).seconds))")
+            let session = state.id?.uuidString ?? "unknown"
+            sendlog(message: "[CaptureVideoProcessing] session=\(session) stage=finished schema=1 \(pump.processing.summary)")
+            sendlog(message: "[CaptureCallbacks] session=\(session) stage=finished schema=1 clockComparison=unverified \(pump.callbacks.summary(now: CMClockGetTime(CMClockGetHostTimeClock()).seconds))")
+            if let av = pump.avLag.snapshot(
+                session: session,
+                now: CMClockGetTime(CMClockGetHostTimeClock()).seconds) {
+                AVLagModel.shared.record(av)
+                sendlog(message: "[AVLag] session=\(session) stage=finished \(av.logLine)")
+            }
         }
         pump = nil
+        AVLagModel.shared.end()
         logResources(stage: "pump.finish.end")
         if let audioProbe { await pipeline?.mixer.removeOutput(audioProbe) }
         audioProbe = nil

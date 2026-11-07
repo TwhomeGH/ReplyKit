@@ -1,5 +1,12 @@
 # 變更歷史
 
+## 2026.11.07 21:30 A/V 內容延遲診斷與裝置頁入口
+
+- 問題：使用者用 PiP 固定直播計時器量到 2:22 的影片在 audio 8105.5s 正確、video timer 只有 8100s，內容落後約 6 秒；曲線呈 38／76／94／116／133／141 分鐘的階梯，不是平滑音訊漂移。既有日誌有 FPS、PTS 回退與吞吐量，但缺少「這一格畫面有多舊」。
+- 變更：新增 `AVLagDiagnostics`，在 SCK 回呼記錄 `videoContentAge = arrival - sourcePTS`、回呼到 worker 的 queue age、加工延遲、來源 PTS 差與 `CaptureMailbox` 最舊樣本年齡；超過 1 秒或階梯事件即時寫 `[AVLag]`，一般每 10 秒一筆。
+- 新增 `AVLagModel`／`AVLagReportView` 與裝置資訊頁 A/V Lag 入口；報告每 5 秒取樣，可複製／分享 schema 1 JSON，供回放 retime 工具交叉比對。序列不會自動改寫播放檔案。
+- 注意：PiP 計時器可作內容時鐘，但若只有 overlay timer 落後，不能直接推論整個 game content 落後；仍需遊戲內事件與 audio 對照。PiP A/B 與主執行緒 hitch 量測列為下一步。
+
 ## 2026.11.07 17:35 App 圖示切換錯誤診斷
 
 - KSign 相容：release IPA 本身有 `CFBundleAlternateIcons.PersonalIcon`，但 KSign 只認檔案形式的圖示，會讓安裝後的 alternates 空白。新增 `Scripts/add_legacy_alternate_icons.sh`，在未簽名 archive 產生 IPA 前，把 `PersonalIcon` PNG 複製進 App，並在 `CFBundleIcons`／`CFBundleIcons~ipad` 的 `PersonalIcon` 補上 `CFBundleIconFiles`；`CFBundleIconName` 與 Assets.car 保持不變，iOS 仍用 asset catalog。這是簽名工具相容層，不是 `-54` 重複 bundle ID 問題的解法。
@@ -10,7 +17,7 @@
 - 17.4.4（ciRun 42360432381、appRevision 4f3964f）的 release IPA 確認含 `PersonalIcon`；但正常安裝後的診斷仍顯示 alternates 空白。結論：問題發生在簽名／安裝工具改寫 Info.plist，而非 App 建置或 `PersonalIconPreview`。
 
 - 問題：在 LiveContainer 環境下，`supportsAlternateIcons` 為 true、`CFBundleAlternateIcons` 也有 `PersonalIcon`，但 `setAlternateIconName` 回傳 OSStatus `-54`（`permErr`，權限錯誤），原本只顯示系統的模糊描述。
-- 變更：切換失敗時記錄 `NSError` 的 domain／code／App bundle 路徑；`-54` 改顯示「目前執行環境（LiveContainer 或簽名容器）不允許變更主畫面圖示」，並在圖示診斷加入 `bundlePath`。
+- 變更：切換失敗時記錄 `NSError` 的 domain／code／App bundle 路徑；`-54` 說明改為「簽名工具指定自訂圖示會覆寫／停用 App 內建切換，內建圖示只是備用選擇」，並在圖示診斷加入 `bundlePath`。
 - 判定：簽名後的 Info.plist 已正確帶入 `PersonalIcon`，`-54` 是執行容器權限，不是 `PersonalIconPreview` 或 asset catalog 缺失。
 
 ## 2026.11.07 05:11 降低週期診斷頻率

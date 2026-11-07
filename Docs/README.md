@@ -47,6 +47,7 @@ Pages 建議沿用既有 documentation.yml 單一部署，ChangeLogKit 匯出到
 | 文件 | 說明 |
 | ------ | ------ |
 | [av-pipeline.md](av-pipeline.md) | 影音管線架構 |
+| [AV_LAG.md](development/AV_LAG.md) | A/V 內容延遲診斷、裝置頁報告與回放 retime JSON |
 | [haishinkit-fixes.md](haishinkit-fixes.md) | HaishinKit 修正記錄 |
 | [metal-shader-optimizations.md](metal-shader-optimizations.md) | Metal Shader 性能優化 |
 | [video-dimensions.md](video-dimensions.md) | 影片尺寸設計：AD / OD |

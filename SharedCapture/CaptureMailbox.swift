@@ -69,6 +69,13 @@ final class CaptureMailbox<Value: Sendable>: @unchecked Sendable {
         let pending = waiter; waiter = nil; lock.unlock(); pending?.resume(returning: nil)
     }
 
+    /// 最舊待處理樣本年齡；空佇列為 nil，不把「沒有資料」誤報成 0 秒。
+    var oldestAgeSeconds: Double? {
+        lock.lock(); defer { lock.unlock() }
+        guard let first = entries.first else { return nil }
+        return max(0, clock() - first.time)
+    }
+
     /// 日誌詳情
     var summary: String {
         lock.lock(); defer { lock.unlock() }

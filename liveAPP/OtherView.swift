@@ -541,6 +541,7 @@ struct DeviceView: View {
     @ObservedObject private var capture = CaptureCoordinator.shared
     @ObservedObject private var videoHealth = VideoHealthModel.shared
     @ObservedObject private var audioHealth = AudioHealthModel.shared
+    @ObservedObject private var avLag = AVLagModel.shared
 
     @State private var appFootprintMB: Double = 0
     @State private var appResidentMB: Double = 0
@@ -594,6 +595,7 @@ struct DeviceView: View {
                     if capture.streamTelemetry.pipelineSampledAt != nil {
                         capturePipelineCard
                     }
+                    avLagCard
                     MixerPipelineCard(audio: true, now: sampleDate)
                     audioPipelineCard
                 }
@@ -819,6 +821,31 @@ struct DeviceView: View {
             Text("來源與混音計數不代表 RTMP 已送出；共用輸出圖表涵蓋兩種來源，進階健康圖表仍由 ReplayKit 擴展提供。")
                 .font(.caption).foregroundStyle(.secondary)
         }
+    }
+
+    /// A/V 內容延遲入口；數值用於回放 retime 交叉參考，不用來直接宣稱口型偏移。
+    private var avLagCard: some View {
+        SettingsDashboardCard(header: { Label("A/V Lag", systemImage: "waveform.path.ecg") }) {
+            NavigationLink(AppLanguage.localized("avLag.open")) { AVLagReportView() }
+            if let latest = avLag.latest {
+                Text("\(AppLanguage.localized("avLag.videoAge")): \(seconds(latest.videoContentAge)) · \(AppLanguage.localized("avLag.queue")): \(seconds(latest.videoQueueAge)) · \(AppLanguage.localized("avLag.oldest")): \(seconds(latest.videoQueueOldestAge))")
+                    .font(.caption)
+                Text("\(AppLanguage.localized("avLag.sourceDelta")): \(seconds(latest.sourcePTSDelta)) · \(AppLanguage.localized("avLag.samples")): \(avLag.samples.count)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text(AppLanguage.localized("avLag.empty"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Text(AppLanguage.localized("avLag.footer"))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func seconds(_ value: Double?) -> String {
+        value.map { String(format: "%.3f s", $0) } ?? "unknown"
     }
 
     /// 設備診斷卡片；沿用頁面採樣與服務狀態。
