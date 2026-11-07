@@ -380,6 +380,10 @@ API 遷移屬後續技術評估，不作為以上功能完成的條件；需要�
   - [x] HaishinKit fork `384e35d3` 已 push；`Swift Tests` run 42300582476 六個 job 全綠（RTMP iOS 9m2、HaishinKit iOS 9m13、TSan iOS/macOS）。ReplyKit `Package.resolved` 已更新到 `384e35d3`（本地 `b5f15b4`）。
   - [x] CI 摘要現在會列出 `[Runner infrastructure]`／`ci-summary.md`；iOS 測試日誌會記錄實際 `name`／`type`／`runtime`／`UDID`（本次為 iPhone 17、iOS 27.0）。
   - [ ] 實機驗證 02:58 同情境的 `audioResyncs`／A/V 是否穩定；若 raw track0 gap 未進入 mixed/RTMP，還要處理 mixer 端。
+- [ ] **2026-11-07 影片內容落後（audio 正常）**：使用者用 PiP 子母畫面的固定直播計時器當內容時鐘，2:22 影片中 audio（Whisper）在 8105.5s 正確，video timer 只有 8100s；曲線 0→1 @38、→2 @76、→3 @94、→4 @116、→5 @133、→6 @141 分鐘，呈階梯而非平滑漂移。已用 timer 將 video retime、audio 不動；這推翻「02:58 音訊回退是主因」的解讀，RTMPTimestamp 修正仍作音訊缺口防護。
+  - [ ] 補 `[AVLag]` 10 秒摘要：`video.contentAge=now-sourcePTS`、queueOldestAge/depth、encode/publish delay、videoSourcePTS-audioSourcePTS、publishPTS-sourcePTS；超過 1 秒即時記錄。
+  - [ ] PiP 效能 A/B：同條件各 30–60 分鐘 PiP off／on，對照上述 curve；加 PiP render 的 signpost、主執行緒 hitch（>100ms）、CPU／記憶體峰值，確認是否為 PiP 造成的階段性 stall。
+  - [ ] 用遊戲內已知事件（技能／擊殺）與 audio 對照，排除只有 PiP timer 本身落後；勿在未分清 queue／timestamp／來源時鐘前再改 timestamp policy。
 
 ## 共用音量監測與閒置比較
 
