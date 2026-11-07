@@ -828,7 +828,7 @@ struct DeviceView: View {
         SettingsDashboardCard(header: { Label("A/V Lag", systemImage: "waveform.path.ecg") }) {
             NavigationLink(AppLanguage.localized("avLag.open")) { AVLagReportView() }
             if let latest = avLag.latest {
-                Text("\(AppLanguage.localized("avLag.videoAge")): \(seconds(latest.videoContentAge)) · \(AppLanguage.localized("avLag.queue")): \(seconds(latest.videoQueueAge)) · \(AppLanguage.localized("avLag.oldest")): \(seconds(latest.videoQueueOldestAge))")
+                Text("\(AppLanguage.localized("avLag.videoAge")): \(seconds(latest.videoContentAge)) · \(AppLanguage.localized("avLag.queue")): \(seconds(latest.videoQueueAge)) · \(AppLanguage.localized("avLag.oldest")): \(latest.videoQueueOldestAge.map { seconds($0) } ?? AppLanguage.localized("avLag.queueEmpty"))")
                     .font(.caption)
                 Text("\(AppLanguage.localized("avLag.sourceDelta")): \(seconds(latest.sourcePTSDelta)) · \(AppLanguage.localized("avLag.samples")): \(avLag.samples.count)")
                     .font(.caption)

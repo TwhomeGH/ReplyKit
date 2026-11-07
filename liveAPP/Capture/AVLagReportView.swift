@@ -16,11 +16,13 @@ struct AVLagReportView: View {
                     row("video idle age", seconds(latest.videoIdleAge))
                     row("audio content age", seconds(latest.audioContentAge))
                     row("video queue age", seconds(latest.videoQueueAge))
-                    row("video queue oldest", seconds(latest.videoQueueOldestAge))
+                    row("video queue oldest", latest.videoQueueOldestAge.map { seconds($0) }
+                        ?? AppLanguage.localized("avLag.queueEmpty"))
                     row("video process age", seconds(latest.videoProcessAge))
                     row("video source age", seconds(latest.videoSourceAge))
                     row("video PTS - audio PTS", seconds(latest.sourcePTSDelta))
-                    row("content age jump", seconds(latest.contentAgeJump))
+                    row("content age jump", latest.contentAgeJump.map { seconds($0) }
+                        ?? AppLanguage.localized("avLag.noJump"))
                     row("frames", "\(latest.videoFrames) video / \(latest.audioFrames) audio")
                     if let queue = latest.videoQueue {
                         Text(queue).font(.caption.monospaced()).foregroundStyle(.secondary)
@@ -33,6 +35,9 @@ struct AVLagReportView: View {
 
             Section(AppLanguage.localized("avLag.purpose")) {
                 Text(AppLanguage.localized("avLag.usage"))
+                Text(AppLanguage.localized("avLag.zeroSemantics"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section(AppLanguage.localized("avLag.report")) {
