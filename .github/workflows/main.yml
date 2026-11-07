@@ -216,6 +216,9 @@ jobs:
             build/archive-summary.md
           if-no-files-found: warn
 
+      - name: Add KSign-compatible alternate icon files 補 KSign 相容圖示
+        run: bash Scripts/add_legacy_alternate_icons.sh "build/liveApp.xcarchive/Products/Applications/liveAPP.app"
+
       - name: Verify archived app icons 檢查封存圖示宣告
         run: |
           python3 -m unittest discover -s Scripts -p test_inspect_app_bundle.py
