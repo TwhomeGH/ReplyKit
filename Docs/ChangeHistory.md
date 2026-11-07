@@ -1,5 +1,11 @@
 # 變更歷史
 
+## 2026.11.07 17:35 App 圖示切換錯誤診斷
+
+- 問題：在 LiveContainer 環境下，`supportsAlternateIcons` 為 true、`CFBundleAlternateIcons` 也有 `PersonalIcon`，但 `setAlternateIconName` 回傳 OSStatus `-54`（`permErr`，權限錯誤），原本只顯示系統的模糊描述。
+- 變更：切換失敗時記錄 `NSError` 的 domain／code／App bundle 路徑；`-54` 改顯示「目前執行環境（LiveContainer 或簽名容器）不允許變更主畫面圖示」，並在圖示診斷加入 `bundlePath`。
+- 判定：簽名後的 Info.plist 已正確帶入 `PersonalIcon`，`-54` 是執行容器權限，不是 `PersonalIconPreview` 或 asset catalog 缺失。
+
 ## 2026.11.07 05:11 降低週期診斷頻率
 
 - 問題：2.5 小時的診斷檔約 14,166 行，其中約 10,000 行來自每 5 秒一次的 `CaptureSource`、`CaptureVideoProcessing`、`CaptureCallbacks`、`CaptureAudioPipeline` 等例行摘要，不利事後掃讀。

@@ -104,7 +104,19 @@ struct AppIconSettingsView: View {
     guard !isChanging, UIApplication.shared.supportsAlternateIcons else { return }
     isChanging = true
     UIApplication.shared.setAlternateIconName(name) { error in
-      let message = error?.localizedDescription
+      let nsError = error.map { $0 as NSError }
+      let details = nsError.map {
+        "domain=\($0.domain) code=\($0.code) path=\(Bundle.main.bundlePath)"
+      } ?? "none"
+      sendlog(title: "AppIcon", message: "setAlternateIconName name=\(name ?? "nil") \(details)")
+      let message: String?
+      if let error {
+        message = (error as NSError).code == -54
+          ? AppLanguage.localized("appIcon.permissionDenied")
+          : error.localizedDescription
+      } else {
+        message = nil
+      }
       Task { @MainActor in
         selectedName = UIApplication.shared.alternateIconName
         isChanging = false

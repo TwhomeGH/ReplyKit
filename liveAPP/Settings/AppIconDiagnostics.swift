@@ -103,6 +103,7 @@ struct AppIconDiagnostics {
         iPad.PersonalIcon.name=\(padIconName ?? "")
         iPhone.PersonalIcon.files=\(phoneFiles.joined(separator: ","))
         iPad.PersonalIcon.files=\(padFiles.joined(separator: ","))
+        bundlePath=\(Bundle.main.bundlePath)
         """
     }
 }
