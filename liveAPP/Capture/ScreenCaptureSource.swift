@@ -360,7 +360,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         // RTMP 失敗但本地可控錄製繼續時，仍能回報 Mixer 資料。
         diagnostics = Task { [weak self] in
             var sampleCount = 0
-            AVLagModel.shared.begin(session: token)
+            AVLagModel.shared.begin(session: token.uuidString)
             while !Task.isCancelled {
                 guard let self else { return }
                 let queues = self.pump.map { "video{\($0.video.summary)} audio{\($0.audio.summary)} mic{\($0.mic.summary)}" } ?? "sampleQueues=none"
@@ -380,7 +380,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                     sendlog(message: "[CaptureCallbacks] session=\(token) schema=1 clockComparison=unverified \(pump.callbacks.summary(now: CMClockGetTime(CMClockGetHostTimeClock()).seconds))")
                 }
                 if let av = self.pump?.avLag.snapshot(
-                    session: token,
+                    session: token.uuidString,
                     now: CMClockGetTime(CMClockGetHostTimeClock()).seconds) {
                     AVLagModel.shared.record(av)
                     let shouldLog = sampleCount < 12 || sampleCount % 2 == 0
