@@ -8,6 +8,7 @@ struct AppIconSettingsView: View {
   @State private var selectedName = UIApplication.shared.alternateIconName
   @State private var isChanging = false
   @State private var timeoutTask: Task<Void, Never>?
+  @State private var selectionRefreshTask: Task<Void, Never>?
   @State private var errorMessage: String?
   @State private var diagnostics: AppIconDiagnostics?
   @State private var lastReport: String?
@@ -55,8 +56,10 @@ struct AppIconSettingsView: View {
   }
 
   /// 讀原始 plist 保留 ~ipad 分支；只在診斷改變時寫摘要，避免每次刷新重複記錄。
-  private func refreshDiagnostics() {
-    selectedName = UIApplication.shared.alternateIconName
+  private func refreshDiagnostics(updateSelection: Bool = true) {
+    if updateSelection {
+      selectedName = UIApplication.shared.alternateIconName
+    }
     var info = Bundle.main.infoDictionary ?? [:]
     do {
       if let url = Bundle.main.url(forResource: "Info", withExtension: "plist") {
@@ -104,6 +107,7 @@ struct AppIconSettingsView: View {
   private func changeIcon(to name: String?) {
     guard !isChanging, UIApplication.shared.supportsAlternateIcons else { return }
     timeoutTask?.cancel()
+    selectionRefreshTask?.cancel()
     isChanging = true
     let requested = name ?? "nil"
     sendlog(title: "AppIcon", message: "setAlternateIconName start name=\(requested) current=\(UIApplication.shared.alternateIconName ?? "nil") path=\(Bundle.main.bundlePath)")
@@ -114,7 +118,8 @@ struct AppIconSettingsView: View {
       timeoutTask = nil
       errorMessage = AppLanguage.localized("appIcon.timeout")
       sendlog(title: "AppIcon", message: "setAlternateIconName timeout name=\(requested)")
-      refreshDiagnostics()
+      refreshDiagnostics(updateSelection: false)
+      scheduleSelectionRefresh()
     }
     UIApplication.shared.setAlternateIconName(name) { error in
       let nsError = error.map { $0 as NSError }
@@ -131,13 +136,28 @@ struct AppIconSettingsView: View {
           message = (error as NSError).code == -54
             ? AppLanguage.localized("appIcon.permissionDenied")
             : error.localizedDescription
+          selectedName = UIApplication.shared.alternateIconName
         } else {
           message = nil
+          // 系統回報可能晚於 completion；先以請求結果更新勾選，避免停在舊的預設列。
+          selectedName = name
         }
-        selectedName = UIApplication.shared.alternateIconName
         isChanging = false
         errorMessage = message
-        refreshDiagnostics()
+        refreshDiagnostics(updateSelection: false)
+      }
+    }
+  }
+
+  /// completion 未回來但圖示其實已變更時，稍後再對帳一次；仍 nil 時保留使用者剛選的結果。
+  private func scheduleSelectionRefresh() {
+    selectionRefreshTask?.cancel()
+    selectionRefreshTask = Task { @MainActor in
+      try? await Task.sleep(nanoseconds: 1_000_000_000)
+      guard !Task.isCancelled else { return }
+      if let current = UIApplication.shared.alternateIconName {
+        selectedName = current
+        refreshDiagnostics(updateSelection: false)
       }
     }
   }
