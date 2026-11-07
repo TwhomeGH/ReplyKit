@@ -3,6 +3,7 @@
 ## 2026.11.07 17:35 App 圖示切換錯誤診斷
 
 - KSign 相容：release IPA 本身有 `CFBundleAlternateIcons.PersonalIcon`，但 KSign 只認檔案形式的圖示，會讓安裝後的 alternates 空白。新增 `Scripts/add_legacy_alternate_icons.sh`，在未簽名 archive 產生 IPA 前，把 `PersonalIcon` PNG 複製進 App，並在 `CFBundleIcons`／`CFBundleIcons~ipad` 的 `PersonalIcon` 補上 `CFBundleIconFiles`；`CFBundleIconName` 與 Assets.car 保持不變，iOS 仍用 asset catalog。這是簽名工具相容層，不是 `-54` 重複 bundle ID 問題的解法。
+- 圖示切換狀態卡住：`setAlternateIconName` 的 completion 可能沒有回來，導致 `isChanging` 永久為 true；預設列在 `selectedName == nil` 時也被 disable，無法重新觸發。改為 8 秒 timeout、記錄 start／completion／current、預設列永遠可重試；若主畫面圖示已變但 `alternateIconName` 仍為 nil，屬系統快取或同 bundle ID 衝突，App 只能提示重啟／重裝。
 
 - 追加觀察：LiveContainer 內若有兩個同 `CFBundleIdentifier` 的 App，`setAlternateIconName` 可能被系統拒絕（OSStatus -54）。把 bundle ID 直接改成 LiveContainer 容器名不是有效解法，會讓目標 App 冒用 host 身分，並出現「檔案不存在」；應使用容器的 clone／唯一 bundle ID，或只保留一份正常安裝的 App。
 - 17.4.4（ciRun 42360432381、appRevision 4f3964f）的 release IPA 確認含 `PersonalIcon`；但正常安裝後的診斷仍顯示 alternates 空白。結論：問題發生在簽名／安裝工具改寫 Info.plist，而非 App 建置或 `PersonalIconPreview`。

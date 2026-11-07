@@ -233,7 +233,7 @@ API 遷移屬後續技術評估，不作為以上功能完成的條件；需要�
 - [x] 下一次 archive 驗證修正後的圖示檢查、18 項排除狀態與包體報告。
 - [x] **iPad 圖示宣告驗收**：17.4.0 診斷已顯示 `CFBundleIcons`／`~ipad` presence=true、alternates=PersonalIcon、`supportsAlternateIcons=true`；簽名／安裝後的 plist 已正確。
 - [ ] **App 圖示實機驗收**：iPhone／iPad 切換、恢復預設、`supportsAlternateIcons`、重新開啟 App 後目前標記與診斷內容。LiveContainer 下 `setAlternateIconName` 回傳 OSStatus `-54`（權限）；需用正常安裝的簽名 IPA 驗證。
-- [ ] **App 圖示環境相容性**：17.4.4 release IPA 已確認含 `CFBundleAlternateIcons.PersonalIcon`，但 KSign 安裝後 alternates 空白；已新增 archive 階段的 KSign 相容層（PNG＋`CFBundleIconFiles`），待下一次 CI archive 產生新 IPA 後用 KSign 實測。`PersonalIconPreview` 仍只是預覽，不退役；`-54` 重複 bundle ID 問題另行處理。
+- [ ] **App 圖示環境相容性**：17.4.4 release IPA 已確認含 `CFBundleAlternateIcons.PersonalIcon`；KSign 相容層（PNG＋`CFBundleIconFiles`）已實作，待下一次 CI archive 產生新 IPA 後用 KSign 實測。另觀察到圖示切換成功後可能卡在 `isChanging` 或回不到預設；已加 8 秒 timeout、start／completion 日誌與預設列重試。若 `alternateIconName=nil` 但主畫面仍是替換圖示，優先檢查同 bundle ID 衝突與系統圖示快取，`PersonalIconPreview` 仍不退役。
 - [ ] 16 個開發腳本／`.bak`／`.edit` 仍以 pbxproj membership exceptions 排除；若清理 repo，需另案移動或刪除。
 
 ## RTMP 樣本與設定匯入
