@@ -233,7 +233,7 @@ API 遷移屬後續技術評估，不作為以上功能完成的條件；需要�
 - [x] 下一次 archive 驗證修正後的圖示檢查、18 項排除狀態與包體報告。
 - [x] **iPad 圖示宣告驗收**：17.4.0 診斷已顯示 `CFBundleIcons`／`~ipad` presence=true、alternates=PersonalIcon、`supportsAlternateIcons=true`；簽名／安裝後的 plist 已正確。
 - [ ] **App 圖示實機驗收**：iPhone／iPad 切換、恢復預設、`supportsAlternateIcons`、重新開啟 App 後目前標記與診斷內容。LiveContainer 下 `setAlternateIconName` 回傳 OSStatus `-54`（權限）；需用正常安裝的簽名 IPA 驗證。
-- [ ] **App 圖示環境相容性**：LiveContainer 已能顯示可點選項但系統拒絕切換（OSStatus -54）。最新觀察：可能有兩個同 bundle ID 的 App 並存；把 bundle ID 改成 LiveContainer 容器名會讓目標 App 冒用 host 身分，導致圖示切換找不到檔案。應改用 LiveContainer 的 clone／唯一 bundle ID，或只保留一份正常安裝的 App；不再退役 `PersonalIconPreview`。
+- [ ] **App 圖示環境相容性**：17.4.4（ciRun 42360432381、appRevision 4f3964f）的 release IPA 已確認含 `CFBundleAlternateIcons.PersonalIcon`，但正常安裝路徑 `/private/var/containers/Bundle/Application/.../liveAPP.app` 的診斷仍是 alternates 空白、`supportsAlternateIcons=false`。代表簽名／安裝工具在 IPA 之後改寫了 Info.plist；下一步比對「簽名後、安裝前」的 IPA plist，並確認簽名工具是否只保留 `CFBundleIconFiles`。`PersonalIconPreview` 仍只是預覽，不退役。
 - [ ] 16 個開發腳本／`.bak`／`.edit` 仍以 pbxproj membership exceptions 排除；若清理 repo，需另案移動或刪除。
 
 ## RTMP 樣本與設定匯入

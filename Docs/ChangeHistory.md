@@ -3,6 +3,7 @@
 ## 2026.11.07 17:35 App 圖示切換錯誤診斷
 
 - 追加觀察：LiveContainer 內若有兩個同 `CFBundleIdentifier` 的 App，`setAlternateIconName` 可能被系統拒絕（OSStatus -54）。把 bundle ID 直接改成 LiveContainer 容器名不是有效解法，會讓目標 App 冒用 host 身分，並出現「檔案不存在」；應使用容器的 clone／唯一 bundle ID，或只保留一份正常安裝的 App。
+- 17.4.4（ciRun 42360432381、appRevision 4f3964f）的 release IPA 確認含 `PersonalIcon`；但正常安裝後的診斷仍顯示 alternates 空白。結論：問題發生在簽名／安裝工具改寫 Info.plist，而非 App 建置或 `PersonalIconPreview`。
 
 - 問題：在 LiveContainer 環境下，`supportsAlternateIcons` 為 true、`CFBundleAlternateIcons` 也有 `PersonalIcon`，但 `setAlternateIconName` 回傳 OSStatus `-54`（`permErr`，權限錯誤），原本只顯示系統的模糊描述。
 - 變更：切換失敗時記錄 `NSError` 的 domain／code／App bundle 路徑；`-54` 改顯示「目前執行環境（LiveContainer 或簽名容器）不允許變更主畫面圖示」，並在圖示診斷加入 `bundlePath`。
