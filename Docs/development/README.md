@@ -47,7 +47,7 @@
 
 執行 `python Scripts/test_dev_index.py` 驗證資料、失效連結、路徑限制與 HTTP 接線。Development index workflow 在 push／PR 執行相同檢查。
 
-提交前先跑 `python Scripts/check_markdown.py`（Windows）或 `python3 Scripts/check_markdown.py`（macOS／Linux）；它與 CI 共用同一個 MD012 空行檢查。可選啟用 repo hook：
+提交前先跑 `python Scripts/check_markdown.py`（Windows）或 `python3 Scripts/check_markdown.py`（macOS／Linux）；它與 CI 共用 MD001 標題階層與 MD012 空行檢查。可選啟用 repo hook：
 
 ```bash
 git config core.hooksPath .githooks

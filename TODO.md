@@ -382,6 +382,7 @@ API 遷移屬後續技術評估，不作為以上功能完成的條件；需要�
   - [ ] 實機驗證 02:58 同情境的 `audioResyncs`／A/V 是否穩定；若 raw track0 gap 未進入 mixed/RTMP，還要處理 mixer 端。
 - [x] 診斷匯出增加「上次前景到背景」與「本次前景到現在」；後者以前景 active 起點到現在，適合停止後回到 App 檢查記憶體與收尾日誌，不必等下一次進背景。
 - [x] **AV Lag 持久化**：新增最近 5 場、長場次分段（1／2／4／8 小時）、session 分組、背景 in-progress 保存、AV Lag 儲存設定、單場刪除（整組 segment）；預設仍為記憶體／4 小時最新區間。待實機驗證分段邊界、被殺後 in-progress、清除與備份還原。
+- [x] **Markdown 結構檢查**：`Scripts/check_markdown.py` 同時檢查 MD001 標題階層與 MD012；已修正 `Docs/av-pipeline.md` 的 h2→h4。
 - [x] **混音 main track fallback**：HaishinKit fork `15d59bef` 已 push；ReplyKit `Package.resolved` 已更新（`d7814fc`）。待實機驗證 mic 啟停。
 - [x] **App 音軌與音量滑桿**：App 改為 mixer 主軌／輸出格式軌，mic 關閉不再帶走 App 聲音；滑桿範圍改為 -40…0 dB（0%=靜音、50%≈-20 dB）。待實機確認 mic 啟停與音量回報。
 - [x] **編碼縮放模式**：ReplayKit 可選 Letterbox／Trim／Normal（預設 Letterbox）；SCK 由輸出畫布／compositor 控制，encoder 固定 Normal，避免 double letterbox。待實機驗證 16:9／4:3／直向。

@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
-"""本地與 CI 共用的 Markdown 空行檢查（MD012）。
+"""本地與 CI 共用的 Markdown 結構檢查（MD001／MD012）。
 
-只檢查「連續多個空白行」，忽略 fenced code block 內的空白；與
-development-index workflow 使用同一個入口，避免只在 CI 才發現。
+- MD001：heading 每次最多只能增加一階（h2 → h4 會失敗）。
+- MD012：不可有連續多個空白行。
+
+忽略 fenced code block 內的內容；與 development-index workflow 共用入口，
+避免只在 CI 才發現。
 """
 
 import argparse
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+HEADING = re.compile(r"^(#{1,6})\s")
 
 
 def git_markdown_files() -> list[Path]:
@@ -26,13 +31,13 @@ def git_markdown_files() -> list[Path]:
     return sorted(set(paths))
 
 
-def md012_errors(path: Path) -> list[tuple[int, int]]:
-    """回傳 (行號, 該段連續空白行數) 的 MD012 錯誤。"""
+def markdown_errors(path: Path) -> list[str]:
     text = path.read_text(encoding="utf-8", errors="replace")
     in_fence = False
     fence = ""
     blank_run = 0
-    errors: list[tuple[int, int]] = []
+    previous_heading = 0
+    errors: list[str] = []
     for line_number, line in enumerate(text.splitlines(), 1):
         stripped = line.lstrip()
         if in_fence:
@@ -47,9 +52,17 @@ def md012_errors(path: Path) -> list[tuple[int, int]]:
         if line.strip() == "":
             blank_run += 1
             if blank_run > 1:
-                errors.append((line_number, blank_run))
-        else:
-            blank_run = 0
+                errors.append("%d MD012/no-multiple-blanks 連續 %d 個空白行" %
+                              (line_number, blank_run))
+            continue
+        blank_run = 0
+        heading = HEADING.match(line)
+        if heading:
+            level = len(heading.group(1))
+            if previous_heading and level > previous_heading + 1:
+                errors.append("%d MD001/heading-increment 標題由 h%d 跳到 h%d" %
+                              (line_number, previous_heading, level))
+            previous_heading = level
     return errors
 
 
@@ -64,16 +77,15 @@ def main() -> int:
             print("找不到檔案：%s" % path, file=sys.stderr)
             failures += 1
             continue
-        for line_number, count in md012_errors(path):
-            display = path.relative_to(ROOT) if path.is_absolute() and ROOT in path.parents else path
-            print("%s:%d MD012/no-multiple-blanks 連續 %d 個空白行" %
-                  (display, line_number, count))
+        display = path.relative_to(ROOT) if path.is_absolute() and ROOT in path.parents else path
+        for error in markdown_errors(path):
+            print("%s:%s" % (display, error))
             failures += 1
     if failures:
-        print("Markdown 空行檢查失敗（%d 項）；移除多餘空白行後再提交。" % failures,
+        print("Markdown 結構檢查失敗（%d 項）；修正後再提交。" % failures,
               file=sys.stderr)
         return 1
-    print("Markdown 空行檢查通過（%d 個檔案）" % len(paths))
+    print("Markdown 結構檢查通過（%d 個檔案）" % len(paths))
     return 0
 
 

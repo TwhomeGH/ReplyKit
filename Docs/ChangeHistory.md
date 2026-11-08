@@ -1,5 +1,10 @@
 # 變更歷史
 
+## 2026.11.08 21:10 文件標題階層與本機檢查
+
+- 修正 `Docs/av-pipeline.md` 在 h2 後直接跳 h4 的 MD001；AHealth 子標題改為 h3。
+- `Scripts/check_markdown.py` 新增 MD001 檢查，CI 的 Development index 改用同一個入口，本地 hook 也會先擋下標題階層錯誤。
+
 ## 2026.11.08 20:55 混音主軌停止的底層 fallback
 
 - HaishinKit fork 本地提交 `15d59bef`：`AudioMixerByMultiTrack` 追蹤各軌最近輸出時間，main track 超過 250ms 無輸出即由其他軌接手，並重設 `sampleTime`/`anchor`，避免 App 軌被舊 main 位置 align 丟棄。
