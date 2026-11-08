@@ -572,7 +572,8 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         video.maxKeyFrameIntervalDuration = Int32(max(0, min(60, defaults.object(forKey: "KeyFrameInterval") as? Int ?? 2)))
         video.allowFrameReordering = false
         video.isLowLatencyRateControlEnabled = defaults.bool(forKey: "isLowLatencyRateControlEnabled")
-        video.scalingMode = .letterbox
+        // ScreenStreamVideoRotator 已依輸出畫布做 letterbox／fill，encoder 不再二次縮放。
+        video.scalingMode = .normal
         video.expectedFrameRate = 60
         video.profileLevel = H264EncodingProfile.resolve(defaults.string(forKey: "h264level") ?? "AutoHigh")
         let useCAVLC = defaults.object(forKey: "h264useCAVLC") as? Bool ?? false

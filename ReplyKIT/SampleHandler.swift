@@ -1006,7 +1006,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         let speedPriority = RPConfig.shared.state.vtSpeedPriority
         // Baseline 不使用 CABAC；CAVLC 開關只控制 entropy，不再連帶改 VT 速度策略。
         videoSettings.h264EntropyMode = (useCAVLC || profilelvl.contains("Baseline")) ? "cavlc" : nil
-        videoSettings.scalingMode = .letterbox
+        let scaling = VideoScalingMode.stored(SharedDefaults.group?.string(forKey: "videoScalingMode"))
+        videoSettings.scalingMode = scaling.haishinKitMode
 
         if setSize {
             let geometry = resolvedStreamGeometry(source: CGSize(width: width, height: height))
@@ -2449,6 +2450,16 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             LogManager.shared.setupFlushTimer()
         } else {
             LogManager.shared.discardBuffer()
+        }
+    }
+}
+
+private extension VideoScalingMode {
+    var haishinKitMode: VideoCodecSettings.ScalingMode {
+        switch self {
+        case .letterbox: return .letterbox
+        case .trim: return .trim
+        case .normal: return .normal
         }
     }
 }

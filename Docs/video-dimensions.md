@@ -85,6 +85,8 @@ runtime 更新時必須同時刷新 AD 與 OD，避免 encoder 已經切到新�
 
 - `BufferCount` 是 RTMP／encoder 層的輸入緩衝；ReplayKit 與 ScreenCaptureKit 都使用，不屬於 GPU 畫布。
 - `useBic` 是 ReplayKit GPU rotator 的縮放品質；ScreenCaptureKit 不使用，UI 在 SCK 模式不應顯示為可用。
+- `videoScalingMode` 是 ReplayKit encoder 的 HaishinKit `ScalingMode`（Letterbox／Trim／Normal）。ScreenCaptureKit 由 `StreamFramePolicy` 與 compositor 決定畫面填充，encoder 固定使用 Normal，避免二次 letterbox。
+- E-RTMP 與低延遲都是 RTMPConnection／video settings 層，兩個後端共用；B-Frame 在 ScreenCaptureKit 仍固定關閉。
 
 ## 相關實作
 

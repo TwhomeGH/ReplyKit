@@ -8,6 +8,7 @@ struct LegacyEncodingSettingsView: View {
   @AppStorage("allowFrameReordering", store: userDefaults) private var allowFrameReordering = false
   @AppStorage("h264useCAVLC", store: userDefaults) private var h264useCAVLC = false
   @AppStorage("vtSpeedPriority", store: userDefaults) private var vtSpeedPriority = false
+  @AppStorage("videoScalingMode", store: userDefaults) private var videoScalingMode = VideoScalingMode.letterbox.rawValue
   @AppStorage("isLowLatencyRateControlEnabled", store: userDefaults)
   private var isLowLatencyRateControlEnabled = false
   @AppStorage("useEnhancedRTMP", store: userDefaults) private var useEnhancedRTMP = true
@@ -83,6 +84,25 @@ struct LegacyEncodingSettingsView: View {
         Text(AppLanguage.localized("encoding.vtSpeed.help"))
           .font(.footnote)
           .foregroundStyle(.secondary)
+      }
+
+      Section(AppLanguage.localized("encoding.scaling.section")) {
+        if usesScreenCaptureKit {
+          Text(AppLanguage.localized("encoding.scaling.sck"))
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        } else {
+          Picker(AppLanguage.localized("encoding.scaling.section"),
+                 selection: $videoScalingMode) {
+            ForEach(VideoScalingMode.allCases) { mode in
+              Text(AppLanguage.localized("encoding.scaling." + mode.rawValue))
+                .tag(mode.rawValue)
+            }
+          }
+          Text(AppLanguage.localized("encoding.scaling." + videoScalingMode + ".help"))
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        }
       }
 
       Section(AppLanguage.localized("encoding.rtmp.section")) {

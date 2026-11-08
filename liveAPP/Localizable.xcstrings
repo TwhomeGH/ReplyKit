@@ -1125,6 +1125,62 @@
       "ja": { "stringUnit": { "state": "translated", "value": "prioritizeEncodingSpeedOverQuality とフレーム抑制を個別に有効化します。画質が下がる場合があります。" } }
     }
   },
+  "encoding.scaling.section": {
+    "localizations": {
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "編碼縮放" } },
+      "en": { "stringUnit": { "state": "translated", "value": "Encoder Scaling" } },
+      "ja": { "stringUnit": { "state": "translated", "value": "エンコーダーの拡大縮小" } }
+    }
+  },
+  "encoding.scaling.letterbox": {
+    "localizations": {
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "Letterbox（保留完整畫面）" } },
+      "en": { "stringUnit": { "state": "translated", "value": "Letterbox (preserve frame)" } },
+      "ja": { "stringUnit": { "state": "translated", "value": "レターボックス（全体を保持）" } }
+    }
+  },
+  "encoding.scaling.trim": {
+    "localizations": {
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "Trim（裁切填滿）" } },
+      "en": { "stringUnit": { "state": "translated", "value": "Trim (crop to fill)" } },
+      "ja": { "stringUnit": { "state": "translated", "value": "トリム（切り抜いて充填）" } }
+    }
+  },
+  "encoding.scaling.normal": {
+    "localizations": {
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "Normal（直接縮放）" } },
+      "en": { "stringUnit": { "state": "translated", "value": "Normal (direct scale)" } },
+      "ja": { "stringUnit": { "state": "translated", "value": "ノーマル（直接拡大縮小）" } }
+    }
+  },
+  "encoding.scaling.letterbox.help": {
+    "localizations": {
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "保留完整畫面；比例不符時補黑邊。預設值。" } },
+      "en": { "stringUnit": { "state": "translated", "value": "Preserves the full frame and adds black bars when needed. Default." } },
+      "ja": { "stringUnit": { "state": "translated", "value": "全体を保持し、比率が合わない場合は黒帯を追加します。既定値。" } }
+    }
+  },
+  "encoding.scaling.trim.help": {
+    "localizations": {
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "裁切超出畫布的內容以填滿；可能失去邊緣畫面。" } },
+      "en": { "stringUnit": { "state": "translated", "value": "Crops content outside the canvas to fill it; edge content may be lost." } },
+      "ja": { "stringUnit": { "state": "translated", "value": "キャンバス外を切り抜いて充填します。端の内容が失われる場合があります。" } }
+    }
+  },
+  "encoding.scaling.normal.help": {
+    "localizations": {
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "直接縮放到畫布；比例不同時可能變形。" } },
+      "en": { "stringUnit": { "state": "translated", "value": "Scales directly to the canvas; aspect ratio mismatch may distort." } },
+      "ja": { "stringUnit": { "state": "translated", "value": "キャンバスへ直接拡大縮小します。比率が違うと歪む場合があります。" } }
+    }
+  },
+  "encoding.scaling.sck": {
+    "localizations": {
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "ScreenCaptureKit 由輸出畫布與 compositor 控制縮放；encoder 固定使用 Normal，避免二次黑邊。" } },
+      "en": { "stringUnit": { "state": "translated", "value": "ScreenCaptureKit handles scaling in the output canvas and compositor; the encoder uses Normal to avoid double letterboxing." } },
+      "ja": { "stringUnit": { "state": "translated", "value": "ScreenCaptureKit は出力キャンバスとコンポジターで拡大縮小します。二重の黒帯を避けるため、エンコーダーは Normal 固定です。" } }
+    }
+  },
   "encoding.rtmp.section": {
     "localizations": {
       "zh-Hant": { "stringUnit": { "state": "translated", "value": "RTMP 與延遲" } },

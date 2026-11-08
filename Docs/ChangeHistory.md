@@ -1,5 +1,11 @@
 # 變更歷史
 
+## 2026.11.08 20:20 編碼縮放模式入口
+
+- ReplayKit 的 HaishinKit `ScalingMode` 不再寫死 letterbox；進階編碼新增 Letterbox／Trim／Normal 選項，預設仍為 Letterbox。
+- ScreenCaptureKit 的縮放由 `StreamFramePolicy` 與 `ScreenStreamVideoRotator` 處理，encoder 固定 Normal，避免 compositor 與 VideoToolbox 二次 letterbox。
+- `videoScalingMode` 納入非敏感設定備份；E-RTMP 與低延遲確認在 SCK 的 RTMPConnection／video settings 生效。
+
 ## 2026.11.08 20:00 進階編碼 CAVLC／VT 速度拆分
 
 - 將 `h264useCAVLC` 拆成兩個獨立設定：CAVLC 只控制 H.264 entropy；`vtSpeedPriority` 單獨控制 `prioritizeEncodingSpeedOverQuality` 與實驗性軟體節流。

@@ -95,3 +95,16 @@ struct CaptureStreamGeometry: Equatable, Sendable {
         return CGSize(width: CGFloat(width), height: CGFloat(height))
     }
 }
+
+/// 使用者可見的編碼縮放語意；HaishinKit 的 raw enum 由各後端 adapter 映射。
+enum VideoScalingMode: String, CaseIterable, Identifiable, Sendable {
+    case letterbox
+    case trim
+    case normal
+
+    var id: String { rawValue }
+
+    static func stored(_ raw: String?) -> VideoScalingMode {
+        VideoScalingMode(rawValue: raw ?? "") ?? .letterbox
+    }
+}
