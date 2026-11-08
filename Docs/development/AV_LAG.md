@@ -8,7 +8,7 @@
 
 ## 這份報告回答什麼
 
-`videoContentAge` 是「擷取回呼到達時間 - 影片來源 PTS」：
+`videoContentAge`（介面顯示「影片內容延遲」）是「擷取回呼到達時間 - 影片來源 PTS」：
 
 ```text
 videoContentAge = arrival - videoPTS
