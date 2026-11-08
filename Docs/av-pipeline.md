@@ -718,11 +718,11 @@ HaishinKit fork `15d59bef` 的修正：
 - `AudioMixerByMultiTrack` 記錄各軌最近輸出的 wall-clock 時間；main track 超過 250ms 沒有輸出就視為 inactive。
 - main inactive 時，其他軌接手推進；由接手軌重新設定 `sampleTime`/`anchor`，避免 render 仍對齊舊 main 的播放頭。
 - `MixClockAdvance.shouldAdvance` 新增 `mainIsActive` 參數，並補上 main 停止/移除的回歸測試。
-- App 端仍以 App 軌作為 `mainTrack` 與 `outputFormatTrack`，這是主要路徑；底層 fallback 確保其他呼叫端或 runtime 移除 mic 時不會失去 App 輸出。
+- App 端仍以 App 軌作為 `mainTrack` 與 `outputFormatTrack`，這是主要路徑；底層 fallback 確保其他呼叫端或 runtime 移除 mic 時不會失去 App 輸出。fork `15d59bef` 已 push，ReplyKit `Package.resolved` 已更新至該提交。
 
 ## AHealth 介面
 
-#### `[AHealth]` log（走 E-Socket）
+### `[AHealth]` log（走 E-Socket）
 
 ```log
 [AHealth] <status> win:5s app:[min avg max] mic:[min avg max] gapMax:<ms>ms alignDrop:<n> alignIns:<n> alignFire:<n> alignDiff:<n> skip:<n> noData:<n> mixOut:<n>/s rms[app:<f> mic:<f>]
@@ -731,7 +731,7 @@ HaishinKit fork `15d59bef` 的修正：
 - 每秒累積、每 5s 彙總一筆（與 `[VHealth]` 同節奏）。
 - 與 `[VHealth]` 一樣：非 sideload 且不在日誌頁時會被 `sendlog` 跳過。
 
-#### socket payload（`audioHealth`）
+### socket payload（`audioHealth`）
 
 | 欄位 | 型別 | 意義 |
 | ------ | ------ | ------ |

@@ -4,7 +4,7 @@
 
 - HaishinKit fork 本地提交 `15d59bef`：`AudioMixerByMultiTrack` 追蹤各軌最近輸出時間，main track 超過 250ms 無輸出即由其他軌接手，並重設 `sampleTime`/`anchor`，避免 App 軌被舊 main 位置 align 丟棄。
 - `MixClockAdvance.shouldAdvance` 新增 `mainIsActive`；補 main 停止/移除測試。
-- ReplyKit 仍以 App 軌為 `mainTrack`/`outputFormatTrack`；底層 fallback 是第二道防線。fork 尚未 push，`Package.resolved` 尚未更新到此提交。
+- ReplyKit 仍以 App 軌為 `mainTrack`/`outputFormatTrack`；底層 fallback 是第二道防線。fork `15d59bef` 已 push；`Package.resolved` 已更新並提交 `d7814fc`。
 
 ## 2026.11.08 20:40 App 主音軌與音量滑桿範圍
 
