@@ -31,6 +31,9 @@ enum AppSession {
         sendlog(message: "[AppSession] foreground interval start=\(start.timeIntervalSince1970) end=\(end.timeIntervalSince1970)")
     }
 
+    /// 目前前景 active 的起點；已進背景或程序尚未 active 時為 nil。
+    static var currentForegroundStartedAt: Date? { activeStartedAt }
+
     /// 最近一次已完成的前景 active 區間；沒有背景事件時為 nil。
     static var lastForegroundInterval: DateInterval? {
         let defaults = UserDefaults.standard

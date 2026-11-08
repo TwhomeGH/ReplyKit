@@ -119,6 +119,7 @@ struct LogDiagnosticExportView: View {
                 Picker("時間", selection: $mode) {
                     Text("本次啟動到現在").tag(3)
                     Text("上次前景到背景").tag(4)
+                    Text("本次前景到現在").tag(5)
                     Text("最近一小時").tag(1)
                     Text("今天").tag(0)
                     Text("自訂範圍").tag(2)
@@ -144,14 +145,26 @@ struct LogDiagnosticExportView: View {
                             .foregroundStyle(.orange)
                     }
                 }
+                if mode == 5 {
+                    if let start = AppSession.currentForegroundStartedAt {
+                        Text("本次前景 active 起點：" + start.formatted(date: .abbreviated, time: .standard))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("目前不在前景 active；請回到 App 後再選此範圍。")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                }
                 Text("時區：" + TimeZone.current.identifier)
-                Text("保留範圍內所有紀錄及多行續文。本次啟動以 App 啟動標記為起點；上次前景到背景以前景 active 起點到進背景為止；今天與最近一小時以按下產生時為準。原始日誌不變。")
+                Text("保留範圍內所有紀錄及多行續文。本次啟動以 App 啟動標記為起點；上次前景到背景以前景 active 起點到進背景為止；本次前景到現在以目前 active 起點到按下產生時為準；今天與最近一小時以按下產生時為準。原始日誌不變。")
                     .font(.caption)
             }.disabled(busy)
             Section {
                 Button("產生診斷檔") { export() }
                     .disabled(busy || (mode == 2 && start > end)
-                        || (mode == 4 && AppSession.lastForegroundInterval == nil))
+                        || (mode == 4 && AppSession.lastForegroundInterval == nil)
+                        || (mode == 5 && AppSession.currentForegroundStartedAt == nil))
                 if busy { ProgressView("正在篩選日誌…"); Button("取消") { work?.cancel() } }
                 if let error { Text(error).foregroundStyle(.red) }
                 if let result {
@@ -183,6 +196,8 @@ struct LogDiagnosticExportView: View {
         case 4:
             // 日誌時間只有秒精度；前後各留 1 秒，讓 active／background 邊界紀錄也被選入。
             lower = (lastForeground?.start ?? AppSession.launchDate).addingTimeInterval(-1)
+        case 5:
+            lower = (AppSession.currentForegroundStartedAt ?? AppSession.launchDate).addingTimeInterval(-1)
         default:
             lower = start
         }
