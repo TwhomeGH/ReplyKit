@@ -879,6 +879,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         audioObservers.removeAll()
         CaptureAudioOwnership.shared.end()
         endIdleTimerAssertion()
+        MemoryRelief.releaseNonCritical(reason: "capture.finished")
         mark("complete")
         let wasCurrent = state.id == token
         state.finish(token)

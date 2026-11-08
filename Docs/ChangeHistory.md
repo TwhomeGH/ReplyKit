@@ -38,6 +38,12 @@
 - 增加 session 隔離的 Mixer 設定套用回報；調整後分軌音量明確標為估算，不冒充實測。
 - 補刻度與舊 session 回報測試、[量測語意與實機驗收](development/AUDIO_VOLUME_METER.md)。Swift 語法檢查通過，Xcode 測試及實機音量驗收待執行。
 
+## 2026.11.08 16:30 記憶體歸因、停止後釋放與 byte 上限
+
+- 歸因：`[Memory]` 新增 `mallocInUse`／`mallocAllocated`、`logBuffer` 筆數與 bytes；`[IdleResources]` 新增 UI log、AVLag、StreamDiagnostics 快取計數。用來分辨 App heap 與框架／壓縮頁，不再只看 footprint。
+- 釋放：新增 `MemoryRelief`，在 `capture.finished` 與 `didReceiveMemoryWarning` 呼叫 `PIPService.releaseNonCriticalMemory`、縮減 UI／傳輸 log 緩衝；記憶體警告時額外縮 AVLag 並清 URLCache。檔案日誌不刪除。
+- byte 上限：`LogBuffer` 2 MiB（仍保留 5000 筆上限）、`LogModel` 1 MiB、`AVLagModel` 2 MiB／2,880 筆；記憶體壓力下縮到 512 KiB。`AVLagModel` 仍只在記憶體，重啟即清空。
+
 ## 2026.11.08 16:22 診斷匯出新增上次前景到背景
 
 - `AppSession` 現在在前景 active 時記錄起點、進背景時保存「上次前景 active → 背景」區間到 UserDefaults；程序重啟後仍可選取。

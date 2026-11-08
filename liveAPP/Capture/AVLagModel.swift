@@ -12,9 +12,20 @@ final class AVLagModel: ObservableObject {
     @Published private(set) var startedAt: Date?
     @Published private(set) var endedAt: Date?
 
-    private let maxSamples = 10_000
+    private let maxSamples = 2_880
+    private let maxSampleBytes = 2 * 1024 * 1024
+    private var estimatedSampleBytes = 0
 
     private init() {}
+
+    struct Stats: Sendable {
+        let count: Int
+        let bytes: Int
+    }
+
+    var stats: Stats {
+        Stats(count: samples.count, bytes: estimatedSampleBytes)
+    }
 
     var isCapturing: Bool {
         session != nil && endedAt == nil
@@ -27,15 +38,38 @@ final class AVLagModel: ObservableObject {
         endedAt = nil
         latest = nil
         samples.removeAll()
+        estimatedSampleBytes = 0
     }
 
     func record(_ observation: AVLagObservation) {
         guard observation.session == session else { return }
         latest = observation
         samples.append(observation)
-        if samples.count > maxSamples {
-            samples.removeFirst(samples.count - maxSamples)
+        estimatedSampleBytes += estimatedBytes(observation)
+        trimLocked()
+    }
+
+    /// 只保留目前 session；JSON 報告仍可完整輸出當前保留樣本。
+    func trimForMemoryPressure(maxBytes: Int = 512 * 1024) {
+        while estimatedSampleBytes > maxBytes, !samples.isEmpty {
+            let removed = samples.removeFirst()
+            estimatedSampleBytes = max(0, estimatedSampleBytes - estimatedBytes(removed))
         }
+    }
+
+    private func trimLocked() {
+        while samples.count > maxSamples || estimatedSampleBytes > maxSampleBytes {
+            guard !samples.isEmpty else { estimatedSampleBytes = 0; return }
+            let removed = samples.removeFirst()
+            estimatedSampleBytes = max(0, estimatedSampleBytes - estimatedBytes(removed))
+        }
+    }
+
+    /// 粗估可變字串與固定欄位；目的是套上限，不用來宣稱精確 heap 用量。
+    private func estimatedBytes(_ observation: AVLagObservation) -> Int {
+        256
+            + observation.session.utf8.count
+            + (observation.videoQueue?.utf8.count ?? 0)
     }
 
     func end(session: String? = nil) {

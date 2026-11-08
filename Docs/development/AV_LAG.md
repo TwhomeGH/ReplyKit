@@ -36,7 +36,7 @@ videoContentAge = arrival - videoPTS
 
 - 一般 `[AVLag]` 每 10 秒一筆；啟動 60 秒內維持較密集。
 - 內容年齡 ≥1 秒或出現 `contentAgeJump` 時即時記錄。
-- 報告序列每 5 秒取樣，單一擷取 session 最多保留 10,000 筆；新的擷取 session 會重新開始。
+- 報告序列每 5 秒取樣，單一擷取 session 最多保留 2,880 筆／2 MiB；新的擷取 session 會重新開始。
 - `[AVLag]` 不會自動修改播放檔案；只提供診斷與 retime 參考。
 
 ## JSON 用途
@@ -55,3 +55,4 @@ videoContentAge = arrival - videoPTS
 2. `videoContentAge` 穩定但 `publishPTS - sourcePTS` 變大 → timestamp 重基準。
 3. `videoSourcePTS - audioSourcePTS` 長期漂移 → 來源時鐘或 audio preferredDelta。
 4. 只有 PiP 計時器落後、遊戲畫面正常 → 檢查 overlay timer 本身，不要用 timer retime 整段 video。
+

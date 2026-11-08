@@ -59,12 +59,15 @@ final class LogBuffer {
     private let flushDelay: TimeInterval = 0.05
     private let batchLimit = 100
     private let maxBufferSize = 5000
+    private let maxBufferBytes = 2 * 1024 * 1024
+    private var bufferBytes = 0
 
     var onNewLog: (([String]) -> Void)?
 
     func push(_ msg: String) {
         queue.async {
             self.buffer.append(msg)
+            self.bufferBytes += msg.utf8.count
             self.trimIfNeededLocked()
             self.scheduleFlushLocked()
         }
@@ -75,15 +78,18 @@ final class LogBuffer {
 
         queue.async {
             self.buffer.append(contentsOf: messages)
+            self.bufferBytes += messages.reduce(0) { $0 + $1.utf8.count }
             self.trimIfNeededLocked()
             self.scheduleFlushLocked()
         }
     }
 
     private func trimIfNeededLocked() {
-        guard buffer.count > maxBufferSize else { return }
-        let excess = buffer.count - maxBufferSize
-        buffer.removeFirst(excess)
+        while buffer.count > maxBufferSize || bufferBytes > maxBufferBytes {
+            guard !buffer.isEmpty else { bufferBytes = 0; return }
+            let removed = buffer.removeFirst()
+            bufferBytes = max(0, bufferBytes - removed.utf8.count)
+        }
     }
 
     private func scheduleFlushLocked() {
@@ -103,6 +109,7 @@ final class LogBuffer {
         let count = min(batchLimit, buffer.count)
         let logs = Array(buffer.prefix(count))
         buffer.removeFirst(count)
+        bufferBytes = max(0, bufferBytes - logs.reduce(0) { $0 + $1.utf8.count })
 
         DispatchQueue.main.async {
             self.onNewLog?(logs)
@@ -119,6 +126,26 @@ final class LogBuffer {
             self.flushWorkItem?.cancel()
             self.flushWorkItem = nil
             self.buffer.removeAll()
+            self.bufferBytes = 0
+        }
+    }
+
+    struct Stats: Sendable {
+        let count: Int
+        let bytes: Int
+    }
+
+    var stats: Stats {
+        queue.sync { Stats(count: buffer.count, bytes: bufferBytes) }
+    }
+
+    /// 記憶體警告時只縮 UI／傳輸緩衝，不影響已寫入檔案的完整日誌。
+    func trimForMemoryPressure(maxBytes: Int = 512 * 1024) {
+        queue.async {
+            while self.bufferBytes > maxBytes, !self.buffer.isEmpty {
+                let removed = self.buffer.removeFirst()
+                self.bufferBytes = max(0, self.bufferBytes - removed.utf8.count)
+            }
         }
     }
 }
@@ -574,6 +601,9 @@ final class AppLogPersister: @unchecked Sendable {
 // MARK: 新日誌區塊
 final class LogModel: ObservableObject {
 
+    /// 只供記憶體歸因讀取；不延長 LogModel 生命週期。
+    static weak var current: LogModel?
+
     @Published private(set) var messages: [LogItem] = []
 
     let newMessages = PassthroughSubject<[LogItem], Never>()
@@ -587,17 +617,29 @@ final class LogModel: ObservableObject {
     private let batchLimit = 100
     /// Buffer安全大下
     private let maxMessages = 1000
+    private let maxMessageBytes = 1024 * 1024
+    private var messageBytes = 0
+
+    struct Stats: Sendable {
+        let count: Int
+        let bytes: Int
+    }
+
+    var stats: Stats {
+        Stats(count: messages.count, bytes: messageBytes)
+    }
 
     init() {
+        Self.current = self
 
         LogBuffer.shared.onNewLog = { [weak self] logs in
 
             guard let self else { return }
             let items = logs.map { LogItem(message: $0) }
             self.messages.append(contentsOf: items)
-            if self.messages.count > self.maxMessages * 2 {
-                self.messages.removeFirst(self.messages.count - self.maxMessages)
-            }
+            self.messageBytes += items.reduce(0) { $0 + $1.message.utf8.count }
+            self.trimLocked()
+
             self.newMessages.send(items)
 
         }
@@ -610,8 +652,25 @@ final class LogModel: ObservableObject {
 
     func clearLogs() {
         messages.removeAll()
+        messageBytes = 0
 
         LogBuffer.shared.clear()
+    }
+
+    /// 記憶體警告只縮 UI 可見歷史；檔案日誌仍由 AppLogPersister 保存。
+    func trimForMemoryPressure(maxBytes: Int = 512 * 1024) {
+        while messageBytes > maxBytes, !messages.isEmpty {
+            let removed = messages.removeFirst()
+            messageBytes = max(0, messageBytes - removed.message.utf8.count)
+        }
+    }
+
+    private func trimLocked() {
+        while messages.count > maxMessages || messageBytes > maxMessageBytes {
+            guard !messages.isEmpty else { messageBytes = 0; return }
+            let removed = messages.removeFirst()
+            messageBytes = max(0, messageBytes - removed.message.utf8.count)
+        }
     }
 
     deinit {
@@ -1318,6 +1377,7 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
                 #if os(iOS)
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
                     MemorySampler.shared.checkpoint("memory.warning")
+                    MemoryRelief.releaseNonCritical(reason: "memory.warning")
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.protectedDataWillBecomeUnavailableNotification)) { _ in
                     logAppEnvironment("protectedDataUnavailable")

@@ -1,5 +1,6 @@
 import Foundation
 #if os(iOS)
+import Darwin
 import UIKit
 #endif
 
@@ -51,10 +52,21 @@ final class MemorySampler {
     private func sample(reason: String = "periodic") {
         let m = DeviceInfo.memoryBreakdown
         let url = URLCache.shared
+        let logBuffer = LogBuffer.shared.stats
+        #if os(iOS)
+        var mallocStats = malloc_statistics_t()
+        malloc_zone_statistics(malloc_default_zone(), &mallocStats)
+        let mallocInUse = Double(mallocStats.size_in_use) / 1_048_576
+        let mallocAllocated = Double(mallocStats.size_allocated) / 1_048_576
+        #else
+        let mallocInUse = 0.0
+        let mallocAllocated = 0.0
+        #endif
         let line = String(
-            format: "[Memory] footprint=%.1f internal=%.1f compressed=%.1f external=%.1f reusable=%.1f purgeable=%.1f resident=%.1f avail=%.1f | urlCacheMem=%.0fKB urlCacheDisk=%.0fKB",
+            format: "[Memory] footprint=%.1f internal=%.1f compressed=%.1f external=%.1f reusable=%.1f purgeable=%.1f resident=%.1f avail=%.1f | mallocInUse=%.1fMB mallocAllocated=%.1fMB logBuffer=%d/%dKB urlCacheMem=%.0fKB urlCacheDisk=%.0fKB",
             m.footprintMB, m.internalMB, m.compressedMB, m.externalMB, m.reusableMB,
             m.purgeableVolatileMB, m.residentMB, m.availableMB,
+            mallocInUse, mallocAllocated, logBuffer.count, logBuffer.bytes / 1024,
             Double(url.currentMemoryUsage) / 1024, Double(url.currentDiskUsage) / 1024
         )
         sendlog(message: line)
@@ -71,10 +83,13 @@ final class MemorySampler {
             case .background: appState = "background"
             @unknown default: appState = "unknown"
             }
+            let logUI = LogModel.current?.stats
+            let avLag = AVLagModel.shared.stats
+            let streamHistory = StreamDiagnosticsModel.shared.history.values.reduce(0) { $0 + $1.count }
             let comparison = IdleMemoryComparison.shared.observe(
                 footprint: m.footprintMB, captureBusy: capture.isBusy,
                 replayLive: !LPConfig.shared.StreamEnded, reason: reason)
-            sendlog(message: "[IdleResources] reason=\(reason) \(comparison) uptime=\(Int(ProcessInfo.processInfo.systemUptime)) app=\(appState) footprintMB=\(String(format: "%.1f", m.footprintMB)) \(capture.resourceDiagnosticSummary) \(pip) \(tts) replayKitStatusIsLive=\(!LPConfig.shared.StreamEnded) statusIsNotProcessProof=true")
+            sendlog(message: "[IdleResources] reason=\(reason) \(comparison) uptime=\(Int(ProcessInfo.processInfo.systemUptime)) app=\(appState) footprintMB=\(String(format: "%.1f", m.footprintMB)) caches{logUI=\(logUI?.count ?? 0)/\((logUI?.bytes ?? 0) / 1024)KB avLag=\(avLag.count)/\(avLag.bytes / 1024)KB streamHistory=\(streamHistory)} \(capture.resourceDiagnosticSummary) \(pip) \(tts) replayKitStatusIsLive=\(!LPConfig.shared.StreamEnded) statusIsNotProcessProof=true")
         }
         #endif
     }
@@ -123,5 +138,22 @@ final class IdleMemoryComparison {
         let observed = due.filter { !missed.contains($0) }
         func number(_ value: Double?) -> String { value.map { String(format: "%.1f", $0) } ?? "unknown" }
         return "process=\(processID) everObservedCapture=\(everBusy) coldIdleBaselineMB=\(number(baseline)) deltaBaselineMB=\(number(baseline.map { footprint - $0 })) stopElapsedSeconds=\(number(elapsed)) deltaLastBusyMB=\(number(elapsed == nil ? nil : lastBusyFootprint.map { footprint - $0 })) reachedStopSeconds=\(observed) missedStopSeconds=\(missed) baselineScope=mainAppProcess firstSampleMB=\(number(firstFootprint)) preCaptureSampleMB=\(number(preCaptureFootprint)) replayLastKnownLive=\(replayLive)"
+    }
+}
+
+/// 停止與記憶體警告共用的非關鍵快取釋放；不刪除檔案日誌。
+enum MemoryRelief {
+    @MainActor
+    static func releaseNonCritical(reason: String) {
+        let before = DeviceInfo.memoryBreakdown.footprintMB
+        PIPService.shared.releaseNonCriticalMemory()
+        LogBuffer.shared.trimForMemoryPressure()
+        LogModel.current?.trimForMemoryPressure()
+        if reason == "memory.warning" {
+            AVLagModel.shared.trimForMemoryPressure()
+            URLCache.shared.removeAllCachedResponses()
+        }
+        let after = DeviceInfo.memoryBreakdown.footprintMB
+        sendlog(message: "[MemoryRelief] reason=\(reason) footprintBefore=\(String(format: "%.1f", before)) footprintAfter=\(String(format: "%.1f", after))")
     }
 }
