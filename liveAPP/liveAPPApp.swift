@@ -1393,6 +1393,7 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
 
                     case .background:
                         AppSession.markBackground()
+                        AVLagModel.shared.persistInProgress()
                         logAppEnvironment("background")
                         sendlog(message: "App 進入背景，啟動短背景視窗並排程 Socket refresh")
 

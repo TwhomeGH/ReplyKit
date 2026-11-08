@@ -12,9 +12,15 @@ final class AVLagModel: ObservableObject {
     @Published private(set) var startedAt: Date?
     @Published private(set) var endedAt: Date?
 
-    private let maxSamples = 2_880
-    private let maxSampleBytes = 2 * 1024 * 1024
+    private var segmentIndex = 0
+    private var segmentStartedAt: Date?
+    private var truncatedBefore = false
     private var estimatedSampleBytes = 0
+    private let maxSampleBytes = 2 * 1024 * 1024
+
+    private var maxSamples: Int {
+        max(1, AVLagSettings.maxSamplesPerSegment)
+    }
 
     private init() {}
 
@@ -39,29 +45,151 @@ final class AVLagModel: ObservableObject {
         latest = nil
         samples.removeAll()
         estimatedSampleBytes = 0
+        segmentIndex = 0
+        segmentStartedAt = Date()
+        truncatedBefore = false
     }
 
     func record(_ observation: AVLagObservation) {
-        guard observation.session == session else { return }
+        guard observation.session == session, endedAt == nil else { return }
+        let now = Date()
+        if shouldRotateSegment(now: now) {
+            rotateSegment(now: now)
+        }
         latest = observation
         samples.append(observation)
         estimatedSampleBytes += estimatedBytes(observation)
         trimLocked()
     }
 
+    /// 背景時保存目前未完成 segment；畫面恢復後若繼續累積，停止時會覆寫為 complete。
+    func persistInProgress() {
+        guard endedAt == nil,
+              AVLagSettings.mode == .recentSessions,
+              let session, let startedAt, let segmentStartedAt,
+              !samples.isEmpty else { return }
+        persist(
+            session: session,
+            startedAt: startedAt,
+            segmentIndex: segmentIndex,
+            segmentStartedAt: segmentStartedAt,
+            segmentEndedAt: nil,
+            complete: false,
+            sessionComplete: false,
+            truncatedBefore: truncatedBefore,
+            samples: samples)
+    }
+
+    func end(session: String? = nil) {
+        if let session, self.session != session { return }
+        let end = Date()
+        endedAt = end
+        guard AVLagSettings.mode == .recentSessions,
+              let session, let startedAt, let segmentStartedAt,
+              !samples.isEmpty else { return }
+        persist(
+            session: session,
+            startedAt: startedAt,
+            segmentIndex: segmentIndex,
+            segmentStartedAt: segmentStartedAt,
+            segmentEndedAt: end,
+            complete: true,
+            sessionComplete: true,
+            truncatedBefore: truncatedBefore,
+            samples: samples)
+    }
+
     /// 只保留目前 session；JSON 報告仍可完整輸出當前保留樣本。
     func trimForMemoryPressure(maxBytes: Int = 512 * 1024) {
-        while estimatedSampleBytes > maxBytes, !samples.isEmpty {
-            let removed = samples.removeFirst()
-            estimatedSampleBytes = max(0, estimatedSampleBytes - estimatedBytes(removed))
-        }
+        trim(toBytes: maxBytes)
+    }
+
+    /// 供人工檢查與回放修復工具讀取的穩定 JSON；只含時間與量測值，不含串流金鑰。
+    func reportJSON() -> String {
+        guard let session else { return "{\"schema\":1,\"samples\":[]}" }
+        let started = startedAt ?? Date()
+        let segmentStarted = segmentStartedAt ?? started
+        let document = AVLagReportDocument(
+            schema: 1,
+            session: session,
+            startedAt: started,
+            endedAt: endedAt,
+            segmentIndex: segmentIndex,
+            segmentStartedAt: segmentStarted,
+            segmentEndedAt: endedAt,
+            complete: endedAt != nil,
+            sessionComplete: endedAt != nil,
+            truncatedBefore: truncatedBefore,
+            sampleCount: samples.count,
+            samples: samples)
+        return document.jsonText
+    }
+
+    private func shouldRotateSegment(now: Date) -> Bool {
+        guard AVLagSettings.mode == .recentSessions,
+              AVLagSettings.longSessionSegments,
+              let segmentStartedAt,
+              !samples.isEmpty else { return false }
+        return now.timeIntervalSince(segmentStartedAt) >= AVLagSettings.segmentDuration
+            || samples.count >= maxSamples
+            || estimatedSampleBytes >= maxSampleBytes
+    }
+
+    private func rotateSegment(now: Date) {
+        guard let session, let startedAt, let segmentStartedAt,
+              !samples.isEmpty else { return }
+        persist(
+            session: session,
+            startedAt: startedAt,
+            segmentIndex: segmentIndex,
+            segmentStartedAt: segmentStartedAt,
+            segmentEndedAt: now,
+            complete: true,
+            sessionComplete: false,
+            truncatedBefore: truncatedBefore,
+            samples: samples)
+        samples.removeAll(keepingCapacity: true)
+        estimatedSampleBytes = 0
+        truncatedBefore = false
+        segmentIndex += 1
+        self.segmentStartedAt = now
     }
 
     private func trimLocked() {
-        while samples.count > maxSamples || estimatedSampleBytes > maxSampleBytes {
-            guard !samples.isEmpty else { estimatedSampleBytes = 0; return }
-            let removed = samples.removeFirst()
-            estimatedSampleBytes = max(0, estimatedSampleBytes - estimatedBytes(removed))
+        trim(toBytes: maxSampleBytes)
+    }
+
+    private func trim(toBytes byteLimit: Int) {
+        var removed = false
+        while samples.count > maxSamples || estimatedSampleBytes > byteLimit {
+            guard !samples.isEmpty else { estimatedSampleBytes = 0; break }
+            let value = samples.removeFirst()
+            estimatedSampleBytes = max(0, estimatedSampleBytes - estimatedBytes(value))
+            removed = true
+        }
+        if removed { truncatedBefore = true }
+    }
+
+    private func persist(session: String, startedAt: Date, segmentIndex: Int,
+                         segmentStartedAt: Date, segmentEndedAt: Date?,
+                         complete: Bool, sessionComplete: Bool,
+                         truncatedBefore: Bool, samples: [AVLagObservation]) {
+        let document = AVLagReportDocument(
+            schema: 1,
+            session: session,
+            startedAt: startedAt,
+            endedAt: segmentEndedAt,
+            segmentIndex: segmentIndex,
+            segmentStartedAt: segmentStartedAt,
+            segmentEndedAt: segmentEndedAt,
+            complete: complete,
+            sessionComplete: sessionComplete,
+            truncatedBefore: truncatedBefore,
+            sampleCount: samples.count,
+            samples: samples)
+        Task {
+            do { try await AVLagReportStore.shared.save(document) }
+            catch { sendlog(message: "[AVLagStore] save failed session=\(session) segment=\(segmentIndex) error=\(error)") }
         }
     }
 
@@ -70,38 +198,5 @@ final class AVLagModel: ObservableObject {
         256
             + observation.session.utf8.count
             + (observation.videoQueue?.utf8.count ?? 0)
-    }
-
-    func end(session: String? = nil) {
-        if let session, self.session != session { return }
-        endedAt = Date()
-    }
-
-    /// 供人工檢查與回放修復工具讀取的穩定 JSON；只含時間與量測值，不含串流金鑰。
-    func reportJSON() -> String {
-        struct Report: Codable {
-            let schema: Int
-            let session: String?
-            let startedAt: Date?
-            let endedAt: Date?
-            let sampleCount: Int
-            let samples: [AVLagObservation]
-        }
-
-        let report = Report(
-            schema: 1,
-            session: session,
-            startedAt: startedAt,
-            endedAt: endedAt,
-            sampleCount: samples.count,
-            samples: samples)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        encoder.dateEncodingStrategy = .iso8601
-        guard let data = try? encoder.encode(report),
-              let text = String(data: data, encoding: .utf8) else {
-            return "{\"schema\":1,\"samples\":[]}"
-        }
-        return text
     }
 }

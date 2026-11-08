@@ -38,6 +38,14 @@
 - 增加 session 隔離的 Mixer 設定套用回報；調整後分軌音量明確標為估算，不冒充實測。
 - 補刻度與舊 session 回報測試、[量測語意與實機驗收](development/AUDIO_VOLUME_METER.md)。Swift 語法檢查通過，Xcode 測試及實機音量驗收待執行。
 
+## 2026.11.08 16:50 AV Lag 持久化與長場次分段
+
+- 新增 `AVLagReportStore`：可選保留最近 5 場，停止時原子寫入 Application Support；以 session 分組，總量約 50 MiB。
+- 新增長場次分段：1／2／4／8 小時（預設 4）可選；8 小時以上拆成子檔但報告頁仍按 session 分組；每段保留 `segmentIndex`、`segmentStartedAt`、`segmentEndedAt`、`inProgress`。
+- 預設仍是只保留本次記憶體、4 小時最新區間；未開分段時超限標記 `truncatedBefore`。
+- 新增 AV Lag 儲存設定頁：保存模式、長場次分段、段長、清除已保存場次；設定納入非敏感備份。
+- 報告頁新增最近場次與分段清單；App 進背景會保存目前未完成 segment，降低被系統終止時的損失。
+
 ## 2026.11.08 16:30 記憶體歸因、停止後釋放與 byte 上限
 
 - 歸因：`[Memory]` 新增 `mallocInUse`／`mallocAllocated`、`logBuffer` 筆數與 bytes；`[IdleResources]` 新增 UI log、AVLag、StreamDiagnostics 快取計數。用來分辨 App heap 與框架／壓縮頁，不再只看 footprint。

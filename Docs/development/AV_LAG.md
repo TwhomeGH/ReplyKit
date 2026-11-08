@@ -36,8 +36,17 @@ videoContentAge = arrival - videoPTS
 
 - 一般 `[AVLag]` 每 10 秒一筆；啟動 60 秒內維持較密集。
 - 內容年齡 ≥1 秒或出現 `contentAgeJump` 時即時記錄。
-- 報告序列每 5 秒取樣，單一擷取 session 最多保留 2,880 筆／2 MiB；新的擷取 session 會重新開始。
+- 報告序列每 5 秒取樣，單一 segment 的樣本數依「每段長度」設定，並受 2 MiB 上限限制；新的擷取 session 會重新開始。
 - `[AVLag]` 不會自動修改播放檔案；只提供診斷與 retime 參考。
+
+## 保存與長場次分段
+
+- 預設**僅本次記憶體**；關閉 App 即清除。
+- 可選**保留最近 5 場**：停止時寫入 Application Support/AVLagReports，最多 5 個 session、總量約 50 MiB。
+- 可選**長場次分段**：每段長度 1／2／4／8 小時（預設 4）；每段仍受 2 MiB 上限。8 小時以上會自然拆成多段，但報告頁以 `sessionID` 分組，不會當成多場。
+- 分段之間保留 `segmentIndex`／`segmentStartedAt`／`segmentEndedAt`；最後一段可標記 `inProgress`，App 中途被殺仍可辨識。
+- 未開分段而超過上限：保留最新區間，並在報告標記 `truncatedBefore`。
+- 停止、分段與進背景時會嘗試保存；寫檔為原子寫入，不阻塞擷取。
 
 ## JSON 用途
 
@@ -55,4 +64,5 @@ videoContentAge = arrival - videoPTS
 2. `videoContentAge` 穩定但 `publishPTS - sourcePTS` 變大 → timestamp 重基準。
 3. `videoSourcePTS - audioSourcePTS` 長期漂移 → 來源時鐘或 audio preferredDelta。
 4. 只有 PiP 計時器落後、遊戲畫面正常 → 檢查 overlay timer 本身，不要用 timer retime 整段 video。
+
 

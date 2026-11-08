@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 import UIKit
 
@@ -6,6 +7,7 @@ struct AVLagReportView: View {
     @ObservedObject private var model = AVLagModel.shared
     @State private var reportText = ""
     @State private var copied = false
+    @State private var summaries: [AVLagSessionSummary] = []
 
     var body: some View {
         List {
@@ -40,6 +42,31 @@ struct AVLagReportView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section(AppLanguage.localized("avLag.recent.title")) {
+                if summaries.isEmpty {
+                    Text(AppLanguage.localized("avLag.recent.empty"))
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(summaries) { summary in
+                        NavigationLink {
+                            AVLagStoredSessionView(summary: summary)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(summary.startedAt.formatted(date: .abbreviated, time: .shortened))
+                                Text("\(summary.segments.count) \(AppLanguage.localized("avLag.stored.segments")) · \(summary.sampleCount) \(AppLanguage.localized("avLag.stored.samples"))")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                if summary.endedAt == nil {
+                                    Text(AppLanguage.localized("avLag.stored.inProgress"))
+                                        .font(.caption2)
+                                        .foregroundStyle(.orange)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             Section(AppLanguage.localized("avLag.report")) {
                 Button {
                     UIPasteboard.general.string = reportText
@@ -60,15 +87,31 @@ struct AVLagReportView: View {
                         .textSelection(.enabled)
                 }
             }
+
+            Section {
+                NavigationLink(AppLanguage.localized("avLag.settings.open")) {
+                    AVLagSettingsView()
+                }
+            }
         }
         .navigationTitle(AppLanguage.localized("avLag.title"))
-        .onAppear { refreshReport() }
+        .onAppear {
+            refreshReport()
+            Task { await reloadSummaries() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: AVLagReportStore.didChangeNotification)) { _ in
+            Task { await reloadSummaries() }
+        }
         .onChange(of: model.samples.count) { _ in refreshReport() }
     }
 
     private func refreshReport() {
         reportText = model.reportJSON()
         copied = false
+    }
+
+    private func reloadSummaries() async {
+        summaries = await AVLagReportStore.shared.summaries()
     }
 
     private func row(_ title: String, _ value: String) -> some View {
