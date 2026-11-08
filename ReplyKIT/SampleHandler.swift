@@ -1717,8 +1717,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     // MARK: - Video Configuration 可能未使用
     private func configureVideoUnsafe(dims: CMVideoDimensions) {
 
-        var width = Int(dims.width)
-        var height = Int(dims.height)
+        let width = Int(dims.width)
+        let height = Int(dims.height)
 
         let SharedW:Int = SharedDefaults.group?
             .integer(forKey: "ReplyKitWidth") ?? 0
@@ -1767,7 +1767,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         let geometry = resolvedStreamGeometry(source: CGSize(width: width, height: height))
         let newSize = geometry.encoderSize
-        await mediaMixer.setVideoOrientation(geometry.orientation == .portrait ? .portrait : .landscapeRight)
+        Task {
+            await mediaMixer.setVideoOrientation(geometry.orientation == .portrait ? .portrait : .landscapeRight)
+        }
 
         let dimsCopy = (Int(newSize.width), Int(newSize.height))
         Task {
