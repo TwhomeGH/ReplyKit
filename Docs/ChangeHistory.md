@@ -1,5 +1,12 @@
 # 變更歷史
 
+## 2026.11.08 18:05 分類文件靜態站接入 DocC Pages
+
+- ChangeLogKit 預設使用 `main` 安裝，不使用本機 ChangeLogTools 絕對路徑；可用 repository variable `CHANGELOGKIT_REF` 指定 branch/tag，CI 會把實際 commit 寫入摘要。安裝後匯出到 `site/project/`。
+- DocC 根首頁新增 `./project/` 入口；文件 workflow 的 path／diff 預檢加入 `Docs/`、`README.md`、`TODO.md`、`.changelog.toml` 與 `Scripts/validate_pages.py`。
+- 新增 `Scripts/validate_pages.py`：檢查 DocC／ChangeLogKit 入口、根首頁 project 連結、project 內根路徑連結、相對連結目標與 ChangeHistory 頁；在 Pages 上傳前失敗即停止。
+- `AV_LAG.md` 加入分類設定，避免新文件只存在 repo 而不出現在靜態站。
+
 ## 2026.11.08 16:50 AV Lag 持久化與長場次分段
 
 - 新增 `AVLagReportStore`：可選保留最近 5 場，停止時原子寫入 Application Support；以 session 分組，總量約 50 MiB。

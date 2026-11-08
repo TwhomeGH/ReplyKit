@@ -12,8 +12,13 @@ on:
       - 'SharedCapture/**/*.swift'
       - 'liveAPP.xcodeproj/**'
       - 'Package.resolved'
+      - 'Docs/**'
+      - 'README.md'
+      - 'TODO.md'
+      - '.changelog.toml'
       - 'Scripts/docc_postprocess.py'
       - 'Scripts/docc_home.html'
+      - 'Scripts/validate_pages.py'
       - '.github/workflows/documentation.yml'
 
 permissions:
@@ -52,7 +57,7 @@ jobs:
           [ -n "$BASE" ] || BASE=$(git rev-list --max-parents=0 HEAD | head -n 1)
           FILES=$(git diff --name-only "$BASE" HEAD)
           DOCS=false
-          if printf '%s\n' "$FILES" | grep -Eq '\.docc/|^liveAPP\.xcodeproj/|^Package\.resolved$|^Scripts/docc_|^\.github/workflows/documentation\.yml$'; then
+          if printf '%s\n' "$FILES" | grep -Eq '\.docc/|^liveAPP\.xcodeproj/|^Package\.resolved$|^Docs/|^README\.md$|^TODO\.md$|^\.changelog\.toml$|^Scripts/(docc_|validate_pages\.py)|^\.github/workflows/documentation\.yml$'; then
             DOCS=true
           fi
           if [ "$DOCS" = false ] && git diff -U0 "$BASE" HEAD -- '*.swift' | grep -Eq '^[+-][[:space:]]*(///|/\*\*|public([[:space:]]|$)|open([[:space:]]|$)|@_spi)'; then
@@ -76,11 +81,17 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      # 預設使用 ChangeLogKit main；需要時可用 repository variable 指定 branch/tag。
+      CHANGELOGKIT_REF: ${{ vars.CHANGELOGKIT_REF || 'main' }}
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
           fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
       - name: Install Metal toolchain
         run: |
@@ -141,6 +152,27 @@ jobs:
             echo "- Pages 根網址：https://${OWNER}.github.io/${BASE}/"
             echo "- site：$(cd site && ls)"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install ChangeLogKit
+        run: |
+          set -euo pipefail
+          # 預設使用 main；CI 仍把實際 commit 寫進摘要以便回查。
+          git clone --depth 1 --branch "${CHANGELOGKIT_REF}" \
+            https://github.com/TwhomeGH/ChangeLogKit.git /tmp/changelogkit
+          echo "ChangeLogKit ref=${CHANGELOGKIT_REF} commit=$(git -C /tmp/changelogkit rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          python3 -m pip install --disable-pip-version-check --no-warn-script-location --user /tmp/changelogkit
+
+      - name: Export categorized docs into site/project
+        run: |
+          set -euo pipefail
+          python3 -m changelogkit export site/project --branch main
+          test -f site/project/index.html
+          test -f site/project/development/index.html
+
+      - name: Validate static site links
+        run: |
+          set -euo pipefail
+          python3 Scripts/validate_pages.py --site site --base "${GITHUB_REPOSITORY#*/}"
 
       - name: Package documentation artifact (zip)
         if: always()

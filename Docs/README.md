@@ -9,7 +9,7 @@
 
 根目錄 `.changelog.toml` 依使用指南、影音、PiP／介面、診斷、網路協定及開發維護分類。新增文件時同步加入分類。舊版 Scripts/change_log.py 不保證會讀取新設定。
 
-Pages 建議沿用既有 documentation.yml 單一部署，ChangeLogKit 匯出到 site/project/，DocC 保留原路徑，首頁再加入分類文件與歷史入口。CI 接入尚未完成：需先固定可安裝的工具版本、補文件觸發條件，並驗證子路徑連結與圖片；不能使用本機 ChangeLogTools 絕對路徑。
+Pages 沿用既有 `documentation.yml` 單一部署：DocC 模組保留原路徑，ChangeLogKit 預設使用 `main`（可用 repository variable `CHANGELOGKIT_REF` 指定 branch/tag）匯出到 `site/project/`；CI 會把實際 commit 寫入摘要，根首頁加入分類文件與變更歷史入口。文件、`README.md`、`TODO.md`、`.changelog.toml` 或靜態站驗證腳本變更都會觸發文件 workflow；`Scripts/validate_pages.py` 會檢查子路徑入口、相對連結與 ChangeHistory 頁，不能使用本機 ChangeLogTools 絕對路徑。
 
 - [App 圖示診斷與包體占用](development/APP_ICON_AND_PACKAGE_SIZE.md)
 

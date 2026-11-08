@@ -32,6 +32,7 @@ paths = [
   "Docs/development/COMPRESSION_TEST_FIXTURE.md",
   "Docs/development/ENCODING_CAPABILITIES.md",
   "Docs/development/RECORDING_COMPRESSION.md",
+  "Docs/development/AV_LAG.md",
   "Docs/development/SCREEN_CAPTURE_CALLBACKS.md",
   "Docs/development/VIDEO_COMPRESSION.md",
   "Docs/haishinkit-fixes.md",
