@@ -38,6 +38,12 @@
 - 增加 session 隔離的 Mixer 設定套用回報；調整後分軌音量明確標為估算，不冒充實測。
 - 補刻度與舊 session 回報測試、[量測語意與實機驗收](development/AUDIO_VOLUME_METER.md)。Swift 語法檢查通過，Xcode 測試及實機音量驗收待執行。
 
+## 2026.11.08 16:22 診斷匯出新增上次前景到背景
+
+- `AppSession` 現在在前景 active 時記錄起點、進背景時保存「上次前景 active → 背景」區間到 UserDefaults；程序重啟後仍可選取。
+- 診斷匯出新增「上次前景到背景」範圍，前後各留 1 秒以包含邊界日誌；用於避開回到前景後的停止與後續雜訊。
+- 16:00–16:20 的停止後記憶體觀察：capturePhase=idle、driver／lease 已釋放、PiP 未啟用，footprint 仍約 134–146MB（pre-capture 28.6MB）；16:19:41 甚至 internal 9.5MB／compressed 125.4MB，代表大部分是壓縮／非活躍頁，不是 CPU 活動或 PiP pool（0.69MB）。仍需冷啟動基準與子系統 A/B 才能判定保留來源。
+
 ## 2026.11.08 16:16 背景斷流與 LiveActivity 診斷
 
 - 2026-11-08 15:58:49～16:00:36 的診斷顯示 App 在背景整個被暫停約 107 秒：`[IdleResources]` 30 秒週期中斷、`CaptureCallbacks` 空窗 98.3 秒、`encoderInput inFPS=0 inputIdle≈98.3s`；之後 RTMP 才收到 `Connection reset by peer`。這是 98 秒沒有媒體後伺服器重置，不是 encoder／RTMP 先壞。

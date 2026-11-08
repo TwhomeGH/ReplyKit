@@ -1314,6 +1314,7 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
             ContentView()
                 .environmentObject(logModel)
                 .environment(\.locale, AppLanguage(rawValue: appLanguageRawValue)?.locale ?? .autoupdatingCurrent)
+                .onAppear { AppSession.markActive() }
                 #if os(iOS)
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
                     MemorySampler.shared.checkpoint("memory.warning")
@@ -1331,6 +1332,7 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
                         break
 
                     case .background:
+                        AppSession.markBackground()
                         logAppEnvironment("background")
                         sendlog(message: "App 進入背景，啟動短背景視窗並排程 Socket refresh")
 
@@ -1351,6 +1353,7 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
                         #endif
 
                     case .active:
+                        AppSession.markActive()
                         logAppEnvironment("active")
                         AppLogPersister.shared.copyFromAppGroup()
                         Task { await AppLogPersister.shared.setBackground(false) }
