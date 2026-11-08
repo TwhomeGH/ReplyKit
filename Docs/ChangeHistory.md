@@ -1,5 +1,11 @@
 # 變更歷史
 
+## 2026.11.08 19:00 本機 Markdown 空行檢查
+
+- 新增 `Scripts/check_markdown.py`，與 development-index workflow 共用 MD012 檢查；不再依賴 `npx markdownlint-cli`，避免只有 CI 才發現連續空白行。
+- 新增可選 `.githooks/pre-commit`；執行 `git config core.hooksPath .githooks` 後，commit 前會自動檢查。
+- 修正 `Docs/development/AV_LAG.md` 尾端多餘空白行。
+
 ## 2026.11.08 18:05 分類文件靜態站接入 DocC Pages
 
 - ChangeLogKit 預設使用 `main` 安裝，不使用本機 ChangeLogTools 絕對路徑；可用 repository variable `CHANGELOGKIT_REF` 指定 branch/tag，CI 會把實際 commit 寫入摘要。安裝後匯出到 `site/project/`。

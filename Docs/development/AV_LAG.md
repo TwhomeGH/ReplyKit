@@ -64,5 +64,3 @@ videoContentAge = arrival - videoPTS
 2. `videoContentAge` 穩定但 `publishPTS - sourcePTS` 變大 → timestamp 重基準。
 3. `videoSourcePTS - audioSourcePTS` 長期漂移 → 來源時鐘或 audio preferredDelta。
 4. 只有 PiP 計時器落後、遊戲畫面正常 → 檢查 overlay timer 本身，不要用 timer retime 整段 video。
-
-
