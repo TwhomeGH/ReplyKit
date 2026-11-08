@@ -1,5 +1,11 @@
 # 變更歷史
 
+## 2026.11.08 20:55 混音主軌停止的底層 fallback
+
+- HaishinKit fork 本地提交 `15d59bef`：`AudioMixerByMultiTrack` 追蹤各軌最近輸出時間，main track 超過 250ms 無輸出即由其他軌接手，並重設 `sampleTime`/`anchor`，避免 App 軌被舊 main 位置 align 丟棄。
+- `MixClockAdvance.shouldAdvance` 新增 `mainIsActive`；補 main 停止/移除測試。
+- ReplyKit 仍以 App 軌為 `mainTrack`/`outputFormatTrack`；底層 fallback 是第二道防線。fork 尚未 push，`Package.resolved` 尚未更新到此提交。
+
 ## 2026.11.08 20:40 App 主音軌與音量滑桿範圍
 
 - App 軌改為 mixer `mainTrack` 與 `outputFormatTrack` 的唯一基準；mic 只作為第二軌。先前主軌指向 mic，mic 關閉或停止送資料後 App 會被當成非主軌對齊，造成完全沒有 App 聲音；`ReplayVolumeSynchronizer` 也不再要求 mic 軌存在才套用 App 音量。

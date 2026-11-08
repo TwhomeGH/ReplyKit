@@ -702,14 +702,25 @@ SampleHandler.logAudioHealthIfNeeded()  (每幀，ReplayKit queue)
 | --- | ------ | ------ |
 | 1 | ~~`align()` 單位不一致~~ **（誤判，已更正）**：`align` 作用在 `AudioMixerByMultiTrack.buffers[track]`，該緩衝區是以 `outputFormat` 建立的，其 `sampleTime` 與 mixer playhead 同為 output 單位 → **沒有單位不一致** | 已回退，不加換算 |
 | 2 | `align()` 每次全量硬丟/硬補，來源抖動會造成每幀微修正（細碎斷音） | 加 `alignDeadband`（256 samples ≈ 5.8ms）：門檻內視為量測抖動，不修正 |
-| 3 | `mainTrack` 同時決定時鐘、輸出格式、免對齊軌；main=mic 會強制 mono | `AudioMixerSettings` 新增 `outputFormatTrack`（預設 `UInt8.max` = 沿用 `mainTrack`）；ReplyKit `configureAudio()` 改設 `mainTrack=1`（mic 時鐘）+ `outputFormatTrack=0`（app 立體聲格式） |
+| 3 | `mainTrack` 同時決定時鐘、輸出格式、免對齊軌；main=mic 會強制 mono | `AudioMixerSettings` 新增 `outputFormatTrack`（預設 `UInt8.max` = 沿用 `mainTrack`）；ReplyKit 現在以 App 軌 `mainTrack=0` + `outputFormatTrack=0` 為主要時鐘與格式，mic 只作第二軌 |
 | 4 | `append()` 的 PTS gap 用 `skip` 補靜音，且 `skip` 一律在佇列最前面消費，會把已緩衝樣本整體往後推 | 改為 `appendZeros()` 把 gap 的 0 樣本寫進尾端（正確位置） |
 | 5 | `diagnosticsSnapshot()` 用 `queue.sync` 會阻塞 MediaMixer actor | 改為 queue 上維護、鎖保護的快取，讀取端只上鎖不排隊 |
 | 6 | **stereo→mono 只取左聲道**：`AudioMixerTrack.audioConverter` 對輸出 mono 設 `channelMap = [0]`，只取輸入第 0 聲道，右聲道被丟掉（非 L+R 平均） | 輸入聲道 > 輸出聲道時**不設 `channelMap`**，讓 `downmix` 依 channel layout 做 L+R 平均；mono→stereo 仍用 `[0,0]` 複製、stereo→stereo 用 `[0,1]` 直通 |
 
 **AHealth 新增欄位**：`alignFirePerSec`（align 實際動手次數/秒）、`alignDiffMaxSamples`（窗口內最大偏差，input 樣本）。狀態新增 `align-churn`；`[AHealth]` log 也帶上 `alignFire` / `alignDiff`，走 E-Socket 回報以便後續分析。
 
-### AHealth 介面
+#### 主音軌停止的 fallback（2026-11-08）
+
+`mainTrack` 指向 mic 時，若使用者把 mic 軌關閉或停止送資料，舊的 `lastOutputPosition` 會讓 App 軌不再推進時鐘；App 音訊接著被 `align(to:)` 當成過期資料丟棄。
+
+HaishinKit fork `15d59bef` 的修正：
+
+- `AudioMixerByMultiTrack` 記錄各軌最近輸出的 wall-clock 時間；main track 超過 250ms 沒有輸出就視為 inactive。
+- main inactive 時，其他軌接手推進；由接手軌重新設定 `sampleTime`/`anchor`，避免 render 仍對齊舊 main 的播放頭。
+- `MixClockAdvance.shouldAdvance` 新增 `mainIsActive` 參數，並補上 main 停止/移除的回歸測試。
+- App 端仍以 App 軌作為 `mainTrack` 與 `outputFormatTrack`，這是主要路徑；底層 fallback 確保其他呼叫端或 runtime 移除 mic 時不會失去 App 輸出。
+
+## AHealth 介面
 
 #### `[AHealth]` log（走 E-Socket）
 
