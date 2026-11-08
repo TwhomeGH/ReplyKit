@@ -86,7 +86,6 @@ import Foundation
 
 
 
-    @State var lockDetect=false
 
 
     @State var showForm = false

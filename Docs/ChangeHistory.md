@@ -1,5 +1,23 @@
 # 變更歷史
 
+## 2026.11.08 14:22 退役無引用的方向鎖定偵測器
+
+- 移除 App 原始碼中的 LockDetect.swift／StableLockRotationDetector；主頁入口已移除，確認無剩餘呼叫。
+- 原檔移入本機 .build/cleanup-hold 保留區並記錄還原清單，不影響其他方向與旋轉處理。
+- 專案結構與差異空白檢查通過；未執行 Xcode 建置。
+
+## 2026.11.08 14:19 清理舊方向通知與無引用本地化
+
+- 移除 orientationChanged 的通知註冊與僅印出棄用訊息的處理分支。
+- 清除 home.direction、home.landscape、home.portrait、home.lockDetection 四組已無引用的繁中／英文／日文翻譯。
+- DeviceMotin 同名回呼屬性及其他旋轉實作保留；JSON 內容核對、Swift 語法與差異空白檢查通過。
+
+## 2026.11.08 14:17 移除主頁舊方向控制入口
+
+- 移除 ReplayKit 控制區的橫向／直向按鈕與設備方向鎖定偵測開關，清除專用頁面狀態，不再由此頁啟動 CoreMotion 監測。
+- 保留暫停畫面、既有旋轉處理、通知實作及其他元件，本次僅清理兩組主頁入口。
+- Swift 語法與差異空白檢查通過；主頁實機顯示待驗收。
+
 ## 2026.11.08 14:08 建立共用音訊控制設定與拆分回報模型
 
 - 新增 AudioControlSettings，統一兩種來源的音量範圍與 ReplayKit 快照 schema 2；Mic 增益納入串行套用及確認。

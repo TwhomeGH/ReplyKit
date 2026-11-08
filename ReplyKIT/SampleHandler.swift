@@ -267,13 +267,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         case "micVolumeChanged", "appVolumeChanged", "micAdd", "appAdd":
             Task { await volumeSync.requestRefresh() }
 
-        case "orientationChanged":
-
-            print("棄用組件方法")
-
-            break
-
-
         case "SocketRetry":
             sendlog(message: "收到 SocketRetry，觸發連線")
             SocketClient.shared.connect()

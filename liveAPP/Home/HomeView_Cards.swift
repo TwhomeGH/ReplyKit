@@ -103,23 +103,6 @@ extension homeView {
                                     notifyReplayKit(paused ? "PauseStream" : "ResumeStream")
                                 }
                                 .onAppear { if PauseStream { notifyReplayKit("PauseStream") } }
-                            HStack {
-                                Text(AppLanguage.localized("home.direction"))
-                                Spacer()
-                                Button(AppLanguage.localized("home.landscape")) { notifyReplayKit("orientationV") }
-                                Button(AppLanguage.localized("home.portrait")) { notifyReplayKit("orientationH") }
-                            }
-#if os(iOS)
-                            Toggle(AppLanguage.localized("home.lockDetection"), isOn: $lockDetect)
-                                .onChange(of: lockDetect) { enabled in
-                                    if enabled {
-                                        StableLockRotationDetector.shared.debugMode = true
-                                        StableLockRotationDetector.shared.startMonitoring()
-                                    } else {
-                                        StableLockRotationDetector.shared.stopMonitoring()
-                                    }
-                                }
-#endif
                         }.padding(.top, 8)
                     }
                 }
