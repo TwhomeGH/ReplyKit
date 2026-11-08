@@ -1051,8 +1051,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
             "micVolume": userDefaults?
                 .object(forKey: "micVolume") as? Double ?? 1.0,
 
-            "appVolumeAdd": userDefaults?
-                .object(forKey: "appAddVolume") as? Double ?? 1.0,
+            "appVolumeAdd": 1.0, // 棄用增益：保留協議欄位，固定原音量。
             "micVolumeAdd": userDefaults?
                 .object(forKey: "micAddVolume") as? Double ?? 1.0,
 
@@ -1072,20 +1071,10 @@ class SocketServer:ObservableObject, @unchecked Sendable {
             }
         }
 
-        if let AppVol = payload["appVolume"] as? Double {
-            if AppVol == 0.0 {
-                userDefaults?.set(1.0, forKey: "appVolume")
-                payload["appVolume"] = 1.0
-                sendlog(message: "修正AppVol -> 1.0")
-            }
-        }
-
-        if let micVol = payload["micVolume"] as? Double {
-            if micVol == 0.0 {
-                userDefaults?.set(1.0, forKey: "micVolume")
-                payload["micVolume"] = 1.0
-                sendlog(message: "修正MicVol -> 1.0")
-            }
+        // 零值是合法靜音；只有無效數值才退回預設，讀配置不得改寫偏好。
+        for key in ["appVolume", "micVolume"] {
+            let value = payload[key] as? Double ?? 1
+            payload[key] = value.isFinite ? min(1, max(0, value)) : 1
         }
 
         if let AppVol = payload["appVolumeAdd"] as? Double {
@@ -1308,6 +1297,15 @@ class SocketServer:ObservableObject, @unchecked Sendable {
                 let key = dict.key
                 let VType = dict.ValueType
 
+                // 一次回覆兩軌快照，避免兩次請求讀到不同版本。
+                if key == "audioVolumeSnapshot", VType == "String" {
+                    let snapshot = AudioControlSettings(defaults: userDefaults ?? .standard)
+                    let json = try JSONEncoder().encode(snapshot)
+                    sendTo(connection, dictionary: ["type": "UPSet", "key": key,
+                        "value": String(decoding: json, as: UTF8.self)])
+                    return
+                }
+
                 var res: Any?
                 switch VType {
                 case "String":
@@ -1391,6 +1389,10 @@ class SocketServer:ObservableObject, @unchecked Sendable {
 
             case "requestSettings":
                 logTo("棄用Sync UserDefaults to client 該項目不使用")
+
+            case "audioVolumeApplied":
+                let report = try decoder.decode(ReplayVolumeApplied.self, from: data)
+                Task { @MainActor in LiveVolumeModel.shared.reportReplayApplied(report) }
 
             case "audioLive":
                 let dict = try decoder.decode(AudioLive.self, from: data)

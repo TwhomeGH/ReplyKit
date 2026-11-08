@@ -478,17 +478,22 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         if filter.isMicrophoneEnabled { try source.addStreamOutput(pump, type: .microphone, sampleHandlerQueue: sampleQueue) }
         mediaPrepared = true
         // 同程序設定以低頻率合併讀取，不依賴僅傳給擴展的 Darwin 通知。
+        let volumeSession = state.id?.uuidString ?? "none"
         volumeUpdates = Task { [weak self] in
             var previous: [Float] = []
             while !Task.isCancelled {
                 guard let self, let mixer = self.pipeline?.mixer else { return }
-                let values = [Self.volume(defaults, key: "appVolume"), Self.volume(defaults, key: "micVolume")]
+                let control = AudioControlSettings(defaults: defaults)
+                let values = [control.app, control.mic]
                 if values != previous {
                     var settings = await mixer.audioMixerSettings
                     guard !Task.isCancelled else { return }
                     settings.tracks[0]?.volume = values[0]
                     settings.tracks[1]?.volume = values[1]
                     await mixer.setAudioMixerSettings(settings)
+                    guard !Task.isCancelled else { return }
+                    LiveVolumeModel.shared.reportAppliedGains(volumeSession, app: settings.tracks[0]?.volume ?? values[0],
+                                                             mic: settings.tracks[1]?.volume)
                     previous = values
                     sendlog(message: "[CaptureAudioSettings] appVolume=\(values[0]) micVolume=\(values[1]) live=true")
                 }
@@ -496,10 +501,10 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             }
         }
     }
-    /// 防止非有限值或異常增益傳入 Mixer；0 靜音、1 原音量、最多 4 倍。
+    /// 初始音量與即時同步使用相同設定模型，避免合法範圍不一致。
     private static func volume(_ defaults: UserDefaults, key: String) -> Float {
-        let value = defaults.object(forKey: key) as? Double ?? 1
-        return value.isFinite ? Float(min(4, max(0, value))) : 1
+        let settings = AudioControlSettings(defaults: defaults)
+        return key == "appVolume" ? settings.app : settings.mic
     }
     /// 建立 RTMP 連線物件、編碼設定與日誌回呼，將串流掛到既有 Mixer。
     /// 此步驟尚未連線；實際 connect／publish 由 startPublishing() 執行。

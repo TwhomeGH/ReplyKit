@@ -292,7 +292,7 @@ actor AudioProcessorActor {
          onAudioPage: Bool) {
         self.mediaMixer = mediaMixer
         self.volumeNotifier = volumeNotifier
-        self.appAddVolume = appAddVolume
+        self.appAddVolume = 1 // 棄用 App 增益，保留原始參考訊號。
         self.micAddVolume = micAddVolume
         self.appVolume = appVolume
         self.micVolume = micVolume
@@ -486,7 +486,15 @@ actor AudioProcessorActor {
     }
 
     func updateVolumes(appAdd value: Float) {
-        appAddVolume = value
+        appAddVolume = 1 // 舊通知相容入口也不得恢復已退場的增益。
+    }
+
+    /// 一次更新兩軌估算所用增益，與控制端成對套用保持一致。
+    func setControlVolumes(app: Float, mic: Float, micGain: Float) {
+        appVolume = app
+        micVolume = mic
+        micAddVolume = micGain
+        audioEngine?.updateAudioState(micGain: micGain)
     }
 
     func updateVolumes(mic value: Float) {
@@ -538,6 +546,11 @@ final class AudioProcessor {
 
     func updateVolumes(appAdd value: Float) {
         Task { await actor.updateVolumes(appAdd: value) }
+    }
+
+    /// 等候處理 actor 接受增益後才允許回報套用完成。
+    func setControlVolumes(app: Float, mic: Float, micGain: Float) async {
+        await actor.setControlVolumes(app: app, mic: mic, micGain: micGain)
     }
 
     func updateVolumes(mic value: Float) {

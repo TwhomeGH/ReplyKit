@@ -133,39 +133,19 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     // 在 stream 啟動時就已固定，runtime 呼叫無效。初始化時設定一次即可。
     private var adaptiveBufferManager: AdaptiveVideoBufferManager?
 
-    private func reloadVolumes(type:Int = -1,volume:Float = 1.0) {
-
-        switch type {
-        case 0:
-            appVolume = volume
-            //sendlog(message:"app audio update\(appVolume)")
-            break;
-        case 1:
-            micVolume = volume
-            //sendlog(message:"mic audio update\(micVolume)")
-            break;
-
-        default:
-
-
-
-            Task {
-                appVolume = Float(RPConfig.shared.state.AppVolume)
-                micVolume = Float(RPConfig.shared.state.MicVolume)
-
-                sendlog(message:"Audio 音量更新 App:\(appVolume) Mic:\(micVolume)")
-                await updateAppAudioVolume(appVolume)
-                await updateMicAudioVolume(micVolume)
-            }
-
+    /// 串行讀取並一次套用兩軌設定；通知只標記需重新同步。
+    private let volumeSyncLock = NSLock()
+    private var storedVolumeSync: ReplayVolumeSynchronizer?
+    private var volumeSync: ReplayVolumeSynchronizer {
+        volumeSyncLock.lock()
+        defer { volumeSyncLock.unlock() }
+        if let storedVolumeSync { return storedVolumeSync }
+        let sync = ReplayVolumeSynchronizer(mixer: mediaMixer) { [weak self] app, mic, gain in
+            await self?.audioProcessor?.setControlVolumes(app: app, mic: mic, micGain: gain)
         }
-
+        storedVolumeSync = sync
+        return sync
     }
-
-    //
-
-
-
 
     // MARK: 註冊所有事件
     func registerObservers() {
@@ -284,174 +264,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     func handleEvent(eventName: String) {
         switch eventName {
 
-        case "micAdd":
-
-            _ = Task {
-
-                var newVolume = (SharedDefaults.group?.object(forKey: "micAddVolume") as? Double) ?? 1.0
-
-                if RPConfig.shared.enableSocketLog {
-                    if let raw = try await SocketClient.shared.requestSet(for: "micAddVolume", type: "Double") {
-
-                        if let av = raw as? Double {
-                            let oldV = newVolume
-                            newVolume = av
-
-                            logger.debug("MicAddVol \(av)")
-                            sendlog(message: "Socket原始MicAddVolume數據包:\(av) -> \(oldV)")
-                        } else {
-                            logger.error("MicAddVolume 型別錯誤: \(type(of: raw))")
-                        }
-
-                    }
-                }
-
-                micAddVolume=Float(newVolume)
-
-                guard let audioProcessor else {
-                    sendlog(message:"[Audio] micAdd 跳過: audioProcessor nil init:\(processorsInitialized)")
-                    return
-                }
-                audioProcessor.updateVolumes(micAdd: micAddVolume)
-
-                sendlog(message: String(
-                format: "麥克風音量放大: %.5f%%",
-                newVolume
-            ))
-
-            }
-
-            break
-
-        case "appAdd":
-
-
-
-            _ = Task {
-
-                var newVolume = (SharedDefaults.group?.object(forKey: "appAddVolume") as? Double) ?? 1.0
-
-                if RPConfig.shared.enableSocketLog {
-                    if let raw = try await SocketClient.shared.requestSet(for: "appAddVolume", type: "Double") {
-
-                        if let av = raw as? Double {
-                            let oldV = newVolume
-                            newVolume = av
-
-                            logger.debug("AppAddVol \(av)")
-                            sendlog(message: "Socket原始AppAddVolume數據包:\(av) -> \(oldV)")
-                        } else {
-                            logger.error("AppAddVolume 型別錯誤: \(type(of: raw))")
-                        }
-
-                    }
-                }
-
-                appAddVolume=Float(newVolume)
-
-                guard let audioProcessor else {
-                    sendlog(message:"[Audio] appAdd 跳過: audioProcessor nil init:\(processorsInitialized)")
-                    return
-                }
-                audioProcessor.updateVolumes(appAdd: appAddVolume)
-
-                sendlog(message: String(
-                format: "App音量放大: %.5f%%",
-                newVolume
-            ))
-
-
-            }
-
-            break
-
-
-        case "micVolumeChanged":
-
-
-            _ = Task {
-                var newVolume = (SharedDefaults.group?.object(forKey: "micVolume") as? Double) ?? 1.0
-
-                if RPConfig.shared.enableSocketLog {
-                    if let raw = try await SocketClient.shared.requestSet(for: "micVolume", type: "Double") {
-
-                        if let av = raw as? Double {
-                            let oldV = newVolume
-                            newVolume = av
-
-                            logger.debug("MicVol \(av)")
-                            sendlog(message: "Socket原始MicVolume數據包:\(av) -> \(oldV)")
-                        } else {
-                            logger.error("MicVolume 型別錯誤: \(type(of: raw))")
-                        }
-
-                    }
-                }
-
-                sendlog(message: String(
-                    format: "RE:麥克風音量更新: %.2f%% (原始值: %.5f)",
-                    volumeToPercentage(newVolume) * 100,
-                    newVolume
-                ))
-
-                micVolume=Float(newVolume)
-
-                guard let audioProcessor else {
-                    sendlog(message:"[Audio] micVolume 跳過: audioProcessor nil init:\(processorsInitialized)")
-                    return
-                }
-                audioProcessor.updateVolumes(mic: micVolume)
-
-
-                await updateMicAudioVolume(micVolume)
-            }
-
-            break
-
-        case "appVolumeChanged":
-
-
-            _ = Task {
-
-                var newVolume = (SharedDefaults.group?.object(forKey: "appVolume") as? Double) ?? 1.0
-
-                if RPConfig.shared.enableSocketLog {
-                    if let raw = try await SocketClient.shared.requestSet(for: "appVolume", type: "Double") {
-
-                        if let av = raw as? Double {
-                            let oldV = newVolume
-                            newVolume = av
-
-                            logger.debug("AppVol \(av)")
-                            sendlog(message: "Socket原始AppVolume數據包:\(av) -> \(oldV)")
-                        } else {
-                            logger.error("appVolume 型別錯誤: \(type(of: raw))")
-                        }
-
-                    }
-                }
-
-                    sendlog(message: String(
-                        format: "!!應用音量更新: %.2f%% (原始值: %.5f)",
-                        volumeToPercentage(newVolume) * 100,
-                        newVolume
-                    ))
-
-
-                    appVolume=Float(newVolume)
-
-                    guard let audioProcessor else {
-                        sendlog(message:"[Audio] appVolume 跳過: audioProcessor nil init:\(processorsInitialized)")
-                        return
-                    }
-                    audioProcessor.updateVolumes(app: appVolume)
-
-                    await updateAppAudioVolume(appVolume)
-
-
-            }
-
-            break
+        case "micVolumeChanged", "appVolumeChanged", "micAdd", "appAdd":
+            Task { await volumeSync.requestRefresh() }
 
         case "orientationChanged":
 
@@ -988,53 +802,6 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
 
-    func updateAppAudioVolume(_ volume: Float) async {
-        var settings = await mediaMixer.audioMixerSettings
-
-            if var track = settings.tracks[0] {
-                // 0 是 app 音頻 track
-                if volume >= 1.0 {
-
-                    track = .default
-
-                } else {
-
-
-                    track.volume = volume
-
-                }   // volume 值 0.0 ~ 1.0
-
-                settings.tracks[0] = track
-
-            }
-
-        await mediaMixer.setAudioMixerSettings(settings)
-    }
-
-    func updateMicAudioVolume(_ volume: Float) async {
-        var settings = await mediaMixer.audioMixerSettings
-
-
-            if var track = settings.tracks[1] {
-                // 1 是 麥克風 track
-                if volume >= 1.0 {
-
-                    track = .default
-
-                } else {
-
-
-                    track.volume = volume
-
-                }   // volume 值 0.0 ~ 1.0
-
-                settings.tracks[1] = track
-
-            }
-
-        await mediaMixer.setAudioMixerSettings(settings)
-    }
-
 #if os(iOS)
     // --- 將原來的 updateVideoOrientation 改成下面這個 ---
     func avOrientation(from deviceOrientation: UIDeviceOrientation) -> AVCaptureVideoOrientation? {
@@ -1432,7 +1199,11 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         await mediaMixer.setAudioMixerSettings(audioSettings)
 
-        reloadVolumes()
+        // 初始值保留合法靜音；後續由串行同步器合併更新。
+        var initial = await mediaMixer.audioMixerSettings
+        initial.tracks[0]?.volume = Float(RPConfig.shared.state.AppVolume)
+        initial.tracks[1]?.volume = Float(RPConfig.shared.state.MicVolume)
+        await mediaMixer.setAudioMixerSettings(initial)
 
 
 
@@ -1805,6 +1576,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                 // 先初始化 Processor，確保音視頻管線在 RTMP 連線前準備就緒
                 self.initProcessors()
                 self.processorsInitialized = true
+                await volumeSync.start()
                 SocketClient.shared.onPageStateChanged = { [weak self] key, value in
                     if key == "onAudioPage", let boolVal = value as? Bool {
                         RPConfig.shared.onAudioPage = boolVal
@@ -1906,6 +1678,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     private var broadcastEndTask: Task<Void, Never>?
 
     func broadcastEnd(message: String = "正常結束") {
+        Task { await volumeSync.stop() }
         guard captureLease != nil else { return }
         guard broadcastEndTask == nil else { return }
         sendlog(message: "[RTMP] \(message)")
