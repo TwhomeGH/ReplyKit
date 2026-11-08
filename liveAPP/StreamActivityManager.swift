@@ -43,7 +43,7 @@ final class StreamActivityManager: ObservableObject {
             return
         }
 
-        endStreamActivity(reason: "重新啟動前清理")
+        endStreamActivity(reason: "建立新活動前清理")
 
         let attributes = StreamActivityAttributes(streamTitle: streamTitle)
         let requestGeneration = generation

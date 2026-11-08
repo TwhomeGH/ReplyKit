@@ -38,6 +38,13 @@
 - 增加 session 隔離的 Mixer 設定套用回報；調整後分軌音量明確標為估算，不冒充實測。
 - 補刻度與舊 session 回報測試、[量測語意與實機驗收](development/AUDIO_VOLUME_METER.md)。Swift 語法檢查通過，Xcode 測試及實機音量驗收待執行。
 
+## 2026.11.08 16:16 背景斷流與 LiveActivity 診斷
+
+- 2026-11-08 15:58:49～16:00:36 的診斷顯示 App 在背景整個被暫停約 107 秒：`[IdleResources]` 30 秒週期中斷、`CaptureCallbacks` 空窗 98.3 秒、`encoderInput inFPS=0 inputIdle≈98.3s`；之後 RTMP 才收到 `Connection reset by peer`。這是 98 秒沒有媒體後伺服器重置，不是 encoder／RTMP 先壞。
+- 新增 `[AppEnvironment]` 日誌：啟動與背景／前景轉換時記錄 `UIBackgroundModes`、`isIdleTimerDisabled`、`protectedDataAvailable`；用於確認簽名後 plist 是否仍保留 `screen-capture`，以及鎖定／背景狀態。
+- SCK 擷取期間設定 `UIApplication.shared.isIdleTimerDisabled = true`，finish 時還原原值；這只能避免前景自動鎖定，不能保證背景無限續跑。
+- `startStreamActivity` 的清理訊息由「重新啟動前清理」改為「建立新活動前清理」；15:31 的第二次啟動是前一次串流 15:26 結束後的新串流，不是 App 重啟。
+
 ## 2026.11.07 21:30 A/V 內容延遲診斷與裝置頁入口
 
 - 問題：使用者用 PiP 固定直播計時器量到 2:22 的影片在 audio 8105.5s 正確、video timer 只有 8100s，內容落後約 6 秒；曲線呈 38／76／94／116／133／141 分鐘的階梯，不是平滑音訊漂移。既有日誌有 FPS、PTS 回退與吞吐量，但缺少「這一格畫面有多舊」。

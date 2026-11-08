@@ -1203,6 +1203,7 @@ struct liveAPPApp: App {
 
         // 與關於頁共用同一份建置快照，便於從 log.txt 辨識產物。
         AppLogPersister.shared.append(lines: BuildInformation.current.report.components(separatedBy: "\n").map { "[BuildInfo] " + $0 })
+        logAppEnvironment("launch")
 
         // App 啟動時就啟動 Socket Server
         // 啟動一次
@@ -1300,6 +1301,14 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
 
     @Environment(\.scenePhase) private var scenePhase
 
+    /// 只記可驗證的執行環境狀態；不代表系統一定會在背景續跑，但可用來比對簽名後 plist 與鎖定。
+    private func logAppEnvironment(_ event: String) {
+        #if os(iOS)
+        let modes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String] ?? []
+        sendlog(message: "[AppEnvironment] event=\(event) backgroundModes=\(modes.joined(separator: ",")) idleTimerDisabled=\(UIApplication.shared.isIdleTimerDisabled) protectedData=\(UIApplication.shared.isProtectedDataAvailable)")
+        #endif
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -1309,6 +1318,12 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
                     MemorySampler.shared.checkpoint("memory.warning")
                 }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.protectedDataWillBecomeUnavailableNotification)) { _ in
+                    logAppEnvironment("protectedDataUnavailable")
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.protectedDataDidBecomeAvailableNotification)) { _ in
+                    logAppEnvironment("protectedDataAvailable")
+                }
                 #endif
                 .onChange(of: scenePhase) { phase in
                     switch phase {
@@ -1316,6 +1331,7 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
                         break
 
                     case .background:
+                        logAppEnvironment("background")
                         sendlog(message: "App 進入背景，啟動短背景視窗並排程 Socket refresh")
 
                         // 通知 PIPService 進入背景
@@ -1335,6 +1351,7 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
                         #endif
 
                     case .active:
+                        logAppEnvironment("active")
                         AppLogPersister.shared.copyFromAppGroup()
                         Task { await AppLogPersister.shared.setBackground(false) }
                         sendlog(message: "App 回到前景")

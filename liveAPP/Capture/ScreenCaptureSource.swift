@@ -1,5 +1,6 @@
 #if os(iOS) && SCREEN_CAPTURE_KIT_IOS27 && canImport(ScreenCaptureKit) && !targetEnvironment(macCatalyst) && !targetEnvironment(simulator)
 import Foundation
+import UIKit
 @preconcurrency import ScreenCaptureKit
 @preconcurrency import AVFoundation
 import HaishinKit
@@ -193,6 +194,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     private var operation: Task<Void, Never>?
     private var diagnostics: Task<Void, Never>?
     private var ownsAudioSession = false
+    private var previousIdleTimerDisabled: Bool?
     private var audioObservers: [NSObjectProtocol] = []
     private var priorCategory: AVAudioSession.Category?
     private var priorMode: AVAudioSession.Mode?
@@ -341,6 +343,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         try Task.checkCancellation()
         guard state.transition(.streaming, for: token) else { throw CancellationError() }
         update(.streaming, nil)
+        beginIdleTimerAssertion()
         if streamingViable {
             publishingTask = Task { [self] in
                 do { try await startPublishing() }
@@ -384,7 +387,8 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                     now: CMClockGetTime(CMClockGetHostTimeClock()).seconds) {
                     AVLagModel.shared.record(av)
                     let shouldLog = sampleCount < 12 || sampleCount % 2 == 0
-                        || (av.videoContentAge ?? 0) >= 1 || av.contentAgeJump != nil
+                        || (av.videoContentAge ?? 0) >= 1 || (av.videoIdleAge ?? 0) >= 2
+                        || av.contentAgeJump != nil
                     if shouldLog {
                         sendlog(message: "[AVLag] session=\(token) \(av.logLine)")
                     }
@@ -803,6 +807,21 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                             memory.footprintMB, memory.compressedMB, memory.residentMB, memory.availableMB)
         sendlog(message: "[CaptureResources] session=\(state.id?.uuidString ?? "none") stage=\(stage) \(values)")
     }
+    /// 擷取期間避免前景自動鎖定；只保存並還原呼叫前的狀態，不假設原本一定是 false。
+    private func beginIdleTimerAssertion() {
+        guard previousIdleTimerDisabled == nil else { return }
+        previousIdleTimerDisabled = UIApplication.shared.isIdleTimerDisabled
+        UIApplication.shared.isIdleTimerDisabled = true
+        sendlog(message: "[CaptureScreen] idleTimerDisabled=true previous=\(previousIdleTimerDisabled ?? false)")
+    }
+
+    private func endIdleTimerAssertion() {
+        guard let previous = previousIdleTimerDisabled else { return }
+        previousIdleTimerDisabled = nil
+        UIApplication.shared.isIdleTimerDisabled = previous
+        sendlog(message: "[CaptureScreen] idleTimerDisabled=\(previous)")
+    }
+
     func stop() async { await finish(message: nil) }
     /// 結束整次擷取：取消並等待背景工作，收尾錄製、RTMP、Mixer 與系統觀察者。
     /// 收尾期間重複呼叫直接返回；完成後釋放音訊所有權並通知上層回到 idle。
@@ -859,6 +878,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         for observer in audioObservers { NotificationCenter.default.removeObserver(observer) }
         audioObservers.removeAll()
         CaptureAudioOwnership.shared.end()
+        endIdleTimerAssertion()
         mark("complete")
         let wasCurrent = state.id == token
         state.finish(token)
