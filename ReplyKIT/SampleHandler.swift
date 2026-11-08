@@ -1133,9 +1133,8 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         var audioSettings = CaptureMediaPipeline.audioSettings(
             from: await mediaMixer.audioMixerSettings, microphone: true)
 
-        // 混音時鐘用 mic（持續輸出、最穩），輸出格式用 app 軌（保留立體聲）。
-        // 兩者脫鉤：避免 mainTrack=mic 時整個輸出被壓成 mono（見 outputFormatTrack）。
-        audioSettings.mainTrack = 1
+        // App 軌同時作為混音時鐘與輸出格式；mic 關閉時不會再讓 App 變成非主軌而失去輸出。
+        audioSettings.mainTrack = 0
         audioSettings.outputFormatTrack = 0
 
         if RPConfig.shared.state.enableEchoFix {

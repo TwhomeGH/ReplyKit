@@ -462,6 +462,13 @@
       }
     }
   },
+  "volume.slider.range": {
+    "localizations": {
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "0% = 靜音；滑桿約 −40…0 dB，−38.9 dB 會接近左端。" } },
+      "en": { "stringUnit": { "state": "translated", "value": "0% is mute; the slider spans about -40 to 0 dB, so -38.9 dB sits near the left." } },
+      "ja": { "stringUnit": { "state": "translated", "value": "0% はミュート。スライダーは約 −40〜0 dB で、−38.9 dB は左端付近になります。" } }
+    }
+  },
   "volume.measurementNote": {
     "localizations": {
       "zh-Hant": {

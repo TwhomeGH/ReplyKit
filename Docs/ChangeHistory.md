@@ -1,5 +1,11 @@
 # 變更歷史
 
+## 2026.11.08 20:40 App 主音軌與音量滑桿範圍
+
+- App 軌改為 mixer `mainTrack` 與 `outputFormatTrack` 的唯一基準；mic 只作為第二軌。先前主軌指向 mic，mic 關閉或停止送資料後 App 會被當成非主軌對齊，造成完全沒有 App 聲音；`ReplayVolumeSynchronizer` 也不再要求 mic 軌存在才套用 App 音量。
+- 音量滑桿最低非零值由 `-140 dB` 改為 `-40 dB`：0% 靜音、50% 約 `-20 dB`、100% `0 dB`；-38.9 dB 現在落在左端約 2.7%，不再顯示在中段。UI 端點標示改為靜音／-20 dB／0 dB。
+- 新增 `AudioMixerRoutingTests` 與 `AudioVolumeSliderTests`。
+
 ## 2026.11.08 20:20 編碼縮放模式入口
 
 - ReplayKit 的 HaishinKit `ScalingMode` 不再寫死 letterbox；進階編碼新增 Letterbox／Trim／Normal 選項，預設仍為 Letterbox。

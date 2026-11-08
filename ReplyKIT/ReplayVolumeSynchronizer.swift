@@ -61,7 +61,8 @@ actor ReplayVolumeSynchronizer {
                     if app != lastApp || mic != lastMic || values.micGain != lastGain {
                         var settings = await mixer.audioMixerSettings
                         guard !Task.isCancelled, !ended else { return }
-                        guard settings.tracks[0] != nil, settings.tracks[1] != nil else {
+                        // App 軌是必要輸出；mic 被停用時仍要套用 App 音量。
+                        guard settings.tracks[0] != nil else {
                             report(status: "tracksUnavailable")
                             try await Task.sleep(nanoseconds: 200_000_000)
                             continue

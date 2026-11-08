@@ -4,7 +4,9 @@ import Combine
 import os
 import Foundation
 
-let minimumAudibleVolume: Double = 0.0000001
+/// 滑桿可調的最低非零音量：-40 dB；再低視為靜音。
+/// 0% 是靜音，50% 約 -20 dB，100% 是 0 dB（線性增益 1.0）。
+let minimumAudibleVolume: Double = 0.01
 let volumeSliderStep: Double = 0.0000001
 
 private func clampUnit(_ value: Double) -> Double {
@@ -208,8 +210,16 @@ struct LiveVolumeView: View {
                     if !editing { publish(notification, value: value.wrappedValue) }
                 })
                 .tint(color)
-            HStack { Text("0%"); Spacer(); Text("50%"); Spacer(); Text("100%") }
-                .font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Text("靜音")
+                Spacer()
+                Text("−20 dB")
+                Spacer()
+                Text("0 dB")
+            }
+            .font(.caption).foregroundStyle(.secondary)
+            Text("volume.slider.range")
+                .font(.caption2).foregroundStyle(.secondary)
             Text("控制推流／可控錄製的混音，不改變其他 App 的揚聲器音量。")
                 .font(.caption).foregroundStyle(.secondary)
             Divider()
