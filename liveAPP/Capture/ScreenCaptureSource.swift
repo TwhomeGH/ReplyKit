@@ -527,7 +527,8 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     private func preparePublishing(size: CGSize) async throws {
         let defaults = userDefaults ?? .standard
         guard let pipeline else { throw CancellationError() }
-        let conn = RTMPConnection(minimumLogLevel: .debug)
+        let useEnhancedRTMP = defaults.object(forKey: "useEnhancedRTMP") as? Bool ?? true
+        let conn = RTMPConnection(useEnhancedRTMP: useEnhancedRTMP, minimumLogLevel: .debug)
         let stream = RTMPStream(connection: conn)
         connection = conn; output = stream
         let logSession = state.id?.uuidString ?? "none"
@@ -570,11 +571,17 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         video.bitRate = max(100_000, defaults.object(forKey: "bitRate") as? Int ?? 6_000_000)
         video.maxKeyFrameIntervalDuration = Int32(max(0, min(60, defaults.object(forKey: "KeyFrameInterval") as? Int ?? 2)))
         video.allowFrameReordering = false
+        video.isLowLatencyRateControlEnabled = defaults.bool(forKey: "isLowLatencyRateControlEnabled")
         video.scalingMode = .letterbox
         video.expectedFrameRate = 60
         video.profileLevel = H264EncodingProfile.resolve(defaults.string(forKey: "h264level") ?? "AutoHigh")
-        // 與 ReplayKit 相同：Baseline 必須使用 CAVLC。
-        video.h264EntropyMode = video.profileLevel.contains("Baseline") ? "cavlc" : nil
+        let useCAVLC = defaults.object(forKey: "h264useCAVLC") as? Bool ?? false
+        let vtSpeedPriority = defaults.object(forKey: "vtSpeedPriority") as? Bool
+            ?? (defaults.bool(forKey: "h264useCAVLC"))
+        // 與 ReplayKit 相同：Baseline 必須使用 CAVLC；CAVLC 與 VT 速度策略分開。
+        video.h264EntropyMode = (useCAVLC || video.profileLevel.contains("Baseline")) ? "cavlc" : nil
+        video.adaptiveFrameThrottle = vtSpeedPriority
+        video.prioritizeEncodingSpeedOverQuality = vtSpeedPriority
         let bufferCount = defaults.object(forKey: "BufferCount") as? Int ?? -1
         video.maxFrameDelayCount = bufferCount
         switch defaults.integer(forKey: "BitRateMode") {

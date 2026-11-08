@@ -1095,7 +1095,8 @@ class SocketClient : @unchecked Sendable {
         let ChangeBit: Bool
         let isLowLatencyRateControlEnabled:Bool
         let allowFrameReordering:Bool
-        let h264useCAVLC:Bool 
+        let h264useCAVLC:Bool
+        let vtSpeedPriority: Bool?
         let useEnhancedRTMP: Bool?
         let isOringinAudio:Bool?
 
@@ -1132,7 +1133,7 @@ class SocketClient : @unchecked Sendable {
 
         enum CodingKeys: String, CodingKey {
             case type, rtmpURL, rtmpKey, BitRate, ChangeBit
-            case isLowLatencyRateControlEnabled, allowFrameReordering,h264useCAVLC ,useEnhancedRTMP, isOringinAudio
+            case isLowLatencyRateControlEnabled, allowFrameReordering, h264useCAVLC, vtSpeedPriority, useEnhancedRTMP, isOringinAudio
             case h264level, videoCodec, hevcLevel, BitRateMode, videoBuffer, useBic
             case dstW, dstH, odstW, odstH, Rotate, RotateOriginal
             case enableEchoFix, enableNoiseFix, enableAGCFix, enableMetalAudio
@@ -1150,6 +1151,7 @@ class SocketClient : @unchecked Sendable {
             isLowLatencyRateControlEnabled = try c.decodeIfPresent(Bool.self, forKey: .isLowLatencyRateControlEnabled) ?? false
             allowFrameReordering = try c.decodeIfPresent(Bool.self, forKey: .allowFrameReordering) ?? false
             h264useCAVLC = try c.decodeIfPresent(Bool.self, forKey: .h264useCAVLC) ?? false
+            vtSpeedPriority = try c.decodeIfPresent(Bool.self, forKey: .vtSpeedPriority)
             useEnhancedRTMP = try c.decodeIfPresent(Bool.self, forKey: .useEnhancedRTMP)
             isOringinAudio = try c.decodeIfPresent(Bool.self, forKey: .isOringinAudio)
             h264level = try c.decodeIfPresent(String.self, forKey: .h264level) ?? "AutoHigh"
@@ -1186,6 +1188,7 @@ class SocketClient : @unchecked Sendable {
             try c.encode(isLowLatencyRateControlEnabled, forKey: .isLowLatencyRateControlEnabled)
             try c.encode(allowFrameReordering, forKey:.allowFrameReordering)
             try c.encode(h264useCAVLC,forKey: .h264useCAVLC)
+            try c.encodeIfPresent(vtSpeedPriority, forKey: .vtSpeedPriority)
             try c.encodeIfPresent(useEnhancedRTMP, forKey: .useEnhancedRTMP)
             try c.encodeIfPresent(isOringinAudio, forKey: .isOringinAudio)
             try c.encode(h264level, forKey: .h264level)
@@ -1261,6 +1264,8 @@ class SocketClient : @unchecked Sendable {
             ChangeBit: c.ChangeBit,
             isLowLatencyRateControlEnabled: c.isLowLatencyRateControlEnabled,
             allowFrameReordering: c.allowFrameReordering,
+            h264useCAVLC: c.h264useCAVLC,
+            vtSpeedPriority: c.vtSpeedPriority ?? c.h264useCAVLC,
             useEnhancedRTMP: c.useEnhancedRTMP,
             useBic: c.useBic,
             Rotate: c.Rotate,

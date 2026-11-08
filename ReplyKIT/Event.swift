@@ -686,6 +686,7 @@ final class RPConfig {
         var isLowLatencyRateControlEnabled : Bool = false
         var allowFrameReordering : Bool = false
         var h264useCAVLC:Bool = false
+        var vtSpeedPriority: Bool = false
         var useEnhancedRTMP : Bool = true
         var isOringinAudio : Bool = true
 
@@ -798,6 +799,7 @@ final class RPConfig {
                       isLowLatencyRateControlEnabled:Bool? = nil,
                       allowFrameReordering:Bool? = nil, 
                       h264useCAVLC:Bool? = nil,
+                      vtSpeedPriority:Bool? = nil,
                       useEnhancedRTMP:Bool? = nil,
                       useBic:Bool? = nil,
                      Rotate:Int? = nil,
@@ -859,6 +861,10 @@ final class RPConfig {
 
             if let h264useCAVLC = h264useCAVLC {
                 self.state.h264useCAVLC = h264useCAVLC
+            }
+
+            if let vtSpeedPriority = vtSpeedPriority {
+                self.state.vtSpeedPriority = vtSpeedPriority
             }
 
             if let useEnhancedRTMP = useEnhancedRTMP {
@@ -972,6 +978,8 @@ final class RPConfig {
             isLowLatencyRateControlEnabled:SharedDefaults.group?.bool(forKey: "isLowLatencyRateControlEnabled") ?? false,
             allowFrameReordering:SharedDefaults.group?.bool(forKey: "allowFrameReordering") ?? false,
             h264useCAVLC:SharedDefaults.group?.bool(forKey: "h264useCAVLC") ?? false,
+            vtSpeedPriority: SharedDefaults.group?.object(forKey: "vtSpeedPriority") as? Bool
+                ?? (SharedDefaults.group?.bool(forKey: "h264useCAVLC") ?? false),
             useEnhancedRTMP:SharedDefaults.group?.object(forKey: "useEnhancedRTMP") as? Bool ?? true,
             isOringinAudio: (SharedDefaults.group?.object(forKey: "isOringinAudio") as? Bool) ?? true,
             useBic:SharedDefaults.group?.bool(forKey: "useBic") ?? false,

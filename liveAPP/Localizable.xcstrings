@@ -1034,6 +1034,132 @@
       }
     }
   },
+  "encoding.bitrate.section": {
+    "localizations": {
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "位元率與關鍵幀" } },
+      "en": { "stringUnit": { "state": "translated", "value": "Bitrate & Keyframes" } },
+      "ja": { "stringUnit": { "state": "translated", "value": "ビットレートとキーフレーム" } }
+    }
+  },
+  "encoding.bitrate.mode": {
+    "localizations": {
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "位元率模式" } },
+      "en": { "stringUnit": { "state": "translated", "value": "Bitrate Mode" } },
+      "ja": { "stringUnit": { "state": "translated", "value": "ビットレートモード" } }
+    }
+  },
+  "encoding.keyframe": {
+    "localizations": {
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "關鍵幀間隔（秒）" } },
+      "en": { "stringUnit": { "state": "translated", "value": "Keyframe interval (s)" } },
+      "ja": { "stringUnit": { "state": "translated", "value": "キーフレーム間隔（秒）" } }
+    }
+  },
+  "encoding.keyframe.auto": {
+    "localizations": {
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "編碼器自動" } },
+      "en": { "stringUnit": { "state": "translated", "value": "Encoder auto" } },
+      "ja": { "stringUnit": { "state": "translated", "value": "エンコーダー自動" } }
+    }
+  },
+  "encoding.keyframe.help": {
+    "localizations": {
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "預設 2 秒；0 表示由編碼器自動決定。" } },
+      "en": { "stringUnit": { "state": "translated", "value": "Default 2 s; 0 lets the encoder decide." } },
+      "ja": { "stringUnit": { "state": "translated", "value": "既定は 2 秒。0 はエンコーダー自動です。" } }
+    }
+  },
+  "encoding.h264.section": {
+    "localizations": {
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "H.264 相容性" } },
+      "en": { "stringUnit": { "state": "translated", "value": "H.264 Compatibility" } },
+      "ja": { "stringUnit": { "state": "translated", "value": "H.264 互換性" } }
+    }
+  },
+  "encoding.cavlc": {
+    "localizations": {
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "使用 CAVLC（輕量編碼）" } },
+      "en": { "stringUnit": { "state": "translated", "value": "Use CAVLC (lightweight encoding)" } },
+      "ja": { "stringUnit": { "state": "translated", "value": "CAVLC を使用（軽量エンコード）" } }
+    }
+  },
+  "encoding.cavlc.help": {
+    "localizations": {
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "只控制 H.264 entropy；Baseline profile 仍固定使用 CAVLC。" } },
+      "en": { "stringUnit": { "state": "translated", "value": "Controls H.264 entropy only; Baseline still always uses CAVLC." } },
+      "ja": { "stringUnit": { "state": "translated", "value": "H.264 の entropy のみ。Baseline は常に CAVLC です。" } }
+    }
+  },
+  "encoding.bframes": {
+    "localizations": {
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "允許 B-Frame" } },
+      "en": { "stringUnit": { "state": "translated", "value": "Allow B-Frames" } },
+      "ja": { "stringUnit": { "state": "translated", "value": "B フレームを許可" } }
+    }
+  },
+  "encoding.bframes.help": {
+    "localizations": {
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "可能改善壓縮但不穩定；ScreenCaptureKit 目前固定關閉。" } },
+      "en": { "stringUnit": { "state": "translated", "value": "May improve compression but is unstable; ScreenCaptureKit keeps it disabled." } },
+      "ja": { "stringUnit": { "state": "translated", "value": "圧縮は改善できますが不安定です。ScreenCaptureKit では無効固定です。" } }
+    }
+  },
+  "encoding.vt.section": {
+    "localizations": {
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "VideoToolbox 效能" } },
+      "en": { "stringUnit": { "state": "translated", "value": "VideoToolbox Performance" } },
+      "ja": { "stringUnit": { "state": "translated", "value": "VideoToolbox パフォーマンス" } }
+    }
+  },
+  "encoding.vtSpeed": {
+    "localizations": {
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "VT 編碼速度優先" } },
+      "en": { "stringUnit": { "state": "translated", "value": "Prefer VT Encoding Speed" } },
+      "ja": { "stringUnit": { "state": "translated", "value": "VT エンコード速度を優先" } }
+    }
+  },
+  "encoding.vtSpeed.help": {
+    "localizations": {
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "獨立啟用 prioritizeEncodingSpeedOverQuality 與軟體節流；可能降低畫質。" } },
+      "en": { "stringUnit": { "state": "translated", "value": "Enables prioritizeEncodingSpeedOverQuality and frame throttling independently; quality may drop." } },
+      "ja": { "stringUnit": { "state": "translated", "value": "prioritizeEncodingSpeedOverQuality とフレーム抑制を個別に有効化します。画質が下がる場合があります。" } }
+    }
+  },
+  "encoding.rtmp.section": {
+    "localizations": {
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "RTMP 與延遲" } },
+      "en": { "stringUnit": { "state": "translated", "value": "RTMP & Latency" } },
+      "ja": { "stringUnit": { "state": "translated", "value": "RTMP と遅延" } }
+    }
+  },
+  "encoding.sckBframes": {
+    "localizations": {
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "ScreenCaptureKit 目前固定關閉 B-Frame。" } },
+      "en": { "stringUnit": { "state": "translated", "value": "ScreenCaptureKit keeps B-frames disabled." } },
+      "ja": { "stringUnit": { "state": "translated", "value": "ScreenCaptureKit では B フレームを無効固定にしています。" } }
+    }
+  },
+  "encoding.lowLatency.help": {
+    "localizations": {
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "使用低延遲推流；ReplayKit 與 ScreenCaptureKit 都會套用。" } },
+      "en": { "stringUnit": { "state": "translated", "value": "Use low-latency publishing; applied by both ReplayKit and ScreenCaptureKit." } },
+      "ja": { "stringUnit": { "state": "translated", "value": "低遅延で配信します。ReplayKit と ScreenCaptureKit の両方に適用されます。" } }
+    }
+  },
+  "encoding.ertmp": {
+    "localizations": {
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "啟用 Enhanced RTMP (E-RTMP)" } },
+      "en": { "stringUnit": { "state": "translated", "value": "Enable Enhanced RTMP (E-RTMP)" } },
+      "ja": { "stringUnit": { "state": "translated", "value": "Enhanced RTMP (E-RTMP) を有効化" } }
+    }
+  },
+  "encoding.ertmp.help": {
+    "localizations": {
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "增強型 RTMP；ReplayKit 與 ScreenCaptureKit 的 RTMP 連線都會使用。" } },
+      "en": { "stringUnit": { "state": "translated", "value": "Enhanced RTMP for both ReplayKit and ScreenCaptureKit RTMP connections." } },
+      "ja": { "stringUnit": { "state": "translated", "value": "ReplayKit と ScreenCaptureKit の両方の RTMP 接続で Enhanced RTMP を使用します。" } }
+    }
+  },
   "encoding.standard": {
     "localizations": {
       "zh-Hant": {

@@ -1002,8 +1002,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         let profilelvl = profileLevelString()
         videoSettings.profileLevel = profilelvl
-        // Baseline 不使用 CABAC；切換回其他 Profile 時清除先前覆寫值。
-        videoSettings.h264EntropyMode = profilelvl.contains("Baseline") ? "cavlc" : nil
+        let useCAVLC = RPConfig.shared.state.h264useCAVLC
+        let speedPriority = RPConfig.shared.state.vtSpeedPriority
+        // Baseline 不使用 CABAC；CAVLC 開關只控制 entropy，不再連帶改 VT 速度策略。
+        videoSettings.h264EntropyMode = (useCAVLC || profilelvl.contains("Baseline")) ? "cavlc" : nil
         videoSettings.scalingMode = .letterbox
 
         if setSize {
@@ -1036,12 +1038,10 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         videoSettings.maxFrameDelayCount = RPConfig.shared.state.BufferCount  // 限制 VT 內部最多疊幾幀 -1會使用自動計算
 
 
-        if RPConfig.shared.state.h264useCAVLC {
-            sendlog(message: "使用輕量編碼 CAVLC 軟體節流 VT編碼速度優先策略")
-            videoSettings.h264EntropyMode = "cavlc" // 輕量化編碼器避免過載
-
-            videoSettings.adaptiveFrameThrottle = true // 實驗性軟體節流 改善VT過載問題
-            videoSettings.prioritizeEncodingSpeedOverQuality = true // VT編碼速度優先策略
+        videoSettings.adaptiveFrameThrottle = speedPriority
+        videoSettings.prioritizeEncodingSpeedOverQuality = speedPriority
+        if useCAVLC || speedPriority {
+            sendlog(message: "VT 設定 CAVLC=\(useCAVLC) speedPriority=\(speedPriority)")
         }
 
 

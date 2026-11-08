@@ -1,5 +1,13 @@
 # 變更歷史
 
+## 2026.11.08 20:00 進階編碼 CAVLC／VT 速度拆分
+
+- 將 `h264useCAVLC` 拆成兩個獨立設定：CAVLC 只控制 H.264 entropy；`vtSpeedPriority` 單獨控制 `prioritizeEncodingSpeedOverQuality` 與實驗性軟體節流。
+- 舊版 `h264useCAVLC=true` 會在新鍵不存在時遷移為 `vtSpeedPriority=true`，避免升級後突然失去原本的 VT 速度策略。
+- ReplayKit 與 ScreenCaptureKit 都接上兩個設定；SCK 另外套用至 `RTMPStream` 的 video settings。
+- 進階編碼頁改為位元率、H.264 相容性、VideoToolbox、RTMP 四段；SCK 的 RTMP 連線也接上 E-RTMP 與低延遲設定，B-Frame 仍固定關閉並標示。
+- Socket 配置加入 `vtSpeedPriority`，非敏感設定備份同步納入。
+
 ## 2026.11.08 19:30 共用串流幾何與 RTMP／GPU 設定歸屬
 
 - 新增 `SharedCapture/StreamGeometry.swift`：ReplayKit 與 ScreenCaptureKit 共用 OD／AD／旋轉／capture buffer 的尺寸決策，旋轉只轉置 capture，不重複改寫 encoder canvas。
