@@ -269,9 +269,23 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     ///   呼叫端負責呼叫 finish(message:) 收回已建立的資源。
     private func start(filter: SCContentFilter, token: UUID) async throws {
         let defaults = userDefaults ?? .standard
-        let width = max(2, defaults.integer(forKey: "odstW") > 0 ? defaults.integer(forKey: "odstW") : 1920)
-        let height = max(2, defaults.integer(forKey: "odstH") > 0 ? defaults.integer(forKey: "odstH") : 1080)
-        let size = CGSize(width: min(3840, width / 2 * 2), height: min(2160, height / 2 * 2))
+        let od = CGSize(width: defaults.integer(forKey: "odstW"),
+                        height: defaults.integer(forKey: "odstH"))
+        let ad = CGSize(width: defaults.integer(forKey: "dstW"),
+                        height: defaults.integer(forKey: "dstH"))
+        let rotateLeft = defaults.object(forKey: "screenStreamRotateLeft") as? Bool ?? true
+        let policy = StreamFramePolicy.current
+        let recordingSettings = DirectRecordingSettings(defaults: defaults)
+        let usesRecordingCanvas = mode.wantsRecording && directRecordingEnabled
+        let fixedCanvas = usesRecordingCanvas ? recordingSettings.canvas : policy.fixedCanvas
+        let geometry = CaptureStreamGeometry.resolve(
+            output: od,
+            intermediate: ad,
+            source: nil,
+            rotation: CaptureStreamRotation(rotateLeft: rotateLeft),
+            fixedCanvas: fixedCanvas,
+            fallback: CGSize(width: 1920, height: 1080))
+        let size = geometry.encoderSize
         CaptureAudioOwnership.shared.begin()
         observeAudioSession(token: token)
         logAudioSession("capture.begin")
@@ -285,14 +299,9 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             logAudioSession("capture.audioActivated")
         }
         let config = SCStreamConfiguration()
-        // SC 擷取緩衝的寬高與輸出設定是轉置的（與 ReplayKit 相同）：左轉時以「轉置」尺寸擷取，
-        // 旋轉後剛好對上輸出畫布 size（否則來源是橫的、畫面內容被塞成直的）。
-        let rotateLeft = defaults.object(forKey: "screenStreamRotateLeft") as? Bool ?? true
-        if rotateLeft {
-            config.width = Int(size.height); config.height = Int(size.width)
-        } else {
-            config.width = Int(size.width); config.height = Int(size.height)
-        }
+        // 共用幾何：旋轉只轉置擷取緩衝，最終 encoder／overlay 畫布維持 OD 或政策畫布。
+        config.width = Int(geometry.captureBufferSize.width)
+        config.height = Int(geometry.captureBufferSize.height)
         config.capturesAudio = true
         // 以下皆為 macOS/macCatalyst 專用（iOS 標記為不可用），iOS 一概不設定：
         // pixelFormat / minimumFrameInterval / queueDepth / captureMicrophone /
@@ -324,8 +333,8 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         if mode.wantsStreaming || (mode.wantsRecording && directRecordingEnabled) {
             startupStage = "pipeline.prepare"
             do {
-                try await prepareMediaPipeline(source: source, filter: filter)
-                if mode.wantsStreaming { try await preparePublishing(size: size) }
+                try await prepareMediaPipeline(source: source, filter: filter, geometry: geometry)
+                if mode.wantsStreaming { try await preparePublishing(size: geometry.encoderSize) }
             }
             catch is CancellationError { throw CancellationError() }
             catch {
@@ -436,7 +445,8 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     ///   - source: 要掛載影音取樣接收器的 SCStream。
     ///   - filter: 用於判斷是否掛載麥克風輸入。
     /// - Throws: 取樣處理器建立或系統輸出掛載失敗。
-    private func prepareMediaPipeline(source: SCStream, filter: SCContentFilter) async throws {
+    private func prepareMediaPipeline(source: SCStream, filter: SCContentFilter,
+                                      geometry: CaptureStreamGeometry) async throws {
         let defaults = userDefaults ?? .standard
         let pipeline = CaptureMediaPipeline()
         self.pipeline = pipeline
@@ -470,11 +480,11 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         let policy = StreamFramePolicy.current
         let recordingSettings = DirectRecordingSettings(defaults: defaults)
         let usesRecordingCanvas = mode.wantsRecording && directRecordingEnabled
-        let canvas = usesRecordingCanvas ? recordingSettings.canvas : policy.fixedCanvas
+        let canvas = geometry.rotatorCanvas
         let fills = usesRecordingCanvas ? recordingSettings.fillsCanvas : policy.fillsCanvas
-        sendlog(message: "[CaptureCanvas] recording=\(usesRecordingCanvas) canvas=\(String(describing: canvas)) fills=\(fills) overlayCoordinates=canvas")
+        sendlog(message: "[CaptureCanvas] recording=\(usesRecordingCanvas) canvas=\(canvas.width)x\(canvas.height) intermediate=\(String(describing: geometry.intermediateSize)) fills=\(fills) orientation=\(geometry.orientation) overlayCoordinates=canvas")
         let pump = try ScreenSamplePump(mixer: pipeline.mixer, probe: probe,
-            rotateLeft: defaults.object(forKey: "screenStreamRotateLeft") as? Bool ?? true,
+            rotateLeft: geometry.rotation == .left,
             canvas: canvas, fills: fills)
         self.pump = pump
         try source.addStreamOutput(pump, type: .screen, sampleHandlerQueue: sampleQueue)
@@ -555,10 +565,8 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         //（ReplayKit SampleHandler 的 encoderW/H = ODWidth/ODHeight）。SC 擷取緩衝的寬高
         // 本身與設定是轉置的，旋轉後剛好對上這個畫布；先前在此再交換會讓輸出變成 1080×1920（直的）。
         // 輸出畫布政策：預設 16:9（含黑邊）；native 沿用來源尺寸。
-        let framePolicy = StreamFramePolicy.current
-        let recordingSettings = DirectRecordingSettings(defaults: defaults)
-        video.videoSize = mode.wantsRecording && directRecordingEnabled
-            ? (recordingSettings.canvas ?? size) : (framePolicy.fixedCanvas ?? size)
+        // 幾何已在 start() 解析；policy／錄影畫布／OD 的優先順序不再在此重算。
+        video.videoSize = size
         video.bitRate = max(100_000, defaults.object(forKey: "bitRate") as? Int ?? 6_000_000)
         video.maxKeyFrameIntervalDuration = Int32(max(0, min(60, defaults.object(forKey: "KeyFrameInterval") as? Int ?? 2)))
         video.allowFrameReordering = false
@@ -567,6 +575,8 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         video.profileLevel = H264EncodingProfile.resolve(defaults.string(forKey: "h264level") ?? "AutoHigh")
         // 與 ReplayKit 相同：Baseline 必須使用 CAVLC。
         video.h264EntropyMode = video.profileLevel.contains("Baseline") ? "cavlc" : nil
+        let bufferCount = defaults.object(forKey: "BufferCount") as? Int ?? -1
+        video.maxFrameDelayCount = bufferCount
         switch defaults.integer(forKey: "BitRateMode") {
         case 1: video.bitRateMode = .constant
         case 2: video.bitRateMode = .variable
@@ -574,6 +584,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         }
         startupStage = "pipeline.videoSettings"
         try await stream.setVideoSettings(video)
+        await stream.setVideoInputBufferCounts(bufferCount)
         await stream.setBitRateStrategy(StreamVideoAdaptiveBitRateStrategy(mamimumVideoBitrate: video.bitRate))
         await conn.setReconnectEnabled(true)
         let reconnectSession = state.id

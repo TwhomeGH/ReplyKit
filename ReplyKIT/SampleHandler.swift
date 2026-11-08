@@ -428,48 +428,18 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                     }
                 }
 
+                RPConfig.shared.updateState(Rotate: Rlog)
+                let geometry = resolvedStreamGeometry()
                 var vset = await rtmpStream.videoSettings
-                var NewVW = DWidth
-                var NewVH = DHeight
+                vset.videoSize = geometry.encoderSize
+                await mediaMixer.setVideoOrientation(geometry.orientation == .portrait ? .portrait : .landscapeRight)
 
-                if ODWidth > 0 && ODHeight > 0 {
-                    NewVW = ODWidth
-                    NewVH = ODHeight
-                } else if ADWidth > 0 && ADHeight > 0 {
-                    NewVW = ADWidth
-                    NewVH = ADHeight
-                }
-
-
-                let Rotate = RotationAngle(rawValue: UInt32(Rlog))
-
-                switch Rotate {
-                case .landscapeLeft,.landscapeRight:
-                        vset.videoSize.width = CGFloat(NewVW)
-                        vset.videoSize.height = CGFloat(NewVH)
-
-                case .portrait,.portraitUpsideDown:
-                        vset.videoSize.width = CGFloat(NewVH)
-                        vset.videoSize.height = CGFloat(NewVW)
-
-                    default:
-                        vset.videoSize.width = CGFloat(NewVH)
-                        vset.videoSize.height = CGFloat(NewVW)
-
-                        break
-
-                }
-
-
-                sendlog(message: "RVideoSET:\(vset)")
+                sendlog(message: "RVideoSET encoder=\(Int(geometry.encoderSize.width))x\(Int(geometry.encoderSize.height)) capture=\(Int(geometry.captureBufferSize.width))x\(Int(geometry.captureBufferSize.height))")
                 sendlog(message:"[Rotate變換]  \(Rlog)")
 
                 try? await rtmpStream.setVideoSettings(vset)
 
                 await rtmpStream.restartVideoEncoding(reason: "video Rotate settings updated")
-
-
-                RPConfig.shared.updateState(Rotate:Rlog)
 
 
             }
@@ -1037,20 +1007,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         videoSettings.scalingMode = .letterbox
 
         if setSize {
-            let rotate = RPConfig.shared.state.Rotate
-            if rotate == 0 || rotate == 180 {
-
-                await mediaMixer.setVideoOrientation(.portrait)
-
-                videoSettings.videoSize = CGSize(width: CGFloat(height), height: CGFloat(width))
-
-
-            } else {
-
-                await mediaMixer.setVideoOrientation(.landscapeRight)
-
-                videoSettings.videoSize = CGSize(width: CGFloat(width), height: CGFloat(height))
-            }
+            let geometry = resolvedStreamGeometry(source: CGSize(width: width, height: height))
+            await mediaMixer.setVideoOrientation(geometry.orientation == .portrait ? .portrait : .landscapeRight)
+            videoSettings.videoSize = geometry.encoderSize
         }
 
 
@@ -1097,7 +1056,20 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
         await target.restartVideoEncoding(reason: "video settings updated")
 
-        sendlog(message: "套用完整 video settings: \(width)x\(height) codec=\(codec) profile=\(profilelvl) keyframe=\(kv)s bitrate=\(RPConfig.shared.state.BitRate/1000)kbps")
+        let geometry = resolvedStreamGeometry(source: CGSize(width: width, height: height))
+        sendlog(message: "套用完整 video settings: source=\(width)x\(height) encoder=\(Int(geometry.encoderSize.width))x\(Int(geometry.encoderSize.height)) codec=\(codec) profile=\(profilelvl) keyframe=\(kv)s bitrate=\(RPConfig.shared.state.BitRate/1000)kbps")
+    }
+
+    /// 與 ScreenCaptureKit 共用的尺寸／旋轉解析；OD 最終、AD 中間，旋轉不改寫 encoder size。
+    private func resolvedStreamGeometry(source: CGSize? = nil) -> CaptureStreamGeometry {
+        let state = RPConfig.shared.state
+        return CaptureStreamGeometry.resolve(
+            output: CGSize(width: state.ODWidth, height: state.ODHeight),
+            intermediate: CGSize(width: state.ADWidth, height: state.ADHeight),
+            source: source,
+            rotation: CaptureStreamRotation(rawValue: state.Rotate) ?? .none,
+            fixedCanvas: nil,
+            fallback: CGSize(width: max(2, DWidth), height: max(2, DHeight)))
     }
 
     func configureVideo_init() async {
@@ -1792,97 +1764,17 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
 
-        if ODWidth > 0 && ODHeight > 0 {
+        let geometry = resolvedStreamGeometry(source: CGSize(width: width, height: height))
+        let newSize = geometry.encoderSize
+        await mediaMixer.setVideoOrientation(geometry.orientation == .portrait ? .portrait : .landscapeRight)
 
-            sendlog(
-                message: "使用指定 輸出設定寬高：\(ODWidth) x \(ODHeight) GPU使用:\(ADWidth)x\(ADHeight)"
-            )
-
-
-            width = ODHeight
-            height = ODWidth
-
-
-        } else if ADWidth > 0 && ADHeight > 0 {
-            sendlog(message: "使用與GPU一致設定寬高：\(ADWidth) x \(ADHeight)")
-            width = ADHeight
-            height = ADWidth
-        } else if RPConfig.shared.enableSocketLog {
-            sendlog(message: "configureVideo socket 模式未取得尺寸，跳過 App Group fallback")
-        } else {
-            // fallback: 讀取 App Group 中上次設定的值，encoder 優先使用最終畫布 OD/odst。
-            let outW = SharedDefaults.group?.integer(forKey: "odstW") ?? 0
-            let outH = SharedDefaults.group?.integer(forKey: "odstH") ?? 0
-            let fbW = outW > 0 ? outW : (SharedDefaults.group?.integer(forKey: "dstW") ?? 0)
-            let fbH = outH > 0 ? outH : (SharedDefaults.group?.integer(forKey: "dstH") ?? 0)
-            if fbW > 0 && fbH > 0 {
-                sendlog(message: "configureVideo fallback UserDefaults encoder: \(fbW)x\(fbH)")
-                width = fbH
-                height = fbW
-            }
-        }
-
-
-
-        var avfrom = lastVideoOrientation
-        let newSize: CGSize
-
-        let rotateConfig = RPConfig.shared.state.Rotate
-        sendlog(message: "ReplayKit 畫面方向 : \(rotateConfig) | AD:\(ADWidth)x\(ADHeight) OD:\(ODWidth)x\(ODHeight) 原始:\(width)x\(height)")
-
-        switch rotateConfig {
-            case 0,180:
-                avfrom = .portrait
-                sendlog(message: "[旋轉時間軸] 配置=直向(\(rotateConfig)°)")
-                break
-            case 90,270:
-                avfrom = .landscapeRight
-                sendlog(message: "[旋轉時間軸] 配置=橫向(\(rotateConfig)°)")
-                break
-            default:
-                avfrom = .landscapeRight
-                sendlog(message: "[旋轉時間軸] 配置=橫向預設(\(rotateConfig)°)")
-                break
-        }
-
-        switch avfrom {
-
-        case .portrait, .portraitUpsideDown:
-            newSize = CGSize(width: CGFloat(width), height: CGFloat(height))
-            sendlog(message: "[旋轉時間軸] 初始更新直向 size:\(newSize)")
-            Task { await mediaMixer.setVideoOrientation(.portrait) }
-            break
-        case .landscapeLeft,.landscapeRight:
-            newSize = CGSize(width: CGFloat(height), height: CGFloat(width))
-            sendlog(message: "[旋轉時間軸] 初始更新橫向 size:\(newSize)")
-            Task { await mediaMixer.setVideoOrientation(.landscapeRight) }
-            break
-        default:
-            newSize = CGSize(width: CGFloat(height), height: CGFloat(width))
-            sendlog(message: "[旋轉時間軸] 初始更新橫向(預設) size:\(newSize)")
-            Task { await mediaMixer.setVideoOrientation(.landscapeRight) }
-            break
-        }
-
-
-
-        let dimsCopy = (width, height)
+        let dimsCopy = (Int(newSize.width), Int(newSize.height))
         Task {
             await applyAllVideoSettings(width: dimsCopy.0, height: dimsCopy.1)
         }
+        lastConfiguredSize = newSize
 
-        if lastConfiguredSize != newSize {
-            lastConfiguredSize = newSize
-            Task {
-                var vs2 = await rtmpStream.videoSettings
-                vs2.videoSize = newSize
-                try? await rtmpStream.setVideoSettings(vs2)
-
-                await rtmpStream.restartVideoEncoding(reason: "video settings updated")
-            }
-        }
-
-        sendlog(message: "Video 拿到畫面 \(width)x\(height)")
+        sendlog(message: "Video 拿到畫面 source=\(width)x\(height) encoder=\(dimsCopy.0)x\(dimsCopy.1) capture=\(Int(geometry.captureBufferSize.width))x\(Int(geometry.captureBufferSize.height)) rotation=\(geometry.rotation)")
     }
 
     var lastlogTime : Double = 0.0

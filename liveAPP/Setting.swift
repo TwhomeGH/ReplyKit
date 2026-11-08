@@ -25,8 +25,6 @@ final class GPUSettingsViewModel: ObservableObject {
 
     @AppStorage("RotateOriginal",store:userDefaults) var RotateOriginal = false
 
-    @AppStorage("BufferCount", store: userDefaults) var BufferCount = -1
-
     @AppStorage(
         "Rotate",
         store: userDefaults
@@ -224,6 +222,12 @@ final class GPUSettingsViewModel: ObservableObject {
 struct GPURotateView: View {
     @ObservedObject var viewModel: GPUSettingsViewModel
     @AppStorage("useBic",store:userDefaults) private var useBic = false
+    @AppStorage("captureBackend", store: userDefaults)
+    private var captureBackend = CaptureBackend.replayKit.rawValue
+
+    private var usesScreenCaptureKit: Bool {
+        CaptureBackend(rawValue: captureBackend) == .screenCaptureKit
+    }
 
 
     var body: some View {
@@ -450,52 +454,23 @@ struct GPURotateView: View {
 
 
 
-                TextField(
-                    AppLanguage.localized("gpu.buffer.placeholder"),
-                    value: $viewModel.BufferCount,
-                    format: .number
-                )
-                    .frame(maxWidth: .infinity)
-                     .textFieldStyle(RoundedBorderTextFieldStyle())
-                     .keyboardType(.numberPad)
-
-                     .onChange(of: viewModel.BufferCount) { _ in
-
-                             // 將數值發送到 Extension 或 Rotator
-                             CFNotificationCenterPostNotification(cfCenter, CFNotificationName("MaxInfilght" as CFString), nil, nil, true)
-
+                if usesScreenCaptureKit {
+                    Text("gpu.replayKitOnly")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                } else {
+                    Toggle(isOn: $useBic) {
+                        Text("gpu.bicubic.enable")
                     }
-
-                Stepper(
-                    "\(AppLanguage.localized("gpu.buffer.count")): \(viewModel.BufferCount == -1 ? AppLanguage.localized("common.auto") : "\(viewModel.BufferCount)")",
-                    value: $viewModel.BufferCount,
-                    in: -1...100
-                )
-                    .onChange(of: viewModel.BufferCount) { _ in
-
-                        logTo("VBuffer -> \(viewModel.BufferCount) ")
-
-                    }
-
-                Text("gpu.buffer.recommendation"
-                )
+                    Text("gpu.bicubic.description")
                         .font(.footnote)
                         .foregroundColor(.secondary)
                         .padding(.bottom, 5)
-
-                Toggle(isOn:$useBic){
-                    Text("gpu.bicubic.enable")
+                    Text("gpu.bilinear.description")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                        .padding(.bottom, 5)
                 }
-                Text("gpu.bicubic.description"
-                )
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
-                        .padding(.bottom, 5)
-                Text("gpu.bilinear.description"
-                )
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
-                        .padding(.bottom, 5)
 
 
 

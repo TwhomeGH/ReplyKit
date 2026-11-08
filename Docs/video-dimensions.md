@@ -16,7 +16,7 @@
 
 ### Encoder
 
-encoder `videoSize` 一律優先使用 `odstW` / `odstH`：
+ReplayKit 的 encoder `videoSize` 以 `odstW` / `odstH` 優先；ScreenCaptureKit 若有 `StreamFramePolicy` 固定畫布則以政策優先（實際順序見下方「共用幾何」）：
 
 1. `odstW > 0 && odstH > 0` 時，輸出尺寸使用 OD。
 2. OD 沒有成對有效時，才 fallback 到 `dstW` / `dstH`。
@@ -71,9 +71,25 @@ runtime 更新時必須同時刷新 AD 與 OD，避免 encoder 已經切到新�
 
 例如 `1080p 16:9` preset 使用 `1552x1080` 做 GPU 中間處理，但輸出的 RTMP metadata 與影片解析度必須是 `1920x1080`。如果分析工具看到 `1080x1552`，通常代表 `dstW` / `dstH` 被錯套到 encoder，並且又被旋轉資訊轉置。
 
+## 共用幾何
+
+`SharedCapture/StreamGeometry.swift` 是 ReplayKit 與 ScreenCaptureKit 共用的尺寸決策：
+
+- `encoderSize`／`overlayCanvas`：最終畫布，優先序為固定政策畫布 → OD → AD → 旋轉後來源 → fallback。
+- `captureBufferSize`：只在 90／270 度時轉置最終畫布；不再影響 encoder 尺寸。
+- `intermediateSize`：AD；保留給 GPU rotator，不由旋轉改寫。
+- `rotation`：0／90／180／270，決定 mixer 方向與 capture 轉置；不要再用 `default` 猜測交換。
+- 只改 OD 時，應只更新 encoder／overlay／rotator 輸出，不能改 AD 或 capture；這是後續 `outputOnly` transition 的界線。
+
+## 後端差異
+
+- `BufferCount` 是 RTMP／encoder 層的輸入緩衝；ReplayKit 與 ScreenCaptureKit 都使用，不屬於 GPU 畫布。
+- `useBic` 是 ReplayKit GPU rotator 的縮放品質；ScreenCaptureKit 不使用，UI 在 SCK 模式不應顯示為可用。
+
 ## 相關實作
 
 - `liveAPP/Setting.swift`：設定頁維護 `dst*` 與 `odst*`。
 - `liveAPP/Socket.swift`：把兩組尺寸送到 Broadcast Extension。
 - `ReplyKIT/SampleHandler.swift`：讀取完整尺寸並套用 encoder。
 - `ReplyKIT/VideoProcess.swift`：同步 rotator 的 AD / OD 尺寸。
+- `SharedCapture/StreamGeometry.swift`：兩端共用的幾何解析。

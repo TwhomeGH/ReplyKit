@@ -3947,16 +3947,23 @@
     },
     "gpu.bicubic.description" : {
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Bicubic scaling can preserve more detail than bilinear filtering when resizing images or video." } },
-        "ja" : { "stringUnit" : { "state" : "translated", "value" : "Bicubicは画像や映像の拡大縮小で、バイリニアより細部を保ちやすい方式です。" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "雙三次插值算法經常用於圖像或者影片的縮放，它能比占主導地位的雙線性濾波算法保留更好的細節品質" } }
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Bicubic scaling is used only by the ReplayKit GPU rotator. ScreenCaptureKit does not use this setting." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "Bicubic は ReplayKit の GPU ローテーター専用です。ScreenCaptureKit では使用しません。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "Bicubic 僅供 ReplayKit 的 GPU rotator 使用；ScreenCaptureKit 不會使用此設定。" } }
       }
     },
     "gpu.bicubic.enable" : {
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enable Bicubic" } },
-        "ja" : { "stringUnit" : { "state" : "translated", "value" : "Bicubicを有効化" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "啟用Bicubic" } }
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enable Bicubic (ReplayKit)" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "Bicubic を有効化（ReplayKit）" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "啟用 Bicubic（ReplayKit）" } }
+      }
+    },
+    "gpu.replayKitOnly" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Bicubic is used only by the ReplayKit GPU rotator; ScreenCaptureKit does not use this setting." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "Bicubic は ReplayKit の GPU ローテーター専用です。ScreenCaptureKit では使用しません。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "Bicubic 僅供 ReplayKit 的 GPU rotator 使用；ScreenCaptureKit 不會使用此設定。" } }
       }
     },
     "gpu.bilinear.description" : {
@@ -3968,23 +3975,23 @@
     },
     "gpu.buffer.count" : {
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Buffer Count" } },
-        "ja" : { "stringUnit" : { "state" : "translated", "value" : "バッファ数" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "輸入緩衝區數量" } }
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "RTMP / Encoder Buffer" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "RTMP／エンコーダーバッファ" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "RTMP／編碼輸入緩衝" } }
       }
     },
     "gpu.buffer.placeholder" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Enter count, -1 = Auto" } },
         "ja" : { "stringUnit" : { "state" : "translated", "value" : "数を入力、-1 = 自動" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "直接輸入數量，-1=自動" } }
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "輸入數量，-1=自動" } }
       }
     },
     "gpu.buffer.recommendation" : {
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recommended: -1 = Auto. 5 or 10 may use too much memory." } },
-        "ja" : { "stringUnit" : { "state" : "translated", "value" : "推奨: -1 = 自動。5や10はメモリ使用量が大きくなる場合があります。" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "建議值: -1=自動，5或10 太大可能爆內存" } }
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Applies to the RTMP/encoder layer for both ReplayKit and ScreenCaptureKit. Recommended -1 = Auto; 5 or 10 may use too much memory." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ReplayKit と ScreenCaptureKit の RTMP／エンコーダー層に適用されます。推奨 -1 = 自動。5 や 10 はメモリ使用量が大きくなる場合があります。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "套用於 ReplayKit 與 ScreenCaptureKit 的 RTMP／編碼層；建議 -1=自動，5 或 10 可能占用過多記憶體。" } }
       }
     },
     "gpu.canvas.height" : {

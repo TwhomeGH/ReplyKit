@@ -9,6 +9,7 @@ struct EncodingSettingsView: View {
     @AppStorage("odstW", store: userDefaults) private var width = 0
     @AppStorage("odstH", store: userDefaults) private var height = 0
     @AppStorage("isLowLatencyRateControlEnabled", store: userDefaults) private var lowLatency = false
+    @AppStorage("BufferCount", store: userDefaults) private var bufferCount = -1
     @State private var result: H264CapabilityResult?
     @State private var loading = false
     @State private var refreshID = 0
@@ -61,6 +62,7 @@ struct EncodingSettingsView: View {
                         }
                         Text(AppLanguage.localized("encoding.hevcUnverified")).font(.caption)
                     }
+                    bufferOptions
                     Text(AppLanguage.localized("home.nextStart"))
                         .font(.caption).foregroundStyle(.secondary)
                 }.padding(.top, 8)
@@ -110,6 +112,30 @@ struct EncodingSettingsView: View {
             Text(AppLanguage.localized("encoding.scope")).font(.caption).foregroundStyle(.secondary)
             Button(AppLanguage.localized("encoding.refresh")) { refreshID += 1 }
                 .disabled(loading || busy)
+        }
+    }
+
+    /// 這是 RTMP／VideoToolbox 的輸入緩衝，不是 GPU 畫布；ReplayKit 與 SCK 都會使用。
+    private var bufferOptions: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(AppLanguage.localized("gpu.buffer.count"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack {
+                TextField(AppLanguage.localized("gpu.buffer.placeholder"),
+                          value: $bufferCount, format: .number)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .keyboardType(.numberPad)
+                Stepper("", value: $bufferCount, in: -1...100)
+                    .labelsHidden()
+            }
+            .onChange(of: bufferCount) { _ in
+                CFNotificationCenterPostNotification(cfCenter,
+                    CFNotificationName("MaxInfilght" as CFString), nil, nil, true)
+            }
+            Text(AppLanguage.localized("gpu.buffer.recommendation"))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
         }
     }
 }

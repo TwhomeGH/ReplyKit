@@ -382,6 +382,7 @@ API 遷移屬後續技術評估，不作為以上功能完成的條件；需要�
   - [ ] 實機驗證 02:58 同情境的 `audioResyncs`／A/V 是否穩定；若 raw track0 gap 未進入 mixed/RTMP，還要處理 mixer 端。
 - [x] 診斷匯出增加「上次前景到背景」與「本次前景到現在」；後者以前景 active 起點到現在，適合停止後回到 App 檢查記憶體與收尾日誌，不必等下一次進背景。
 - [x] **AV Lag 持久化**：新增最近 5 場、長場次分段（1／2／4／8 小時）、session 分組、背景 in-progress 保存、AV Lag 儲存設定、單場刪除（整組 segment）；預設仍為記憶體／4 小時最新區間。待實機驗證分段邊界、被殺後 in-progress、清除與備份還原。
+- [x] **共用串流幾何**：`SharedCapture/StreamGeometry.swift` 已接入 ReplayKit／SCK；BufferCount 移到編碼設定並套用 SCK，useBic 僅 ReplayKit 顯示。待實機驗證 portrait／landscape、policy／OD、只改輸出尺寸（outputOnly transition 尚未實作）。
 - [x] **Markdown 空行本地檢查**：`Scripts/check_markdown.py` 與 Development index workflow 共用 MD012；可選 `.githooks/pre-commit`。已修正 `AV_LAG.md` 尾端空白。
 - [x] **分類文件靜態站 (1/2)**：ChangeLogKit 預設使用 `main`（可用 `CHANGELOGKIT_REF` 覆寫並在 CI 摘要記錄 commit）、DocC workflow 匯出 `site/project/`、根首頁入口、文件觸發條件與 `Scripts/validate_pages.py` 子路徑驗證已接入。待實際 Pages 部署後確認圖片與外部連結。
 - [ ] **2026-11-08 停止後仍約 134–146MB**：16:00 停止後 18 分鐘、capturePhase=idle、driver／lease 已釋放、PiP 未啟用，footprint 仍 134–146MB（pre-capture 28.6MB）；16:19:41 compressed 125.4MB、resident 29.4MB。已加 `malloc_zone_statistics`、log／AVLag／StreamDiagnostics 計數與 `MemoryRelief`（capture.finished／memory.warning）；`LogBuffer` 2 MiB、`LogModel` 1 MiB、`AVLagModel` 2 MiB／2,880 筆。仍待冷啟動 baseline、短串流 A/B，以及判斷殘留是 App heap 或 AVFoundation／VideoToolbox 框架。

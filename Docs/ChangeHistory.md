@@ -1,5 +1,12 @@
 # 變更歷史
 
+## 2026.11.08 19:30 共用串流幾何與 RTMP／GPU 設定歸屬
+
+- 新增 `SharedCapture/StreamGeometry.swift`：ReplayKit 與 ScreenCaptureKit 共用 OD／AD／旋轉／capture buffer 的尺寸決策，旋轉只轉置 capture，不重複改寫 encoder canvas。
+- ReplayKit `SampleHandler` 與 SCK `ScreenCaptureSource` 改接共用幾何；SCK 套用 `BufferCount` 到 RTMP stream／VideoToolbox。
+- `BufferCount` 從 GPU 頁移到編碼設定，明確標示為 RTMP／encoder 緩衝；`useBic` 留在 GPU 頁但只在 ReplayKit 顯示，SCK 顯示說明。
+- 新增 `CaptureStreamGeometryTests` 覆蓋固定畫布、OD／AD fallback、旋轉與無效尺寸。
+
 ## 2026.11.08 19:00 本機 Markdown 空行檢查
 
 - 新增 `Scripts/check_markdown.py`，與 development-index workflow 共用 MD012 檢查；不再依賴 `npx markdownlint-cli`，避免只有 CI 才發現連續空白行。
