@@ -381,7 +381,7 @@ API 遷移屬後續技術評估，不作為以上功能完成的條件；需要�
   - [x] CI 摘要現在會列出 `[Runner infrastructure]`／`ci-summary.md`；iOS 測試日誌會記錄實際 `name`／`type`／`runtime`／`UDID`（本次為 iPhone 17、iOS 27.0）。
   - [ ] 實機驗證 02:58 同情境的 `audioResyncs`／A/V 是否穩定；若 raw track0 gap 未進入 mixed/RTMP，還要處理 mixer 端。
 - [x] 診斷匯出增加「上次前景到背景」與「本次前景到現在」；後者以前景 active 起點到現在，適合停止後回到 App 檢查記憶體與收尾日誌，不必等下一次進背景。
-- [x] **AV Lag 持久化**：新增最近 5 場、長場次分段（1／2／4／8 小時）、session 分組、背景 in-progress 保存、AV Lag 儲存設定；預設仍為記憶體／4 小時最新區間。待實機驗證分段邊界、被殺後 in-progress、清除與備份還原。
+- [x] **AV Lag 持久化**：新增最近 5 場、長場次分段（1／2／4／8 小時）、session 分組、背景 in-progress 保存、AV Lag 儲存設定、單場刪除（整組 segment）；預設仍為記憶體／4 小時最新區間。待實機驗證分段邊界、被殺後 in-progress、清除與備份還原。
 - [ ] **2026-11-08 停止後仍約 134–146MB**：16:00 停止後 18 分鐘、capturePhase=idle、driver／lease 已釋放、PiP 未啟用，footprint 仍 134–146MB（pre-capture 28.6MB）；16:19:41 compressed 125.4MB、resident 29.4MB。已加 `malloc_zone_statistics`、log／AVLag／StreamDiagnostics 計數與 `MemoryRelief`（capture.finished／memory.warning）；`LogBuffer` 2 MiB、`LogModel` 1 MiB、`AVLagModel` 2 MiB／2,880 筆。仍待冷啟動 baseline、短串流 A/B，以及判斷殘留是 App heap 或 AVFoundation／VideoToolbox 框架。
 - [ ] **2026-11-08 背景斷流（無 PiP）**：15:32 進入背景後，15:58:49～16:00:36 App 整個被系統暫停約 107 秒；`CaptureCallbacks` 空窗 98.3 秒、`encoderInput inFPS=0 inputIdle≈98.3s`，之後 RTMP 才 `Connection reset by peer`。新增 `[AppEnvironment]`（backgroundModes／idleTimerDisabled／protectedData）與 SCK 擷取期間 `isIdleTimerDisabled`；待用 Auto-Lock Never／正常安裝重測，確認是鎖定、iOS 背景限制，或簽名後 `screen-capture` 被移除。
 - [ ] **2026-11-07 影片內容落後（audio 正常）**：使用者用 PiP 子母畫面的固定直播計時器當內容時鐘，2:22 影片中 audio（Whisper）在 8105.5s 正確，video timer 只有 8100s；曲線 0→1 @38、→2 @76、→3 @94、→4 @116、→5 @133、→6 @141 分鐘，呈階梯而非平滑漂移。已用 timer 將 video retime、audio 不動；這推翻「02:58 音訊回退是主因」的解讀，RTMPTimestamp 修正仍作音訊缺口防護。

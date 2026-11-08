@@ -8,6 +8,7 @@ struct AVLagReportView: View {
     @State private var reportText = ""
     @State private var copied = false
     @State private var summaries: [AVLagSessionSummary] = []
+    @State private var pendingDelete: AVLagSessionSummary?
 
     var body: some View {
         List {
@@ -63,6 +64,14 @@ struct AVLagReportView: View {
                                 }
                             }
                         }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                pendingDelete = summary
+                            } label: {
+                                Label(AppLanguage.localized("avLag.stored.delete"),
+                                      systemImage: "trash")
+                            }
+                        }
                     }
                 }
             }
@@ -103,6 +112,22 @@ struct AVLagReportView: View {
             Task { await reloadSummaries() }
         }
         .onChange(of: model.samples.count) { _ in refreshReport() }
+        .alert(AppLanguage.localized("avLag.stored.deleteTitle"), isPresented: Binding(
+            get: { pendingDelete != nil },
+            set: { if !$0 { pendingDelete = nil } }
+        )) {
+            Button(AppLanguage.localized("avLag.settings.cancel"), role: .cancel) {
+                pendingDelete = nil
+            }
+            Button(AppLanguage.localized("avLag.stored.deleteConfirm"), role: .destructive) {
+                let id = pendingDelete?.id
+                pendingDelete = nil
+                guard let id else { return }
+                Task { await AVLagReportStore.shared.delete(sessionID: id) }
+            }
+        } message: {
+            Text(AppLanguage.localized("avLag.stored.deleteMessage"))
+        }
     }
 
     private func refreshReport() {
