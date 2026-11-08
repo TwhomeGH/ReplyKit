@@ -1,5 +1,33 @@
 # 變更歷史
 
+## 2026.11.08 16:50 AV Lag 持久化與長場次分段
+
+- 新增 `AVLagReportStore`：可選保留最近 5 場，停止時原子寫入 Application Support；以 session 分組，總量約 50 MiB。
+- 新增長場次分段：1／2／4／8 小時（預設 4）可選；8 小時以上拆成子檔但報告頁仍按 session 分組；每段保留 `segmentIndex`、`segmentStartedAt`、`segmentEndedAt`、`inProgress`。
+- 預設仍是只保留本次記憶體、4 小時最新區間；未開分段時超限標記 `truncatedBefore`。
+- 新增 AV Lag 儲存設定頁：保存模式、長場次分段、段長、清除已保存場次；設定納入非敏感備份。
+- 報告頁新增最近場次與分段清單；App 進背景會保存目前未完成 segment，降低被系統終止時的損失。
+- 最近場次支援單場刪除：左滑確認後刪除該 session 的所有分段，不會只留下孤兒 segment。
+
+## 2026.11.08 16:30 記憶體歸因、停止後釋放與 byte 上限
+
+- 歸因：`[Memory]` 新增 `mallocInUse`／`mallocAllocated`、`logBuffer` 筆數與 bytes；`[IdleResources]` 新增 UI log、AVLag、StreamDiagnostics 快取計數。用來分辨 App heap 與框架／壓縮頁，不再只看 footprint。
+- 釋放：新增 `MemoryRelief`，在 `capture.finished` 與 `didReceiveMemoryWarning` 呼叫 `PIPService.releaseNonCriticalMemory`、縮減 UI／傳輸 log 緩衝；記憶體警告時額外縮 AVLag 並清 URLCache。檔案日誌不刪除。
+- byte 上限：`LogBuffer` 2 MiB（仍保留 5000 筆上限）、`LogModel` 1 MiB、`AVLagModel` 2 MiB／2,880 筆；記憶體壓力下縮到 512 KiB。`AVLagModel` 仍只在記憶體，重啟即清空。
+
+## 2026.11.08 16:22 診斷匯出新增上次前景到背景
+
+- `AppSession` 現在在前景 active 時記錄起點、進背景時保存「上次前景 active → 背景」區間到 UserDefaults；程序重啟後仍可選取。
+- 診斷匯出新增「上次前景到背景」與「本次前景到現在」範圍；前者取上次 active 到進背景，後者取目前 active 起到按下產生時，兩者前後各留 1 秒以包含邊界日誌。回到前景後可用後者排除先前的背景期間與舊雜訊。
+- 16:00–16:20 的停止後記憶體觀察：capturePhase=idle、driver／lease 已釋放、PiP 未啟用，footprint 仍約 134–146MB（pre-capture 28.6MB）；16:19:41 甚至 internal 9.5MB／compressed 125.4MB，代表大部分是壓縮／非活躍頁，不是 CPU 活動或 PiP pool（0.69MB）。仍需冷啟動基準與子系統 A/B 才能判定保留來源。
+
+## 2026.11.08 16:16 背景斷流與 LiveActivity 診斷
+
+- 2026-11-08 15:58:49～16:00:36 的診斷顯示 App 在背景整個被暫停約 107 秒：`[IdleResources]` 30 秒週期中斷、`CaptureCallbacks` 空窗 98.3 秒、`encoderInput inFPS=0 inputIdle≈98.3s`；之後 RTMP 才收到 `Connection reset by peer`。這是 98 秒沒有媒體後伺服器重置，不是 encoder／RTMP 先壞。
+- 新增 `[AppEnvironment]` 日誌：啟動與背景／前景轉換時記錄 `UIBackgroundModes`、`isIdleTimerDisabled`、`protectedDataAvailable`；用於確認簽名後 plist 是否仍保留 `screen-capture`，以及鎖定／背景狀態。
+- SCK 擷取期間設定 `UIApplication.shared.isIdleTimerDisabled = true`，finish 時還原原值；這只能避免前景自動鎖定，不能保證背景無限續跑。
+- `startStreamActivity` 的清理訊息由「重新啟動前清理」改為「建立新活動前清理」；15:31 的第二次啟動是前一次串流 15:26 結束後的新串流，不是 App 重啟。
+
 ## 2026.11.08 14:22 退役無引用的方向鎖定偵測器
 
 - 移除 App 原始碼中的 LockDetect.swift／StableLockRotationDetector；主頁入口已移除，確認無剩餘呼叫。
@@ -37,34 +65,6 @@
 - 修正線性百分比搭配對數長條造成誤讀，來源／估算表統一 −60…0 dBFS，增益顯示 dB 與靜音。
 - 增加 session 隔離的 Mixer 設定套用回報；調整後分軌音量明確標為估算，不冒充實測。
 - 補刻度與舊 session 回報測試、[量測語意與實機驗收](development/AUDIO_VOLUME_METER.md)。Swift 語法檢查通過，Xcode 測試及實機音量驗收待執行。
-
-## 2026.11.08 16:50 AV Lag 持久化與長場次分段
-
-- 新增 `AVLagReportStore`：可選保留最近 5 場，停止時原子寫入 Application Support；以 session 分組，總量約 50 MiB。
-- 新增長場次分段：1／2／4／8 小時（預設 4）可選；8 小時以上拆成子檔但報告頁仍按 session 分組；每段保留 `segmentIndex`、`segmentStartedAt`、`segmentEndedAt`、`inProgress`。
-- 預設仍是只保留本次記憶體、4 小時最新區間；未開分段時超限標記 `truncatedBefore`。
-- 新增 AV Lag 儲存設定頁：保存模式、長場次分段、段長、清除已保存場次；設定納入非敏感備份。
-- 報告頁新增最近場次與分段清單；App 進背景會保存目前未完成 segment，降低被系統終止時的損失。
-- 最近場次支援單場刪除：左滑確認後刪除該 session 的所有分段，不會只留下孤兒 segment。
-
-## 2026.11.08 16:30 記憶體歸因、停止後釋放與 byte 上限
-
-- 歸因：`[Memory]` 新增 `mallocInUse`／`mallocAllocated`、`logBuffer` 筆數與 bytes；`[IdleResources]` 新增 UI log、AVLag、StreamDiagnostics 快取計數。用來分辨 App heap 與框架／壓縮頁，不再只看 footprint。
-- 釋放：新增 `MemoryRelief`，在 `capture.finished` 與 `didReceiveMemoryWarning` 呼叫 `PIPService.releaseNonCriticalMemory`、縮減 UI／傳輸 log 緩衝；記憶體警告時額外縮 AVLag 並清 URLCache。檔案日誌不刪除。
-- byte 上限：`LogBuffer` 2 MiB（仍保留 5000 筆上限）、`LogModel` 1 MiB、`AVLagModel` 2 MiB／2,880 筆；記憶體壓力下縮到 512 KiB。`AVLagModel` 仍只在記憶體，重啟即清空。
-
-## 2026.11.08 16:22 診斷匯出新增上次前景到背景
-
-- `AppSession` 現在在前景 active 時記錄起點、進背景時保存「上次前景 active → 背景」區間到 UserDefaults；程序重啟後仍可選取。
-- 診斷匯出新增「上次前景到背景」與「本次前景到現在」範圍；前者取上次 active 到進背景，後者取目前 active 起到按下產生時，兩者前後各留 1 秒以包含邊界日誌。回到前景後可用後者排除先前的背景期間與舊雜訊。
-- 16:00–16:20 的停止後記憶體觀察：capturePhase=idle、driver／lease 已釋放、PiP 未啟用，footprint 仍約 134–146MB（pre-capture 28.6MB）；16:19:41 甚至 internal 9.5MB／compressed 125.4MB，代表大部分是壓縮／非活躍頁，不是 CPU 活動或 PiP pool（0.69MB）。仍需冷啟動基準與子系統 A/B 才能判定保留來源。
-
-## 2026.11.08 16:16 背景斷流與 LiveActivity 診斷
-
-- 2026-11-08 15:58:49～16:00:36 的診斷顯示 App 在背景整個被暫停約 107 秒：`[IdleResources]` 30 秒週期中斷、`CaptureCallbacks` 空窗 98.3 秒、`encoderInput inFPS=0 inputIdle≈98.3s`；之後 RTMP 才收到 `Connection reset by peer`。這是 98 秒沒有媒體後伺服器重置，不是 encoder／RTMP 先壞。
-- 新增 `[AppEnvironment]` 日誌：啟動與背景／前景轉換時記錄 `UIBackgroundModes`、`isIdleTimerDisabled`、`protectedDataAvailable`；用於確認簽名後 plist 是否仍保留 `screen-capture`，以及鎖定／背景狀態。
-- SCK 擷取期間設定 `UIApplication.shared.isIdleTimerDisabled = true`，finish 時還原原值；這只能避免前景自動鎖定，不能保證背景無限續跑。
-- `startStreamActivity` 的清理訊息由「重新啟動前清理」改為「建立新活動前清理」；15:31 的第二次啟動是前一次串流 15:26 結束後的新串流，不是 App 重啟。
 
 ## 2026.11.07 21:30 A/V 內容延遲診斷與裝置頁入口
 
@@ -1148,6 +1148,24 @@ ScreenCaptureKit 推流在「App 進背景再回來（無 PiP 保活）」後，
 - 搬移內容比對及語法檢查通過；CI／實機回歸待驗證。
 - 維護入口：[主頁模組說明](development/HOME_MODULES.md)。
 
+## 2026.10.07 05:02 DocC 模組根目錄轉址修正
+
+**類型**: 修復 · **檔案**: `Scripts/docc_postprocess.py`
+
+### 問題
+
+- DocC 模組頁實際在 `<module>/documentation/<topic>/`，直接開 `<module>/`（例如 `/ReplyKit/liveAPP/`）會顯示「找不到頁面」；首頁連結因此導向錯誤位置。
+
+### 修改
+
+- `docc_postprocess.py` 新增 `write_module_redirects()`：偵測每個模組的 `documentation/<topic>`，把 `<module>/index.html` 改寫為轉址到內容頁；首頁只列有內容的模組。
+
+### 驗證
+
+- 本機以模擬站台驗證轉址與首頁連結正確；需 CI 部署後確認 `/ReplyKit/liveAPP/` 等可正常渲染。
+
+---
+
 ## 2026.10.07 03:41 設備資訊接入雙來源串流格式與 RTMP 傳輸診斷
 
 - ReplayKit 經 Socket、ScreenCaptureKit 直接更新共用快照，每五秒取樣並顯示過期狀態。
@@ -1181,30 +1199,6 @@ ScreenCaptureKit 推流在「App 進背景再回來（無 PiP 保活）」後，
 
 **相關文件**: [xxx.md](xxx.md)（可選）
 -->
-
-## 2026.10.06 21:52 記錄底層傳送診斷接口與接入待辦
-
-- 底層 checkout 新增 transportDiagnostics()，修正傳送失敗計數及舊 completion 隔離。
-- 更新功能索引與 TODO，App 套件鎖定／統一診斷 UI 仍待接入。
-- 底層新增雙模組 DocC workflow，建置與部署待實跑。
-
-## 2026.10.07 05:02 DocC 模組根目錄轉址修正
-
-**類型**: 修復 · **檔案**: `Scripts/docc_postprocess.py`
-
-### 問題
-
-- DocC 模組頁實際在 `<module>/documentation/<topic>/`，直接開 `<module>/`（例如 `/ReplyKit/liveAPP/`）會顯示「找不到頁面」；首頁連結因此導向錯誤位置。
-
-### 修改
-
-- `docc_postprocess.py` 新增 `write_module_redirects()`：偵測每個模組的 `documentation/<topic>`，把 `<module>/index.html` 改寫為轉址到內容頁；首頁只列有內容的模組。
-
-### 驗證
-
-- 本機以模擬站台驗證轉址與首頁連結正確；需 CI 部署後確認 `/ReplyKit/liveAPP/` 等可正常渲染。
-
----
 
 ## 2026.10.07 00:20 修正 HaishinKit fork 重複 DocC catalog 並更新 pin
 
@@ -1307,6 +1301,12 @@ ScreenCaptureKit 推流在「App 進背景再回來（無 PiP 保活）」後，
 **相關文件**: [development/README.md](Docs/development/README.md)
 
 ---
+
+## 2026.10.06 21:52 記錄底層傳送診斷接口與接入待辦
+
+- 底層 checkout 新增 transportDiagnostics()，修正傳送失敗計數及舊 completion 隔離。
+- 更新功能索引與 TODO，App 套件鎖定／統一診斷 UI 仍待接入。
+- 底層新增雙模組 DocC workflow，建置與部署待實跑。
 
 ## 2026.10.06 21:34 修正 DocC artifact 上傳（含冒號檔名）
 
@@ -1411,6 +1411,141 @@ ScreenCaptureKit 推流在「App 進背景再回來（無 PiP 保活）」後，
 
 **相關文件**：[開發索引](development/README.md)
 
+## 2026.10.06 06:13 修正 SC 疊加上下顛倒與擷取來源轉置
+
+**類型**: 修復 · **檔案**: `liveAPP/Capture/ScreenStreamVideoRotator.swift`, `liveAPP/Capture/ScreenCaptureSource.swift`
+
+### 問題
+
+- 輸出疊加（時間層）上下顛倒。
+- 畫布已是 1920×1080，但畫面內容仍是直的（直的來源被塞進橫畫布）。
+
+### 根因
+
+- 疊加：`CGContext` 已翻轉 CTM 後再 `draw`，會把圖片連同座標一起上下顛倒（重複翻轉）。
+- 內容：SC 擷取緩衝的寬高與輸出設定是轉置的（同 ReplayKit），先前以未轉置尺寸擷取，來源是橫的、內容被塞成直的。
+
+### 修改
+
+- 疊加：移除 CTM 翻轉，改把 `OverlayAnchor` 的左上 y 換算到左下再 `draw`。
+- 擷取：左轉時以轉置尺寸設定 `SCStreamConfiguration.width/height`。
+- 新增 `[CaptureFrame] size=WxH` 診斷（首幀／尺寸變化時輸出）。
+
+**相關文件**: [screencapturekit-integration.md](Docs/screencapturekit-integration.md)
+
+---
+
+## 2026.10.06 05:13 移除 SC 推流閒置 keep-alive 幀泵
+
+**類型**: 修復 · **檔案**: `liveAPP/Capture/ScreenCaptureSource.swift`
+
+### 問題 - 可能造成影片破損/斷續
+
+實機出現影片破損、斷續，疑似 keep-alive 合成 PTS 造成時間戳不連續（待隔離確認）。
+
+### 修改 - 移除 ScreenSamplePump 的 keep-alive
+
+回復為僅旋轉/疊加與 mailboxes；移除定時重播、相關欄位與 `keepAlive{}` 診斷。日後若要重做 idle 保活，需重新設計（PTS 對齊 host clock、不與真實幀競速）。
+
+---
+
+## 2026.10.06 05:00 修正 ScreenOverlayComposer 的 uiFontWeight 重複宣告
+
+**類型**: 修復 · **檔案**: `liveAPP/Capture/ScreenOverlayComposer.swift`
+
+### 問題 - CI 編譯失敗
+
+`ScreenOverlayComposer.swift` 的 `private func uiFontWeight` 與 `OverlaySettingsView.swift` 既有的同名函式（internal）造成 invalid redeclaration。
+
+### 修改 - 移除重複宣告，改用既有函式
+
+移除本檔的 `uiFontWeight`，直接使用 `OverlaySettingsView.swift` 既有的 internal 版本。
+
+---
+
+## 2026.10.06 04:53 修正 SC 推流畫布寬高：改用 (odstW, odstH) 不轉置
+
+**類型**: 修復 · **檔案**: `liveAPP/Capture/ScreenCaptureSource.swift`
+
+### 問題 - 推流畫布變成 1080×1920（直的）
+
+左轉後推流解析度變成 1080×1920，應為橫向 1920×1080。
+
+### 根因 - 編碼畫布多了一次轉置
+
+SC 擷取緩衝的寬高本身即與設定轉置（與 ReplayKit 相同），旋轉後已對上 (odstW, odstH)；先前又交換畫布，導致輸出變直的。
+
+### 修改 - 編碼畫布直接用 size，與 ReplayKit encoder 慣例一致
+
+`video.videoSize = size`（ReplayKit `SampleHandler` 的 encoderW/H = ODWidth/ODHeight，不轉置）。
+
+**相關文件**: [screencapturekit-integration.md](Docs/screencapturekit-integration.md)
+
+---
+
+## 2026.10.06 04:45 SC 推流輸出時間疊加（影像合成器）
+
+**類型**: 新增 · **檔案**: `liveAPP/Capture/ScreenOverlayComposer.swift`（新）, `liveAPP/Capture/ScreenStreamVideoRotator.swift`, `liveAPP/Capture/ScreenCaptureSource.swift`, `liveAPP/Capture/CaptureCoordinator.swift`
+
+### 問題 / 需求 - SC 推流沒有輸出疊加
+
+ReplayKit 路徑的輸出疊加（時間層）由 extension 的 Metal renderer 處理；ScreenCaptureKit 路徑完全沒有疊加、也無自訂畫布。
+
+### 修改 - 影像 worker 加上 CoreGraphics 疊加階段
+
+- 新增 `ScreenOverlayComposer`：依 `OverlaySceneConfig`（時間層）raster 出疊加圖，每秒或設定變更重建；座標採左上原點（與 `OverlayAnchor` 一致）。
+- `ScreenStreamVideoRotator` 改為同時處理旋轉（可選）與疊加：CoreImage 旋轉後，以左上原點 CTM 把疊加圖畫進 BGRA 緩衝；無旋轉且無疊加時原樣返回。
+- `ScreenSamplePump` 一律建立帶 overlay 的合成器；`CaptureCoordinator` 說明更新。
+
+**相關文件**: [screencapturekit-integration.md](Docs/screencapturekit-integration.md)
+
+**待驗證**: 疊加的垂直錨點（CoreGraphics 翻轉 CTM）與效能需實機確認。
+
+---
+
+## 2026.10.06 04:26 推流閒置 keep-alive 幀泵（重播最後一格）
+
+**類型**: 新增 · **檔案**: `liveAPP/Capture/ScreenCaptureSource.swift`
+
+### 問題 - 畫面靜止時 ScreenCaptureKit 不送視訊
+
+SC 只在畫面有變化時產生 `.complete` 幀；閒置時沒有視訊封包，留下大 PTS 缺口，部分播放器在畫面恢復時卡住或 seek。
+
+### 修改 - 閒置時以 15fps 重播最後一格
+
+- `ScreenSamplePump` 快取最後一格 `.complete` 的 CMSampleBuffer（保留像素、不複製）。
+- Timer 每 1/15 秒檢查：距上次真實幀超過一個間隔才補一格；有真實幀時完全不動作。
+- 補格以新、單調遞增的 PTS 重建 sample（`CMSampleBufferCreateReadyWithImageBuffer`），並走同一旋轉 worker。
+- `[CaptureSource]` 診斷新增 `keepAlive{sent=…}`。
+
+**相關文件**: [screencapturekit-integration.md](Docs/screencapturekit-integration.md)
+
+---
+
+## 2026.10.06 04:20 修正推流左轉畫面尺寸與多軌混音無輸出（HaishinKit fork）
+
+**類型**: 修復 · **檔案**: `liveAPP/Capture/ScreenCaptureSource.swift`, `Package.resolved`, HaishinKit fork（`AudioMixerSettings.swift`／`AudioMixerByMultiTrack.swift`／`AudioPipelineDiagnostics.swift`）
+
+### 問題 - 左轉後畫面縮小；App／麥克風音訊完全沒送
+
+開啟「推流左轉 90°」後畫面轉正但縮成中間一小條；ScreenCaptureKit 推流完全沒有音訊封包（`mixed=0 delivered=0`）。
+
+### 根因
+
+- 影片：旋轉器輸出 1080×1920，但編碼畫布固定 1920×1080 + letterbox，豎畫面被塞進橫畫布而縮小。
+- 音訊：SC 的 float32 planar 音訊使 mixer 輸出格式推導為 non-interleaved，`MultiChannelMixer`／`GenericOutput` 初始化／render 失敗 → `outputNode` 為 nil、mixer 永不輸出；錯誤又被 `AudioCaptureUnit` 吞掉。
+
+### 修改
+
+- `ScreenCaptureSource`：編碼畫布跟著旋轉後尺寸（`rotateLeft` 時交換寬高）。
+- fork `AudioMixerSettings.makeOutputFormat`：輸出格式一律 interleaved。
+- fork `AudioPipelineDiagnostics`：新增 `mixerReady` 與 `lastError`；`[CaptureAudioPipeline]` 日誌新增 `ready=`／`error=`。
+- 更新 `Package.resolved` 指向 fork `1b4650c6`。
+
+**相關文件**: [screencapturekit-integration.md](Docs/screencapturekit-integration.md)
+
+---
+
 ## 2026.10.06 03:07 加入推流 AAC 碼率選項
 
 - 音訊設定提供自動、128、96、64 kbps；預設自動，下次開播生效。
@@ -1425,6 +1560,26 @@ ScreenCaptureKit 推流在「App 進背景再回來（無 PiP 保活）」後，
 - 無聲根因與 Apple SDK 建置、實機方向／音訊仍待驗證；不將來源 accepted 誤認為成功送音訊。
 
 **相關文件**：[ScreenCaptureKit 接入](screencapturekit-integration.md)
+
+## 2026.10.05 23:53 CI 允許套件外掛，修正 HaishinKit 外掛驗證失敗
+
+**類型**: 修復 · **檔案**: `.github/workflows/unit-tests.yml`, `.github/workflows/main.yml`
+
+### 問題 - CI 建置中止於 HaishinKitRevisionPlugin
+
+`Plugin "HaishinKitRevisionPlugin" from package "HaishinKit" must be enabled before it can be used`。
+
+### 根因 - 套件 build tool plugin 需互動式信任，非互動 CI 無法回應
+
+HaishinKit（fork）提供 build tool plugin；xcodebuild 在非互動環境要求先「enable」外掛才允許執行。
+
+### 修改 - 所有 xcodebuild 呼叫加上 -skipPackagePluginValidation -skipMacroValidation
+
+unit-tests.yml 測試、main.yml fast build／clean／archive 皆加旗標；跳過外掛／巨集的簽章驗證，但仍會執行外掛（保留 HaishinKit revision 注入）。
+
+**相關文件**: [unit-tests.yml](.github/workflows/unit-tests.yml), [main.yml](.github/workflows/main.yml)
+
+---
 
 ## 2026.10.05 22:03 自動產生 kHaishinKitRevision（SwiftPM build tool plugin）
 
@@ -1466,6 +1621,27 @@ operation 回填合成的 Connect.Failed，病因被掩蓋。
 - （`.socketErrorOccurred(NWError / .endOfStream)`），不再合成空白 `Connect.Failed`。
 
 **相關文件**: [RTMP 重連：S2 之後同段資料被丟棄](https://github.com/TwhomeGH/HaishinKitFixSwfit/blob/main/CHANGES.md#61-%E4%BF%AE%E6%AD%A3-rtmp-%E9%87%8D%E9%80%A3s2-%E4%B9%8B%E5%BE%8C%E5%90%8C%E6%AE%B5%E8%B3%87%E6%96%99%E8%A2%AB%E4%B8%9F%E6%A3%84%E5%B0%8E%E8%87%B4-connect-%E6%B0%B8%E4%B8%8D-resolve)
+
+---
+
+## 2026.10.05 19:11 本機錄影可選編碼（H.264／HEVC／AV1，依裝置能力）
+
+**類型**: 新增 · **檔案**: `liveAPP/Capture/RecordingVideoCodec.swift`, `liveAPP/Capture/ScreenRecordingSession.swift`, `liveAPP/Capture/CaptureCoordinator.swift`, `Docs/screencapturekit-integration.md`
+
+### 問題 / 需求 - ScreenCaptureKit 錄影無法選擇編碼
+
+原本硬編 H.264，無法依需求改用 HEVC 或 AV1。
+
+### 根因 - 錄製編碼固定為 .h264
+
+### 修改 - 以執行期可用清單提供編碼偏好
+
+- 新增 `RecordingVideoCodec`（auto/h264/hevc/av1）與持久化 `recordingVideoCodec`。
+- `ScreenRecordingCodecSupport` 以 `SCRecordingOutputConfiguration.availableVideoCodecTypes` 解析：auto 優先 HEVC、不支援時退回 H.264，並回報實際採用編碼。
+- 擷取頁新增「錄影編碼」Picker，選項依執行期清單產生並標示不可用者（AV1 需裝置支援）。
+- 文件補充編碼選擇與方向修正的交互。
+
+**相關文件**: [screencapturekit-integration.md](Docs/screencapturekit-integration.md)
 
 ---
 
@@ -1627,230 +1803,6 @@ operation 回填合成的 Connect.Failed，病因被掩蓋。
 - 補充自動／手動策略核心測試；Apple SDK 匯出與實機版面仍待回歸。
 
 **相關文件**: [ScreenCaptureKit](screencapturekit-integration.md)、[主頁操作](home-layout.md)
-
----
-
-## 2026.10.05 修正 TTS 配置選檔流程並核對 TODO
-
-**類型**: 修復 · **檔案**: `liveAPP/TTSSettingsView.swift`、`TODO.md`
-
-### 修改 - 文件交付、背景讀取與頁面預覽
-
-- 使用系統文件選擇器匯入副本，支援被標記為一般資料的 JSON，保留內容驗證與大小上限。
-- 背景協調讀取檔案，移除 150 毫秒延遲與連續彈窗，改用頁面預覽及持續顯示的錯誤訊息。
-- 新增選檔、取消、讀取與解析階段日誌；待 iOS 實機回歸驗證。
-- TODO 修正已實作的動態島描述，將功能實作與實機／CI 驗收分開勾選。
-
-**相關文件**: [TTS 配置分享](tts-filter-configuration.md)
-
----
-
-## 2026.10.05 主頁重排與串流金鑰遮蔽
-
-**類型**: 改進 · **檔案**: `liveAPP/ContentView.swift`、`liveAPP/Capture/CaptureCoordinator.swift`
-
-### 修改 - 優先顯示擷取操作並依模式整理設定
-
-- 主頁支援單欄／雙欄，進階控制預設收合；只錄製隱藏推流設定。
-- 金鑰預設遮蔽，可手動顯示，離開表單或切至背景自動隱藏。
-- 移除配置切換與關閉表單日誌中的金鑰，擷取與錄影狀態分行顯示。
-
-**相關文件**: [主頁操作與金鑰顯示](home-layout.md)
-
----
-
-## 2026.10.05 ScreenCaptureKit 本地錄影收尾加入方向轉正
-
-**類型**: 修復 · **檔案**: `liveAPP/Capture/ScreenCaptureSource.swift`、`liveAPP/Capture/ScreenRecordingSession.swift`、`liveAPP/Capture/RecordingOrientationCorrector.swift`
-
-### 問題 - 實測原生 MP4 畫面橫倒且未帶旋轉矩陣
-
-本地錄製直接使用 SCRecordingOutput，未讀取影格方向，亦不經 RTMP Mixer，原本完成後立即開放分享。
-
-### 修改 - 依 EXIF 方向收尾，保留原生錄製與失敗原檔
-
-- 以輕量 screen output 收集 videoOrientation／PTS，僅保存有界方向事件，不保留影像 buffer。
-- 固定方向使用 track transform 與 passthrough；方向變化時使用 video composition 分段轉正並重新編碼。
-- 轉正期間維持 finishing；成功才取代原片，失敗保留原片並提示。加入背景工作到期取消與方向診斷。
-- 新增時間軸及八方向矩陣測試；四項 Windows 核心測試通過，Apple SDK 與真實匯出待實機驗證。
-
-**相關文件**: [ScreenCaptureKit 方向轉正](screencapturekit-integration.md)
-
----
-
-## 2026.10.06 06:13 修正 SC 疊加上下顛倒與擷取來源轉置
-
-**類型**: 修復 · **檔案**: `liveAPP/Capture/ScreenStreamVideoRotator.swift`, `liveAPP/Capture/ScreenCaptureSource.swift`
-
-### 問題
-
-- 輸出疊加（時間層）上下顛倒。
-- 畫布已是 1920×1080，但畫面內容仍是直的（直的來源被塞進橫畫布）。
-
-### 根因
-
-- 疊加：`CGContext` 已翻轉 CTM 後再 `draw`，會把圖片連同座標一起上下顛倒（重複翻轉）。
-- 內容：SC 擷取緩衝的寬高與輸出設定是轉置的（同 ReplayKit），先前以未轉置尺寸擷取，來源是橫的、內容被塞成直的。
-
-### 修改
-
-- 疊加：移除 CTM 翻轉，改把 `OverlayAnchor` 的左上 y 換算到左下再 `draw`。
-- 擷取：左轉時以轉置尺寸設定 `SCStreamConfiguration.width/height`。
-- 新增 `[CaptureFrame] size=WxH` 診斷（首幀／尺寸變化時輸出）。
-
-**相關文件**: [screencapturekit-integration.md](Docs/screencapturekit-integration.md)
-
----
-
-## 2026.10.06 05:13 移除 SC 推流閒置 keep-alive 幀泵
-
-**類型**: 修復 · **檔案**: `liveAPP/Capture/ScreenCaptureSource.swift`
-
-### 問題 - 可能造成影片破損/斷續
-
-實機出現影片破損、斷續，疑似 keep-alive 合成 PTS 造成時間戳不連續（待隔離確認）。
-
-### 修改 - 移除 ScreenSamplePump 的 keep-alive
-
-回復為僅旋轉/疊加與 mailboxes；移除定時重播、相關欄位與 `keepAlive{}` 診斷。日後若要重做 idle 保活，需重新設計（PTS 對齊 host clock、不與真實幀競速）。
-
----
-
-## 2026.10.06 05:00 修正 ScreenOverlayComposer 的 uiFontWeight 重複宣告
-
-**類型**: 修復 · **檔案**: `liveAPP/Capture/ScreenOverlayComposer.swift`
-
-### 問題 - CI 編譯失敗
-
-`ScreenOverlayComposer.swift` 的 `private func uiFontWeight` 與 `OverlaySettingsView.swift` 既有的同名函式（internal）造成 invalid redeclaration。
-
-### 修改 - 移除重複宣告，改用既有函式
-
-移除本檔的 `uiFontWeight`，直接使用 `OverlaySettingsView.swift` 既有的 internal 版本。
-
----
-
-## 2026.10.06 04:53 修正 SC 推流畫布寬高：改用 (odstW, odstH) 不轉置
-
-**類型**: 修復 · **檔案**: `liveAPP/Capture/ScreenCaptureSource.swift`
-
-### 問題 - 推流畫布變成 1080×1920（直的）
-
-左轉後推流解析度變成 1080×1920，應為橫向 1920×1080。
-
-### 根因 - 編碼畫布多了一次轉置
-
-SC 擷取緩衝的寬高本身即與設定轉置（與 ReplayKit 相同），旋轉後已對上 (odstW, odstH)；先前又交換畫布，導致輸出變直的。
-
-### 修改 - 編碼畫布直接用 size，與 ReplayKit encoder 慣例一致
-
-`video.videoSize = size`（ReplayKit `SampleHandler` 的 encoderW/H = ODWidth/ODHeight，不轉置）。
-
-**相關文件**: [screencapturekit-integration.md](Docs/screencapturekit-integration.md)
-
----
-
-## 2026.10.06 04:45 SC 推流輸出時間疊加（影像合成器）
-
-**類型**: 新增 · **檔案**: `liveAPP/Capture/ScreenOverlayComposer.swift`（新）, `liveAPP/Capture/ScreenStreamVideoRotator.swift`, `liveAPP/Capture/ScreenCaptureSource.swift`, `liveAPP/Capture/CaptureCoordinator.swift`
-
-### 問題 / 需求 - SC 推流沒有輸出疊加
-
-ReplayKit 路徑的輸出疊加（時間層）由 extension 的 Metal renderer 處理；ScreenCaptureKit 路徑完全沒有疊加、也無自訂畫布。
-
-### 修改 - 影像 worker 加上 CoreGraphics 疊加階段
-
-- 新增 `ScreenOverlayComposer`：依 `OverlaySceneConfig`（時間層）raster 出疊加圖，每秒或設定變更重建；座標採左上原點（與 `OverlayAnchor` 一致）。
-- `ScreenStreamVideoRotator` 改為同時處理旋轉（可選）與疊加：CoreImage 旋轉後，以左上原點 CTM 把疊加圖畫進 BGRA 緩衝；無旋轉且無疊加時原樣返回。
-- `ScreenSamplePump` 一律建立帶 overlay 的合成器；`CaptureCoordinator` 說明更新。
-
-**相關文件**: [screencapturekit-integration.md](Docs/screencapturekit-integration.md)
-
-**待驗證**: 疊加的垂直錨點（CoreGraphics 翻轉 CTM）與效能需實機確認。
-
----
-
-## 2026.10.06 04:26 推流閒置 keep-alive 幀泵（重播最後一格）
-
-**類型**: 新增 · **檔案**: `liveAPP/Capture/ScreenCaptureSource.swift`
-
-### 問題 - 畫面靜止時 ScreenCaptureKit 不送視訊
-
-SC 只在畫面有變化時產生 `.complete` 幀；閒置時沒有視訊封包，留下大 PTS 缺口，部分播放器在畫面恢復時卡住或 seek。
-
-### 修改 - 閒置時以 15fps 重播最後一格
-
-- `ScreenSamplePump` 快取最後一格 `.complete` 的 CMSampleBuffer（保留像素、不複製）。
-- Timer 每 1/15 秒檢查：距上次真實幀超過一個間隔才補一格；有真實幀時完全不動作。
-- 補格以新、單調遞增的 PTS 重建 sample（`CMSampleBufferCreateReadyWithImageBuffer`），並走同一旋轉 worker。
-- `[CaptureSource]` 診斷新增 `keepAlive{sent=…}`。
-
-**相關文件**: [screencapturekit-integration.md](Docs/screencapturekit-integration.md)
-
----
-
-## 2026.10.06 04:20 修正推流左轉畫面尺寸與多軌混音無輸出（HaishinKit fork）
-
-**類型**: 修復 · **檔案**: `liveAPP/Capture/ScreenCaptureSource.swift`, `Package.resolved`, HaishinKit fork（`AudioMixerSettings.swift`／`AudioMixerByMultiTrack.swift`／`AudioPipelineDiagnostics.swift`）
-
-### 問題 - 左轉後畫面縮小；App／麥克風音訊完全沒送
-
-開啟「推流左轉 90°」後畫面轉正但縮成中間一小條；ScreenCaptureKit 推流完全沒有音訊封包（`mixed=0 delivered=0`）。
-
-### 根因
-
-- 影片：旋轉器輸出 1080×1920，但編碼畫布固定 1920×1080 + letterbox，豎畫面被塞進橫畫布而縮小。
-- 音訊：SC 的 float32 planar 音訊使 mixer 輸出格式推導為 non-interleaved，`MultiChannelMixer`／`GenericOutput` 初始化／render 失敗 → `outputNode` 為 nil、mixer 永不輸出；錯誤又被 `AudioCaptureUnit` 吞掉。
-
-### 修改
-
-- `ScreenCaptureSource`：編碼畫布跟著旋轉後尺寸（`rotateLeft` 時交換寬高）。
-- fork `AudioMixerSettings.makeOutputFormat`：輸出格式一律 interleaved。
-- fork `AudioPipelineDiagnostics`：新增 `mixerReady` 與 `lastError`；`[CaptureAudioPipeline]` 日誌新增 `ready=`／`error=`。
-- 更新 `Package.resolved` 指向 fork `1b4650c6`。
-
-**相關文件**: [screencapturekit-integration.md](Docs/screencapturekit-integration.md)
-
----
-
-## 2026.10.05 23:53 CI 允許套件外掛，修正 HaishinKit 外掛驗證失敗
-
-**類型**: 修復 · **檔案**: `.github/workflows/unit-tests.yml`, `.github/workflows/main.yml`
-
-### 問題 - CI 建置中止於 HaishinKitRevisionPlugin
-
-`Plugin "HaishinKitRevisionPlugin" from package "HaishinKit" must be enabled before it can be used`。
-
-### 根因 - 套件 build tool plugin 需互動式信任，非互動 CI 無法回應
-
-HaishinKit（fork）提供 build tool plugin；xcodebuild 在非互動環境要求先「enable」外掛才允許執行。
-
-### 修改 - 所有 xcodebuild 呼叫加上 -skipPackagePluginValidation -skipMacroValidation
-
-unit-tests.yml 測試、main.yml fast build／clean／archive 皆加旗標；跳過外掛／巨集的簽章驗證，但仍會執行外掛（保留 HaishinKit revision 注入）。
-
-**相關文件**: [unit-tests.yml](.github/workflows/unit-tests.yml), [main.yml](.github/workflows/main.yml)
-
----
-
-## 2026.10.05 19:11 本機錄影可選編碼（H.264／HEVC／AV1，依裝置能力）
-
-**類型**: 新增 · **檔案**: `liveAPP/Capture/RecordingVideoCodec.swift`, `liveAPP/Capture/ScreenRecordingSession.swift`, `liveAPP/Capture/CaptureCoordinator.swift`, `Docs/screencapturekit-integration.md`
-
-### 問題 / 需求 - ScreenCaptureKit 錄影無法選擇編碼
-
-原本硬編 H.264，無法依需求改用 HEVC 或 AV1。
-
-### 根因 - 錄製編碼固定為 .h264
-
-### 修改 - 以執行期可用清單提供編碼偏好
-
-- 新增 `RecordingVideoCodec`（auto/h264/hevc/av1）與持久化 `recordingVideoCodec`。
-- `ScreenRecordingCodecSupport` 以 `SCRecordingOutputConfiguration.availableVideoCodecTypes` 解析：auto 優先 HEVC、不支援時退回 H.264，並回報實際採用編碼。
-- 擷取頁新增「錄影編碼」Picker，選項依執行期清單產生並標示不可用者（AV1 需裝置支援）。
-- 文件補充編碼選擇與方向修正的交互。
-
-**相關文件**: [screencapturekit-integration.md](Docs/screencapturekit-integration.md)
 
 ---
 
@@ -2156,6 +2108,54 @@ Apple 文件載明 ScreenCaptureKit 於 iOS 27 需實機（sample「requires a d
 - SampleHandler.swift：15 個 control handler（含 `try await requestSet`）的 `Task {` 改 `_ = Task {`，明確丟棄。
 
 **相關文件**: [liveAPPApp.swift](liveAPP/liveAPPApp.swift), [SampleHandler.swift](ReplyKIT/SampleHandler.swift)
+
+---
+
+## 2026.10.05 修正 TTS 配置選檔流程並核對 TODO
+
+**類型**: 修復 · **檔案**: `liveAPP/TTSSettingsView.swift`、`TODO.md`
+
+### 修改 - 文件交付、背景讀取與頁面預覽
+
+- 使用系統文件選擇器匯入副本，支援被標記為一般資料的 JSON，保留內容驗證與大小上限。
+- 背景協調讀取檔案，移除 150 毫秒延遲與連續彈窗，改用頁面預覽及持續顯示的錯誤訊息。
+- 新增選檔、取消、讀取與解析階段日誌；待 iOS 實機回歸驗證。
+- TODO 修正已實作的動態島描述，將功能實作與實機／CI 驗收分開勾選。
+
+**相關文件**: [TTS 配置分享](tts-filter-configuration.md)
+
+---
+
+## 2026.10.05 主頁重排與串流金鑰遮蔽
+
+**類型**: 改進 · **檔案**: `liveAPP/ContentView.swift`、`liveAPP/Capture/CaptureCoordinator.swift`
+
+### 修改 - 優先顯示擷取操作並依模式整理設定
+
+- 主頁支援單欄／雙欄，進階控制預設收合；只錄製隱藏推流設定。
+- 金鑰預設遮蔽，可手動顯示，離開表單或切至背景自動隱藏。
+- 移除配置切換與關閉表單日誌中的金鑰，擷取與錄影狀態分行顯示。
+
+**相關文件**: [主頁操作與金鑰顯示](home-layout.md)
+
+---
+
+## 2026.10.05 ScreenCaptureKit 本地錄影收尾加入方向轉正
+
+**類型**: 修復 · **檔案**: `liveAPP/Capture/ScreenCaptureSource.swift`、`liveAPP/Capture/ScreenRecordingSession.swift`、`liveAPP/Capture/RecordingOrientationCorrector.swift`
+
+### 問題 - 實測原生 MP4 畫面橫倒且未帶旋轉矩陣
+
+本地錄製直接使用 SCRecordingOutput，未讀取影格方向，亦不經 RTMP Mixer，原本完成後立即開放分享。
+
+### 修改 - 依 EXIF 方向收尾，保留原生錄製與失敗原檔
+
+- 以輕量 screen output 收集 videoOrientation／PTS，僅保存有界方向事件，不保留影像 buffer。
+- 固定方向使用 track transform 與 passthrough；方向變化時使用 video composition 分段轉正並重新編碼。
+- 轉正期間維持 finishing；成功才取代原片，失敗保留原片並提示。加入背景工作到期取消與方向診斷。
+- 新增時間軸及八方向矩陣測試；四項 Windows 核心測試通過，Apple SDK 與真實匯出待實機驗證。
+
+**相關文件**: [ScreenCaptureKit 方向轉正](screencapturekit-integration.md)
 
 ---
 
