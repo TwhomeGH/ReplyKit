@@ -2868,7 +2868,7 @@ audioFourCcInfoMap: AMFObject? = RTMPConnection.supportedAudioFourCcInfoMap,
 - 調整 NV12 的 UV plane 寫入方式，改為每個 2x2 區塊只寫一次，避免多個 thread 同時寫入同一個 UV pixel 導致色度對齊不穩
 
 這次重寫的重點是讓 GPU 旋轉後的輸出在不同長寬比、不同方向下都能維持正確的置中、縮放與色度對齊。
-[版本標記說明 Version Note](version.md) · [本地建置工作流程 Build Workflow](workflow.md)
+[版本標記說明 Version Note](development/version.md) · [本地建置工作流程 Build Workflow](workflow.md)
 
 ---
 

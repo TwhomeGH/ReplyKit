@@ -17,7 +17,7 @@ paths = [
   "Docs/README.md",
   "Docs/sponsor.md",
   "Docs/tts-filter-configuration.md",
-  "Docs/version.md",
+  "Docs/development/version.md",
   "README.md",
 ]
 
