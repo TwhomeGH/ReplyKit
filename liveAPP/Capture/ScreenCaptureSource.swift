@@ -285,7 +285,6 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             rotation: CaptureStreamRotation(rotateLeft: rotateLeft),
             fixedCanvas: fixedCanvas,
             fallback: CGSize(width: 1920, height: 1080))
-        let size = geometry.encoderSize
         CaptureAudioOwnership.shared.begin()
         observeAudioSession(token: token)
         logAudioSession("capture.begin")
