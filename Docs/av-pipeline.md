@@ -716,7 +716,9 @@ SampleHandler.logAudioHealthIfNeeded()  (每幀，ReplayKit queue)
 HaishinKit fork `15d59bef` 的修正：
 
 - `AudioMixerByMultiTrack` 記錄各軌最近輸出的 wall-clock 時間；main track 超過 250ms 沒有輸出就視為 inactive。
-- main inactive 時，其他軌接手推進；由接手軌重新設定 `sampleTime`/`anchor`，避免 render 仍對齊舊 main 的播放頭。
+- 時鐘擁有者（`activeClockTrack`）只在 main 停止、接手軌停止或 main 恢復時切換；**不會每一幀用新 PTS 覆寫 `sampleTime`**，避免來源時鐘更新時把兩軌音訊切亂。
+- 只有時鐘擁有者改變，或時鐘軌本身出現 >1 秒的不連續時才重設 `sampleTime`/`anchor`；正常連續幀保持原播放頭。
+- `render()` 對 active clock track 不做 `align`，避免 fallback 軌被對齊到舊 main 的播放頭；其他軌才依播放頭對齊。
 - `MixClockAdvance.shouldAdvance` 新增 `mainIsActive` 參數，並補上 main 停止/移除的回歸測試。
 - App 端仍以 App 軌作為 `mainTrack` 與 `outputFormatTrack`，這是主要路徑；底層 fallback 確保其他呼叫端或 runtime 移除 mic 時不會失去 App 輸出。fork `15d59bef` 已 push，ReplyKit `Package.resolved` 已更新至該提交。
 

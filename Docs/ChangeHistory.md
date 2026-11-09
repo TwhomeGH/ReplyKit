@@ -1,5 +1,11 @@
 # 變更歷史
 
+## 2026.11.09 21:20 混音時鐘擁有者切換
+
+- 修正 HaishinKit fork `14c41945`：`activeClockTrack` 只在 main 停止、接手軌停止或 main 恢復時切換；正常連續音訊不再每幀覆寫 `sampleTime`。
+- 只有時鐘擁有者改變或時鐘軌 PTS 跳躍 >1 秒才重設 `sampleTime`/`anchor`；`render()` 不再對 active clock track 做 `align`，避免兩軌混音被切碎。
+- 來源端後續更新 PTS 由 `AudioRingBuffer` 記錄；不會反覆覆寫 mixer 播放頭。fork 尚未 push。
+
 ## 2026.11.08 21:10 文件標題階層與本機檢查
 
 - 修正 `Docs/av-pipeline.md` 在 h2 後直接跳 h4 的 MD001；AHealth 子標題改為 h3。
