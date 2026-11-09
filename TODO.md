@@ -6,6 +6,11 @@
 
 > 新待辦請寫在這裡，不要在各文件的角落另開 TODO 區塊；完成後改為 `[x]`（整批清理時可移除已完成項）。
 
+## 2026-11-09 核對摘要
+
+- 已實作（本地尚未 push／CI）：音訊 main-clock fallback、active clock／PTS 重建、`AudioRingBuffer` Float32／Int32 指標修正、AVAudioConverter track 診斷；Keyframe automatic／PTS 重置；BufferCount 明確 policy；動態範圍錯誤回傳；相機 FPS 與 offscreen FPS 分離；VT Encoder Health（pending frames／drop 原因）；Release 自動分類。
+- 待辦：push fork、更新 `Package.resolved`、跑 fork／ReplyKit CI、實機驗證音訊雙軌／只有 App 軌、VT drop 與 PiP；AAC `AudioCodec` converter 診斷尚未接入；完整設備資訊 VT／AVCon UI 尚未做。
+
 ## 2026-11-06 核對摘要
 
 - 已實作（尚未全部驗收）：PiP 計時器併入狀態列、隱藏控制列精簡版面、次要提示分段與可選頭貼、邊緣遮罩每幀重建修正；設定備份損壞／過大舊檔輪替與前景背景髒標記；PiP 效能摘要改 5 分鐘／異常 1 分鐘；SCK 收尾有上限並記錄 stage；AltStore 來源改由 Release 附件產生；CI 選機改用可用 runtime、SDK 優先與開機 fallback；RTMP 內建 JSON 樣本與個人樣本匯入／匯出；App 圖示明確尺寸、診斷與包體檢查。

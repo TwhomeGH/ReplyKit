@@ -1,5 +1,12 @@
 # 變更歷史
 
+## 2026.11.09 23:10 動態範圍與 FPS 語意
+
+- 動態範圍註釋改為中文，明示 SDR／HDR 的 pixel format、color space、Screen renderer 與相機路徑差異；HDR 仍不支援即時串流。
+- `VideoCaptureUnit.setDynamicRangeMode` 改為 `throws`，`MediaMixer.setDynamicRangeMode` 不再以 `try?` 吞掉相機不支援錯誤；attach 時也 propagated。
+- `MediaMixer.setFrameRate` 明確只控制相機 frame rate（所有 camera device），新增 `setDisplayFrameRate` 控制 offscreen display link；`frameRate` 與 display FPS 脫鉤，避免把相機 FPS 當成 encoder 輸出上限。
+- fork 本地提交 `e9d26ec6`、`6b75f9a7`、`a6c9be39`，尚未 push。
+
 ## 2026.11.09 23:00 VT 編碼器健康摘要
 
 - HaishinKit 新增 `VideoEncoderHealth`，由 `VideoPipelineEventsSnapshot` 推導 VT submitted／delivered／dropped／filtered／keyframe suppressed／yield rejected／failure／PTS reset，並帶 `pendingFrames`。
