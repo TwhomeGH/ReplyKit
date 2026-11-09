@@ -361,6 +361,12 @@ AAC 端同理：AAC 需要固定 1024 幀 PCM 才產出一個 packet，部分幀
 
 **結論**：inputBlock 必須餵完整幀維持 1024 對齊。「自動消化任何幀數」的目標已由「frameCapacity=1024 + ring buffer 累積 + 無界迴圈」達成，不需動態部分幀。
 
+#### 主時鐘選擇（2026-11-10）
+
+`CaptureMediaPipeline.audioSettings` 在麥克風開啟時把 Mixer `mainTrack` 設為 mic（track 1），麥克風關閉時才用 App（track 0）。`outputFormatTrack` 固定為 App 軌，因此 2 聲道輸出不會因時鐘切換被壓成 mono。
+
+原因：SCK 的 App 軌可能沒有實際聲音，但仍持續以靜音 callback 輸出；若 mic 是非主軌，`AudioMixerByMultiTrack` 會持續把 mic align 到 App 播放頭，來源時鐘略有差異時就丟棄 mic 樣本，聽感變成斷斷續續。mic 停止或關閉超過門檻時，底層 `activeClockTrack` 仍會 fallback 到 App 軌。
+
 #### 修正後行為
 
 | 情境 | 修正前 | 修正後 |

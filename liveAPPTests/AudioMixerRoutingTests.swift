@@ -3,11 +3,11 @@ import Testing
 @testable import liveAPP
 
 struct AudioMixerRoutingTests {
-    @Test func appTrackIsMainClockEvenWhenMicrophoneExists() {
+    @Test func microphoneBecomesMainClockWhenEnabled() {
         let settings = CaptureMediaPipeline.audioSettings(
             from: AudioMixerSettings(), microphone: true)
 
-        #expect(settings.mainTrack == 0)
+        #expect(settings.mainTrack == 1)
         #expect(settings.outputFormatTrack == 0)
         #expect(settings.tracks[0] != nil)
         #expect(settings.tracks[1] != nil)

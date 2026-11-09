@@ -8,9 +8,11 @@ final class CaptureMediaPipeline: Sendable {
         settings.tracks[0] = .default
         if microphone { settings.tracks[1] = .default }
         else { settings.tracks.removeValue(forKey: 1) }
-        // App 軌是主要輸出與混音時鐘；mic 只作為另一軌參與混音。若 mic 被關閉或
-        // 不再送資料，mainTrack 指向 mic 會讓 App 軌被當成非主軌對齊而失去輸出。
-        settings.mainTrack = 0
+        // 混音時鐘選「目前有持續資料」的軌：mic 開啟時用 mic，避免 App 軌
+        // 靜默但仍有 callback 時把 mic 當成非主軌反覆 align／丟樣本；mic 關閉
+        // 或中途停止時，HaishinKit 的 activeClockTrack 會 fallback 到 App 軌。
+        // 輸出格式仍固定取自 App 軌，保留立體聲，不因時鐘切到 mic 而變 mono。
+        settings.mainTrack = microphone ? 1 : 0
         settings.outputFormatTrack = 0
         return settings
     }

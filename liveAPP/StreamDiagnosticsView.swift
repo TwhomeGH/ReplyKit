@@ -120,6 +120,7 @@ struct StreamDiagnosticsSections: View {
     /// 由設備頁前景採樣提供時間，避免每個區塊各自啟動計時器。
     let now: Date
     @ObservedObject private var model = StreamDiagnosticsModel.shared
+
     var body: some View {
         SettingsDashboardCard("串流格式與 RTMP 傳輸") {
             if model.snapshots.isEmpty {
@@ -128,61 +129,139 @@ struct StreamDiagnosticsSections: View {
             }
             ForEach(["ReplayKit", "ScreenCaptureKit"], id: \.self) { source in
                 if let value = model.snapshots[source] {
-                    DisclosureGroup(source) {
-                        if source == "ScreenCaptureKit" {
-                            CapturePipelineStatusView(sampledAt: value.sampledAt, now: now)
-                        } else {
-                            let age = max(0, now.timeIntervalSince(value.sampledAt))
-                            Text("距取樣 \(Int(age)) 秒" + (age > 15 ? " · 已過期，以下為歷史資料" : ""))
-                                .foregroundStyle(age > 15 ? Color.orange : Color.secondary)
+                    DisclosureGroup {
+                        diagnosticsSummary(value)
+                        formatSection(value)
+                        encoderSection(value)
+                        transportSection(value)
+                        timingSection(value)
+                        footnote
+                    } label: {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(source).font(.headline)
+                            Text(summaryLine(value)).font(.caption).foregroundStyle(.secondary)
+                                .lineLimit(2)
                         }
-                        Text("Session：\(value.session.uuidString)").font(.caption2)
-                        Text("最後取樣狀態：\(value.phase)")
-                        detail("Mixer 影片實測", value.mixerVideo)
-                        if source == "ScreenCaptureKit" || value.videoProcessingLoadKind == "metalInFlight" {
-                            detail(value.videoProcessingLoadKind == "metalInFlight" ? "Metal 加工在途比例" : "加工 worker 忙碌比例", value.videoProcessingLoad.map {
-                                String(format: "%.1f%% · 最近 %.1f 秒中忙碌 %.2f 秒", $0.busyPercent, $0.intervalSeconds, $0.busySeconds)
-                                + ($0.inFlight ? " · 取樣時仍在加工" : "")
-                            } ?? "等待完整取樣區間，或此管線未提供")
-                            Text("包含加工或排隊等待；Metal 在途比例不重複計入並行命令。不是 CPU／GPU 使用率；停止後為歷史資料。")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                        detail("畫面加工", value.videoProcessing)
-                        detail("VT 首筆同幀時間", encoderTiming(value.firstEncoderTiming))
-                        detail("VT 最新同幀時間", encoderTiming(value.lastEncoderTiming))
-                        detail("VT 編碼器健康", value.encoderHealth?.summary)
-                        detail("影片編碼設定", value.videoSettings)
-                        detail("實際編碼輸出格式", encodedVideo(value))
-                        detail("編碼器交付影格累計", value.encodedVideoFrames.map(String.init))
-                        detail("RTMP 影片入列事件累計", value.videoMessagesQueued.map(String.init))
-                        detail("Mixer PCM 實測", value.mixerAudio)
-                        detail("混音輸出取樣率", value.mixerAudioSampleRate.map { String(format: "%.0f Hz", $0) })
-                        detail("音訊編碼設定", value.audioSettings)
-                        detail("實際音訊編碼輸出格式", encodedAudio(value))
-                        if let encoding = value.encoding {
-                            mediaTimingSection("影片 RTMP 入列紀錄", encoding.videoTiming, sampledAt: value.sampledAt)
-                            mediaTimingSection("音訊 RTMP 入列紀錄", encoding.audioTiming, sampledAt: value.sampledAt)
-                            detail("編碼觀測世代", "\(encoding.generation) · 取樣時 publishing=\(encoding.isPublishing)")
-                            detail("影片格式變更時間", encoding.videoFormatChangedAt?.formatted())
-                            detail("音訊格式變更時間", encoding.audioFormatChangedAt?.formatted())
-                            detail("最近壓縮影片輸出", observedTime(encoding.lastVideoOutputAt))
-                            detail("最近壓縮音訊輸出", observedTime(encoding.lastAudioOutputAt))
-                            detail("壓縮影片樣本／音訊 packet 累計", "\(encoding.videoFrames) / \(encoding.audioPackets)")
-                            detail("壓縮 payload 累計（影片／音訊）", "\(encoding.videoBytes) / \(encoding.audioBytes) bytes")
-                        }
-                        detail("連線世代", value.generation.map(String.init))
-                        detail("本機待完成", bytes(value.queuedBytes))
-                        detail("本機完成", bytes(value.completedBytes))
-                        detail("失敗批次完整大小", bytes(value.failedBatchBytes))
-                        detail("完成／失敗批次", value.completedBatches.flatMap { completed in value.failedBatches.map { "\(completed) / \($0)" } })
-                        detail("最近完成回呼耗時", value.lastCompletionMilliseconds.map { String(format: "%.2f ms", $0) })
-                        detail("RTMP chunk 數／音訊訊息數／伺服器 ACK", nil)
-                        Text("編碼設定不保證已產出。Mixer 像素與色彩資料屬編碼前畫面；批次不是 chunk。本機完成不代表伺服器收到或成功解碼；失敗批次可能已部分傳出。重連後依連線世代重新計數。")
-                            .font(.caption).foregroundStyle(.secondary)
                     }
                 }
             }
         }
+    }
+
+    /// 摘要只保留最需要一眼判斷的四個狀態，其餘明細收在子區塊。
+    private func diagnosticsSummary(_ value: StreamDiagnosticsSnapshot) -> some View {
+        let age = max(0, now.timeIntervalSince(value.sampledAt))
+        return VStack(alignment: .leading, spacing: 5) {
+            if value.source == "ScreenCaptureKit" {
+                CapturePipelineStatusView(sampledAt: value.sampledAt, now: now)
+            }
+            summaryMetric("狀態", "\(value.phase) · 距取樣 \(Int(age)) 秒" + (age > 15 ? " · 已過期" : ""))
+            summaryMetric("VT 編碼器", value.encoderHealth.map {
+                "\($0.state.rawValue) · pending \($0.pendingFrames.map(String.init) ?? "未知")"
+            } ?? "未提供")
+            summaryMetric("RTMP 批次", "待完成 \(bytes(value.queuedBytes) ?? "未提供") · 完成 \(value.completedBatches.map(String.init) ?? "未提供") · 失敗 \(value.failedBatches.map(String.init) ?? "未提供")")
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private func formatSection(_ value: StreamDiagnosticsSnapshot) -> some View {
+        group("格式與編碼") {
+            detail("Mixer 影片實測", value.mixerVideo)
+            if value.source == "ScreenCaptureKit" || value.videoProcessingLoadKind == "metalInFlight" {
+                detail(value.videoProcessingLoadKind == "metalInFlight" ? "Metal 加工在途比例" : "加工 worker 忙碌比例", value.videoProcessingLoad.map {
+                    String(format: "%.1f%% · 最近 %.1f 秒中忙碌 %.2f 秒", $0.busyPercent, $0.intervalSeconds, $0.busySeconds)
+                    + ($0.inFlight ? " · 取樣時仍在加工" : "")
+                } ?? "等待完整取樣區間，或此管線未提供")
+            }
+            detail("畫面加工", value.videoProcessing)
+            detail("影片編碼設定", value.videoSettings)
+            detail("實際編碼輸出格式", encodedVideo(value))
+            detail("Mixer PCM 實測", value.mixerAudio)
+            detail("混音輸出取樣率", value.mixerAudioSampleRate.map { String(format: "%.0f Hz", $0) })
+            detail("音訊編碼設定", value.audioSettings)
+            detail("實際音訊編碼輸出格式", encodedAudio(value))
+            Text("Mixer 像素與色彩資料屬編碼前畫面；實際格式來自壓縮樣本，不用設定值補值。")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func encoderSection(_ value: StreamDiagnosticsSnapshot) -> some View {
+        group("VT 編碼器") {
+            detail("VT 首筆同幀時間", encoderTiming(value.firstEncoderTiming))
+            detail("VT 最新同幀時間", encoderTiming(value.lastEncoderTiming))
+            detail("VT 編碼器健康", value.encoderHealth?.summary)
+            detail("編碼器交付影格累計", value.encodedVideoFrames.map(String.init))
+            detail("RTMP 影片入列事件累計", value.videoMessagesQueued.map(String.init))
+            Text("VT 狀態區分 drops、filtered、keyframe suppressed 與下游拒收；pending 為取樣當下值。")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func transportSection(_ value: StreamDiagnosticsSnapshot) -> some View {
+        group("RTMP 傳輸") {
+            detail("Session", value.session.uuidString)
+            detail("連線世代", value.generation.map(String.init))
+            detail("本機待完成", bytes(value.queuedBytes))
+            detail("本機完成", bytes(value.completedBytes))
+            detail("失敗批次完整大小", bytes(value.failedBatchBytes))
+            detail("完成／失敗批次", value.completedBatches.flatMap { completed in value.failedBatches.map { "\(completed) / \($0)" } })
+            detail("最近完成回呼耗時", value.lastCompletionMilliseconds.map { String(format: "%.2f ms", $0) })
+            detail("RTMP chunk 數／音訊訊息數／伺服器 ACK", nil)
+            if let encoding = value.encoding {
+                detail("編碼觀測世代", "\(encoding.generation) · 取樣時 publishing=\(encoding.isPublishing)")
+                detail("影片格式變更時間", encoding.videoFormatChangedAt?.formatted())
+                detail("音訊格式變更時間", encoding.audioFormatChangedAt?.formatted())
+                detail("最近壓縮影片輸出", observedTime(encoding.lastVideoOutputAt))
+                detail("最近壓縮音訊輸出", observedTime(encoding.lastAudioOutputAt))
+                detail("壓縮影片樣本／音訊 packet 累計", "\(encoding.videoFrames) / \(encoding.audioPackets)")
+                detail("壓縮 payload 累計（影片／音訊）", "\(encoding.videoBytes) / \(encoding.audioBytes) bytes")
+            }
+            Text("本機完成不代表伺服器收到或成功解碼；失敗批次可能已部分傳出。重連後依連線世代重新計數。")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func timingSection(_ value: StreamDiagnosticsSnapshot) -> some View {
+        if let encoding = value.encoding {
+            group("入列時間軸") {
+                mediaTimingSection("影片 RTMP 入列紀錄", encoding.videoTiming, sampledAt: value.sampledAt)
+                mediaTimingSection("音訊 RTMP 入列紀錄", encoding.audioTiming, sampledAt: value.sampledAt)
+            }
+        }
+    }
+
+    private var footnote: some View {
+        Text("編碼設定不保證已產出；批次不是 chunk。成功入列只表示本機佇列接受，不代表伺服器收到。")
+            .font(.caption).foregroundStyle(.secondary)
+    }
+
+    /// 子區塊預設收合，讓摘要先呈現；需要追查時再展開原始欄位。
+    private func group<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 9) {
+                content()
+            }
+            .padding(.top, 4)
+        } label: {
+            Text(title).font(.subheadline.bold())
+        }
+    }
+
+    private func summaryMetric(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(label).font(.caption).foregroundStyle(.secondary).frame(width: 64, alignment: .leading)
+            Text(value).font(.caption).textSelection(.enabled)
+        }
+    }
+
+    private func summaryLine(_ value: StreamDiagnosticsSnapshot) -> String {
+        let codec = value.encoding?.video.map { "\($0.codec) \($0.width)×\($0.height)" } ?? "格式未提供"
+        let health = value.encoderHealth?.state.rawValue ?? "VT 未提供"
+        return "\(codec) · \(health) · \(value.phase)"
     }
 
     /// 最新嘗試預設可見；首筆資料保留為起始診斷，不與目前進展混排。
