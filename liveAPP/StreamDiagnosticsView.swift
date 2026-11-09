@@ -241,9 +241,10 @@ struct StreamDiagnosticsSections: View {
 
     /// 子區塊預設收合，讓摘要先呈現；需要追查時再展開原始欄位。
     private func group<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        DisclosureGroup {
+        let builtContent = content()
+        return DisclosureGroup {
             VStack(alignment: .leading, spacing: 9) {
-                content()
+                builtContent
             }
             .padding(.top, 4)
         } label: {
