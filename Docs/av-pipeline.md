@@ -707,6 +707,16 @@ SampleHandler.logAudioHealthIfNeeded()  (每幀，ReplayKit queue)
 
 目前先接到 Mixer track 的 `resampleNoDataCount` 之外；AAC `AudioCodec` 的 encoder converter 尚未接入同一份摘要。
 
+### VT 編碼器健康摘要（2026-11-09）
+
+`VideoPipelineSnapshot.encoderHealth` 由事件 tracker 推導：
+
+- 狀態：`healthy`／`vtDrop`／`outputRejected`／`waitingKeyFrame`／`throughputThrottle`／`ptsReset`／`failure`
+- 計數：submitted、delivered、keyframe、dropped、filtered、keyFrameSuppressed、yieldRejected、failures、sessionChanges、ptsReset
+- `pendingFrames` 來自 VT `NumberOfPendingFrames`，每 0.5 秒取樣
+
+`vtDrop` 只代表 VT 回報丟幀；App 的主動降幀是 `throughputThrottle`，下游拒收是 `outputRejected`，不能混為一談。
+
 ### 診斷邏輯
 
 - `align-drop`：`AudioRingBuffer.align()` 丟棄非 main track 樣本。這是目前最可疑的 content-level 斷音來源（雙軌 PTS 基座差被當成 desync）。

@@ -6,7 +6,7 @@
 - `VideoCodec` 每 0.5 秒取樣 `NumberOfPendingFrames`；`VideoPipelineSnapshot` schema 3 新增 `encoderHealth`（舊快照可缺欄位）。
 - `StreamDiagnosticsSnapshot` 轉送 `encoderHealth`，主 App 的串流診斷頁先顯示狀態摘要；完整設備資訊 UI 仍待後續。
 - 狀態分開標示 `vtDrop`、`outputRejected`、`waitingKeyFrame`、`throughputThrottle`、`ptsReset`，避免把 App 節流誤判為 VT 丟幀。
-- fork 本地提交 `bbb27dc7`，尚未 push；CI／實機未驗。
+- fork 本地提交 `f4254620`，尚未 push；CI／實機未驗。
 
 ## 2026.11.09 22:40 AVAudioConverter 診斷
 
