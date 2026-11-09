@@ -150,6 +150,7 @@ struct StreamDiagnosticsSections: View {
                         detail("畫面加工", value.videoProcessing)
                         detail("VT 首筆同幀時間", encoderTiming(value.firstEncoderTiming))
                         detail("VT 最新同幀時間", encoderTiming(value.lastEncoderTiming))
+                        detail("VT 編碼器健康", value.encoderHealth?.summary)
                         detail("影片編碼設定", value.videoSettings)
                         detail("實際編碼輸出格式", encodedVideo(value))
                         detail("編碼器交付影格累計", value.encodedVideoFrames.map(String.init))

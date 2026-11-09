@@ -28,6 +28,8 @@ struct StreamDiagnosticsSnapshot: Codable, Sendable {
     /// VT 成功回呼的同幀時間；舊來源或無編碼器時為 nil。
     var firstEncoderTiming: VideoEncoderTimingSample?
     var lastEncoderTiming: VideoEncoderTimingSample?
+    /// VT 編碼器健康摘要；舊來源或無編碼器時為 nil。
+    var encoderHealth: VideoEncoderHealth?
     /// ScreenCaptureKit 畫面加工摘要；未走本機加工時為 nil。
     var videoProcessing: String?
     /// 最近完整取樣區間的加工忙碌比例；首次或未提供時為 nil。
@@ -144,6 +146,7 @@ final class StreamDiagnosticsProbe: MediaMixerOutput, @unchecked Sendable {
         result.encoding = encoding
         result.firstEncoderTiming = pipeline.encoder?.firstEncoderTiming
         result.lastEncoderTiming = pipeline.encoder?.lastEncoderTiming
+        result.encoderHealth = pipeline.encoderHealth
         result.videoSettings = "\(video.profileLevel) · \(Int(video.videoSize.width))×\(Int(video.videoSize.height)) · \(video.bitRate / 1000) kbps"
         result.audioSettings = "\(audio.format.rawValue) · \(audio.bitRate / 1000) kbps"
         result.encodedVideoFrames = pipeline.encoder?.events["encoderDelivered"]?.count
