@@ -1,5 +1,13 @@
 # 變更歷史
 
+## 2026.11.09 音訊 2ch Mixer 與套件接入
+
+- 修正 `AudioMixerByMultiTrack` 2 聲道 setup：macOS Float32 使用 non-interleaved，iOS Int16 使用 interleaved；1 聲道維持 interleaved。先前 `MultiChannelMixer` 的 input stream format 會回 `-10868`，導致 mixer 未 ready、App 軌沒有輸出。
+- 補上 `setup[stage]` 診斷與 2ch 輸出斷言；原本 `test48000_2ch` 只檢查格式、沒有 assert 輸出，才讓缺陷被隱藏。
+- 修正 CI 摘要分類：`test-without-building` 的斷言失敗不再寫成 `[Runner infrastructure]`，只有 runner 連線失敗、逾時或無測試結果才標成環境失敗；`build-for-testing` 非逾時失敗歸類為編譯錯誤。
+- `Package.resolved` 與 Xcode workspace 的 `Package.resolved` 都更新到 fork `d434db40`；fork CI 已驗證 2ch 修正，ReplyKit CI 待跑。
+- fork 提交：`cecd7e26`、`bc78fe84`、`d434db40`。
+
 ## 2026.11.09 23:10 動態範圍與 FPS 語意
 
 - 動態範圍註釋改為中文，明示 SDR／HDR 的 pixel format、color space、Screen renderer 與相機路徑差異；HDR 仍不支援即時串流。

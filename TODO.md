@@ -8,8 +8,9 @@
 
 ## 2026-11-09 核對摘要
 
-- 已實作（本地尚未 push／CI）：音訊 main-clock fallback、active clock／PTS 重建、`AudioRingBuffer` Float32／Int32 指標修正、AVAudioConverter track 診斷；Keyframe automatic／PTS 重置；BufferCount 明確 policy；動態範圍錯誤回傳；相機 FPS 與 offscreen FPS 分離；VT Encoder Health（pending frames／drop 原因）；Release 自動分類。
-- 待辦：push fork、更新 `Package.resolved`、跑 fork／ReplyKit CI、實機驗證音訊雙軌／只有 App 軌、VT drop 與 PiP；AAC `AudioCodec` converter 診斷尚未接入；完整設備資訊 VT／AVCon UI 尚未做。
+- 已實作並 push fork：音訊 main-clock fallback、active clock／PTS 重建、`AudioRingBuffer` Float32／Int32 指標修正、AVAudioConverter track 診斷；Keyframe automatic／PTS 重置；BufferCount 明確 policy；動態範圍錯誤回傳；相機 FPS 與 offscreen FPS 分離；VT Encoder Health（pending frames／drop 原因）；Release 自動分類；2ch mixer 交錯格式的平台差異修正；CI 摘要不再把測試斷言誤標 runner failure。
+- `Package.resolved`（根目錄與 Xcode workspace 兩份）已更新到 fork `d434db40`；fork CI 待最後一輪確認，ReplyKit CI 尚未跑。
+- 待辦：ReplyKit CI／實機驗證音訊雙軌／只有 App 軌、VT drop 與 PiP；AAC `AudioCodec` converter 診斷尚未接入；完整設備資訊 VT／AVCon UI 尚未做。
 
 ## 2026-11-06 核對摘要
 
