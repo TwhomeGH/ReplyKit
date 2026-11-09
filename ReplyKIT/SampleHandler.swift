@@ -1028,15 +1028,18 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
             videoSettings.bitRateMode = .average
         }
 
-        let kv = RPConfig.shared.state.KeyFrameInterval
-        videoSettings.maxKeyFrameIntervalDuration = Int32(kv)
+        let keyFramePolicy = KeyFrameIntervalPolicy.resolve(
+            rawValue: RPConfig.shared.state.KeyFrameInterval)
+        videoSettings.maxKeyFrameIntervalDuration = keyFramePolicy.duration
 
         videoSettings.isLowLatencyRateControlEnabled = RPConfig.shared.state.isLowLatencyRateControlEnabled
         videoSettings.bitRate = RPConfig.shared.state.BitRate
 
         videoSettings.allowFrameReordering = RPConfig.shared.state.allowFrameReordering
 
-        videoSettings.maxFrameDelayCount = RPConfig.shared.state.BufferCount  // 限制 VT 內部最多疊幾幀 -1會使用自動計算
+        let bufferPolicy = VideoBufferPolicy.resolve(
+            rawValue: RPConfig.shared.state.BufferCount)
+        videoSettings.maxFrameDelayCount = bufferPolicy.maxFrameDelayCount
 
 
         videoSettings.adaptiveFrameThrottle = speedPriority
@@ -1058,7 +1061,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         await target.restartVideoEncoding(reason: "video settings updated")
 
         let geometry = resolvedStreamGeometry(source: CGSize(width: width, height: height))
-        sendlog(message: "套用完整 video settings: source=\(width)x\(height) encoder=\(Int(geometry.encoderSize.width))x\(Int(geometry.encoderSize.height)) codec=\(codec) profile=\(profilelvl) keyframe=\(kv)s bitrate=\(RPConfig.shared.state.BitRate/1000)kbps")
+        sendlog(message: "套用完整 video settings: source=\(width)x\(height) encoder=\(Int(geometry.encoderSize.width))x\(Int(geometry.encoderSize.height)) codec=\(codec) profile=\(profilelvl) keyframe=\(keyFramePolicy.duration)s bitrate=\(RPConfig.shared.state.BitRate/1000)kbps")
     }
 
     /// 與 ScreenCaptureKit 共用的尺寸／旋轉解析；OD 最終、AD 中間，旋轉不改寫 encoder size。
@@ -1088,7 +1091,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         await mediaMixer.setVideoMixerSettings(videoMixerSettings)
 
         // 初始 buffer count（auto mode 下 videoSize 變更時會自動重算）
-        await rtmpStream.setVideoInputBufferCounts(RPConfig.shared.state.BufferCount)
+        let bufferPolicy = VideoBufferPolicy.resolve(
+            rawValue: RPConfig.shared.state.BufferCount)
+        await rtmpStream.setVideoInputBufferCounts(bufferPolicy.rawValue)
 
         // 在 frame 到來前先用 socket 配置設定 encoder video size。
         // OD/odst 是最終畫布輸出；AD/dst 只作為 GPU 中間處理尺寸。

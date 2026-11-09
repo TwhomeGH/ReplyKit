@@ -971,7 +971,7 @@ final class RPConfig {
             h264level:SharedDefaults.group?.string(forKey: "h264level") ?? "AutoMain",
             videoCodec: SharedDefaults.group?.string(forKey: "videoCodec") ?? "H264",
             hevcLevel: SharedDefaults.group?.string(forKey: "hevcLevel") ?? "Main",
-            BufferCount:SharedDefaults.group?.integer(forKey: "BufferCount") ?? 5,
+            BufferCount:SharedDefaults.group?.integer(forKey: "BufferCount") ?? -1,
             BitRate:SharedDefaults.group?.integer(forKey: "bitRate") ?? 4_500_000,
             
             ChangeBit:SharedDefaults.group?.bool(forKey: "ChangeBit") ?? false,

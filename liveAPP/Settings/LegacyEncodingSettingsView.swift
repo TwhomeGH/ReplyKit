@@ -50,6 +50,13 @@ struct LegacyEncodingSettingsView: View {
             .foregroundStyle(.secondary)
             .font(.caption)
         }
+        .onChange(of: keyFrameInterval) { value in
+          if value < 0 {
+            keyFrameInterval = 0
+          } else if value > 60 {
+            keyFrameInterval = 60
+          }
+        }
         Text(AppLanguage.localized("encoding.keyframe.help"))
           .font(.footnote)
           .foregroundStyle(.secondary)

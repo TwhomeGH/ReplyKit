@@ -569,7 +569,9 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         // 幾何已在 start() 解析；policy／錄影畫布／OD 的優先順序不再在此重算。
         video.videoSize = size
         video.bitRate = max(100_000, defaults.object(forKey: "bitRate") as? Int ?? 6_000_000)
-        video.maxKeyFrameIntervalDuration = Int32(max(0, min(60, defaults.object(forKey: "KeyFrameInterval") as? Int ?? 2)))
+        let keyFramePolicy = KeyFrameIntervalPolicy.resolve(
+            rawValue: defaults.object(forKey: "KeyFrameInterval") as? Int ?? 2)
+        video.maxKeyFrameIntervalDuration = keyFramePolicy.duration
         video.allowFrameReordering = false
         video.isLowLatencyRateControlEnabled = defaults.bool(forKey: "isLowLatencyRateControlEnabled")
         // ScreenStreamVideoRotator 已依輸出畫布做 letterbox／fill，encoder 不再二次縮放。
@@ -583,8 +585,9 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         video.h264EntropyMode = (useCAVLC || video.profileLevel.contains("Baseline")) ? "cavlc" : nil
         video.adaptiveFrameThrottle = vtSpeedPriority
         video.prioritizeEncodingSpeedOverQuality = vtSpeedPriority
-        let bufferCount = defaults.object(forKey: "BufferCount") as? Int ?? -1
-        video.maxFrameDelayCount = bufferCount
+        let bufferPolicy = VideoBufferPolicy.resolve(
+            rawValue: defaults.object(forKey: "BufferCount") as? Int ?? -1)
+        video.maxFrameDelayCount = bufferPolicy.maxFrameDelayCount
         switch defaults.integer(forKey: "BitRateMode") {
         case 1: video.bitRateMode = .constant
         case 2: video.bitRateMode = .variable
@@ -592,7 +595,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         }
         startupStage = "pipeline.videoSettings"
         try await stream.setVideoSettings(video)
-        await stream.setVideoInputBufferCounts(bufferCount)
+        await stream.setVideoInputBufferCounts(bufferPolicy.rawValue)
         await stream.setBitRateStrategy(StreamVideoAdaptiveBitRateStrategy(mamimumVideoBitrate: video.bitRate))
         await conn.setReconnectEnabled(true)
         let reconnectSession = state.id

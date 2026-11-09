@@ -129,7 +129,12 @@ struct EncodingSettingsView: View {
                 Stepper("", value: $bufferCount, in: -1...100)
                     .labelsHidden()
             }
-            .onChange(of: bufferCount) { _ in
+            .onChange(of: bufferCount) { value in
+                if value < -1 {
+                    bufferCount = -1
+                } else if value > 100 {
+                    bufferCount = 100
+                }
                 CFNotificationCenterPostNotification(cfCenter,
                     CFNotificationName("MaxInfilght" as CFString), nil, nil, true)
             }

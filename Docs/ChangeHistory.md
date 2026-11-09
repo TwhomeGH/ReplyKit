@@ -1,5 +1,12 @@
 # 變更歷史
 
+## 2026.11.09 22:20 Keyframe 與 BufferCount 明確策略
+
+- `maxKeyFrameIntervalDuration == 0` 改為真正的 automatic：`makeKeyFrameIntervalOptions` 不再送 duration／frame interval option，也不 fallback 成 2 秒；預設仍是 2 秒。
+- App 新增 `KeyFrameIntervalPolicy` 與 `VideoBufferPolicy`：`<= 0` 統一視為 automatic，固定值分別 clamp 到 60 秒與 100 幀；ReplayKit／SCK 共用，修正兩端 clamp 與預設值不一致。
+- `BufferCount == 0` 不再走 undefined 的 `maxFrameDelayCount=0`，統一映射成 VT 的 `-1` 與 `setVideoInputBufferCounts(nil)`；`Event` 預設由 5 改回 -1。
+- UI keyframe／BufferCount 輸入加入範圍正規化；回歸測試覆蓋 policy 與 keyframe automatic。
+
 ## 2026.11.09 22:00 Release 名稱自動分類
 
 - 新增 `Scripts/release_classification.json`、`Scripts/classify_release.py` 與測試；依變更路徑自動產生 Core／UI、Audio／Video／RTMP／PiP／Extension／Settings 標籤。
