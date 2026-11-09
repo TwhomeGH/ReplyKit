@@ -1,5 +1,12 @@
 # 變更歷史
 
+## 2026.11.09 21:35 音訊環形緩衝格式與 PTS 缺陷
+
+- 修正 `AudioRingBuffer` 以 Int16 指標處理 Float32／Int32 的問題；copy、render、zero 改走 `AudioBufferList.mData` 原始指標並依 `bytesPerSample` 位移，避免第二個 render 後 channel 錯位、爆音或靜音。
+- 新增 Float32 非交錯跨 render 測試，以及來源 PTS 大幅倒退時重建緩衝的測試。
+- `AudioMixerTrack` 的 `AudioTime` 只在不連續 >1 秒時重建 anchor；正常連續幀不反覆覆寫來源時間。
+- fork 本地提交 `56d1e93c`；尚未 push。
+
 ## 2026.11.09 21:20 混音時鐘擁有者切換
 
 - 修正 HaishinKit fork `14c41945`：`activeClockTrack` 只在 main 停止、接手軌停止或 main 恢復時切換；正常連續音訊不再每幀覆寫 `sampleTime`。

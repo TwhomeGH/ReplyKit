@@ -722,6 +722,14 @@ HaishinKit fork `15d59bef` 的修正：
 - `MixClockAdvance.shouldAdvance` 新增 `mainIsActive` 參數，並補上 main 停止/移除的回歸測試。
 - App 端仍以 App 軌作為 `mainTrack` 與 `outputFormatTrack`，這是主要路徑；底層 fallback 確保其他呼叫端或 runtime 移除 mic 時不會失去 App 輸出。fork `15d59bef` 已 push，ReplyKit `Package.resolved` 已更新至該提交。
 
+### 音訊環形緩衝與來源時間重設（2026-11-09）
+
+另外檢查到兩個會直接造成爆音／靜音／錯位的缺陷：
+
+- `AudioRingBuffer` 的 copy/zero 路徑原本用 `int16ChannelData` 做 element offset；遇到 Float32／Int32（尤其非交錯）會用錯 byte offset，第二個 render 起就可能讀錯區段，造成爆音或完全沒有聲音。改為透過 `AudioBufferList.mData` 的原始指標，依 `bytesPerSample` 位移；新增 Float32 非交錯跨兩個 render 的回歸測試。
+- 來源 PTS 大幅倒退（例如 track 重建、時間軸新紀元）原本只會 append 到舊時間軸尾端；現在超過約 1 秒會清空環形緩衝並重建 source time。`AudioMixerTrack` 的 `AudioTime` 也只在真的不連續時重建 anchor，正常連續幀不再每幀覆寫。
+- 這些修正與 active-clock fallback 都在同一個 fork；尚未 push 到 App 鎖定版本。
+
 ## AHealth 介面
 
 ### `[AHealth]` log（走 E-Socket）
