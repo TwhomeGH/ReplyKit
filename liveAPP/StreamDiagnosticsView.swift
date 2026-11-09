@@ -88,6 +88,9 @@ struct MixerPipelineCard: View {
                         if audio {
                             Text(rate(latest?.audioFramesPerSecond, unit: "sample frames/s"))
                                 .font(.caption).monospacedDigit()
+                            if let tracks = snapshot.audioTracks, !tracks.isEmpty {
+                                audioConverterSection(tracks)
+                            }
                         }
                         Chart(points) { point in
                             if let value = audio ? point.audioBuffersPerSecond : point.videoFPS {
@@ -107,6 +110,36 @@ struct MixerPipelineCard: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    /// 音訊轉換器屬於 Mixer 前處理，不歸在 VT 或 RTMP；只顯示純量與計數。
+    private func audioConverterSection(
+        _ tracks: [StreamDiagnosticsSnapshot.AudioTrackDiagnostics]
+    ) -> some View {
+        DisclosureGroup("音訊轉換器") {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(tracks) { track in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("\(track.trackId == 0 ? "App" : "Mic") · \(track.status)")
+                            .font(.caption.bold())
+                        Text("AVCon：convert \(track.convertCalls) · noData \(track.noDataNowCalls) · ranDry \(track.inputRanDryCalls) · error \(track.errorCalls)")
+                            .font(.caption2)
+                        Text("輸入 samples \(track.inputFramesSupplied)／\(track.inputFramesRequested) · 輸出 \(track.outputFrames) · 重建 \(track.converterRebuilds)")
+                            .font(.caption2)
+                        Text("ring \(track.bufferedSamples) · noData \(track.resampleNoDataCount) · alignDrop \(track.alignDroppedSamples) · alignInsert \(track.alignInsertedSamples) · alignFire \(track.alignFireCount) · diff \(track.lastAlignDiff)")
+                            .font(.caption2)
+                        Text("RMS \(track.outputRMS)")
+                            .font(.caption2)
+                        if let lastError = track.lastError {
+                            Text(lastError).font(.caption2).foregroundStyle(.red)
+                        }
+                    }
+                    .textSelection(.enabled)
+                }
+            }
+            .padding(.top, 4)
+        }
+        .font(.caption)
     }
 
     /// 格式化有效速率；缺少差分基準時顯示等待，不能以零取代未知。

@@ -57,8 +57,16 @@ struct AVLagReportView: View {
                                 Text("\(summary.segments.count) \(AppLanguage.localized("avLag.stored.segments")) · \(summary.sampleCount) \(AppLanguage.localized("avLag.stored.samples"))")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
-                                if summary.endedAt == nil {
+                                if model.isCapturing, model.session == summary.id {
                                     Text(AppLanguage.localized("avLag.stored.inProgress"))
+                                        .font(.caption2)
+                                        .foregroundStyle(.orange)
+                                } else if summary.complete {
+                                    Text(AppLanguage.localized("avLag.stored.completed"))
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    Text(AppLanguage.localized("avLag.stored.incomplete"))
                                         .font(.caption2)
                                         .foregroundStyle(.orange)
                                 }
@@ -136,7 +144,8 @@ struct AVLagReportView: View {
     }
 
     private func reloadSummaries() async {
-        summaries = await AVLagReportStore.shared.summaries()
+        let activeSession = model.isCapturing ? model.session : nil
+        summaries = await AVLagReportStore.shared.summaries(activeSessionID: activeSession)
     }
 
     private func row(_ title: String, _ value: String) -> some View {

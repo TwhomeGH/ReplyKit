@@ -30,6 +30,32 @@ struct StreamDiagnosticsSnapshot: Codable, Sendable {
     var lastEncoderTiming: VideoEncoderTimingSample?
     /// VT 編碼器健康摘要；舊來源或無編碼器時為 nil。
     var encoderHealth: VideoEncoderHealth?
+    /// Mixer 各軌的 AVAudioConverter／ring buffer／align 摘要；舊來源為 nil。
+    var audioTracks: [AudioTrackDiagnostics]?
+
+    /// 單一音軌的轉換器與緩衝診斷；只放純量，不攜帶 PCM buffer。
+    struct AudioTrackDiagnostics: Codable, Sendable, Identifiable {
+        let trackId: UInt8
+        let status: String
+        let convertCalls: Int
+        let noDataNowCalls: Int
+        let inputRanDryCalls: Int
+        let errorCalls: Int
+        let inputFramesRequested: Int
+        let inputFramesSupplied: Int
+        let outputFrames: Int
+        let converterRebuilds: Int
+        let lastError: String?
+        let bufferedSamples: Int
+        let resampleNoDataCount: Int
+        let alignDroppedSamples: Int
+        let alignInsertedSamples: Int
+        let alignFireCount: Int
+        let lastAlignDiff: Int
+        let outputRMS: [Float]
+
+        var id: UInt8 { trackId }
+    }
     /// ScreenCaptureKit 畫面加工摘要；未走本機加工時為 nil。
     var videoProcessing: String?
     /// 最近完整取樣區間的加工忙碌比例；首次或未提供時為 nil。

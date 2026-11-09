@@ -4,8 +4,13 @@ import SwiftUI
 /// 已保存 session 的分段清單；整場以 session 分組，不把每個子檔當成獨立場次。
 struct AVLagStoredSessionView: View {
     let summary: AVLagSessionSummary
+    @ObservedObject private var model = AVLagModel.shared
     @State private var documents: [AVLagReportDocument] = []
     @State private var isLoading = true
+
+    private var isActiveSession: Bool {
+        model.isCapturing && model.session == summary.id
+    }
 
     var body: some View {
         List {
@@ -42,7 +47,9 @@ struct AVLagStoredSessionView: View {
                                 Spacer()
                                 Text(document.complete
                                     ? AppLanguage.localized("avLag.stored.complete")
-                                    : AppLanguage.localized("avLag.stored.inProgress"))
+                                    : (isActiveSession
+                                        ? AppLanguage.localized("avLag.stored.inProgress")
+                                        : AppLanguage.localized("avLag.stored.incomplete")))
                                     .font(.caption)
                                     .foregroundStyle(document.complete ? Color.secondary : Color.orange)
                             }

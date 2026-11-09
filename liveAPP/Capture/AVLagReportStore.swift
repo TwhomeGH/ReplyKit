@@ -112,10 +112,50 @@ actor AVLagReportStore {
         }
     }
 
-    func summaries() -> [AVLagSessionSummary] {
-        readIndex().sessions.sorted {
+    /// 列出已保存場次；只有呼叫端明確傳入目前 active session 時才保留
+    /// 「進行中」，其餘 endedAt=nil 的舊資料視為中斷並補上結束時間。
+    /// 同時移除索引中已不存在的 segment 檔案，避免顯示失效場次。
+    func summaries(activeSessionID: String? = nil) -> [AVLagSessionSummary] {
+        var index = readIndex()
+        if reconcile(&index, activeSessionID: activeSessionID) {
+            try? writeIndex(index)
+        }
+        return index.sessions.sorted {
             ($0.endedAt ?? $0.startedAt) > ($1.endedAt ?? $1.startedAt)
         }
+    }
+
+    /// 清理索引與實際檔案不一致的資料；回傳是否有變更。
+    private func reconcile(_ index: inout AVLagReportIndex,
+                           activeSessionID: String?) -> Bool {
+        var changed = false
+        var sessions: [AVLagSessionSummary] = []
+        for var session in index.sessions {
+            let validSegments = session.segments.filter { segment in
+                FileManager.default.fileExists(
+                    atPath: fileURL(session: session.id, segment: segment.index).path)
+            }
+            if validSegments.count != session.segments.count {
+                session.segments = validSegments
+                session.sampleCount = validSegments.reduce(0) { $0 + $1.sampleCount }
+                session.bytes = validSegments.reduce(0) { $0 + $1.bytes }
+                changed = true
+            }
+            guard !session.segments.isEmpty else {
+                changed = true
+                continue
+            }
+            if session.id != activeSessionID, session.endedAt == nil {
+                session.endedAt = session.segments.compactMap(\.endedAt).max()
+                    ?? session.segments.map(\.startedAt).max()
+                    ?? session.startedAt
+                session.complete = false
+                changed = true
+            }
+            sessions.append(session)
+        }
+        index.sessions = sessions
+        return changed
     }
 
     func save(_ document: AVLagReportDocument) throws {

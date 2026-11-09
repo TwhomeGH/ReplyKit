@@ -5,8 +5,10 @@
 - `CaptureMediaPipeline.audioSettings` 在麥克風啟用時改用 mic（track 1）作為 Mixer 主時鐘，輸出格式仍取 App 軌；避免 App 軌靜默但持續 callback 時，mic 被當成非主軌反覆 align／丟樣本而斷續。mic 停止或關閉時，底層 `activeClockTrack` 會 fallback 到 App 軌。
 - 2ch mixer 測試現在會斷言輸出內容不是靜音（`channelRMS`），補上先前只檢查格式、未檢查實際混音的盲點。
 - `AudioPipelineDiagnostics.Track` 新增每軌輸出 RMS；`ScreenCaptureSource` 的 `[CaptureAudioPipeline]` 同時記錄 `alignDrop`／`alignInsert`／`alignDiff`，可區分麥克風真正斷斷續續與只看到 mixed snapshot。
+- 「Audio Pipeline · 混音輸出」新增「音訊轉換器」區塊：顯示 App／Mic 的 AVCon status、convert／noData／inputRanDry／error、input／output samples、ring buffer、align 與 RMS；不把 AVCon 歸到 VT 或 RTMP。
 - 修正 CI 測試摘要把斷言失敗誤標成 `[Runner infrastructure]`；`test-without-building` 的測試失敗保留為測試結果，只有逾時／啟動失敗才標成 runner 環境。
 - 「串流格式與 RTMP 傳輸」改為摘要＋可收合子區塊（格式與編碼／VT 編碼器／RTMP 傳輸／入列時間軸），不再把數十個明細塞在同一張 DisclosureGroup。
+- AV Lag 已保存場次在讀取索引時會清理不存在的 segment 檔；非目前 active 且 `endedAt` 仍為 nil 的舊場次會標成「未完成（已中斷）」，不再永久顯示「進行中」。
 - `Package.resolved` 更新到 fork `9beb2a93`；ReplyKit CI／實機仍待驗。
 
 ## 2026.11.09 音訊 2ch Mixer 與套件接入
