@@ -241,6 +241,17 @@ jobs:
           echo "short=$(plutil -extract CFBundleShortVersionString raw "$PLIST")" >> "$GITHUB_OUTPUT"
           echo "build=$(plutil -extract CFBundleVersion raw "$PLIST")" >> "$GITHUB_OUTPUT"
 
+      - name: Classify release 產生 Release 分類
+        id: release_meta
+        run: |
+          python3 Scripts/classify_release.py \
+            --tag "$TAG" \
+            --config Scripts/release_classification.json \
+            --exp-window 5 > build/release-metadata.json
+          NAME=$(jq -r '.name' build/release-metadata.json)
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          cat build/release-metadata.json
+
       # 4️⃣ Extract symbols for crash symbolication
       - name: Extract symbol map 提取符號表
         run: |
@@ -343,14 +354,20 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ steps.get_tag.outputs.tag }}
+          RELEASE_NAME: ${{ steps.release_meta.outputs.name }}
         run: |
           GITHUB_API="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases"
           
           # 抓取最近 10 次 commit 訊息
           COMMITS=$(git log -n 10 --pretty=format:"- %s (%h)" | sed 's/@unknown/`@unknown`/g')
+          CLASSIFICATION=$(jq -r '.summary' build/release-metadata.json)
 
 
-          NEW_MESSAGE="Automated unsigned iOS build ${TAG_NAME}
+          NEW_MESSAGE="${RELEASE_NAME}
+
+          $CLASSIFICATION
+
+          Automated unsigned iOS build ${TAG_NAME}
           Updated at $(TZ=Asia/Taipei LANG=zh_TW.UTF-8 date +"%Y/%m/%d %p %H:%M:%S (%A)")
           
           Recent commits:
@@ -369,14 +386,15 @@ jobs:
           
            EXISTING_BODY=$(echo "$RELEASE" | jq -r '.body')
            
-           MEGRED_BODY="$EXISTING_BODY
+           MERGED_BODY="$EXISTING_BODY
            
            $NEW_MESSAGE"
            
 
            PAYLOAD=$(jq -n \
+              --arg name "$RELEASE_NAME" \
               --arg body "$MERGED_BODY" \
-              '{body: $body}')
+              '{name: $name, body: $body}')
               
            # 更新 Release
            curl -X PATCH \
@@ -390,7 +408,7 @@ jobs:
 
            PAYLOAD=$(jq -n \
                 --arg tag "$TAG_NAME" \
-                --arg name "$TAG_NAME" \
+                --arg name "$RELEASE_NAME" \
                 --arg body "$NEW_MESSAGE" \
                 '{tag_name:$tag, name:$name, body:$body, draft:false, prerelease:false}')
 

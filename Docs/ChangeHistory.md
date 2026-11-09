@@ -1,5 +1,13 @@
 # 變更歷史
 
+## 2026.11.09 22:00 Release 名稱自動分類
+
+- 新增 `Scripts/release_classification.json`、`Scripts/classify_release.py` 與測試；依變更路徑自動產生 Core／UI、Audio／Video／RTMP／PiP／Extension／Settings 標籤。
+- `Exp` 以 tag 歷史計算：Core 變更後 5 個 release 內標示，不再需要手動修改 Release 名稱。
+- `Hotfix`／`Major` 只能由 commit trailer `Release-Label:` 指定；UI-only fix 可由 conventional commit 自動標 `UIFix`。
+- `main.yml` 在建立／更新 Release 時寫入分類名稱與 body；同時修正 `MERGED_BODY` 變數拼字，既有 Release 也會更新 name。
+- tag 維持純 `x.y.z`，分類不寫入 git tag。
+
 ## 2026.11.09 21:35 音訊環形緩衝格式與 PTS 缺陷
 
 - 修正 `AudioRingBuffer` 以 Int16 指標處理 Float32／Int32 的問題；copy、render、zero 改走 `AudioBufferList.mData` 原始指標並依 `bytesPerSample` 位移，避免第二個 render 後 channel 錯位、爆音或靜音。

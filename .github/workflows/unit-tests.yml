@@ -154,6 +154,9 @@ jobs:
       - name: Verify AltStore source updater
         run: python3 Scripts/test_update_altstore_source.py
 
+      - name: Verify release classifier
+        run: python3 Scripts/test_classify_release.py
+
       - name: Run liveAPP unit tests
         timeout-minutes: 20
         env:

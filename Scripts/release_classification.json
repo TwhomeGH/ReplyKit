@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "expWindowReleases": 5,
+  "maxAreas": 3,
+  "tiers": {
+    "Core": [
+      "SharedCapture/**",
+      "ReplyKIT/**",
+      "liveAPP/Capture/**",
+      "liveAPP/Audio/**",
+      "liveAPP/Networking/**",
+      "liveAPP/Recording/**",
+      "Package.resolved",
+      "**/*.metal"
+    ],
+    "UI": [
+      "liveAPP/**/*View.swift",
+      "liveAPP/Settings/**",
+      "liveAPP/PIPLayout*",
+      "liveAPP/Localizable.xcstrings",
+      "liveAPP/Artwork/**",
+      "**/*.xcstrings"
+    ]
+  },
+  "areas": {
+    "Audio": [
+      "liveAPP/Audio/**",
+      "ReplyKIT/Audio*",
+      "SharedCapture/CaptureMediaPipeline.swift",
+      "liveAPP/Capture/ScreenAudioProbe.swift"
+    ],
+    "Video": [
+      "liveAPP/Capture/**",
+      "SharedCapture/**",
+      "**/*.metal"
+    ],
+    "RTMP": [
+      "liveAPP/Networking/**",
+      "ReplyKIT/Socket*",
+      "ReplyKIT/RTMP*",
+      "liveAPP/Home/RTMP*",
+      "Package.resolved"
+    ],
+    "PiP": [
+      "liveAPP/PIP*.swift",
+      "liveAPP/**/PIP*.swift",
+      "liveAPP/PIPLayout*"
+    ],
+    "Extension": [
+      "ReplyKIT/**"
+    ],
+    "Settings": [
+      "liveAPP/Settings/**",
+      "liveAPP/Localizable.xcstrings"
+    ]
+  },
+  "ignored": [
+    "Docs/**",
+    "*.md",
+    "liveAPPTests/**",
+    "Scripts/**",
+    ".github/**",
+    "AltStore*"
+  ]
+}

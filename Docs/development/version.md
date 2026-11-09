@@ -1,33 +1,44 @@
 # 版本標記說明
 
-手動在版本標題後方加上標籤，例如：`## 7.9.5 (2024-01-01) — Stable`
+Release tag 只保留 `x.y.z`；標記由 CI 讀取 tag 之間的變更與 commit trailer 自動產生，寫入 GitHub Release 名稱與 body。Tag 本身不帶 `-Core`、`-Exp` 等字樣，以免影響 AltStore URL 與 tag 遞增規則。
 
-## 標籤一覽
+## 自動分類
 
-| 標籤 | 中文 | 使用時機 |
-| ------ | ------ | ---------- |
-| `Stable` | 穩定版 | 日常使用正常，無明顯問題 |
-| `Core Stable` | 核心版 | 有重要組件改動或修正，應優先使用 |
-| `Experimental` `Exp` | 實驗版 | 新功能或大改動，可能不穩定 |
-| `Hotfix` | 緊急修復 | 修正嚴重問題（音畫不同步、crash、無法推流） |
-| `Major` | 重大更新 | 架構重構、關鍵依賴升級（如 HaishinKit、Metal pipeline 改動） |
-| `UIFix` | UI/排版修正 | 改進 PiP 子母排版佈局、介面 UI、文字與圖片定位等視覺調整 |
+| 標籤 | 觸發方式 |
+| ------ | ------ |
+| `Core` | `SharedCapture/**`、`ReplyKIT/**`、`liveAPP/Capture/**`、`liveAPP/Audio/**`、`liveAPP/Networking/**`、`liveAPP/Recording/**`、`Package.resolved`、Metal shader |
+| `UI` | `*View.swift`、`Settings/**`、`PIPLayout*`、`Localizable.xcstrings`、Artwork |
+| `Audio` / `Video` / `RTMP` / `PiP` / `Extension` / `Settings` | 對應路徑變更；Release 名稱最多列 3 個 |
+| `Exp` | 最近 5 個 release 內有 `Core` 變更；含目前版本，第 5 個之後自動移除 |
+| `UIFix` | UI 變更且 commit 只有 `fix` 類型（沒有 `feat`） |
+| `Hotfix` / `Major` | 必須在 commit 加 `Release-Label: Hotfix` 或 `Release-Label: Major`；不從訊息猜測 |
+| `Stable` | 沒有 `Exp`、`Hotfix`、`Major`、`UIFix` 時自動標示 |
 
-## 標註範例
+Release 名稱格式：
 
-```log
-## 7.9.5 — Stable
-## 7.10.0 — Core Stable
-## 7.11.0-beta — Experimental
-## 7.11.1 — Hotfix
-## 8.0.0 — Major
-## 8.1.0 — UIFix
+```text
+17.5.5 · Core · Audio+RTMP · Exp
+17.5.6 · UI · PiP · UIFix
+17.5.7 · Core · Video · Hotfix
+17.5.8 · Stable
 ```
 
-## 備註
+`Exp` 是以 tag 歷史重新計算，不保存額外狀態：
 
-- 同一版可以複數標籤（如 `Core Stable + Hotfix`）
-- 若後續發現問題，可以降級或移除標籤
+- `V` 有 Core 變更 → `V`～`V+4` 標 `Exp`。
+- `V+5` 起不再標，除非又有新的 Core 變更。
+- 若中途又有 Core 變更，從該版本重新起算。
+
+## 人工覆寫
+
+語意上無法自動判斷的標籤用 commit trailer：
+
+```text
+Release-Label: Hotfix
+Release-Label: Major, UIFix
+```
+
+同一版可有多個標籤；`Hotfix`／`Major` 會優先於自動產生的 `Stable`。分類規則與測試在 `Scripts/release_classification.json`、`Scripts/classify_release.py` 與 `Scripts/test_classify_release.py`。
 
 ## Why Too Many Versions？為什麼會出現這麼多版本？
 
