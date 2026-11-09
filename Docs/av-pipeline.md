@@ -688,6 +688,25 @@ SampleHandler.logAudioHealthIfNeeded()  (每幀，ReplayKit queue)
 
 下游計數需要 HaishinKit 提供 `MediaMixer.audioPipelineDiagnostics()`（公開型別 `AudioPipelineDiagnostics`）。變更已套用到 HaishinKit repo `TwhomeGH/HaishinKitFixSwfit`（`HaishinKit/Sources/Mixer/`：新增 `AudioPipelineDiagnostics.swift`，並在 `AudioRingBuffer` / `AudioMixerTrack` / `AudioMixerByMultiTrack` / `AudioCaptureUnit` / `AudioMixer` / `MediaMixer` 加入計數與公開 API）。
 
+### AVAudioConverter 診斷（2026-11-09）
+
+`AudioPipelineDiagnostics.Track.converter` 新增 AVCon 層計數：
+
+- `convertCalls`、`haveDataCalls`、`noDataNowCalls`、`inputRanDryCalls`、`endOfStreamCalls`、`errorCalls`
+- `inputFramesRequested`／`inputFramesSupplied`、`outputFrames`、`zeroOutputCalls`
+- `inputBlockHaveDataCalls`／`inputBlockNoDataNowCalls`
+- `converterRebuilds`、`lastStatus`、`lastError`
+- `inputFormat`／`outputFormat`
+
+這是為了區分：
+
+- 正常的 `.noDataNow`：等待下一個完整 1024 frame，不代表故障。
+- `.inputRanDry`／`error`：真正的輸入或轉換問題。
+- `zeroOutputCalls`：converter 回 `.haveData` 但輸出 frameLength 為 0。
+- input callback 請求量與實際供應量不一致：ring buffer 不足或上游節奏異常。
+
+目前先接到 Mixer track 的 `resampleNoDataCount` 之外；AAC `AudioCodec` 的 encoder converter 尚未接入同一份摘要。
+
 ### 診斷邏輯
 
 - `align-drop`：`AudioRingBuffer.align()` 丟棄非 main track 樣本。這是目前最可疑的 content-level 斷音來源（雙軌 PTS 基座差被當成 desync）。

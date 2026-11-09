@@ -1,5 +1,12 @@
 # 變更歷史
 
+## 2026.11.09 22:40 AVAudioConverter 診斷
+
+- `AudioPipelineDiagnostics.Track` 新增 `converter`：記錄 AVCon 的 convert 次數、輸出狀態、input callback 請求／供應 frames、輸出 frames、zero output、converter 重建、格式與最近錯誤。
+- `AudioMixerTrack` 在每次 resample 時累計；可區分正常 `.noDataNow`、`.inputRanDry`、`.error` 與 underrun。
+- AAC `AudioCodec` 的 encoder converter 尚未接入同一摘要；目前先覆蓋 app／mic 的重取樣層。
+- fork 本地提交 `a281d197`，尚未 push；CI／實機未驗。
+
 ## 2026.11.09 22:20 Keyframe 與 BufferCount 明確策略
 
 - `maxKeyFrameIntervalDuration == 0` 改為真正的 automatic：`makeKeyFrameIntervalOptions` 不再送 duration／frame interval option，也不 fallback 成 2 秒；預設仍是 2 秒。
