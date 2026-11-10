@@ -96,6 +96,11 @@ final class MemorySampler {
 }
 
 /// 在主 actor 維護本程序基準；沿用採樣，不增加背景執行或定時器。
+///
+/// `coldIdleBaselineMB` 是啟動滿 60 秒後的 idle 基準；`warmIdleBaselineMB`
+/// 是每次進入擷取前、已在前景或背景穩定採樣過的最近 idle footprint。
+/// 後者包含 DeviceInfo／Settings／Audio／PiP 等 UI 常駐成本，不能用前者解釋
+/// 開播前的 100 MB。
 @MainActor
 final class IdleMemoryComparison {
     static let shared = IdleMemoryComparison()
@@ -108,7 +113,9 @@ final class IdleMemoryComparison {
     private var baseline: Double?
     private var firstFootprint: Double?
     private var preCaptureFootprint: Double?
+    private var warmIdleFootprint: Double?
     private var lastIdleFootprint: Double?
+    private var hasSettledIdle = false
     private var lastBusyFootprint: Double?
     private var stoppedAt: TimeInterval?
     private var milestones: Set<Int> = []
@@ -118,6 +125,10 @@ final class IdleMemoryComparison {
     func observe(footprint: Double, captureBusy: Bool, replayLive: Bool, reason: String, now: TimeInterval = ProcessInfo.processInfo.systemUptime) -> String {
         if firstFootprint == nil { firstFootprint = footprint }
         let busy = captureBusy
+        if !busy, reason != "app.start" { hasSettledIdle = true }
+        if busy && !wasBusy {
+            warmIdleFootprint = hasSettledIdle ? lastIdleFootprint : nil
+        }
         if busy && !everBusy { preCaptureFootprint = lastIdleFootprint }
         if busy {
             everBusy = true
@@ -137,7 +148,7 @@ final class IdleMemoryComparison {
         let missed = due.filter { (elapsed ?? 0) - Double($0) > 45 }
         let observed = due.filter { !missed.contains($0) }
         func number(_ value: Double?) -> String { value.map { String(format: "%.1f", $0) } ?? "unknown" }
-        return "process=\(processID) everObservedCapture=\(everBusy) coldIdleBaselineMB=\(number(baseline)) deltaBaselineMB=\(number(baseline.map { footprint - $0 })) stopElapsedSeconds=\(number(elapsed)) deltaLastBusyMB=\(number(elapsed == nil ? nil : lastBusyFootprint.map { footprint - $0 })) reachedStopSeconds=\(observed) missedStopSeconds=\(missed) baselineScope=mainAppProcess firstSampleMB=\(number(firstFootprint)) preCaptureSampleMB=\(number(preCaptureFootprint)) replayLastKnownLive=\(replayLive)"
+        return "process=\(processID) everObservedCapture=\(everBusy) coldIdleBaselineMB=\(number(baseline)) deltaBaselineMB=\(number(baseline.map { footprint - $0 })) warmIdleBaselineMB=\(number(warmIdleFootprint)) deltaWarmIdleMB=\(number(warmIdleFootprint.map { footprint - $0 })) stopElapsedSeconds=\(number(elapsed)) deltaLastBusyMB=\(number(elapsed == nil ? nil : lastBusyFootprint.map { footprint - $0 })) reachedStopSeconds=\(observed) missedStopSeconds=\(missed) baselineScope=mainAppProcess firstSampleMB=\(number(firstFootprint)) preCaptureSampleMB=\(number(preCaptureFootprint)) replayLastKnownLive=\(replayLive)"
     }
 }
 
