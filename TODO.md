@@ -12,7 +12,7 @@
 - `Package.resolved`（根目錄與 Xcode workspace 兩份）已更新到 fork `9beb2a93`；HaishinKit macOS 測試已通過 2ch 非靜音斷言，RTMP／iOS job 與 ReplyKit CI 仍待確認。
 - 已改：mic 啟用時以 mic 作為 Mixer 主時鐘（不再讓靜默 App 軌拖動 mic）；「串流格式與 RTMP 傳輸」改為摘要＋可收合子區塊；「Audio Pipeline · 混音輸出」新增 App／Mic AVCon、align 與 RMS 明細；AV Lag 舊場次不再永久顯示「進行中」，失效 segment 會清理；GPU 旋轉設定改為寬螢幕雙欄卡片；`data:image/...` 小圖支援本機解碼（單張 256 KiB／總量 768 KiB）。
 - 待辦：ReplyKit CI／實機驗證 mic 長段落連續音訊、App-only 與 mic 啟停；AV Lag 中斷場次實機確認；VT drop 與 PiP；AAC `AudioCodec` converter 診斷尚未接入；完整設備資訊 VT 明細仍待後續；data URI 需用真實伺服器縮圖驗證，不能只靠合成 PNG 測試；ReplayKit AVCon 卡片需實機確認 Socket snapshot 有 `audioTracks`；warmIdleBaseline 需用下一次長直播診斷確認與 preCapture 一致。
-- 事件第二階段：把 debug flags 收斂成單一 `RuntimeDebugConfig` snapshot＋versioned Darwin invalidation；現階段先修好 `DebugPipeline` 與 App Group 優先，尚未改 Socket 為單次 snapshot API。
+- 事件第二階段：已加入 `RuntimeDebugConfig` versioned snapshot；正常安裝由單一 Darwin invalidation 套用，側載仍保留舊逐 key 事件／Socket fallback。尚未把 `Rotate`／`RotateOriginal` 納入 snapshot，也尚未把 Socket 改成單次 snapshot API；`DebugTime` 仍只控制 ReplayKit，SCK 仍用 AVLag。
 
 ## 2026-11-06 核對摘要
 

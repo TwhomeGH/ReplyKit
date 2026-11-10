@@ -620,8 +620,16 @@ struct LogSettingView:View {
     @AppStorage("EnableTimeDebug",store:userDefaults) private var EnableTimeDebug = false
     @AppStorage("EnablePipelineLog",store:userDefaults) private var EnablePipelineLog = false
 
-
-
+    /// 正常安裝只發版本化 snapshot；沒有 App Group 的側載仍發舊事件，
+    /// 由擴展向 Socket 查目前值。
+    private func publishDebugConfig(legacyEvent: String) {
+        RuntimeDebugConfig.publish(to: userDefaults)
+        if FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: "group.nuclear.liveAPP") == nil {
+            CFNotificationCenterPostNotification(
+                cfCenter, CFNotificationName(legacyEvent as CFString), nil, nil, true)
+        }
+    }
 
 
 
@@ -698,8 +706,8 @@ struct LogSettingView:View {
             Toggle(isOn: $EnableRotatelog){
                 Text("啟用畫面旋轉調試日誌 ！")
             }
-            .onChange(of:EnableRotatelog) { newValue in
-                CFNotificationCenterPostNotification(cfCenter, CFNotificationName("DebugRotate" as CFString), nil, nil, true)
+            .onChange(of:EnableRotatelog) { _ in
+                publishDebugConfig(legacyEvent: "DebugRotate")
             }
 
             Text("啟用後顯示, 關於畫面GPU旋轉處理情況")
@@ -711,8 +719,8 @@ struct LogSettingView:View {
             Toggle(isOn: $EnableTimeDebug){
                 Text("啟用畫面旋轉時間軸信息 ！")
             }
-            .onChange(of:EnableTimeDebug) { newValue in
-                CFNotificationCenterPostNotification(cfCenter, CFNotificationName("DebugTime" as CFString), nil, nil, true)
+            .onChange(of:EnableTimeDebug) { _ in
+                publishDebugConfig(legacyEvent: "DebugTime")
             }
             Text("啟用後顯示, 關於畫面GPU旋轉處理時間軸延遲")
                     .font(.footnote)
@@ -722,8 +730,8 @@ struct LogSettingView:View {
             Toggle(isOn: $EnablePipelineLog){
                 Text("啟用管線調試日誌 ！")
             }
-            .onChange(of:EnablePipelineLog) { newValue in
-                CFNotificationCenterPostNotification(cfCenter, CFNotificationName("DebugPipeline" as CFString), nil, nil, true)
+            .onChange(of:EnablePipelineLog) { _ in
+                publishDebugConfig(legacyEvent: "DebugPipeline")
             }
             Text("啟用後顯示, 視頻/音頻幀流動日誌")
                     .font(.footnote)
@@ -763,7 +771,7 @@ struct LogSettingView:View {
 
                     SocketServer.shared.broadcast(type:"log",key: "Rebuild Socket", value: "OK Socket")
 
-                    CFNotificationCenterPostNotification(cfCenter, CFNotificationName("SocketLog" as CFString), nil, nil, true)
+                    publishDebugConfig(legacyEvent: "SocketLog")
                 }
 
                 Text("啟用備用Socket顯示傳遞日誌,當你處於側載時使用它代替AppGroup更新共享文件")

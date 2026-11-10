@@ -57,6 +57,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     var streamStataus:MyStreamBitRateStrategy?
 
     var volumeCheckTimer: Timer?
+    private var lastRuntimeDebugConfigVersion = 0
 
     var volumeNotifier : VolumeNotifier?
 
@@ -286,12 +287,29 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         return fallback
     }
 
+    /// 套用單一版本化快照；舊的逐 key 事件仍保留給側載與外部相容呼叫。
+    private func applyRuntimeDebugConfig(_ config: RuntimeDebugConfig) {
+        guard config.version >= lastRuntimeDebugConfigVersion else { return }
+        lastRuntimeDebugConfigVersion = config.version
+        videoProcessor?.setRotatorDebug(config.rotateDebug)
+        videoProcessor?.setRotatorTsDebug(config.timeDebug)
+        RPConfig.shared.enablePipelineLog = config.pipelineLog
+        RPConfig.shared.enableSocketLog = config.socketLog
+        sendlog(message: "[DebugConfig] v\(config.version) rotate=\(config.rotateDebug) time=\(config.timeDebug) pipeline=\(config.pipelineLog) socket=\(config.socketLog)")
+    }
+
     // MARK: 統一處理事件
     func handleEvent(eventName: String) {
         switch eventName {
 
         case "micVolumeChanged", "appVolumeChanged", "micAdd", "appAdd":
             Task { await volumeSync.requestRefresh() }
+
+        case RuntimeDebugConfig.notificationName:
+            Task {
+                guard let config = RuntimeDebugConfig.load(from: SharedDefaults.group) else { return }
+                applyRuntimeDebugConfig(config)
+            }
 
         case "SocketRetry":
             sendlog(message: "收到 SocketRetry，觸發連線")
