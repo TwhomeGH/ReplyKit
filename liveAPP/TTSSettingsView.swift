@@ -422,101 +422,138 @@ private struct SpeechFilterDocumentPicker: UIViewControllerRepresentable {
     // 左邊：輸入區
     private var inputSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Button("匯入 JSON") {
-                    notice = "請選取 JSON 配置檔案。"
-                    sendlog(title: "TTS匯入", message: "開啟文件選擇器")
-                    importing = true
+            GroupBox("測試與設定") {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 10) {
+                        Button {
+                            notice = "請選取 JSON 配置檔案。"
+                            sendlog(title: "TTS匯入", message: "開啟文件選擇器")
+                            importing = true
+                        } label: {
+                            Label("匯入 JSON", systemImage: "square.and.arrow.down")
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(isReadingImport)
+
+                        Button {
+                            do {
+                                let url = try filter.configuration.write(to: documentsDirectory)
+                                exportedURL = url
+                                notice = "已儲存至檔案分享目錄 Documents：\(url.lastPathComponent)"
+                            } catch { notice = error.localizedDescription }
+                        } label: {
+                            Label("匯出目前配置", systemImage: "square.and.arrow.up")
+                        }
+                        .buttonStyle(.bordered)
+                    }
+
+                    if isReadingImport { ProgressView("讀取配置中…") }
+                    if let notice {
+                        Text(notice)
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let url = exportedURL {
+                        ShareLink("分享最近匯出的配置", item: url)
+                    }
+                    Text("匯出與備份存放在與 log.txt 相同的 Documents 目錄。")
+                        .font(.caption).foregroundStyle(.secondary)
+
+                    Divider()
+
+                    Text("訊息測試")
+                        .font(.subheadline.weight(.semibold))
+                    TextField("輸入訊息測試", text: $inputText)
+                        .textFieldStyle(.roundedBorder)
+
+                    if !inputText.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("處理後訊息：")
+                                .font(.subheadline)
+                                .foregroundColor(.gray)
+                            Text(processedText.isEmpty ? "（會被過濾，不朗讀）" : processedText)
+                                .padding()
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color(.secondarySystemBackground))
+                                .cornerRadius(8)
+                        }
+                    }
                 }
-                .disabled(isReadingImport)
-                Button("匯出目前配置") {
-                    do {
-                        let url = try filter.configuration.write(to: documentsDirectory)
-                        exportedURL = url
-                        notice = "已儲存至檔案分享目錄 Documents：\(url.lastPathComponent)"
-                    } catch { notice = error.localizedDescription }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            GroupBox("基本清理") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Toggle("移除 URL", isOn: $filter.removeURLs)
+                    Toggle("移除表情符號 Emoji", isOn: $filter.removeEmoji)
+                    Toggle("移除純數字", isOn: $filter.removePureNumbers)
+
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("重複無意義字串")
+                            .font(.subheadline.weight(.semibold))
+                        Picker("", selection: $filter.noisePolicy) {
+                            Text("不處理").tag(SpeechNoisePolicy.off)
+                            Text("整句都是重複字元時跳過").tag(SpeechNoisePolicy.skipWholeMessage)
+                            Text("移除重複字元後朗讀").tag(SpeechNoisePolicy.stripNoiseTokens)
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        Text("只處理 ASCII 英數字元重複 3 次以上（wwww、aaaa、bbb）；hahaha、abc 與混合正常詞句不會被排除。")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            if isReadingImport { ProgressView("讀取配置中…") }
-            if let notice {
-                Text(notice)
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if let url = exportedURL { ShareLink("分享最近匯出的配置", item: url) }
-            Text("匯出與備份存放在與 log.txt 相同的 Documents 目錄。")
-                .font(.caption).foregroundStyle(.secondary)
-            Text("朗讀過濾設定")
-                .font(.headline)
-            
-            TextField("輸入訊息測試", text: $inputText)
-                .textFieldStyle(.roundedBorder)
-            
-            if !processedText.isEmpty {
+
+            GroupBox("排除關鍵字") {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("處理後訊息：")
-                        .font(.subheadline)
-                        .foregroundColor(.gray)
-                    Text(processedText)
-                        .padding()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(.secondarySystemBackground))
-                        .cornerRadius(8)
-                }
-            }
-            
-            Divider()
-            
-            Toggle("移除 URL", isOn: $filter.removeURLs)
-            
-            Toggle("移除表情符號 Emoji", isOn: $filter.removeEmoji)
-            
-            Toggle("移除純數字", isOn: $filter.removePureNumbers)
-
-            Picker("重複無意義字串", selection: $filter.noisePolicy) {
-                Text("不處理").tag(SpeechNoisePolicy.off)
-                Text("整句都是重複字元時跳過").tag(SpeechNoisePolicy.skipWholeMessage)
-                Text("移除重複字元後朗讀").tag(SpeechNoisePolicy.stripNoiseTokens)
-            }
-            .pickerStyle(.menu)
-            Text("只處理 ASCII 英數字元重複 3 次以上（wwww、aaaa、bbb）；hahaha、abc 與混合正常詞句不會被排除。")
-                .font(.caption).foregroundStyle(.secondary)
-
-            VStack(alignment: .leading) {
-                Text("排除關鍵字")
-                HStack {
-                    TextField("新增排除字", text: $newBlockWord)
-                        .textFieldStyle(.roundedBorder)
-                    Button("加入") {
-                        if !newBlockWord.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !filter.blockKeywords.contains(newBlockWord) {
-                            filter.blockKeywords.append(newBlockWord)
-                            newBlockWord = ""
+                    HStack(spacing: 8) {
+                        TextField("新增排除字", text: $newBlockWord)
+                            .textFieldStyle(.roundedBorder)
+                        Button("加入") {
+                            if !newBlockWord.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !filter.blockKeywords.contains(newBlockWord) {
+                                filter.blockKeywords.append(newBlockWord)
+                                newBlockWord = ""
+                            }
                         }
+                        .buttonStyle(.bordered)
                     }
+                    Text("排除字清單與啟用狀態在右側；點擊列可編輯。")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            
-            VStack(alignment: .leading) {
-                Text("替換關鍵字")
-                HStack {
-                    TextField("原字", text: $newReplaceWord)
-                        .textFieldStyle(.roundedBorder)
-                    TextField("替換字", text: $newReplacement)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 60)
-                    Button("加入") {
-                        if !newReplaceWord.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            let isNew = filter.replaceKeywords[newReplaceWord] == nil
-                            filter.replaceKeywords[newReplaceWord] = newReplacement
-                            if isNew { filter.replacementOrder = filter.orderedReplacementKeys.filter { $0 != newReplaceWord } + [newReplaceWord] }
-                            newReplaceWord = ""
-                            newReplacement = "B"
+
+            GroupBox("替換關鍵字") {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        TextField("原字", text: $newReplaceWord)
+                            .textFieldStyle(.roundedBorder)
+                        TextField("替換字", text: $newReplacement)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 60)
+                        Button("加入") {
+                            if !newReplaceWord.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                let isNew = filter.replaceKeywords[newReplaceWord] == nil
+                                filter.replaceKeywords[newReplaceWord] = newReplacement
+                                if isNew { filter.replacementOrder = filter.orderedReplacementKeys.filter { $0 != newReplaceWord } + [newReplaceWord] }
+                                newReplaceWord = ""
+                                newReplacement = "B"
+                            }
                         }
+                        .buttonStyle(.bordered)
                     }
+                    Text("替換字清單與啟用狀態在右側；點擊列可編輯。")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
     
     // 右邊：列表區
