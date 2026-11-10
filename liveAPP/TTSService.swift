@@ -8,6 +8,7 @@
 import AVFoundation
 import Foundation
 
+/// TTS 佇列溢出處理方式
 enum TTSQueueOverflowAction: Int {
     case skipNew = 0       // 跳過新訊息
     case stopOld = 1       // 停止目前朗讀，清空佇列，朗讀新訊息
