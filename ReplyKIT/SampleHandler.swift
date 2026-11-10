@@ -260,6 +260,32 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         }
     }
 
+    /// App Group 是正常安裝的單一來源；只有沒有 App Group（側載）才向
+    /// Socket 要單一 key，避免每個 debug toggle 都多一次網路 round-trip。
+    private func resolveBool(_ key: String, fallback: Bool) async -> Bool {
+        if let defaults = SharedDefaults.group,
+           defaults.object(forKey: key) != nil {
+            return defaults.bool(forKey: key)
+        }
+        if let raw = try? await SocketClient.shared.requestSet(for: key, type: "Bool"),
+           let value = raw as? Bool {
+            return value
+        }
+        return fallback
+    }
+
+    private func resolveInt(_ key: String, fallback: Int) async -> Int {
+        if let defaults = SharedDefaults.group,
+           defaults.object(forKey: key) != nil {
+            return defaults.integer(forKey: key)
+        }
+        if let raw = try? await SocketClient.shared.requestSet(for: key, type: "Int"),
+           let value = raw as? Int {
+            return value
+        }
+        return fallback
+    }
+
     // MARK: 統一處理事件
     func handleEvent(eventName: String) {
         switch eventName {
@@ -276,127 +302,34 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "DebugRotate":
-
-
-            _ = Task {
-                var Rlog=SharedDefaults.group?.bool(forKey: "EnableRotatelog") ?? false
-                if RPConfig.shared.enableSocketLog {
-                    if let raw = try await SocketClient.shared.requestSet(for: "EnableRotatelog", type: "Bool") {
-
-                        if let av = raw as? Bool {
-                            let oldV = Rlog
-                            Rlog = av
-
-                            logger.debug("EnableRotate \(av)")
-                            sendlog(message: "Socket原始EnableRotate數據包:\(av) -> \(oldV)")
-                        } else {
-                            logger.error("EnableRotate 型別錯誤: \(type(of: raw))")
-                        }
-
-                    }
-                }
-
-                videoProcessor?.setRotatorDebug(Rlog)
-                sendlog(message:"[旋轉日誌變化] VideoRotate \(Rlog)")
-
+            Task {
+                let enabled = await resolveBool("EnableRotatelog", fallback: false)
+                videoProcessor?.setRotatorDebug(enabled)
+                sendlog(message: "[旋轉日誌變化] VideoRotate \(enabled)")
             }
-
-            break
-
-
 
         case "DebugTime":
-
-
-            _ = Task {
-
-                var Rlog=SharedDefaults.group?.bool(forKey: "EnableTimeDebug") ?? false
-                if RPConfig.shared.enableSocketLog {
-                    if let raw = try await SocketClient.shared.requestSet(for: "EnableTimeDebug", type: "Bool") {
-
-                        if let av = raw as? Bool {
-                            let oldV = Rlog
-                            Rlog = av
-
-                            logger.debug("EnableTimeDebug \(av)")
-                            sendlog(message: "Socket原始EnableTimeDebug數據包:\(av) -> \(oldV)")
-                        } else {
-                            logger.error("EnableTimeDebug 型別錯誤: \(type(of: raw))")
-                        }
-
-                    }
-                }
-
-                videoProcessor?.setRotatorTsDebug(Rlog)
-                sendlog(message:"[旋轉日誌時間軸檢查] VideoTime \(Rlog)")
-
+            Task {
+                let enabled = await resolveBool("EnableTimeDebug", fallback: false)
+                videoProcessor?.setRotatorTsDebug(enabled)
+                sendlog(message: "[旋轉日誌時間軸檢查] VideoTime \(enabled)")
             }
-
-            break
 
         case "DebugPipeline":
-
-            _ = Task {
-                var Plog=SharedDefaults.group?.bool(forKey: "EnablePipelineLog") ?? false
-                if RPConfig.shared.enableSocketLog {
-                    if let raw = try await SocketClient.shared.requestSet(for: "EnablePipelineLog", type: "Bool") {
-
-                        if let av = raw as? Bool {
-                            let oldV = Plog
-                            Plog = av
-
-                            logger.debug("EnablePipelineLog \(av)")
-                            sendlog(message: "Socket原始EnablePipelineLog數據包:\(av) -> \(oldV)")
-                        } else {
-                            logger.error("EnablePipelineLog 型別錯誤: \(type(of: raw))")
-                        }
-
-                    }
-                }
-
-                RPConfig.shared.enablePipelineLog = Plog
-                sendlog(message:"[管線調試日誌] enablePipelineLog \(Plog)")
-
+            Task {
+                let enabled = await resolveBool("EnablePipelineLog", fallback: false)
+                RPConfig.shared.enablePipelineLog = enabled
+                sendlog(message: "[管線調試日誌] enablePipelineLog \(enabled)")
             }
-
-            break
 
 
 
         case "RotateOriginal":
-
-
-
-            _ = Task {
-
-                var Rlog=SharedDefaults.group?.bool(
-                forKey: "RotateOriginal"
-            ) ?? false
-
-                if RPConfig.shared.enableSocketLog {
-                    if let raw = try await SocketClient.shared.requestSet(for: "RotateOriginal", type: "Bool") {
-
-                        if let av = raw as? Bool {
-                            let oldV = Rlog
-                            Rlog = av
-
-                            logger.debug("RotateOriginal \(av)")
-                            sendlog(message: "Socket原始RotateOriginal數據包:\(av) -> \(oldV)")
-                        } else {
-                            logger.error("RotateOriginal 型別錯誤: \(type(of: raw))")
-                        }
-
-                    }
-                }
-
-                RPConfig.shared.updateState(RotateOriginal:Rlog)
-
-                sendlog(message:"[RotateOriginal 變換]  \(Rlog)")
-
-
+            Task {
+                let enabled = await resolveBool("RotateOriginal", fallback: false)
+                RPConfig.shared.updateState(RotateOriginal: enabled)
+                sendlog(message: "[RotateOriginal 變換] \(enabled)")
             }
-
-            break
 
 
 
@@ -408,72 +341,29 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
 
         case "Rotate":
-
-            _ = Task {
-                var Rlog=SharedDefaults.group?.integer(forKey: "Rotate") ?? 90
-
-                if RPConfig.shared.enableSocketLog {
-                    if let raw = try await SocketClient.shared.requestSet(for: "Rotate", type: "Int") {
-
-                        if let av = raw as? Int {
-                            let oldV = Rlog
-                            Rlog = av
-
-                            logger.debug("Rotate \(av)")
-                            sendlog(message: "Socket原始Rotate數據包:\(av) -> \(oldV)")
-                        } else {
-                            logger.error("Rotate 型別錯誤: \(type(of: raw))")
-                        }
-
-                    }
-                }
-
-                RPConfig.shared.updateState(Rotate: Rlog)
+            Task {
+                let rotation = await resolveInt("Rotate", fallback: 90)
+                RPConfig.shared.updateState(Rotate: rotation)
                 let geometry = resolvedStreamGeometry()
-                var vset = await rtmpStream.videoSettings
-                vset.videoSize = geometry.encoderSize
-                await mediaMixer.setVideoOrientation(geometry.orientation == .portrait ? .portrait : .landscapeRight)
+                var videoSettings = await rtmpStream.videoSettings
+                videoSettings.videoSize = geometry.encoderSize
+                await mediaMixer.setVideoOrientation(
+                    geometry.orientation == .portrait ? .portrait : .landscapeRight)
 
                 sendlog(message: "RVideoSET encoder=\(Int(geometry.encoderSize.width))x\(Int(geometry.encoderSize.height)) capture=\(Int(geometry.captureBufferSize.width))x\(Int(geometry.captureBufferSize.height))")
-                sendlog(message:"[Rotate變換]  \(Rlog)")
+                sendlog(message: "[Rotate變換] \(rotation)")
 
-                try? await rtmpStream.setVideoSettings(vset)
-
+                try? await rtmpStream.setVideoSettings(videoSettings)
                 await rtmpStream.restartVideoEncoding(reason: "video Rotate settings updated")
-
-
             }
-
-            break
 
 
         case "SocketLog":
-
-
-            _ = Task {
-                var Rlog=SharedDefaults.group?.bool(forKey: "EnableSocketlog") ?? false
-
-
-                    if let raw = try await SocketClient.shared.requestSet(for: "EnableSocketlog", type: "Bool") {
-
-                        if let av = raw as? Bool {
-                            let oldV = Rlog
-                            Rlog = av
-
-                            logger.debug("EnableSocket \(av)")
-                            sendlog(message: "Socket原始EnableSocketLog數據包:\(av) -> \(oldV)")
-                        } else {
-                            logger.error("EnableSocketLog 型別錯誤: \(type(of: raw))")
-                        }
-
-                    }
-
-                RPConfig.shared.enableSocketLog = Rlog
-                sendlog(message:"[Socket日誌開關]  \(Rlog)")
-
+            Task {
+                let enabled = await resolveBool("EnableSocketlog", fallback: false)
+                RPConfig.shared.enableSocketLog = enabled
+                sendlog(message: "[Socket日誌開關] \(enabled)")
             }
-
-            break
 
 
         case "ChangeBit":
