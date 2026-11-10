@@ -65,4 +65,6 @@ python3 -m unittest discover -s Scripts -p test_inspect_app_bundle.py
 
 目前 Assets.car 的 asset 名稱只有 `AppIcon`、`PersonalIcon`、`PersonalIconPreview`、`DefaultIconPreview` 與 `AppIcon.png`／`PersonalIcon-*.png` 等圖示 renditions；4.9 MB 幾乎全部是圖示與預覽，不是其他圖片或一般資源。來源 asset catalog 約 3.1 MB，編譯後變大是因為 iOS 圖示的 idiom／appearance renditions 與 asset catalog 編碼，不能再用來回推某一張 PNG 的增量。
 
+`AppIcon.appiconset` 原本三張 1024×1024 不是三個尺寸，而是 default／dark／tinted 三種 appearance；三者 SHA256 相同，屬於重複。AppIcon 使用 iOS single-size 格式，只需要一張 1024 原稿，其餘裝置尺寸由 actool 產生；另外補 20／29／60／76／83.5 等 legacy 尺寸不會縮小 Assets.car，反而增加重複 renditions。已移除兩張相同的 dark／tinted 檔，只保留 default `AppIcon.png`；若日後要真正的深色／著色圖示，應各設計一張不同的 1024 原稿，而不是複製同一張。
+
 KSign 相容層只應複製 `CFBundleIconFiles` 實際引用的尺寸（PersonalIcon-76／120／152／167／180）；1024 marketing `PersonalIcon.png` 已由 Assets.car 提供，且未被列在 `CFBundleIconFiles`，複製到 App 根目錄只會增加約 1.79 MB 的重複圖示資料。
