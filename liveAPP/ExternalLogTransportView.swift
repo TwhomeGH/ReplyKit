@@ -15,7 +15,7 @@ struct ExternalLogTransportView: View {
                 Text(server.externalLogSubscribers == 0 ? "未連線：沒有已訂閱的外部工具，不累積離線日誌。"
                      : "已訂閱外部工具：\(server.externalLogSubscribers) 個")
                 Text("慢連線略過批次：\(server.externalLogDropped)").font(.caption)
-                Text("外部工具需傳送 subscribeExternalLogs 訂閱；擴展不接收此通道。慢連線會略過新日誌，不影響本地保存。")
+                Text("外部工具需傳送 subscribeExternalLogs 訂閱。ReplyKit 會阻斷回送迴圈：擴展送出的日誌不會再被回送給擴展自身；只有已訂閱的外部工具會收到 externalLogBatch／diagnostic。慢連線會略過新日誌，不影響本地保存。")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }

@@ -16,6 +16,7 @@
 - 新增 base64 `data:image/...` 圖片來源：聊天頭像／禮物、行內 emoji、贊助橫幅與通知共用本機解碼，不進 URLSession；限制單張 256 KiB、單訊息 768 KiB、4 MP，拒絕 SVG／非 base64／超量，HTTP URL 仍保留給大圖。日誌以長度遮蔽 base64，TTS 與通知使用清洗後文字。
 - ReplayKit 的 `StreamDiagnosticsSnapshot` 現在也會帶 `audioTracks`；主 App 的「Audio Pipeline · 混音輸出」在 ReplayKit 與 ScreenCaptureKit 都能看到 App／Mic 的 AVCon、ring buffer、align 與 RMS。轉換邏輯集中在 `StreamDiagnosticsSnapshot.audioTrackDiagnostics(from:)`，避免兩條路徑各寫一份。
 - `[IdleResources]` 新增 `warmIdleBaselineMB`／`deltaWarmIdleMB`：每次進入擷取前記錄最近一次已穩定的 idle footprint，包含 DeviceInfo／Settings／Audio／PiP 等 UI 常駐成本；`coldIdleBaselineMB` 保留作冷啟動對照，避免把 100 MB warm idle 誤算成串流增量。
+- 外部日誌設定文案改為說明「回送防護」：擴展送出的日誌不會再被回送給擴展；只有已訂閱的外部工具會收到 `externalLogBatch`／`diagnostic`，避免被誤解成擴展完全不傳任何資料。
 - 修正 `DebugPipeline` toggle 沒有 observer 的問題，加入 `Eventlisten`；`DebugRotate`／`DebugTime`／`DebugPipeline`／`RotateOriginal`／`Rotate`／`SocketLog` 改成優先讀 App Group，只有沒有 App Group（側載）才用 Socket 單 key 查詢，移除每個 toggle 一次 `requestSet` 的重複與競態。`DebugTime` 仍只控制 ReplayKit 的 rotator timestamp；SCK 沿用 AVLag，暫不新增第二套。
 - `Package.resolved` 更新到 fork `9beb2a93`；ReplyKit CI／實機仍待驗。
 

@@ -10,7 +10,9 @@
 {"type":"subscribeExternalLogs","enabled":true}
 ```
 
-回應 `externalLogSubscription` 的 enabled 表示訂閱是否成立；false 可取消，斷線後需重訂閱。未知連線預設不接收。發送擴展專用單筆 `log` 或 `logbatch`／`videoHealth`／`audioHealth`／`reconnectStatus` 的連線會被標記為擴展並取消訂閱，標記持續到連線結束，重連需重新判定角色。這是協定角色識別，不是身份驗證；不要向不可信網路公開服務。
+回應 `externalLogSubscription` 的 enabled 表示訂閱是否成立；false 可取消，斷線後需重訂閱。未知連線預設不接收。發送擴展專用單筆 `log` 或 `logbatch`／`videoHealth`／`audioHealth`／`reconnectStatus` 的連線會被標記為擴展並取消訂閱，標記持續到連線結束，重連需重新判定角色。這是協定角色識別與回送防護，不是身份驗證；不要向不可信網路公開服務。
+
+「擴展不接收此通道」不是說擴展完全收不到任何資料：擴展仍會把 `log`／`logbatch`／健康狀態送到主 App，但主 App 不會把 `externalLogBatch`、`diagnostic` 或外部工具的訂閱結果回送給擴展自身；這些只送給已訂閱的外部工具。因此不會形成「擴展 → 主 App → 擴展」的日誌回送迴圈。
 
 一般輸出範例：
 
