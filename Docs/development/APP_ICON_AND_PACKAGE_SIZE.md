@@ -62,3 +62,7 @@ python3 -m unittest discover -s Scripts -p test_inspect_app_bundle.py
 
 不會將 Assets.car 全部算成單一圖示；不含使用者文件、快取，也不等同系統設定頁的空間計算。
 若要減少圖示體積，需比較新版產物再決定圖片簡化或改圖，不先犧牲原稿畫質。
+
+目前 Assets.car 的 asset 名稱只有 `AppIcon`、`PersonalIcon`、`PersonalIconPreview`、`DefaultIconPreview` 與 `AppIcon.png`／`PersonalIcon-*.png` 等圖示 renditions；4.9 MB 幾乎全部是圖示與預覽，不是其他圖片或一般資源。來源 asset catalog 約 3.1 MB，編譯後變大是因為 iOS 圖示的 idiom／appearance renditions 與 asset catalog 編碼，不能再用來回推某一張 PNG 的增量。
+
+KSign 相容層只應複製 `CFBundleIconFiles` 實際引用的尺寸（PersonalIcon-76／120／152／167／180）；1024 marketing `PersonalIcon.png` 已由 Assets.car 提供，且未被列在 `CFBundleIconFiles`，複製到 App 根目錄只會增加約 1.79 MB 的重複圖示資料。

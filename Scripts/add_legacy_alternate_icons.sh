@@ -3,6 +3,8 @@
 # not understand asset-catalog-only CFBundleIconName entries. The asset catalog
 # declaration is kept; these files and CFBundleIconFiles are a compatibility
 # layer for the unsigned archive before the IPA is produced.
+# Do not copy PersonalIcon.png (1024 marketing icon): it is not listed in any
+# CFBundleIconFiles array, and Assets.car already carries the catalog rendition.
 set -euo pipefail
 
 if [[ $# -ne 1 ]]; then
@@ -28,8 +30,7 @@ for file in \
   PersonalIcon-120.png \
   PersonalIcon-152.png \
   PersonalIcon-167.png \
-  PersonalIcon-180.png \
-  PersonalIcon.png
+  PersonalIcon-180.png
 do
   if [[ ! -f "$SOURCE_DIR/$file" ]]; then
     echo "missing source icon: $SOURCE_DIR/$file" >&2
