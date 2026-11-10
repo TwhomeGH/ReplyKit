@@ -40,6 +40,26 @@ Release-Label: Major, UIFix
 
 同一版可有多個標籤；`Hotfix`／`Major` 會優先於自動產生的 `Stable`。分類規則與測試在 `Scripts/release_classification.json`、`Scripts/classify_release.py` 與 `Scripts/test_classify_release.py`。
 
+## MARKETING_VERSION 與 Release tag
+
+Archive／Release workflow 會讀取 `x.y.z` tag，並在 `xcodebuild archive` 加上：
+
+```text
+MARKETING_VERSION=<tag>
+```
+
+這是 Xcode command-line build setting override，會讓主 App 與所有 extension 的 `CFBundleShortVersionString` 使用同一個 tag，不需要先手動修改 `project.pbxproj`。CI 會輸出：
+
+```text
+MARKETING_VERSION old=17.6.7 -> effective=17.6.8
+Archived app version: CFBundleShortVersionString=17.6.8
+```
+
+- 本地忘記改 `MARKETING_VERSION` 時，CI 產物仍會使用 tag 版本。
+- repo 內的 `project.pbxproj` 不會被 CI 改寫，因此本地 Xcode 建置仍以手動值為準。
+- 測試 target 的 `MARKETING_VERSION = 1.0` 是刻意設定，不列入 release 版本比對。
+- `CURRENT_PROJECT_VERSION` 目前仍由專案／人工控制，不由此步驟自動改寫。
+
 ## Why Too Many Versions？為什麼會出現這麼多版本？
 
 這是因為專案開發初期，主要是在本地 Xcode 環境進行開發與測試。

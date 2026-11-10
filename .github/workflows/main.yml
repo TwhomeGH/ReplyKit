@@ -80,7 +80,23 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "Using tag: $TAG"
 
-      
+      - name: Resolve MARKETING_VERSION 對齊 release tag
+        id: marketing_version
+        run: |
+          set -euo pipefail
+          OLD_VERSIONS=$(grep -Eo 'MARKETING_VERSION = [^;]+;' liveAPP.xcodeproj/project.pbxproj \
+            | sed -E 's/.*= ([^;]+);/\1/' \
+            | grep -v '^1\.0$' \
+            | sort -u \
+            | tr '\n' ',' \
+            | sed 's/,$//' || true)
+          echo "old=$OLD_VERSIONS" >> "$GITHUB_OUTPUT"
+          echo "new=$TAG" >> "$GITHUB_OUTPUT"
+          echo "MARKETING_VERSION old=$OLD_VERSIONS -> effective=$TAG" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$OLD_VERSIONS" != "$TAG" ]; then
+            echo "::notice::CI 以 xcodebuild 覆寫 MARKETING_VERSION：$OLD_VERSIONS -> $TAG（不修改 repo 檔案）"
+          fi
+
       # 使用主 App scheme，避免誤選 ReplyKITSetupUI 等擴展。
       - name: Set application scheme
         id: scheme
@@ -177,6 +193,7 @@ jobs:
           scheme: ${{ steps.scheme.outputs.scheme }}
           filetype_parameter: ${{ steps.filetype_parameter.outputs.filetype_parameter }}
           file_to_build: ${{ steps.filetype_parameter.outputs.file_to_build }}
+          MARKETING_VERSION: ${{ steps.marketing_version.outputs.new }}
 
         run: |
           set -o pipefail
@@ -195,6 +212,7 @@ jobs:
             -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile \
             -destination "generic/platform=iOS" \
             CODE_SIGNING_ALLOWED=NO \
+            MARKETING_VERSION="$MARKETING_VERSION" \
             SWIFT_SYMBOL_REDACTION=NO 2>&1 | tee -a build/archive.log
 
             
@@ -237,9 +255,17 @@ jobs:
       - name: Read app version 讀取 App 版本
         id: app_version
         run: |
+          set -euo pipefail
           PLIST="build/liveApp.xcarchive/Products/Applications/liveAPP.app/Info.plist"
-          echo "short=$(plutil -extract CFBundleShortVersionString raw "$PLIST")" >> "$GITHUB_OUTPUT"
-          echo "build=$(plutil -extract CFBundleVersion raw "$PLIST")" >> "$GITHUB_OUTPUT"
+          SHORT=$(plutil -extract CFBundleShortVersionString raw "$PLIST")
+          BUILD=$(plutil -extract CFBundleVersion raw "$PLIST")
+          echo "short=$SHORT" >> "$GITHUB_OUTPUT"
+          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
+          echo "Archived app version: CFBundleShortVersionString=$SHORT CFBundleVersion=$BUILD" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$SHORT" != "$TAG" ]; then
+            echo "::error::MARKETING_VERSION override 未生效：archive=$SHORT tag=$TAG"
+            exit 1
+          fi
 
       - name: Classify release 產生 Release 分類
         id: release_meta
