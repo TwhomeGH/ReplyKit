@@ -1357,8 +1357,9 @@ func PIPLogTo(_ message:String){
 }
 
 func logTo(_ message:String){
-    print(message)
-    sendlog(message: message)
+    let safeMessage = ImageDataURI.redacted(message)
+    print(safeMessage)
+    sendlog(message: safeMessage)
 }
 
 // =========================

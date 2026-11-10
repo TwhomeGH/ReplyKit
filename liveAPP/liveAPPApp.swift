@@ -1066,7 +1066,8 @@ func sendlog(title:String = "liveApp",message: String) {
     guard LPConfig.shared.enableLog else { return }
 
     let timeString = formatTime()
-    let full = "\(timeString): \(title):\(message)"
+    let safeMessage = ImageDataURI.redacted(message)
+    let full = "\(timeString): \(title):\(safeMessage)"
 
     // MARK: 日誌緩衝區
     LogBuffer.shared.push(full)
@@ -1076,7 +1077,7 @@ func sendlog(title:String = "liveApp",message: String) {
     if LPConfig.shared.logMode == 0 || LPConfig.shared.logMode == 2 {
 
         RemoteLogSender.shared.start()
-        RemoteLogBuffer.shared.push(title: title, message: message)
+        RemoteLogBuffer.shared.push(title: title, message: safeMessage)
 
     } else {
         // 取消遠端 log
@@ -1084,7 +1085,7 @@ func sendlog(title:String = "liveApp",message: String) {
 
     }
 
-    logger.info("logMode:\(LPConfig.shared.logMode) \(title,privacy:.public):\(message,privacy:.public)")
+    logger.info("logMode:\(LPConfig.shared.logMode) \(title,privacy:.public):\(safeMessage,privacy:.public)")
 
 
 
@@ -1096,17 +1097,17 @@ func receiveSocketLog(title: String = "UseESocket", message: String) {
 
     //let timeString = formatTime()
     // 已經有時間戳了，避免重複
-
-    let lines = message
+    let safeMessage = ImageDataURI.redacted(message)
+    let lines = safeMessage
         .split(separator: "\n", omittingEmptySubsequences: true)
         .map { "\(title):\($0)" }
 
     if lines.isEmpty {
         
-        LogBuffer.shared.push("\(title):\(message)")
+        LogBuffer.shared.push("\(title):\(safeMessage)")
 
 
-        AppLogPersister.shared.append(line: "\(title):\(message)")
+        AppLogPersister.shared.append(line: "\(title):\(safeMessage)")
     } else {
         LogBuffer.shared.push(lines)
         AppLogPersister.shared.append(lines: lines)
@@ -1115,7 +1116,7 @@ func receiveSocketLog(title: String = "UseESocket", message: String) {
     if (LPConfig.shared.logMode == 0 || LPConfig.shared.logMode == 2),
        userDefaults?.string(forKey: "externalLogTransport") != "socket" {
         RemoteLogSender.shared.start()
-        RemoteLogBuffer.shared.push(title: title, message: message)
+        RemoteLogBuffer.shared.push(title: title, message: safeMessage)
     }
 }
 
@@ -1147,12 +1148,8 @@ func postSystemNotification(title: String, body: String, imageURL: String? = nil
     content.sound = .default
     content.categoryIdentifier = "replykit_notification"
 
-    let bestURL: URL
-    if let firstEmoji = inlineImages.compactMap({ URL(string: $0) }).first {
-        bestURL = firstEmoji
-    } else if let imageURL = imageURL, let url = URL(string: imageURL) {
-        bestURL = url
-    } else {
+    let bestImage = inlineImages.first(where: { !$0.isEmpty }) ?? imageURL
+    guard let bestImage, !bestImage.isEmpty else {
         deliverNotification(content: content)
         return
     }
@@ -1160,7 +1157,7 @@ func postSystemNotification(title: String, body: String, imageURL: String? = nil
     // 走 PiPImageCache：與 PiP 疊層共用快取 + FIFO 下載佇列，
     // 避免同一張圖重複下載、以及通知路徑無限並行 dataTask 與 PiP 搶網路。
     Task {
-        await PiPImageCache.shared.loadImage(urlString: bestURL.absoluteString) { image in
+        await PiPImageCache.shared.loadImage(urlString: bestImage) { image in
             guard let data = image?.pngData() else {
                 deliverNotification(content: content)
                 return

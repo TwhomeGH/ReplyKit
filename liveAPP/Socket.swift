@@ -1239,9 +1239,11 @@ class SocketServer:ObservableObject, @unchecked Sendable {
                 }
 
 
+                let (speechText, _, _) = PIPServiceMessages.extractAllImageURLs(
+                    from: text, placeholder: "")
                 Task { @MainActor in
                     if useTTS {
-                        TTSService.shared.speakStreamMessage(user: user, message: text, isMain: true, force: true)
+                        TTSService.shared.speakStreamMessage(user: user, message: speechText, isMain: true, force: true)
                     }
                     PIPService.shared.addAdOverlay(user: user, text: text, iconURL: iconURL, useTTS: useTTS)
                 }
@@ -1289,8 +1291,10 @@ class SocketServer:ObservableObject, @unchecked Sendable {
 
                 // 單則訊息只能略過朗讀；是否啟用及文字篩選仍由 TTSService 判斷。
                 if dict.useTTS {
+                    let (speechText, _, _) = PIPServiceMessages.extractAllImageURLs(
+                        from: msg, placeholder: "")
                     Task { @MainActor in
-                        TTSService.shared.speakStreamMessage(user: user, message: msg, isMain: isMain)
+                        TTSService.shared.speakStreamMessage(user: user, message: speechText, isMain: isMain)
                     }
                 }
 

@@ -103,7 +103,28 @@
 }
 ```
 
-**PiP 行內 emoji 渲染** — `message` 中的圖片 URL（`https://...png|jpg|gif|webp`）會自動提取並在聊天文字中行內顯示：
+`img`、`giftImg` 與 `message` 內的圖片除了 HTTP(S) URL，也接受 **base64 data URI**：
+
+```text
+data:image/png;base64,<payload>
+data:image/jpeg;base64,<payload>
+data:image/webp;base64,<payload>
+data:image/gif;base64,<payload>
+```
+
+App 會在本機解碼，不發出 HTTP 請求；只接受 `;base64`，拒絕 SVG、PDF、非 base64 與超過限制的內容。建議 server 先縮成顯示尺寸：
+
+| 限制 | 值 |
+| ------ | ------ |
+| 單張 encoded data | 256 KiB |
+| 單則訊息所有內嵌圖片合計 | 768 KiB |
+| 單則圖片數量 | 20 |
+| 解碼後像素 | 4 MP |
+| 最大縮圖邊長 | 2048 px |
+
+超過限制的資料會顯示 placeholder，不會切片、截斷 base64 或 fallback 去下載 HTTP；需要大圖時請改送一般 HTTPS URL，讓 App 使用既有快取。日誌只會記錄 `data:image/...;base64,<N chars>`，不會寫入 base64 內容。
+
+**PiP 行內 emoji 渲染** — `message` 中的圖片 URL（`https://...png|jpg|gif|webp` 或上述 data URI）會自動提取並在聊天文字中行內顯示：
 
 ```text
 ┌──────────────────────────────┐
@@ -151,7 +172,7 @@
 - 位置：PiP 頂部 `y=4`，橫幅高 `52pt`，寬度 `88%`
 - 視覺：金底 `rgba(0.9, 0.55, 0.05, 0.88)`、圓角 `10`、白色粗體名稱 + 灰色內文
 - 持續時間：5 秒後自動清除，最後 0.5 秒 alpha 淡出
-- 頭像：非同步透過 `PiPImageCache` 下載，圓形裁切；無 URL 時顯示 `star.fill` 系統圖示
+- 頭像：非同步透過 `PiPImageCache` 取得（HTTP 或 `data:image/...;base64,...` 本機解碼），圓形裁切；無資料時顯示 `star.fill` 系統圖示。`text` 內嵌 emoji 也套用相同 data URI 限制。
 - PiP 關閉或收到記憶體警告時立即清除
 
 ---

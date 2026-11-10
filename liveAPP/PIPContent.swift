@@ -90,6 +90,15 @@ actor PiPImageCache {
     }
 
     func loadImage(urlString: String, completion: @escaping (UIImage?) -> Void) async {
+        if urlString.lowercased().hasPrefix("data:") {
+            guard let reference = ImageDataURI.reference(from: urlString) else {
+                await MainActor.run { completion(nil) }
+                return
+            }
+            await loadEmbedded(reference, completion: completion)
+            return
+        }
+
         if let img = cache.object(forKey: urlString as NSString) {
             await MainActor.run {
                 completion(img)
@@ -115,6 +124,50 @@ actor PiPImageCache {
         }
 
         startDownload(urlString: urlString, completions: [completion])
+    }
+
+    /// 內嵌圖片是本機解碼，不佔用網路下載 slot，也不進 FIFO 佇列。
+    private func loadEmbedded(
+        _ reference: ImageDataURIReference,
+        completion: @escaping (UIImage?) -> Void
+    ) async {
+        let key = reference.cacheKey
+        if let image = cache.object(forKey: key as NSString) {
+            await MainActor.run { completion(image) }
+            return
+        }
+        if inFlightTasks[key] != nil || pendingCallbacks[key] != nil {
+            pendingCallbacks[key, default: []].append(completion)
+            return
+        }
+        pendingCallbacks[key] = [completion]
+        let task = Task<UIImage?, Never> {
+            let image = await Task.detached(priority: .utility) {
+                ImageDataURI.decode(reference)
+            }.value
+            await self.completeEmbedded(key: key, image: image)
+            return nil
+        }
+        inFlightTasks[key] = task
+    }
+
+    private func completeEmbedded(key: String, image: UIImage?) async {
+        let callbacks = pendingCallbacks.removeValue(forKey: key) ?? []
+        if let image {
+            cache.setObject(image, forKey: key as NSString, cost: Self.imageCost(image))
+        }
+        await MainActor.run {
+            for callback in callbacks {
+                callback(image)
+            }
+        }
+        inFlightTasks[key] = nil
+        startNextIfPossible()
+    }
+
+    private static func imageCost(_ image: UIImage) -> Int {
+        guard let cgImage = image.cgImage else { return 1 }
+        return max(1, cgImage.bytesPerRow * cgImage.height)
     }
 
     private func startDownload(urlString: String, completions: [(UIImage?) -> Void]) {
@@ -1127,46 +1180,49 @@ final class PIPServiceMessages {
 
 
     static func extractAllImageURLs(from message: String, maxURLs: Int = 20, placeholder: String = "\u{2003}") -> (cleaned: String, imageURLs: [String], imagePositions: [Int]) {
-        let imageExtensions = ["png", "jpg", "jpeg", "gif", "webp", "PNG", "JPG", "JPEG", "GIF", "WEBP"]
-        let pattern = "(https?://[^\\s]+\\.(" + imageExtensions.joined(separator: "|") + ")(\\?[^\\s]*)?)"
-
-        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+        let imageExtensions = ["png", "jpg", "jpeg", "gif", "webp"]
+        let httpPattern = "https?://[^\\s]+\\.(?:" + imageExtensions.joined(separator: "|") + ")(?:\\?[^\\s]*)?"
+        let dataPattern = "data:image/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+"
+        let pattern = "(?:" + httpPattern + "|" + dataPattern + ")"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
             return (message, [], [])
         }
 
         let nsRange = NSRange(message.startIndex..., in: message)
         let matches = regex.matches(in: message, range: nsRange)
-
         var urls: [String] = []
         var positions: [Int] = []
         var parts: [String] = []
         var lastEnd = message.startIndex
+        var embeddedBytes = 0
 
         for match in matches {
-            guard urls.count < maxURLs else {
-                if Range(match.range(at: 1), in: message) != nil {
-                    parts.append(String(message[lastEnd...]))
+            guard let range = Range(match.range, in: message) else { continue }
+            if lastEnd < range.lowerBound {
+                parts.append(String(message[lastEnd..<range.lowerBound]))
+            }
+            let token = String(message[range])
+            var accepted = urls.count < maxURLs
+            if token.lowercased().hasPrefix("data:image/") {
+                if let reference = ImageDataURI.reference(from: token),
+                   embeddedBytes + reference.estimatedBytes <= ImageDataURI.maxTotalBytes {
+                    embeddedBytes += reference.estimatedBytes
+                } else {
+                    accepted = false
                 }
-                lastEnd = message.endIndex
-                break
             }
-            guard let urlRange = Range(match.range(at: 1), in: message) else { continue }
-
-            if lastEnd < urlRange.lowerBound {
-                parts.append(String(message[lastEnd..<urlRange.lowerBound]))
+            if accepted {
+                let currentLen = parts.reduce(0) { $0 + $1.count }
+                positions.append(currentLen)
+                urls.append(token)
             }
-
-            let currentLen = parts.map(\.count).reduce(0, +)
-            positions.append(currentLen)
-            urls.append(String(message[urlRange]))
             parts.append(placeholder)
-            lastEnd = urlRange.upperBound
+            lastEnd = range.upperBound
         }
 
         if lastEnd < message.endIndex {
             parts.append(String(message[lastEnd...]))
         }
-
         return (parts.joined(), urls, positions)
     }
 
@@ -2055,8 +2111,9 @@ final class PIPServiceMessages {
 func PIPChatLog(_ message:String){
     guard LPConfig.shared.PIPChatLog else { return }
 
-    logger.debug("PIPCHAT \(message)")
-    sendlog(title:"[PIP_Chat]",message: message)
+    let safeMessage = ImageDataURI.redacted(message)
+    logger.debug("PIPCHAT \(safeMessage)")
+    sendlog(title:"[PIP_Chat]",message: safeMessage)
 
 }
 
