@@ -125,6 +125,32 @@ struct SpeechFilterConfigurationTests {
         #expect(rejects(#"{"blockKeywords":[{"word":"X","enabled":"false"}],"replaceKeywords":[]}"#))
         #expect(rejects(#"{"blockKeywords":[{"word":"X","enabled":false},{"word":"X","enabled":true}],"replaceKeywords":[]}"#))
     }
+    @Test func nonWordNoiseFilterIsOptionalAndDoesNotDropRealWords() throws {
+        let suite = "SpeechFilterTests-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let manager = SpeechFilterManager(defaults: defaults)
+
+        #expect(manager.processMessage("wwww aaaa bbb") == "wwww aaaa bbb")
+        manager.removeNonWordNoise = true
+        #expect(manager.processMessage("wwww aaaa bbb") == "")
+        #expect(manager.processMessage("WWWW!") == "")
+        #expect(manager.processMessage("hahaha") == "hahaha")
+        #expect(manager.processMessage("abc") == "abc")
+        #expect(manager.processMessage("wwww 你好") == "wwww 你好")
+
+        manager.noisePolicy = .stripNoiseTokens
+        #expect(manager.processMessage("wwww 你好") == "你好")
+        #expect(manager.processMessage("wwww aaaa bbb") == "")
+        #expect(manager.processMessage("asweffeteteh") == "asweffeteteh")
+        #expect(manager.processMessage("hahaha 你好") == "hahaha 你好")
+
+        let config = try decode(#"{"blockKeywords":[],"replaceKeywords":[],"removeNonWordNoise":true,"noisePolicy":"stripNoiseTokens"}"#)
+        #expect(config.removeNonWordNoise == true)
+        #expect(config.noisePolicy == .stripNoiseTokens)
+        #expect(try SpeechFilterConfiguration.decode(config.encoded()).noisePolicy == .stripNoiseTokens)
+    }
+
     @Test func disabledRulesRemainStoredButDoNotProcessText() throws {
         let suite = "SpeechFilterTests-" + UUID().uuidString
         let defaults = UserDefaults(suiteName: suite)!

@@ -31,7 +31,17 @@ class SpeechFilterManager: ObservableObject {
     @Published var removePureNumbers: Bool = false {
         didSet { saveToUserDefaults() }
     }
-    
+    /// 重複字元噪音的處理方式；預設關閉。
+    @Published var noisePolicy: SpeechNoisePolicy = .off {
+        didSet { saveToUserDefaults() }
+    }
+
+    /// 舊版呼叫端使用的布林檢視；true 等同整句跳過。
+    var removeNonWordNoise: Bool {
+        get { noisePolicy == .skipWholeMessage }
+        set { noisePolicy = newValue ? .skipWholeMessage : .off }
+    }
+
     @Published var disabledBlockKeywords: Set<String> = [] { didSet { saveToUserDefaults() } }
     @Published var disabledReplacementKeywords: Set<String> = [] { didSet { saveToUserDefaults() } }
     @Published var replacementOrder: [String] = [] { didSet { saveToUserDefaults() } }
@@ -43,7 +53,9 @@ class SpeechFilterManager: ObservableObject {
     var configuration: SpeechFilterConfiguration {
         var value = SpeechFilterConfiguration(blockKeywords: blockKeywords,
             replaceKeywords: orderedReplacementKeys.map { SpeechReplacement(word: $0, replacement: replaceKeywords[$0]!, enabled: !disabledReplacementKeywords.contains($0)) },
-            removeURLs: removeURLs, removeEmoji: removeEmoji, removePureNumbers: removePureNumbers)
+            removeURLs: removeURLs, removeEmoji: removeEmoji, removePureNumbers: removePureNumbers,
+            removeNonWordNoise: noisePolicy == .skipWholeMessage,
+            noisePolicy: noisePolicy)
         value.disabledBlockKeywords = blockKeywords.filter { disabledBlockKeywords.contains($0) }
         return value
     }
@@ -58,6 +70,11 @@ class SpeechFilterManager: ObservableObject {
         if let flag = value.removeURLs { removeURLs = flag }
         if let flag = value.removeEmoji { removeEmoji = flag }
         if let flag = value.removePureNumbers { removePureNumbers = flag }
+        if let policy = value.noisePolicy {
+            noisePolicy = policy
+        } else if let flag = value.removeNonWordNoise {
+            noisePolicy = flag ? .skipWholeMessage : .off
+        }
         loading = false
         saveToUserDefaults()
     }
@@ -112,8 +129,46 @@ class SpeechFilterManager: ObservableObject {
         for word in orderedReplacementKeys where !disabledReplacementKeywords.contains(word) {
             result = result.replacingOccurrences(of: word, with: replaceKeywords[word] ?? "")
         }
-        
+
+        // 6. 重複字元噪音：可整句跳過，或只移除噪音 token 後朗讀其餘內容。
+        switch noisePolicy {
+        case .off:
+            break
+        case .skipWholeMessage:
+            if Self.isNonWordNoise(result) { return "" }
+        case .stripNoiseTokens:
+            result = Self.strippingNoiseTokens(result)
+        }
         return result
+    }
+
+    static func strippingNoiseTokens(_ text: String) -> String {
+        let tokens = text.components(separatedBy: .whitespacesAndNewlines)
+        return tokens.filter { token in
+            let trimmed = token.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+            return trimmed.isEmpty || !isNoiseToken(trimmed)
+        }.joined(separator: " ")
+    }
+
+    private static func isNoiseToken(_ token: String) -> Bool {
+        guard token.count >= 3,
+              token.unicodeScalars.allSatisfy({ $0.isASCII }),
+              let first = token.first else { return false }
+        return token.dropFirst().allSatisfy { $0 == first }
+    }
+
+    /// 只判定 ASCII 英數的「同一字元重複 3 次以上」token；不把 hahaha 這類詞當噪音。
+    static func isNonWordNoise(_ text: String) -> Bool {
+        let tokens = text
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .map(String.init)
+        guard !tokens.isEmpty else { return false }
+        return tokens.allSatisfy { token in
+            guard token.count >= 3,
+                  token.unicodeScalars.allSatisfy({ $0.isASCII }),
+                  let first = token.first else { return false }
+            return token.dropFirst().allSatisfy { $0 == first }
+        }
     }
     
     /// 儲存到 UserDefaults
@@ -127,7 +182,9 @@ class SpeechFilterManager: ObservableObject {
             "disabledReplacementKeywords": Array(disabledReplacementKeywords),
             "removeURLs": removeURLs,
             "removeEmoji": removeEmoji,
-            "removePureNumbers": removePureNumbers
+            "removePureNumbers": removePureNumbers,
+            "removeNonWordNoise": removeNonWordNoise,
+            "noisePolicy": noisePolicy.rawValue
         ]
         defaults.set(dict, forKey: defaultsKey)
     }
@@ -155,6 +212,12 @@ class SpeechFilterManager: ObservableObject {
         }
         if let numbers = dict["removePureNumbers"] as? Bool {
             removePureNumbers = numbers
+        }
+        if let raw = dict["noisePolicy"] as? String,
+           let policy = SpeechNoisePolicy(rawValue: raw) {
+            noisePolicy = policy
+        } else if let noise = dict["removeNonWordNoise"] as? Bool {
+            noisePolicy = noise ? .skipWholeMessage : .off
         }
     }
 }
@@ -410,7 +473,16 @@ private struct SpeechFilterDocumentPicker: UIViewControllerRepresentable {
             Toggle("移除表情符號 Emoji", isOn: $filter.removeEmoji)
             
             Toggle("移除純數字", isOn: $filter.removePureNumbers)
-            
+
+            Picker("重複無意義字串", selection: $filter.noisePolicy) {
+                Text("不處理").tag(SpeechNoisePolicy.off)
+                Text("整句都是重複字元時跳過").tag(SpeechNoisePolicy.skipWholeMessage)
+                Text("移除重複字元後朗讀").tag(SpeechNoisePolicy.stripNoiseTokens)
+            }
+            .pickerStyle(.menu)
+            Text("只處理 ASCII 英數字元重複 3 次以上（wwww、aaaa、bbb）；hahaha、abc 與混合正常詞句不會被排除。")
+                .font(.caption).foregroundStyle(.secondary)
+
             VStack(alignment: .leading) {
                 Text("排除關鍵字")
                 HStack {

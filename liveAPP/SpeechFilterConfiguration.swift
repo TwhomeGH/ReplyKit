@@ -1,5 +1,13 @@
 import Foundation
 
+enum SpeechNoisePolicy: String, Codable, CaseIterable, Identifiable, Sendable {
+    case off
+    case skipWholeMessage
+    case stripNoiseTokens
+
+    var id: String { rawValue }
+}
+
 struct SpeechBlockRule: Codable, Equatable {
     var word: String
     var enabled: Bool
@@ -42,15 +50,22 @@ struct SpeechFilterConfiguration: Codable, Equatable {
     var removeURLs: Bool?
     var removeEmoji: Bool?
     var removePureNumbers: Bool?
+    /// 舊版布林欄位；新配置以 noisePolicy 為準，保留以讀寫相容。
+    var removeNonWordNoise: Bool?
+    var noisePolicy: SpeechNoisePolicy?
     static let maximumBytes = 2 * 1024 * 1024
 
     init(blockKeywords: [String], replaceKeywords: [SpeechReplacement], removeURLs: Bool? = nil,
-         removeEmoji: Bool? = nil, removePureNumbers: Bool? = nil) {
+         removeEmoji: Bool? = nil, removePureNumbers: Bool? = nil,
+         removeNonWordNoise: Bool? = nil, noisePolicy: SpeechNoisePolicy? = nil) {
         self.blockKeywords = blockKeywords; self.replaceKeywords = replaceKeywords
-        self.removeURLs = removeURLs; self.removeEmoji = removeEmoji; self.removePureNumbers = removePureNumbers
+        self.removeURLs = removeURLs; self.removeEmoji = removeEmoji
+        self.removePureNumbers = removePureNumbers; self.removeNonWordNoise = removeNonWordNoise
+        self.noisePolicy = noisePolicy
     }
     private enum CodingKeys: String, CodingKey {
         case version, blockKeywords, replaceKeywords, removeURLs, removeEmoji, removePureNumbers
+        case removeNonWordNoise, noisePolicy
     }
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
@@ -61,6 +76,8 @@ struct SpeechFilterConfiguration: Codable, Equatable {
         try c.encodeIfPresent(removeURLs, forKey: .removeURLs)
         try c.encodeIfPresent(removeEmoji, forKey: .removeEmoji)
         try c.encodeIfPresent(removePureNumbers, forKey: .removePureNumbers)
+        try c.encodeIfPresent(removeNonWordNoise, forKey: .removeNonWordNoise)
+        try c.encodeIfPresent(noisePolicy, forKey: .noisePolicy)
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -86,6 +103,8 @@ struct SpeechFilterConfiguration: Codable, Equatable {
         removeURLs = try c.decodeIfPresent(Bool.self, forKey: .removeURLs)
         removeEmoji = try c.decodeIfPresent(Bool.self, forKey: .removeEmoji)
         removePureNumbers = try c.decodeIfPresent(Bool.self, forKey: .removePureNumbers)
+        removeNonWordNoise = try c.decodeIfPresent(Bool.self, forKey: .removeNonWordNoise)
+        noisePolicy = try c.decodeIfPresent(SpeechNoisePolicy.self, forKey: .noisePolicy)
     }
     func validated() throws -> Self {
         guard version == 1 else { throw SpeechFilterImportError.invalid("不支援此配置版本。") }
