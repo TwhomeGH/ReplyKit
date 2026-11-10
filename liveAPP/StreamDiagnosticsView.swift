@@ -128,7 +128,9 @@ struct MixerPipelineCard: View {
                             .font(.caption2)
                         Text("ring \(track.bufferedSamples) · noData \(track.resampleNoDataCount) · alignDrop \(track.alignDroppedSamples) · alignInsert \(track.alignInsertedSamples) · alignFire \(track.alignFireCount) · diff \(track.lastAlignDiff)")
                             .font(.caption2)
-                        Text("RMS \(track.outputRMS)")
+                        Text(verbatim: "RMS " + track.outputRMS
+                            .map { String(format: "%.4f", $0) }
+                            .joined(separator: ", "))
                             .font(.caption2)
                         if let lastError = track.lastError {
                             Text(lastError).font(.caption2).foregroundStyle(.red)
