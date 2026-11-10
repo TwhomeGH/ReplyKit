@@ -11,6 +11,8 @@ struct RuntimeDebugConfigTests {
         defaults.set(false, forKey: "EnableTimeDebug")
         defaults.set(true, forKey: "EnablePipelineLog")
         defaults.set(false, forKey: "EnableSocketlog")
+        defaults.set(270, forKey: "Rotate")
+        defaults.set(true, forKey: "RotateOriginal")
 
         let first = try #require(RuntimeDebugConfig.publish(to: defaults))
         #expect(first.version == 1)
@@ -18,6 +20,9 @@ struct RuntimeDebugConfigTests {
         #expect(!first.timeDebug)
         #expect(first.pipelineLog)
         #expect(!first.socketLog)
+        #expect(first.rotation == 270)
+        #expect(first.rotateOriginal)
+        #expect(first.includesGeometry)
 
         defaults.set(false, forKey: "EnableRotatelog")
         let second = try #require(RuntimeDebugConfig.publish(to: defaults))

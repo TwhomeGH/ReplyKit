@@ -82,14 +82,21 @@ final class GPUSettingsViewModel: ObservableObject {
         cfg.Rotate = rotate
 
         logTo("Rotate->\(rotate)")
-        CFNotificationCenterPostNotification(
-            cfCenter,
-            CFNotificationName("Rotate" as CFString),
-            nil, nil, true
-        )
+        publishRuntimeConfig(legacyEvents: ["Rotate"])
 
         GPUOutputConfig.save(configs)
         GPUOutputConfig.saveSelected(selectedConfig)
+    }
+
+    /// 正常安裝只發版本化 snapshot；側載才補舊事件讓擴展走 Socket fallback。
+    func publishRuntimeConfig(legacyEvents: [String]) {
+        RuntimeDebugConfig.publish(to: userDefaults)
+        guard FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: "group.nuclear.liveAPP") == nil else { return }
+        for event in legacyEvents {
+            CFNotificationCenterPostNotification(
+                cfCenter, CFNotificationName(event as CFString), nil, nil, true)
+        }
     }
 
 
@@ -127,6 +134,7 @@ final class GPUSettingsViewModel: ObservableObject {
 
         CFNotificationCenterPostNotification(cfCenter, CFNotificationName("OutW" as CFString), nil, nil, true)
         CFNotificationCenterPostNotification(cfCenter, CFNotificationName("OutH" as CFString), nil, nil, true)
+        publishRuntimeConfig(legacyEvents: ["Rotate", "RotateOriginal"])
 
         GPUOutputConfig.save(configs)
         GPUOutputConfig.saveSelected(selectedConfig)
@@ -365,6 +373,7 @@ struct GPURotateView: View {
             Toggle("gpu.rotate.outputOnly", isOn: $viewModel.RotateOriginal)
                 .onChange(of: viewModel.RotateOriginal) { newValue in
                     viewModel.selectedConfig?.originonly = newValue
+                    viewModel.publishRuntimeConfig(legacyEvents: ["RotateOriginal"])
                     logTo("只改輸出寬高->\(newValue)")
                 }
             Text("gpu.rotate.outputOnlyHint")

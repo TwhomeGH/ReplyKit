@@ -288,14 +288,34 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     }
 
     /// 套用單一版本化快照；舊的逐 key 事件仍保留給側載與外部相容呼叫。
-    private func applyRuntimeDebugConfig(_ config: RuntimeDebugConfig) {
+    private func applyRuntimeDebugConfig(_ config: RuntimeDebugConfig) async {
         guard config.version >= lastRuntimeDebugConfigVersion else { return }
         lastRuntimeDebugConfigVersion = config.version
         videoProcessor?.setRotatorDebug(config.rotateDebug)
         videoProcessor?.setRotatorTsDebug(config.timeDebug)
         RPConfig.shared.enablePipelineLog = config.pipelineLog
         RPConfig.shared.enableSocketLog = config.socketLog
-        sendlog(message: "[DebugConfig] v\(config.version) rotate=\(config.rotateDebug) time=\(config.timeDebug) pipeline=\(config.pipelineLog) socket=\(config.socketLog)")
+        sendlog(message: "[DebugConfig] v\(config.version) rotate=\(config.rotateDebug) time=\(config.timeDebug) pipeline=\(config.pipelineLog) socket=\(config.socketLog) geometry=\(config.rotation)/\(config.rotateOriginal)")
+
+        let state = RPConfig.shared.state
+        guard config.includesGeometry,
+              config.rotation != state.Rotate || config.rotateOriginal != state.RotateOriginal else {
+            return
+        }
+        RPConfig.shared.updateState(
+            Rotate: config.rotation, RotateOriginal: config.rotateOriginal)
+        guard rtmpStream != nil else {
+            sendlog(message: "[DebugConfig] geometry deferred until stream starts")
+            return
+        }
+        let geometry = resolvedStreamGeometry()
+        var settings = await rtmpStream.videoSettings
+        settings.videoSize = geometry.encoderSize
+        await mediaMixer.setVideoOrientation(
+            geometry.orientation == .portrait ? .portrait : .landscapeRight)
+        sendlog(message: "[DebugConfig] geometry encoder=\(Int(geometry.encoderSize.width))x\(Int(geometry.encoderSize.height)) capture=\(Int(geometry.captureBufferSize.width))x\(Int(geometry.captureBufferSize.height))")
+        try? await rtmpStream.setVideoSettings(settings)
+        await rtmpStream.restartVideoEncoding(reason: "runtime rotation config updated")
     }
 
     // MARK: 統一處理事件
@@ -308,7 +328,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         case RuntimeDebugConfig.notificationName:
             Task {
                 guard let config = RuntimeDebugConfig.load(from: SharedDefaults.group) else { return }
-                applyRuntimeDebugConfig(config)
+                await applyRuntimeDebugConfig(config)
             }
 
         case "SocketRetry":

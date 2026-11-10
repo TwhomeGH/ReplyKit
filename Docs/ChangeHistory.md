@@ -18,7 +18,7 @@
 - `[IdleResources]` 新增 `warmIdleBaselineMB`／`deltaWarmIdleMB`：每次進入擷取前記錄最近一次已穩定的 idle footprint，包含 DeviceInfo／Settings／Audio／PiP 等 UI 常駐成本；`coldIdleBaselineMB` 保留作冷啟動對照，避免把 100 MB warm idle 誤算成串流增量。
 - 外部日誌設定文案改為說明「回送防護」：擴展送出的日誌不會再被回送給擴展；只有已訂閱的外部工具會收到 `externalLogBatch`／`diagnostic`，避免被誤解成擴展完全不傳任何資料。
 - 修正 `DebugPipeline` toggle 沒有 observer 的問題，加入 `Eventlisten`；`DebugRotate`／`DebugTime`／`DebugPipeline`／`RotateOriginal`／`Rotate`／`SocketLog` 改成優先讀 App Group，只有沒有 App Group（側載）才用 Socket 單 key 查詢，移除每個 toggle 一次 `requestSet` 的重複與競態。`DebugTime` 仍只控制 ReplayKit 的 rotator timestamp；SCK 沿用 AVLag，暫不新增第二套。
-- 新增 `RuntimeDebugConfig` versioned snapshot：正常安裝由單一 `liveAPP.runtimeDebugConfig` 通知套用 rotate／time／pipeline／socket debug flags；側載仍保留舊事件與 Socket fallback。`Rotate`／`RotateOriginal` 尚未納入 snapshot。
+- 新增 `RuntimeDebugConfig` versioned snapshot：正常安裝由單一 `liveAPP.runtimeDebugConfig` 通知套用 rotate／time／pipeline／socket debug flags，並一併帶入 `Rotate`／`RotateOriginal` 幾何設定；擴展只在幾何值變更時重建 encoder，避免每個 debug toggle 都重啟影片編碼。舊 snapshot 以 `includesGeometry=false` 相容，不會用預設 90° 覆蓋目前方向；側載仍保留舊事件與 Socket fallback。
 - `Package.resolved` 更新到 fork `9beb2a93`；ReplyKit CI／實機仍待驗。
 
 ## 2026.11.09 音訊 2ch Mixer 與套件接入

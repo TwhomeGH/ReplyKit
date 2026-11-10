@@ -11,6 +11,40 @@ struct RuntimeDebugConfig: Codable, Equatable, Sendable {
     var timeDebug: Bool
     var pipelineLog: Bool
     var socketLog: Bool
+    var rotation: Int
+    var rotateOriginal: Bool
+    /// 舊 snapshot 沒有 rotation 欄位時為 false，避免套用預設 90° 覆蓋目前方向。
+    var includesGeometry: Bool
+
+    init(version: Int, rotateDebug: Bool, timeDebug: Bool, pipelineLog: Bool,
+         socketLog: Bool, rotation: Int = 90, rotateOriginal: Bool = false,
+         includesGeometry: Bool = false) {
+        self.version = version
+        self.rotateDebug = rotateDebug
+        self.timeDebug = timeDebug
+        self.pipelineLog = pipelineLog
+        self.socketLog = socketLog
+        self.rotation = rotation
+        self.rotateOriginal = rotateOriginal
+        self.includesGeometry = includesGeometry
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case version, rotateDebug, timeDebug, pipelineLog, socketLog
+        case rotation, rotateOriginal, includesGeometry
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        version = try container.decodeIfPresent(Int.self, forKey: .version) ?? 1
+        rotateDebug = try container.decodeIfPresent(Bool.self, forKey: .rotateDebug) ?? false
+        timeDebug = try container.decodeIfPresent(Bool.self, forKey: .timeDebug) ?? false
+        pipelineLog = try container.decodeIfPresent(Bool.self, forKey: .pipelineLog) ?? false
+        socketLog = try container.decodeIfPresent(Bool.self, forKey: .socketLog) ?? false
+        rotation = try container.decodeIfPresent(Int.self, forKey: .rotation) ?? 90
+        rotateOriginal = try container.decodeIfPresent(Bool.self, forKey: .rotateOriginal) ?? false
+        includesGeometry = try container.decodeIfPresent(Bool.self, forKey: .includesGeometry) ?? false
+    }
 
     static func load(from defaults: UserDefaults?) -> RuntimeDebugConfig? {
         guard let data = defaults?.data(forKey: storageKey) else { return nil }
@@ -27,7 +61,10 @@ struct RuntimeDebugConfig: Codable, Equatable, Sendable {
             rotateDebug: defaults.bool(forKey: "EnableRotatelog"),
             timeDebug: defaults.bool(forKey: "EnableTimeDebug"),
             pipelineLog: defaults.bool(forKey: "EnablePipelineLog"),
-            socketLog: defaults.bool(forKey: "EnableSocketlog"))
+            socketLog: defaults.bool(forKey: "EnableSocketlog"),
+            rotation: defaults.object(forKey: "Rotate") as? Int ?? 90,
+            rotateOriginal: defaults.object(forKey: "RotateOriginal") as? Bool ?? false,
+            includesGeometry: true)
         guard let data = try? JSONEncoder().encode(config) else { return nil }
         defaults.set(data, forKey: storageKey)
         CFNotificationCenterPostNotification(
