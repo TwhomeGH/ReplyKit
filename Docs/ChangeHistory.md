@@ -9,6 +9,7 @@
 - 修正 CI 測試摘要把斷言失敗誤標成 `[Runner infrastructure]`；`test-without-building` 的測試失敗保留為測試結果，只有逾時／啟動失敗才標成 runner 環境。
 - 「串流格式與 RTMP 傳輸」改為摘要＋可收合子區塊（格式與編碼／VT 編碼器／RTMP 傳輸／入列時間軸），不再把數十個明細塞在同一張 DisclosureGroup。
 - AV Lag 已保存場次在讀取索引時會清理不存在的 segment 檔；非目前 active 且 `endedAt` 仍為 nil 的舊場次會標成「未完成（已中斷）」，不再永久顯示「進行中」。
+- `inspect_app_bundle.py` 只在實際 IPA 輸入時顯示 `IPA ZIP 大小`；`.app` 目錄改標示「封存 .app，沒有 IPA ZIP」，分類與最大檔案不再列出容易誤導的逐檔 `ZIP 壓縮大小`。測試補上 IPA 與 `.app` 兩種報告格式。
 - `Package.resolved` 更新到 fork `9beb2a93`；ReplyKit CI／實機仍待驗。
 
 ## 2026.11.09 音訊 2ch Mixer 與套件接入

@@ -52,6 +52,8 @@ CI 封存後驗證兩個裝置分支的 PersonalIcon 宣告；接受 `CFBundleIc
 打包後再次輸出最終 IPA 的壓縮大小、檔案加總、分類與最大 30 個檔案，並重跑同一份排除清單。
 報告附於 GitHub Actions 摘要及 app-bundle-report／ipa-size-report artifact。
 
+`.app` 目錄沒有 IPA ZIP，因此報告只列未壓縮檔案大小，不列逐檔 ZIP 壓縮量；`IPA ZIP 大小` 只在實際 IPA 輸入時提供，且代表整包下載／儲存大小。逐檔 ZIP entry 壓縮大小不含 ZIP 標頭，不能加總後宣稱等於整包 IPA 大小。
+
 ```sh
 python3 Scripts/inspect_app_bundle.py path/to/app.ipa --output report.md \
   --expect-excluded Scripts/package_exclusions.txt

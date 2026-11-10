@@ -5,7 +5,7 @@ import tempfile
 import unittest
 import zipfile
 
-from inspect_app_bundle import (check_icons, content_report, report,
+from inspect_app_bundle import (check_icons, content_report, markdown, report,
                                 suspicious_reason)
 
 
@@ -74,6 +74,28 @@ class BundleReportTests(unittest.TestCase):
                                 'CFBundleIcons~ipad': icons}, {})
         self.assertEqual(len(errors), 2)
         self.assertTrue(all('Assets.car' in error for error in errors))
+
+    def test_markdown_does_not_show_per_file_zip_sizes(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = self.make_ipa(root)
+            text = markdown(report(path))
+            self.assertIn('IPA ZIP 大小', text)
+            self.assertNotIn('ZIP 壓縮大小', text)
+
+    def test_markdown_directory_labels_missing_ipa(self):
+        with tempfile.TemporaryDirectory() as root:
+            app = Path(root) / 'App.app'
+            app.mkdir()
+            info = {'CFBundleIdentifier': 'test.app', 'CFBundleExecutable': 'App',
+                    'UIDeviceFamily': [1], 'CFBundleIcons': {
+                        'CFBundleAlternateIcons': {'PersonalIcon': {
+                            'CFBundleIconFiles': ['PersonalIcon60x60']}}}}
+            (app / 'Info.plist').write_bytes(plistlib.dumps(info))
+            (app / 'App').write_bytes(b'program')
+            (app / 'PersonalIcon60x60@2x.png').write_bytes(b'png')
+            text = markdown(report(app))
+            self.assertIn('檢查來源：封存 .app', text)
+            self.assertNotIn('ZIP 壓縮大小', text)
 
 
 if __name__ == '__main__':

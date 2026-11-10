@@ -132,16 +132,20 @@ def report(path, expected_exclusions=None):
 
 
 def markdown(result):
-    """以十進位 MB 顯示，明確區分壓縮下載量與檔案邏輯大小。"""
+    """以十進位 MB 顯示；ZIP 只提供整包 IPA 大小，不捏造逐檔下載量。"""
     def mb(n):
         return '未提供' if n is None else f'{n / 1_000_000:.3f} MB'
+    has_zip = result['ipaBytes'] is not None
     lines = ['## App 圖示與包體檢查', '',
-             f"- Bundle：{result['bundleID']}；版本：{result['version']} ({result['build']})",
-             f"- IPA ZIP 大小：{mb(result['ipaBytes'])}",
-             f"- 主 App 目錄檔案加總（含擴展）：{mb(result['appBytes'])}",
-             '- 此加總不是 iOS 設定頁的實際占用，也不含使用者文件／快取。',
-             '- Assets.car 內含多種編譯資源；不能將整個檔案直接算成新增圖示。', '',
-             '### 圖示宣告', '', '```json', json.dumps(result['icons'], ensure_ascii=False, indent=2), '```', '']
+             f"- Bundle：{result['bundleID']}；版本：{result['version']} ({result['build']})"]
+    lines.append(f"- IPA ZIP 大小：{mb(result['ipaBytes'])}" if has_zip
+                 else '- 檢查來源：封存 .app（沒有 IPA ZIP；不列逐檔壓縮量）')
+    lines += [f"- 主 App 目錄檔案加總（含擴展）：{mb(result['appBytes'])}",
+              '- 此加總不是 iOS 設定頁的實際占用，也不含使用者文件／快取。',
+              '- Assets.car 內含多種編譯資源；不能將整個檔案直接算成新增圖示。']
+    if has_zip:
+        lines.append('- ZIP 大小只代表整包 IPA 的下載／儲存大小；逐檔壓縮量不等於下載量。')
+    lines += ['', '### 圖示宣告', '', '```json', json.dumps(result['icons'], ensure_ascii=False, indent=2), '```', '']
     lines += ['- ❌ ' + e for e in result['errors']] or ['- 圖示宣告與套件內容檢查通過；仍需實機切換驗證。']
 
     lines += ['', '### 套件內容', '']
@@ -161,12 +165,12 @@ def markdown(result):
             status = '❌ 仍包含' if name in exclusions['included'] else '✅ 已排除'
             lines.append(f"| `{name}` | {status} |")
 
-    lines += ['', '| 分類 | 檔案大小 | ZIP 壓縮大小 |', '| ------ | ------ | ------ |']
+    lines += ['', '### 分類', '', '| 分類 | 檔案大小 |', '| ------ | ------ |']
     for name, sizes in sorted(result['groups'].items(), key=lambda x: x[1]['bytes'], reverse=True):
-        lines.append(f"| {name} | {mb(sizes['bytes'])} | {mb(sizes['zipBytes']) if result['ipaBytes'] is not None else '未提供'} |")
-    lines += ['', '### 最大檔案', '', '| 路徑 | 檔案大小 | ZIP 壓縮大小 |', '| ------ | ------ | ------ |']
+        lines.append(f"| {name} | {mb(sizes['bytes'])} |")
+    lines += ['', '### 最大檔案', '', '| 路徑 | 檔案大小 |', '| ------ | ------ |']
     for item in result['largestFiles']:
-        lines.append(f"| {item['path']} | {mb(item['bytes'])} | {mb(item['zipBytes'])} |")
+        lines.append(f"| `{item['path']}` | {mb(item['bytes'])} |")
     return '\n'.join(lines) + '\n'
 
 
