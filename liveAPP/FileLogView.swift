@@ -99,6 +99,9 @@ struct FileLogView: View {
     @State private var showSelection = false
     @State private var showDiagnosticExport = false
     @State private var selectionText = ""
+    @State private var isVisible = false
+    @State private var refreshTask: Task<Void, Never>?
+    @State private var refreshGeneration = 0
 
     private var visible: [(line: Int, text: String)] {
         state.page.lines.enumerated().compactMap { index, text in
@@ -272,14 +275,47 @@ struct FileLogView: View {
                 Task { await state.load(latest: true) }
             }
         }
-        .task(id: scenePhase) {
-            guard scenePhase == .active else { return }
-            while !Task.isCancelled {
-                await state.refresh()
-                do { try await Task.sleep(nanoseconds: 1_000_000_000) } catch { return }
+        .onAppear {
+            isVisible = true
+            startRefreshIfNeeded()
+        }
+        .onChange(of: scenePhase) { phase in
+            if phase == .active, isVisible {
+                startRefreshIfNeeded()
+            } else {
+                stopRefresh()
             }
         }
-        .onDisappear { state.cancelSearch() }
+        .onDisappear {
+            isVisible = false
+            stopRefresh()
+            state.cancelSearch()
+        }
+    }
+
+    /// 單一刷新 task；頁面切換或進背景時停止，避免隱藏分頁持續每秒讀取。
+    private func startRefreshIfNeeded() {
+        guard refreshTask == nil, isVisible, scenePhase == .active else { return }
+        refreshGeneration &+= 1
+        let generation = refreshGeneration
+        refreshTask = Task { @MainActor in
+            defer {
+                if refreshGeneration == generation {
+                    refreshTask = nil
+                }
+            }
+            while !Task.isCancelled {
+                await state.refresh()
+                do { try await Task.sleep(nanoseconds: 1_000_000_000) }
+                catch { return }
+            }
+        }
+    }
+
+    private func stopRefresh() {
+        refreshGeneration &+= 1
+        refreshTask?.cancel()
+        refreshTask = nil
     }
     private func row(_ text: String, line: Int) -> some View {
         let meta = LogPresentation(text)

@@ -531,6 +531,8 @@ struct DeviceView: View {
 
     @Environment(\.scenePhase) private var scenePhase
     @State private var isVisible = false
+    @State private var samplingTask: Task<Void, Never>?
+    @State private var samplingGeneration = 0
     @State private var sampleDate = Date()
     @State private var cpuInfo = SystemCPU()
     @State private var diskIO = SystemDiskIO()
@@ -602,26 +604,20 @@ struct DeviceView: View {
                 .padding(16)
             }
         }
-        .onAppear { isVisible = true }
-        .task(id: isVisible && scenePhase == .active) {
-            guard isVisible && scenePhase == .active else { return }
-            // 恢復時重設差分基準，避免把背景期間的累計當作每秒速率。
-            cpuInfo = SystemCPU()
-            diskIO = SystemDiskIO()
-            networkTraffic = NetworkTrafficSampler()
-            _ = cpuInfo.usage()
-            sampleDate = Date()
-            prevAppWriteBytes = AppLogPersister.shared.totalWrittenBytes
-            sendlog(message: "[DeviceDiagnostics] sampling=start historyLimit=60")
-            defer { sendlog(message: "[DeviceDiagnostics] sampling=stop") }
-            while !Task.isCancelled {
-                sample()
-                do { try await Task.sleep(nanoseconds: 1_000_000_000) }
-                catch { return }
+        .onAppear {
+            isVisible = true
+            startSamplingIfNeeded()
+        }
+        .onChange(of: scenePhase) { phase in
+            if phase == .active, isVisible {
+                startSamplingIfNeeded()
+            } else {
+                stopSampling()
             }
         }
         .onDisappear {
             isVisible = false
+            stopSampling()
             cpuHistory.removeAll()
             memoryHistory.removeAll()
             pageInHistory.removeAll()
@@ -1121,6 +1117,39 @@ struct DeviceView: View {
         let m = (s % 3600) / 60
         let sec = s % 60
         return "\(h)h \(m)m \(sec)s"
+    }
+
+    /// 單一採樣 task；避開 `.task(id:)` 在頁面切換時重複啟動。
+    private func startSamplingIfNeeded() {
+        guard samplingTask == nil, isVisible, scenePhase == .active else { return }
+        cpuInfo = SystemCPU()
+        diskIO = SystemDiskIO()
+        networkTraffic = NetworkTrafficSampler()
+        _ = cpuInfo.usage()
+        sampleDate = Date()
+        prevAppWriteBytes = AppLogPersister.shared.totalWrittenBytes
+        samplingGeneration &+= 1
+        let generation = samplingGeneration
+        sendlog(message: "[DeviceDiagnostics] sampling=start historyLimit=60")
+        samplingTask = Task { @MainActor in
+            defer {
+                if samplingGeneration == generation {
+                    sendlog(message: "[DeviceDiagnostics] sampling=stop")
+                    samplingTask = nil
+                }
+            }
+            while !Task.isCancelled {
+                sample()
+                do { try await Task.sleep(nanoseconds: 1_000_000_000) }
+                catch { return }
+            }
+        }
+    }
+
+    private func stopSampling() {
+        samplingGeneration &+= 1
+        samplingTask?.cancel()
+        samplingTask = nil
     }
 
     /// 每次只採樣一次，歷史最多 60 筆；呼叫端負責前景與頁面可見性。
