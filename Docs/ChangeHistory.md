@@ -14,6 +14,7 @@
 - `AppIcon.appiconset` 原本的 `AppIcon 1.png`／`AppIcon 2.png` 不是不同尺寸，而是與 default 相同 SHA256 的 dark／tinted appearance 變體。已移除兩張重複檔，只保留單張 1024 default；iOS 其餘尺寸由 actool 產生，不再以 legacy 多尺寸重複塞入 catalog。
 - GPU 旋轉處理設定頁改為 `AdaptiveSettingsGrid` 卡片：配置、畫布尺寸、方向與縮放三個區塊；寬螢幕並排、窄螢幕單欄，OD／AD 寬高欄位以同一列呈現，減少 iPad 全域捲動。
 - 新增 base64 `data:image/...` 圖片來源：聊天頭像／禮物、行內 emoji、贊助橫幅與通知共用本機解碼，不進 URLSession；限制單張 256 KiB、單訊息 768 KiB、4 MP，拒絕 SVG／非 base64／超量，HTTP URL 仍保留給大圖。日誌以長度遮蔽 base64，TTS 與通知使用清洗後文字。
+- ReplayKit 的 `StreamDiagnosticsSnapshot` 現在也會帶 `audioTracks`；主 App 的「Audio Pipeline · 混音輸出」在 ReplayKit 與 ScreenCaptureKit 都能看到 App／Mic 的 AVCon、ring buffer、align 與 RMS。轉換邏輯集中在 `StreamDiagnosticsSnapshot.audioTrackDiagnostics(from:)`，避免兩條路徑各寫一份。
 - `Package.resolved` 更新到 fork `9beb2a93`；ReplyKit CI／實機仍待驗。
 
 ## 2026.11.09 音訊 2ch Mixer 與套件接入

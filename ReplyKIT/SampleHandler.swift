@@ -1527,6 +1527,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                             snapshot.videoProcessingLoadKind = "metalInFlight"
                             sendlog(message: "[ReplayVideoProcessing] \(processing.summary) busyPercent=\(processing.load.map { String($0.busyPercent) } ?? "unknown")")
                         }
+                        let audio = await self.mediaMixer.audioPipelineDiagnostics()
+                        snapshot.audioTracks = StreamDiagnosticsSnapshot.audioTrackDiagnostics(
+                            from: audio.tracks)
                         SocketClient.shared.sendStreamDiagnostics(snapshot)
                         do { try await Task.sleep(nanoseconds: 5_000_000_000) } catch { return }
                     }

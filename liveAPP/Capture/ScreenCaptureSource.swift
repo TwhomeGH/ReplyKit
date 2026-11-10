@@ -413,27 +413,8 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                         "track=\($0.trackId) rms=\($0.outputChannelRMS) converted=\($0.outputFrames) noData=\($0.resampleNoDataCount) buffered=\($0.ringBufferCounts) overflow=\($0.overflowDroppedSamples) gap=\($0.skipInsertedSamples) alignDrop=\($0.alignDroppedSamples) alignInsert=\($0.alignInsertedSamples) alignFire=\($0.alignFireCount) alignDiff=\($0.lastAlignDiff)"
                     }.joined(separator: " | ")
                     self.telemetry.mixerAudio = "mixed=\(health.mixerOutputFrames) ready=\(health.mixerReady) channels=\(health.outputChannels) \(self.audioProbe?.summary() ?? "probe=none")"
-                    audioTrackDetails = health.tracks.map { track in
-                        StreamDiagnosticsSnapshot.AudioTrackDiagnostics(
-                            trackId: track.trackId,
-                            status: track.converter.lastStatus,
-                            convertCalls: track.converter.convertCalls,
-                            noDataNowCalls: track.converter.noDataNowCalls,
-                            inputRanDryCalls: track.converter.inputRanDryCalls,
-                            errorCalls: track.converter.errorCalls,
-                            inputFramesRequested: track.converter.inputFramesRequested,
-                            inputFramesSupplied: track.converter.inputFramesSupplied,
-                            outputFrames: track.converter.outputFrames,
-                            converterRebuilds: track.converter.converterRebuilds,
-                            lastError: track.converter.lastError,
-                            bufferedSamples: track.ringBufferCounts,
-                            resampleNoDataCount: track.resampleNoDataCount,
-                            alignDroppedSamples: track.alignDroppedSamples,
-                            alignInsertedSamples: track.alignInsertedSamples,
-                            alignFireCount: track.alignFireCount,
-                            lastAlignDiff: track.lastAlignDiff,
-                            outputRMS: track.outputChannelRMS)
-                    }
+                    audioTrackDetails = StreamDiagnosticsSnapshot.audioTrackDiagnostics(
+                        from: health.tracks)
                     if detailedLog {
                         sendlog(message: "[CaptureAudioPipeline] session=\(token) mixed=\(health.mixerOutputFrames) ready=\(health.mixerReady) error=\(health.lastError ?? "none") channels=\(health.outputChannels) rms=\(health.outputChannelRMS) \(self.audioProbe?.summary() ?? "probe=none") \(tracks)")
                     }

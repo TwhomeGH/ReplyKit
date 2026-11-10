@@ -56,6 +56,33 @@ struct StreamDiagnosticsSnapshot: Codable, Sendable {
 
         var id: UInt8 { trackId }
     }
+
+    /// 將 Mixer 的 AVCon／緩衝診斷轉成可跨 Socket 傳送的純量快照。
+    static func audioTrackDiagnostics(
+        from tracks: [AudioPipelineDiagnostics.Track]
+    ) -> [AudioTrackDiagnostics] {
+        tracks.map { track in
+            AudioTrackDiagnostics(
+                trackId: track.trackId,
+                status: track.converter.lastStatus,
+                convertCalls: track.converter.convertCalls,
+                noDataNowCalls: track.converter.noDataNowCalls,
+                inputRanDryCalls: track.converter.inputRanDryCalls,
+                errorCalls: track.converter.errorCalls,
+                inputFramesRequested: track.converter.inputFramesRequested,
+                inputFramesSupplied: track.converter.inputFramesSupplied,
+                outputFrames: track.converter.outputFrames,
+                converterRebuilds: track.converter.converterRebuilds,
+                lastError: track.converter.lastError,
+                bufferedSamples: track.ringBufferCounts,
+                resampleNoDataCount: track.resampleNoDataCount,
+                alignDroppedSamples: track.alignDroppedSamples,
+                alignInsertedSamples: track.alignInsertedSamples,
+                alignFireCount: track.alignFireCount,
+                lastAlignDiff: track.lastAlignDiff,
+                outputRMS: track.outputChannelRMS)
+        }
+    }
     /// ScreenCaptureKit 畫面加工摘要；未走本機加工時為 nil。
     var videoProcessing: String?
     /// 最近完整取樣區間的加工忙碌比例；首次或未提供時為 nil。
