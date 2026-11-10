@@ -26,10 +26,6 @@ permissions:
   pages: write
   id-token: write
 
-concurrency:
-  group: docc-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   changes:
     runs-on: ubuntu-latest
@@ -76,6 +72,10 @@ jobs:
   documentation:
     needs: changes
     if: needs.changes.outputs.docs == 'true'
+    # 只取消舊的文件建置，不影響已進入 Pages 的 deploy job。
+    concurrency:
+      group: docc-build-${{ github.ref }}
+      cancel-in-progress: true
     runs-on: xcode-27
     timeout-minutes: 40
     env:
@@ -198,12 +198,15 @@ jobs:
           path: site
 
   deploy:
-    # Pages 共用同一部署目標；不同分支的部署依序進行。
+    # Pages 共用同一部署目標；新部署排隊，不取消正在送的舊部署。
     concurrency:
       group: docc-pages-deploy
       cancel-in-progress: false
     needs: documentation
     runs-on: ubuntu-latest
+    # deploy-pages 的輪詢本身有 timeout；job timeout 是第二道保險，
+    # 避免 deployment 卡在 in_progress 時佔用 concurrency 直到六小時。
+    timeout-minutes: 15
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
@@ -211,3 +214,6 @@ jobs:
       - id: deploy
         name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
+        with:
+          timeout: 600000
+          error_count: 10

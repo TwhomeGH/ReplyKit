@@ -2,11 +2,13 @@
 
 ## 行為
 
-- 單元測試、開發索引、tag 工作及 DocC：同一 workflow／ref 的新執行取消舊執行與舊等待項目；分支與 PR 的 ref 各自獨立。
+- 單元測試、開發索引、tag 工作：同一 workflow／ref 的新執行取消舊執行與舊等待項目；分支與 PR 的 ref 各自獨立。
+- DocC **建置**按 ref 分組並可被新執行取消；Pages **部署**另用 `docc-pages-deploy` 序列化，`cancel-in-progress: false`，新部署排隊而不取消正在上傳的舊部署。
 - Archive／Release：依上游 workflow_run.head_branch 分組，從測試到建置均可被同分支的新發布執行取代。不是每次 push 立即取消，要等新的上游 tag 工作成功完成並觸發發布。
 - 上游失敗或取消的 workflow_run 使用自身 run_id，不會取消正常發布。
 - 被呼叫的單元測試使用 unit-tests 前綴，避免與發布父工作共用 concurrency 群組而互相取消。直接 push 的測試與發布前測試仍分開執行。
-- DocC 建置按 ref 分組，Pages 部署另用共用群組序列化。
+- Pages 部署 job 有 15 分鐘 job timeout；`actions/deploy-pages` 另有 10 分鐘輪詢 timeout。兩者用來解除卡在 `in_progress` 時對 concurrency 的佔用。
+- 已在跑的舊版部署不會套用新的 timeout；若目前卡住，先在 Actions 取消該舊 run。環境 deployment 若仍顯示進行中，需由 repo 管理員在 GitHub 環境／部署 API 標記失敗或 inactive，再重跑部署。
 
 ## 限制與驗收
 

@@ -320,6 +320,7 @@ API 遷移屬後續技術評估，不作為以上功能完成的條件；需要�
 - [x] DocC 初始目錄與手動 CI 工作流程。
 - [x] DocC workflow 新增 `changes` preflight：沒有 `.docc`／公開文件變更時跳過 macOS docbuild；手動觸發仍會重建。
 - [ ] 下一次 Swift-only 與 docs-only push 驗證 skip／run 與 Pages 部署。
+- [x] DocC Pages 部署防卡死：建置 job 可取消、deploy job 不取消；deploy job 15 分鐘 timeout、`deploy-pages` 10 分鐘輪詢 timeout。舊版已在跑的卡住部署仍需先在 Actions 取消。
 - [x] `.gitignore` 排除 `DocumentationArtifacts/`、`site/`、`*.doccarchive`；修正 ChangeLogKit 的 `git ls-files --others` 掃描大型 DocC 產物 timeout。
 - [ ] 首次 Xcode DocC 建置與 archive 閱讀驗收。
 - [ ] 擴充功能清單覆蓋其他模組，補齊 API 語意文件及底層 DocC 連結。
