@@ -4185,6 +4185,9 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "套用於 ReplayKit 與 ScreenCaptureKit 的 RTMP／編碼層；建議 -1=自動，5 或 10 可能占用過多記憶體。" } }
       }
     },
+    "gpu.layout.config": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "配置"}}, "en": {"stringUnit": {"state": "translated", "value": "Preset"}}, "ja": {"stringUnit": {"state": "translated", "value": "設定"}}}},
+    "gpu.layout.size": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "畫布尺寸"}}, "en": {"stringUnit": {"state": "translated", "value": "Canvas size"}}, "ja": {"stringUnit": {"state": "translated", "value": "キャンバスサイズ"}}}},
+    "gpu.layout.orientation": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "方向與縮放"}}, "en": {"stringUnit": {"state": "translated", "value": "Orientation & scaling"}}, "ja": {"stringUnit": {"state": "translated", "value": "向きと拡大縮小"}}}},
     "gpu.canvas.height" : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Canvas Height" } },

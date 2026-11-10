@@ -12,6 +12,7 @@
 - `inspect_app_bundle.py` 只在實際 IPA 輸入時顯示 `IPA ZIP 大小`；`.app` 目錄改標示「封存 .app，沒有 IPA ZIP」，分類與最大檔案不再列出容易誤導的逐檔 `ZIP 壓縮大小`。測試補上 IPA 與 `.app` 兩種報告格式。
 - `add_legacy_alternate_icons.sh` 不再把未被 `CFBundleIconFiles` 引用的 1024 `PersonalIcon.png` 複製到 App 根目錄；Assets.car 仍保留 marketing rendition，約減少 1.79 MB 的重複圖示資料。
 - `AppIcon.appiconset` 原本的 `AppIcon 1.png`／`AppIcon 2.png` 不是不同尺寸，而是與 default 相同 SHA256 的 dark／tinted appearance 變體。已移除兩張重複檔，只保留單張 1024 default；iOS 其餘尺寸由 actool 產生，不再以 legacy 多尺寸重複塞入 catalog。
+- GPU 旋轉處理設定頁改為 `AdaptiveSettingsGrid` 卡片：配置、畫布尺寸、方向與縮放三個區塊；寬螢幕並排、窄螢幕單欄，OD／AD 寬高欄位以同一列呈現，減少 iPad 全域捲動。
 - `Package.resolved` 更新到 fork `9beb2a93`；ReplyKit CI／實機仍待驗。
 
 ## 2026.11.09 音訊 2ch Mixer 與套件接入

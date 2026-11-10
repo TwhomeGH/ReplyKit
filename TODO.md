@@ -10,7 +10,7 @@
 
 - 已實作並 push fork：音訊 main-clock fallback、active clock／PTS 重建、`AudioRingBuffer` Float32／Int32 指標修正、AVAudioConverter track 診斷；Keyframe automatic／PTS 重置；BufferCount 明確 policy；動態範圍錯誤回傳；相機 FPS 與 offscreen FPS 分離；VT Encoder Health（pending frames／drop 原因）；Release 自動分類；2ch mixer 交錯格式的平台差異修正；每軌輸出 RMS／align 診斷；CI 摘要不再把測試斷言誤標 runner failure。
 - `Package.resolved`（根目錄與 Xcode workspace 兩份）已更新到 fork `9beb2a93`；HaishinKit macOS 測試已通過 2ch 非靜音斷言，RTMP／iOS job 與 ReplyKit CI 仍待確認。
-- 已改：mic 啟用時以 mic 作為 Mixer 主時鐘（不再讓靜默 App 軌拖動 mic）；「串流格式與 RTMP 傳輸」改為摘要＋可收合子區塊；「Audio Pipeline · 混音輸出」新增 App／Mic AVCon、align 與 RMS 明細；AV Lag 舊場次不再永久顯示「進行中」，失效 segment 會清理。
+- 已改：mic 啟用時以 mic 作為 Mixer 主時鐘（不再讓靜默 App 軌拖動 mic）；「串流格式與 RTMP 傳輸」改為摘要＋可收合子區塊；「Audio Pipeline · 混音輸出」新增 App／Mic AVCon、align 與 RMS 明細；AV Lag 舊場次不再永久顯示「進行中」，失效 segment 會清理；GPU 旋轉設定改為寬螢幕雙欄卡片。
 - 待辦：ReplyKit CI／實機驗證 mic 長段落連續音訊、App-only 與 mic 啟停；AV Lag 中斷場次實機確認；VT drop 與 PiP；AAC `AudioCodec` converter 診斷尚未接入；完整設備資訊 VT 明細仍待後續。
 
 ## 2026-11-06 核對摘要

@@ -221,7 +221,7 @@ final class GPUSettingsViewModel: ObservableObject {
 
 struct GPURotateView: View {
     @ObservedObject var viewModel: GPUSettingsViewModel
-    @AppStorage("useBic",store:userDefaults) private var useBic = false
+    @AppStorage("useBic", store: userDefaults) private var useBic = false
     @AppStorage("captureBackend", store: userDefaults)
     private var captureBackend = CaptureBackend.replayKit.rawValue
 
@@ -229,262 +229,244 @@ struct GPURotateView: View {
         CaptureBackend(rawValue: captureBackend) == .screenCaptureKit
     }
 
-
     var body: some View {
-        Form {
-            Section(header: Text("gpu.output.section")) {
-
-
-                Picker(
-                    String(localized: "gpu.config.select"),
-                    selection:$viewModel.selectedConfigID
-                ) {
-                    ForEach(viewModel.configs) { config in
-                        Text(config.name).tag(config.id)
-                    }
-                }.onChange(of: viewModel.selectedConfigID) { newID in
-                    guard let id = newID else { return }
-                    viewModel.applyConfig(id: id)
+        GeometryReader { geometry in
+            ScrollView {
+                AdaptiveSettingsGrid(width: geometry.size.width) {
+                    presetCard
+                    canvasCard
+                    rotationCard
                 }
-
-
-
-                Button("gpu.config.addCustom") {
-                    let newConfig = GPUOutputConfig(name: "\(AppLanguage.localized("gpu.config.customName")) \(viewModel.configs.count + 1)", width: viewModel.dstW, height: viewModel.dstH)
-
-                    viewModel.configs.append(newConfig)
-                    viewModel.selectedConfig = newConfig
-
-                    GPUOutputConfig.save(viewModel.configs)
-                    GPUOutputConfig.saveSelected(viewModel.selectedConfig)
-                }
-                if let index = viewModel.configs.firstIndex(where: { $0.id == viewModel.selectedConfig?.id }) {
-
-                    Button("\(AppLanguage.localized("gpu.config.deleteCurrent")): \(viewModel.configs[index].name)") {
-                        viewModel.configs.remove(at: index)
-                        viewModel.selectedConfig = viewModel.configs.last
-
-                        GPUOutputConfig.save(viewModel.configs)
-                        GPUOutputConfig.saveSelected(viewModel.selectedConfig)
-
-                    }.disabled(
-                        viewModel.configs.count <= 1
-                    )
-                    // 如果只剩 3 個，按鈕停用
-                }
-
-                Button("gpu.config.rebuildDefaults") {
-                    viewModel.rebuildDefaultsIfMissing()
-                }
-
-
-                Text("\(AppLanguage.localized("gpu.canvas.outputSize")) [\(viewModel.odstW) x \(viewModel.odstH)]")
-                Text("gpu.canvas.zeroUsesGpuSize")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-                    .padding(.bottom, 5)
-
-
-                Text("\(AppLanguage.localized("gpu.processing.size")) [\(viewModel.dstW) x \(viewModel.dstH)]")
-                Text("gpu.processing.zeroUsesOriginal")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-                    .padding(.bottom, 5)
-
-
-
-                Text("gpu.config.name")
-
-                TextField(
-                    AppLanguage.localized("gpu.config.namePlaceholder"),
-                    text: $viewModel.displayName
-                )
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .onChange(of: viewModel.displayName) { newVal in
-
-                        if let index = viewModel.configs.firstIndex(
-                            where: { $0.id == viewModel.selectedConfig?.id
-                            }) {
-                        viewModel.configs[index].name = newVal
-                    }
-
-                    viewModel.selectedConfig?.name = newVal
-                    GPUOutputConfig.save(viewModel.configs)
-
-                }
-
-
-                HStack(spacing: 20) {
-
-
-                    Picker(
-                        AppLanguage.localized("gpu.rotate.selectDirection"),
-                        selection:$viewModel.RotateRawValue
-                    ) {
-                        ForEach(RotateDirection.allCases) { direction in
-                            Text(direction.description).tag(direction)
-                        }
-
-                    }.onChange(of: viewModel.RotateRawValue) { newRotate in
-                        viewModel
-                            .applyRotate(
-                                RotateDirection(
-                                    rawValue: newRotate
-                                ) ?? .landscapeRight
-                            )
-                    }
-
-
-                    // 假設 ipad.landscape 本身是 90°，我們要扣掉這個 90°
-                    let baseOffset: Double = 90
-
-                    // 圖示
-                        Image(systemName: "ipad.landscape") // 基礎箭頭
-                            .rotationEffect(
-                                Angle(
-                                degrees:
-                                    Double(
-                                        viewModel.selectedConfig?.Rotate.rawValue ?? 0
-                                    ) - baseOffset
-                                )
-                            )
-                            .font(.title) // 大小可調整
-                            .animation(.easeInOut, value: viewModel.selectedConfig?.Rotate.rawValue)
-
-
-                }
-
-
-                Toggle(isOn:$viewModel.RotateOriginal){
-                    Text("gpu.rotate.outputOnly")
-                }.onChange(of:viewModel.RotateOriginal) { newVal in
-                    viewModel.selectedConfig?.originonly = newVal
-                    logTo("只改輸出寬高->\(newVal)")
-                }
-
-                Text("gpu.rotate.outputOnlyHint")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-                    .padding(.bottom, 5)
-
-
-                Text("gpu.canvas.width")
-
-                TextField(AppLanguage.localized("gpu.canvas.width"), value: $viewModel.odstW, format: .number)
-                  .textFieldStyle(RoundedBorderTextFieldStyle())
-                  .onChange(of: viewModel.odstW) { newVal in
-
-                      if let index = viewModel.configs.firstIndex(
-                          where: { $0.id == viewModel.selectedConfig?.id
-                          }) {
-                          viewModel.configs[index].owidth = newVal
-                     }
-
-                      viewModel.selectedConfig?.owidth = newVal
-
-                      CFNotificationCenterPostNotification(cfCenter, CFNotificationName("OutW" as CFString), nil, nil, true)
-
-                      GPUOutputConfig.save(viewModel.configs)
-
-                  }
-
-                Text("gpu.canvas.height")
-
-                TextField(AppLanguage.localized("gpu.canvas.height"), value: $viewModel.odstH, format: .number)
-                  .textFieldStyle(RoundedBorderTextFieldStyle())
-
-                  .onChange(of: viewModel.odstH) { newVal in
-
-                      if let index = viewModel.configs.firstIndex(
-                          where: { $0.id == viewModel.selectedConfig?.id
-                          }) {
-                          viewModel.configs[index].oheight = newVal
-                      }
-
-                      viewModel.selectedConfig?.oheight = newVal
-
-                      CFNotificationCenterPostNotification(cfCenter, CFNotificationName("OutH" as CFString), nil, nil, true)
-
-
-                      GPUOutputConfig.save(viewModel.configs)
-
-                  }
-
-
-
-                Text("gpu.processing.width")
-
-                TextField(AppLanguage.localized("gpu.processing.width"), value: $viewModel.dstW, format: .number)
-                  .textFieldStyle(RoundedBorderTextFieldStyle())
-
-                  .onChange(of: viewModel.dstW) { newVal in
-
-                      if let index = viewModel.configs.firstIndex(
-                          where: { $0.id == viewModel.selectedConfig?.id
-                          }) {
-                          viewModel.configs[index].width = newVal
-                      }
-
-                      viewModel.selectedConfig?.width = newVal
-
-                      CFNotificationCenterPostNotification(cfCenter, CFNotificationName("OutW" as CFString), nil, nil, true)
-
-                  }
-
-
-                Text("gpu.processing.height")
-
-                TextField(AppLanguage.localized("gpu.processing.height"), value: $viewModel.dstH, format: .number)
-                  .textFieldStyle(RoundedBorderTextFieldStyle())
-
-                  .onChange(of: viewModel.dstH) { newVal in
-
-                      if let index = viewModel.configs.firstIndex(
-                          where: { $0.id == viewModel.selectedConfig?.id
-                          }) {
-                          viewModel.configs[index].height = newVal
-                  }
-
-                      viewModel.selectedConfig?.height = newVal
-
-                      CFNotificationCenterPostNotification(cfCenter, CFNotificationName("OutH" as CFString), nil, nil, true)
-
-                  }
-
-
-
-
-                if usesScreenCaptureKit {
-                    Text("gpu.replayKitOnly")
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
-                } else {
-                    Toggle(isOn: $useBic) {
-                        Text("gpu.bicubic.enable")
-                    }
-                    Text("gpu.bicubic.description")
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
-                        .padding(.bottom, 5)
-                    Text("gpu.bilinear.description")
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
-                        .padding(.bottom, 5)
-                }
-
-
-
+                .padding(16)
             }
         }
         .navigationTitle(String(localized: "settings.gpu.title"))
-
         .onDisappear {
             GPUOutputConfig.save(viewModel.configs)
             GPUOutputConfig.saveSelected(viewModel.selectedConfig)
         }
+    }
 
+    private var presetCard: some View {
+        SettingsDashboardCard(header: {
+            Label("gpu.layout.config", systemImage: "square.stack.3d.up")
+        }) {
+            Picker("gpu.config.select", selection: $viewModel.selectedConfigID) {
+                ForEach(viewModel.configs) { config in
+                    Text(config.name).tag(config.id)
+                }
+            }
+            .pickerStyle(.menu)
+            .onChange(of: viewModel.selectedConfigID) { newID in
+                guard let id = newID else { return }
+                viewModel.applyConfig(id: id)
+            }
+
+            HStack(spacing: 8) {
+                Button("gpu.config.addCustom") {
+                    let newConfig = GPUOutputConfig(
+                        name: "\(AppLanguage.localized("gpu.config.customName")) \(viewModel.configs.count + 1)",
+                        width: viewModel.dstW,
+                        height: viewModel.dstH)
+                    viewModel.configs.append(newConfig)
+                    viewModel.selectedConfig = newConfig
+                    persistConfiguration()
+                }
+                .buttonStyle(.bordered)
+
+                Button(role: .destructive) {
+                    guard let index = viewModel.configs.firstIndex(where: {
+                        $0.id == viewModel.selectedConfig?.id
+                    }) else { return }
+                    viewModel.configs.remove(at: index)
+                    viewModel.selectedConfig = viewModel.configs.last
+                    persistConfiguration()
+                } label: {
+                    Label("gpu.config.deleteCurrent", systemImage: "trash")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.bordered)
+                .disabled(viewModel.configs.count <= 1)
+            }
+
+            Button("gpu.config.rebuildDefaults") {
+                viewModel.rebuildDefaultsIfMissing()
+            }
+            .buttonStyle(.bordered)
+
+            Text("gpu.config.name").font(.subheadline.weight(.semibold))
+            TextField(
+                AppLanguage.localized("gpu.config.namePlaceholder"),
+                text: $viewModel.displayName
+            )
+            .textFieldStyle(.roundedBorder)
+            .onChange(of: viewModel.displayName) { newValue in
+                if let index = viewModel.configs.firstIndex(where: {
+                    $0.id == viewModel.selectedConfig?.id
+                }) {
+                    viewModel.configs[index].name = newValue
+                }
+                viewModel.selectedConfig?.name = newValue
+                GPUOutputConfig.save(viewModel.configs)
+            }
+
+            Text("\(viewModel.odstW) × \(viewModel.odstH) · \(viewModel.dstW) × \(viewModel.dstH)")
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var canvasCard: some View {
+        SettingsDashboardCard(header: {
+            Label("gpu.layout.size", systemImage: "aspectratio")
+        }) {
+            sizeRow(
+                title: "gpu.canvas.outputSize",
+                caption: "gpu.canvas.zeroUsesGpuSize",
+                width: $viewModel.odstW,
+                height: $viewModel.odstH,
+                onWidthChange: persistOutputWidth,
+                onHeightChange: persistOutputHeight)
+            Divider()
+            sizeRow(
+                title: "gpu.processing.size",
+                caption: "gpu.processing.zeroUsesOriginal",
+                width: $viewModel.dstW,
+                height: $viewModel.dstH,
+                onWidthChange: persistProcessingWidth,
+                onHeightChange: persistProcessingHeight)
+        }
+    }
+
+    private var rotationCard: some View {
+        SettingsDashboardCard(header: {
+            Label("gpu.layout.orientation", systemImage: "rotate.3d")
+        }) {
+            HStack(spacing: 12) {
+                Picker("gpu.rotate.selectDirection", selection: $viewModel.RotateRawValue) {
+                    ForEach(RotateDirection.allCases) { direction in
+                        Text(direction.description).tag(direction)
+                    }
+                }
+                .pickerStyle(.menu)
+                .onChange(of: viewModel.RotateRawValue) { newValue in
+                    viewModel.applyRotate(RotateDirection(rawValue: newValue) ?? .landscapeRight)
+                }
+
+                Spacer(minLength: 0)
+                Image(systemName: "ipad.landscape")
+                    .rotationEffect(
+                        Angle(degrees: Double(viewModel.selectedConfig?.Rotate.rawValue ?? 0) - 90)
+                    )
+                    .font(.title2)
+                    .animation(.easeInOut, value: viewModel.selectedConfig?.Rotate.rawValue)
+            }
+
+            Toggle("gpu.rotate.outputOnly", isOn: $viewModel.RotateOriginal)
+                .onChange(of: viewModel.RotateOriginal) { newValue in
+                    viewModel.selectedConfig?.originonly = newValue
+                    logTo("只改輸出寬高->\(newValue)")
+                }
+            Text("gpu.rotate.outputOnlyHint")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Divider()
+
+            if usesScreenCaptureKit {
+                Text("gpu.replayKitOnly")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Toggle("gpu.bicubic.enable", isOn: $useBic)
+                Text("gpu.bicubic.description")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("gpu.bilinear.description")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// 尺寸列把兩個輸入放在同一列，寬螢幕不必逐欄往下滾。
+    private func sizeRow(
+        title: LocalizedStringKey,
+        caption: LocalizedStringKey,
+        width: Binding<Int>,
+        height: Binding<Int>,
+        onWidthChange: @escaping () -> Void,
+        onHeightChange: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.subheadline.weight(.semibold))
+            HStack(spacing: 10) {
+                sizeField("gpu.canvas.width", value: width, onChange: onWidthChange)
+                Text("×").foregroundStyle(.secondary)
+                sizeField("gpu.canvas.height", value: height, onChange: onHeightChange)
+            }
+            Text(caption)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func sizeField(
+        _ title: LocalizedStringKey,
+        value: Binding<Int>,
+        onChange: @escaping () -> Void
+    ) -> some View {
+        TextField(title, value: value, format: .number)
+            .textFieldStyle(.roundedBorder)
+            .keyboardType(.numberPad)
+            .onChange(of: value.wrappedValue) { _ in onChange() }
+    }
+
+    private func persistConfiguration() {
+        GPUOutputConfig.save(viewModel.configs)
+        GPUOutputConfig.saveSelected(viewModel.selectedConfig)
+    }
+
+    private func persistOutputWidth() {
+        updateConfig { $0.owidth = viewModel.odstW }
+        CFNotificationCenterPostNotification(
+            cfCenter, CFNotificationName("OutW" as CFString), nil, nil, true)
+        GPUOutputConfig.save(viewModel.configs)
+    }
+
+    private func persistOutputHeight() {
+        updateConfig { $0.oheight = viewModel.odstH }
+        CFNotificationCenterPostNotification(
+            cfCenter, CFNotificationName("OutH" as CFString), nil, nil, true)
+        GPUOutputConfig.save(viewModel.configs)
+    }
+
+    private func persistProcessingWidth() {
+        updateConfig { $0.width = viewModel.dstW }
+        CFNotificationCenterPostNotification(
+            cfCenter, CFNotificationName("OutW" as CFString), nil, nil, true)
+        GPUOutputConfig.save(viewModel.configs)
+    }
+
+    private func persistProcessingHeight() {
+        updateConfig { $0.height = viewModel.dstH }
+        CFNotificationCenterPostNotification(
+            cfCenter, CFNotificationName("OutH" as CFString), nil, nil, true)
+        GPUOutputConfig.save(viewModel.configs)
+    }
+
+    private func updateConfig(_ update: (GPUOutputConfig) -> Void) {
+        if let index = viewModel.configs.firstIndex(where: {
+            $0.id == viewModel.selectedConfig?.id
+        }) {
+            update(viewModel.configs[index])
+        }
+        if let selected = viewModel.selectedConfig {
+            update(selected)
+        }
     }
 }
+
 
 
 struct AudioSettingsView:View {
