@@ -107,7 +107,7 @@ jobs:
             echo "CURRENT_PROJECT_VERSION old=$OLD_BUILDS -> effective=$BUILD_VERSION"
           } | tee -a "$GITHUB_STEP_SUMMARY"
           if [ "$OLD_VERSIONS" != "$TAG" ]; then
-            echo "::notice::CI 以 xcodebuild 覆寫 MARKETING_VERSION：$OLD_VERSIONS -> $TAG（不修改 repo 檔案）"
+            echo "::notice::CI 以 xcodebuild 覆寫 MARKETING_VERSION：${OLD_VERSIONS} -> ${TAG}（不修改 repo 檔案）"
           fi
 
       # 使用主 App scheme，避免誤選 ReplyKITSetupUI 等擴展。
