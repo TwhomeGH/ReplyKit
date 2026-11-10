@@ -46,19 +46,21 @@ Archive／Release workflow 會讀取 `x.y.z` tag，並在 `xcodebuild archive` �
 
 ```text
 MARKETING_VERSION=<tag>
+CURRENT_PROJECT_VERSION=<UTC yyyymmddhhmmss>
 ```
 
-這是 Xcode command-line build setting override，會讓主 App 與所有 extension 的 `CFBundleShortVersionString` 使用同一個 tag，不需要先手動修改 `project.pbxproj`。CI 會輸出：
+兩者都是 Xcode command-line build setting override，會讓主 App 與所有 extension 的 `CFBundleShortVersionString`／`CFBundleVersion` 使用同一個 release 值，不需要先手動修改 `project.pbxproj`。CI 會輸出：
 
 ```text
 MARKETING_VERSION old=17.6.7 -> effective=17.6.8
-Archived app version: CFBundleShortVersionString=17.6.8
+CURRENT_PROJECT_VERSION old=2026100601 -> effective=20261110123000
+Archived app version: CFBundleShortVersionString=17.6.8 CFBundleVersion=20261110123000
 ```
 
-- 本地忘記改 `MARKETING_VERSION` 時，CI 產物仍會使用 tag 版本。
+- 本地忘記改版本時，CI 產物仍會使用 tag 版本與新的單調 build number。
 - repo 內的 `project.pbxproj` 不會被 CI 改寫，因此本地 Xcode 建置仍以手動值為準。
 - 測試 target 的 `MARKETING_VERSION = 1.0` 是刻意設定，不列入 release 版本比對。
-- `CURRENT_PROJECT_VERSION` 目前仍由專案／人工控制，不由此步驟自動改寫。
+- AltStore 來源直接使用封存後 Info.plist 的 `CFBundleShortVersionString`／`CFBundleVersion`，所以 version 會等於 tag，buildVersion 會是本次 CI 建號；不需要另改 `AltStoreTest.json`。
 
 ## Why Too Many Versions？為什麼會出現這麼多版本？
 

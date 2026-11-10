@@ -80,7 +80,7 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "Using tag: $TAG"
 
-      - name: Resolve MARKETING_VERSION 對齊 release tag
+      - name: Resolve release versions 對齊 tag
         id: marketing_version
         run: |
           set -euo pipefail
@@ -90,9 +90,22 @@ jobs:
             | sort -u \
             | tr '\n' ',' \
             | sed 's/,$//' || true)
+          OLD_BUILDS=$(grep -Eo 'CURRENT_PROJECT_VERSION = [^;]+;' liveAPP.xcodeproj/project.pbxproj \
+            | sed -E 's/.*= ([^;]+);/\1/' \
+            | sort -u \
+            | tr '\n' ',' \
+            | sed 's/,$//' || true)
+          # 每次 release 使用單調的 UTC 時間建號；同時覆寫 Info.plist 的 CFBundleVersion。
+          BUILD_VERSION=$(date -u +%Y%m%d%H%M%S)
+          echo "BUILD_VERSION=$BUILD_VERSION" >> "$GITHUB_ENV"
           echo "old=$OLD_VERSIONS" >> "$GITHUB_OUTPUT"
           echo "new=$TAG" >> "$GITHUB_OUTPUT"
-          echo "MARKETING_VERSION old=$OLD_VERSIONS -> effective=$TAG" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "build_old=$OLD_BUILDS" >> "$GITHUB_OUTPUT"
+          echo "build=$BUILD_VERSION" >> "$GITHUB_OUTPUT"
+          {
+            echo "MARKETING_VERSION old=$OLD_VERSIONS -> effective=$TAG"
+            echo "CURRENT_PROJECT_VERSION old=$OLD_BUILDS -> effective=$BUILD_VERSION"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
           if [ "$OLD_VERSIONS" != "$TAG" ]; then
             echo "::notice::CI 以 xcodebuild 覆寫 MARKETING_VERSION：$OLD_VERSIONS -> $TAG（不修改 repo 檔案）"
           fi
@@ -194,6 +207,7 @@ jobs:
           filetype_parameter: ${{ steps.filetype_parameter.outputs.filetype_parameter }}
           file_to_build: ${{ steps.filetype_parameter.outputs.file_to_build }}
           MARKETING_VERSION: ${{ steps.marketing_version.outputs.new }}
+          CURRENT_PROJECT_VERSION: ${{ steps.marketing_version.outputs.build }}
 
         run: |
           set -o pipefail
@@ -213,6 +227,7 @@ jobs:
             -destination "generic/platform=iOS" \
             CODE_SIGNING_ALLOWED=NO \
             MARKETING_VERSION="$MARKETING_VERSION" \
+            CURRENT_PROJECT_VERSION="$CURRENT_PROJECT_VERSION" \
             SWIFT_SYMBOL_REDACTION=NO 2>&1 | tee -a build/archive.log
 
             
@@ -264,6 +279,10 @@ jobs:
           echo "Archived app version: CFBundleShortVersionString=$SHORT CFBundleVersion=$BUILD" | tee -a "$GITHUB_STEP_SUMMARY"
           if [ "$SHORT" != "$TAG" ]; then
             echo "::error::MARKETING_VERSION override 未生效：archive=$SHORT tag=$TAG"
+            exit 1
+          fi
+          if [ "$BUILD" != "$BUILD_VERSION" ]; then
+            echo "::error::CURRENT_PROJECT_VERSION override 未生效：archive=$BUILD expected=$BUILD_VERSION"
             exit 1
           fi
 

@@ -198,7 +198,7 @@ API 遷移屬後續技術評估，不作為以上功能完成的條件；需要�
 - [x] 來源改由 Release 附件提供，固定 `releases/latest/download/AltStoreTest.json`；`version`／`buildVersion` 取自 Info.plist、`size` 取 IPA bytes、What's New 取最近 10 筆 commit。
 - [x] `update_altstore_source.py` 與 7 個測試；repo 樣板不再由 CI 改寫。
 - [ ] **首次 Release 附件驗收**：確認 `AltStoreTest.json` 已附上、固定 URL 可下載、版本欄位與 IPA 一致，AltStore 顯示多行 What's New。
-- [ ] 版本號未遞增時 AltStore 不會提示更新；CI archive 已用 tag 覆寫 `MARKETING_VERSION`，但 `CURRENT_PROJECT_VERSION` 仍由專案／人工控制，未自動改寫 repo 內 pbxproj。
+- [ ] 版本號未遞增時 AltStore 不會提示更新；CI archive 已用 tag 覆寫 `MARKETING_VERSION`，並以 UTC 時間自動覆寫 `CURRENT_PROJECT_VERSION`，AltStore 使用封存後 Info.plist 的 version／buildVersion，不需另改模板。
 
 ## TTS 配置分享實作與驗收
 
