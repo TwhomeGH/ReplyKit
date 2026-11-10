@@ -15,3 +15,8 @@ TestResults/
 xcodebuild.log
 xcodebuild-summary.md
 xcodebuild-summary.log
+
+# DocC／Pages 產物（documentation.yml 會寫入；避免 changelogkit 掃描大型 archive）
+DocumentationArtifacts/
+site/
+*.doccarchive
