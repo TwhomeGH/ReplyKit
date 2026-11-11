@@ -913,7 +913,9 @@ final class PIPServiceMessages {
         var lineStartIndex = 0
 
         for (index, line) in messageLines.enumerated() {
-            let lineLen = line.count
+            // emojiPositions 由 extractAllImageURLs 以 UTF-16 index 回報，
+            // 這裡必須用 NSString 長度累加，不能用 Swift Character 數。
+            let lineLen = (line as NSString).length
             var lineEmojiURLs: [String] = []
             var lineEmojiIndices: [Int] = []
             for (ei, pos) in emojiPositions.enumerated() {
@@ -1179,14 +1181,30 @@ final class PIPServiceMessages {
 
 
 
-    static func extractAllImageURLs(from message: String, maxURLs: Int = 20, placeholder: String = "\u{2003}") -> (cleaned: String, imageURLs: [String], imagePositions: [Int]) {
+    /// 抽出訊息中的圖片 URL，並回傳清洗後文字與 UTF-16 位置。
+    ///
+    /// - Parameter knownImageURLs: 呼叫端已知的圖片 URL，例如贊助訊息的
+    ///   `iconURL`。媒體伺服器可能使用沒有副檔名的 `/media/<hash>`，單靠
+    ///   副檔名無法辨識；只接受呼叫端明確提供的 URL，不把一般連結誤判成圖片。
+    static func extractAllImageURLs(
+        from message: String,
+        maxURLs: Int = 20,
+        placeholder: String = "\u{2003}",
+        knownImageURLs: [String] = []
+    ) -> (cleaned: String, imageURLs: [String], imagePositions: [Int]) {
         let imageExtensions = ["png", "jpg", "jpeg", "gif", "webp"]
-        let httpPattern = "https?://[^\\s]+\\.(?:" + imageExtensions.joined(separator: "|") + ")(?:\\?[^\\s]*)?"
+        // 先抓所有 HTTP(S) URL，再依副檔名或呼叫端提供的清單決定是否視為圖片。
+        // 不能只用「含圖片副檔名」的 pattern，否則 /media/<hash> 不會進入判斷。
+        let httpPattern = "https?://[^\\s]+"
         let dataPattern = "data:image/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+"
         let pattern = "(?:" + httpPattern + "|" + dataPattern + ")"
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
             return (message, [], [])
         }
+        let known = Set(knownImageURLs)
+        let extensionPattern = try? NSRegularExpression(
+            pattern: "\\.(?:" + imageExtensions.joined(separator: "|") + ")(?:[?#]|$)",
+            options: [.caseInsensitive])
 
         let nsRange = NSRange(message.startIndex..., in: message)
         let matches = regex.matches(in: message, range: nsRange)
@@ -1202,21 +1220,38 @@ final class PIPServiceMessages {
                 parts.append(String(message[lastEnd..<range.lowerBound]))
             }
             let token = String(message[range])
-            var accepted = urls.count < maxURLs
-            if token.lowercased().hasPrefix("data:image/") {
+            let lowercased = token.lowercased()
+            let isDataURI = lowercased.hasPrefix("data:image/")
+            let isKnown = known.contains(token)
+            let hasImageExtension = extensionPattern?.firstMatch(
+                in: token, range: NSRange(token.startIndex..., in: token)) != nil
+            var accepted = urls.count < maxURLs && (isKnown || hasImageExtension)
+
+            if isDataURI {
                 if let reference = ImageDataURI.reference(from: token),
-                   embeddedBytes + reference.estimatedBytes <= ImageDataURI.maxTotalBytes {
+                   embeddedBytes + reference.estimatedBytes <= ImageDataURI.maxTotalBytes,
+                   urls.count < maxURLs {
                     embeddedBytes += reference.estimatedBytes
+                    accepted = true
                 } else {
                     accepted = false
                 }
             }
+
             if accepted {
-                let currentLen = parts.reduce(0) { $0 + $1.count }
+                // CoreText 與 NSString 使用 UTF-16 index；emoji 是 surrogate pair，
+                // 不能用 String.count，否則有 emoji 時圖片位置會錯開。
+                let currentLen = parts.reduce(0) { $0 + $1.utf16.count }
                 positions.append(currentLen)
                 urls.append(token)
+                parts.append(placeholder)
+            } else if isDataURI {
+                // 不把被拒絕的 base64 內容留在訊息或日誌中。
+                parts.append(placeholder)
+            } else {
+                // 一般連結保留原文，不因無法判定為圖片而消失。
+                parts.append(token)
             }
-            parts.append(placeholder)
             lastEnd = range.upperBound
         }
 

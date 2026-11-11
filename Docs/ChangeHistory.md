@@ -2,6 +2,7 @@
 
 ## 2026.11.10 音訊主時鐘與 RTMP 診斷可讀性
 
+- 贊助訊息 `text` 內的圖片 URL 不再只依副檔名判斷：`extractAllImageURLs` 可接受呼叫端提供的 `knownImageURLs`（例如 `iconURL`），因此 `/media/<hash>` 這類沒有 `.png` 的網址也能被解析成行內 emoji，不再把原始 URL 留在文案中被切成多頁。插圖位置改以 UTF-16 index 計算，修正 emoji 在前時與 CoreText／NSString 位置不一致；一般非圖片連結仍保留原文。
 - 音訊 PTS 缺口改為大小分流：小於 250 ms 才補零；超過時重建來源時間軸（`rebase`），不再用數秒靜音塞滿環形緩衝並擠掉歷史音訊。`AudioRingBuffer` 產生最多 8 筆 `GapEvent`，含前後 PTS、gap samples、mode、緩衝前後量與 dropped samples；SCK／ReplayKit 會寫出 `[CaptureAudioGap]` event-level log，週期摘要也新增 `zeroFill`／`rebase` 計數。
 - `CaptureMediaPipeline.audioSettings` 在麥克風啟用時改用 mic（track 1）作為 Mixer 主時鐘，輸出格式仍取 App 軌；避免 App 軌靜默但持續 callback 時，mic 被當成非主軌反覆 align／丟樣本而斷續。mic 停止或關閉時，底層 `activeClockTrack` 會 fallback 到 App 軌。
 - 2ch mixer 測試現在會斷言輸出內容不是靜音（`channelRMS`），補上先前只檢查格式、未檢查實際混音的盲點。

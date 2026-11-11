@@ -1233,14 +1233,16 @@ class SocketServer:ObservableObject, @unchecked Sendable {
                 logTo("收到廣告訊息:\(user) - \(text) Icon:\(String(describing: iconURL)) TTS:\(useTTS)")
 
 
+                let knownAdImageURLs = iconURL.map { [$0] } ?? []
                 if isNotifyApp {
-                    let (cleanBody, inlineImages, _) = PIPServiceMessages.extractAllImageURLs(from: text, placeholder: "")
+                    let (cleanBody, inlineImages, _) = PIPServiceMessages.extractAllImageURLs(
+                        from: text, placeholder: "", knownImageURLs: knownAdImageURLs)
                     postSystemNotification(title: user, body: cleanBody, imageURL: iconURL ?? "", inlineImages: inlineImages)
                 }
 
 
                 let (speechText, _, _) = PIPServiceMessages.extractAllImageURLs(
-                    from: text, placeholder: "")
+                    from: text, placeholder: "", knownImageURLs: knownAdImageURLs)
                 Task { @MainActor in
                     if useTTS {
                         TTSService.shared.speakStreamMessage(user: user, message: speechText, isMain: true, force: true)

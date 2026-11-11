@@ -409,7 +409,9 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         messagesLayer?.setAdOverlayOffset(145)
 
         // 抽離文字中的圖片網址，用 \u{2003} 保留行內位置
-        let (cleanText, emojiURLs, emojiPositions) = PIPServiceMessages.extractAllImageURLs(from: text, placeholder: "\u{2003}")
+        let knownImageURLs = iconURL.map { [$0] } ?? []
+        let (cleanText, emojiURLs, emojiPositions) = PIPServiceMessages.extractAllImageURLs(
+            from: text, placeholder: "\u{2003}", knownImageURLs: knownImageURLs)
         adOverlayCleanText = cleanText
         adOverlayEmojiURLs = emojiURLs
         adOverlayEmojiPositions = emojiPositions

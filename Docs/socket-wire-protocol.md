@@ -173,6 +173,7 @@ App 會在本機解碼，不發出 HTTP 請求；只接受 `;base64`，拒絕 SV
 - 視覺：金底 `rgba(0.9, 0.55, 0.05, 0.88)`、圓角 `10`、白色粗體名稱 + 灰色內文
 - 持續時間：5 秒後自動清除，最後 0.5 秒 alpha 淡出
 - 頭像：非同步透過 `PiPImageCache` 取得（HTTP 或 `data:image/...;base64,...` 本機解碼），圓形裁切；無資料時顯示 `star.fill` 系統圖示。`text` 內嵌 emoji 也套用相同 data URI 限制。
+- 圖片 URL 判定：一般情況需要圖片副檔名（`.png`／`.jpg`／`.jpeg`／`.gif`／`.webp`）或合法 `data:image`。若媒體伺服器使用沒有副檔名的 `/media/<hash>`，呼叫端可把已知圖片 URL（例如 `iconURL`）放進 `knownImageURLs`；一般未知 URL 不會被誤判，會保留為文字。`text` 內的圖片位置使用 UTF-16 index，與 CoreText／NSString 對齊。
 - PiP 關閉或收到記憶體警告時立即清除
 
 ---
