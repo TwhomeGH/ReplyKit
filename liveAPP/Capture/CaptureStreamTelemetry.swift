@@ -84,7 +84,7 @@ struct CapturePipelineStatus: Equatable {
             }
             let age = max(0, now.timeIntervalSince(sampledAt))
             let prefix = failed ? "推流失敗，擷取仍在運作" : "擷取中"
-            return Self(text: "\(prefix) · 距更新 \(Int(age)) 秒" + (age > 15 ? " · 資料已過期" : ""), isStale: age > 15)
+            return Self(text: "\(prefix) · 距更新 \(DiagnosticAge.text(age))" + (age > 15 ? " · 資料已過期" : ""), isStale: age > 15)
         }
     }
 }

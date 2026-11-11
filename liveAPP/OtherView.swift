@@ -583,7 +583,7 @@ struct DeviceView: View {
                     networkCard
                     systemCard
                     gpuCard
-                    MixerPipelineCard(audio: false, now: sampleDate)
+                    MixerPipelineCard(audio: false, now: Date())
                     videoPipelineCard
                     liveActivityCard
                 } trailing: {
@@ -593,12 +593,12 @@ struct DeviceView: View {
                     #if os(iOS)
                     metricReportsCard
                     #endif
-                    StreamDiagnosticsSections(now: sampleDate)
+                    StreamDiagnosticsSections(now: Date())
                     if capture.streamTelemetry.pipelineSampledAt != nil {
                         capturePipelineCard
                     }
                     avLagCard
-                    MixerPipelineCard(audio: true, now: sampleDate)
+                    MixerPipelineCard(audio: true, now: Date())
                     audioPipelineCard
                 }
                 .padding(16)
@@ -811,7 +811,7 @@ struct DeviceView: View {
     /// 設備診斷卡片；沿用頁面採樣與服務狀態。
     private var capturePipelineCard: some View {
         SettingsDashboardCard("ScreenCaptureKit 本機管線") {
-            CapturePipelineStatusView(sampledAt: capture.streamTelemetry.pipelineSampledAt, now: sampleDate)
+            CapturePipelineStatusView(sampledAt: capture.streamTelemetry.pipelineSampledAt, now: Date())
             Text(capture.streamTelemetry.sourceQueues ?? "尚未取得來源佇列").font(.caption)
             Text(capture.streamTelemetry.mixerAudio ?? "尚未取得混音資料").font(.caption)
             Text("來源與混音計數不代表 RTMP 已送出；共用輸出圖表涵蓋兩種來源，進階健康圖表仍由 ReplayKit 擴展提供。")
@@ -1101,8 +1101,8 @@ struct DeviceView: View {
     private func pipelineFreshness(_ updatedAt: Date?) -> some View {
         Group {
             if let updatedAt {
-                let age = max(0, sampleDate.timeIntervalSince(updatedAt))
-                Text("來源：ReplayKit 擴展 · 距更新 \(Int(age)) 秒" + (age > 15 ? " · 資料已過期" : ""))
+                let age = max(0, Date().timeIntervalSince(updatedAt))
+                Text("來源：ReplayKit 擴展 · 距更新 \(DiagnosticAge.text(age))" + (age > 15 ? " · 資料已過期" : ""))
                     .font(.caption).foregroundStyle(age > 15 ? Color.orange : Color.secondary)
             } else {
                 Text("來源：ReplayKit 擴展 · 尚未收到資料")

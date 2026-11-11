@@ -174,7 +174,8 @@ struct StreamDiagnosticsSections: View {
                     } label: {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(source).font(.headline)
-                            Text(summaryLine(value)).font(.caption).foregroundStyle(.secondary)
+                            summaryLabel(value)
+                                .font(.caption)
                                 .lineLimit(2)
                         }
                     }
@@ -190,7 +191,7 @@ struct StreamDiagnosticsSections: View {
             if value.source == "ScreenCaptureKit" {
                 CapturePipelineStatusView(sampledAt: value.sampledAt, now: now)
             }
-            summaryMetric("狀態", "\(value.phase) · 距取樣 \(Int(age)) 秒" + (age > 15 ? " · 已過期" : ""))
+            summaryMetric("狀態", "\(value.phase) · 距取樣 \(DiagnosticAge.text(age))" + (age > 15 ? " · 已過期" : ""))
             summaryMetric("VT 編碼器", value.encoderHealth.map {
                 "\($0.state.rawValue) · pending \($0.pendingFrames.map(String.init) ?? "未知")"
             } ?? "未提供")
@@ -294,10 +295,29 @@ struct StreamDiagnosticsSections: View {
         }
     }
 
-    private func summaryLine(_ value: StreamDiagnosticsSnapshot) -> String {
+    private func summaryLabel(_ value: StreamDiagnosticsSnapshot) -> some View {
         let codec = value.encoding?.video.map { "\($0.codec) \($0.width)×\($0.height)" } ?? "格式未提供"
         let health = value.encoderHealth?.state.rawValue ?? "VT 未提供"
-        return "\(codec) · \(health) · \(value.phase)"
+        return HStack(spacing: 4) {
+            Text(codec).foregroundStyle(.secondary)
+            Text("·").foregroundStyle(.secondary)
+            Text(health).foregroundStyle(healthColor(health))
+            Text("·").foregroundStyle(.secondary)
+            Text(value.phase).foregroundStyle(.secondary)
+        }
+    }
+
+    private func healthColor(_ health: String) -> Color {
+        switch health {
+        case "healthy":
+            return .green
+        case "failure":
+            return .red
+        case "VT 未提供":
+            return .gray
+        default:
+            return .orange
+        }
     }
 
     /// 最新嘗試預設可見；首筆資料保留為起始診斷，不與目前進展混排。
