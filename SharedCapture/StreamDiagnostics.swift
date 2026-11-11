@@ -265,7 +265,7 @@ final class StreamDiagnosticsProbe: MediaMixerOutput, @unchecked Sendable {
         result.firstEncoderTiming = pipeline.encoder?.firstEncoderTiming
         result.lastEncoderTiming = pipeline.encoder?.lastEncoderTiming
         result.encoderHealth = pipeline.encoderHealth
-        result.encoderInput = EncoderInputBufferDiagnostics.from(pipeline.encoderInput)
+        result.encoderInput = StreamDiagnosticsSnapshot.EncoderInputBufferDiagnostics.from(pipeline.encoderInput)
         result.videoSettings = "\(video.profileLevel) · \(Int(video.videoSize.width))×\(Int(video.videoSize.height)) · \(video.bitRate / 1000) kbps"
         result.audioSettings = "\(audio.format.rawValue) · \(audio.bitRate / 1000) kbps"
         result.encodedVideoFrames = pipeline.encoder?.events["encoderDelivered"]?.count
