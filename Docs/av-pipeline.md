@@ -723,6 +723,19 @@ SampleHandler.logAudioHealthIfNeeded()  (每幀，ReplayKit queue)
 
 `vtDrop` 只代表 VT 回報丟幀；App 的主動降幀是 `throughputThrottle`，下游拒收是 `outputRejected`，不能混為一談。
 
+### 編碼輸入緩衝（2026-11-11）
+
+`VideoPipelineSnapshot.encoderInput` 是進入 VT 前的原始影格 queue，和 VT `pendingFrames`、RTMP `queuedBytes` 是三個不同階段。HaishinKit 佇列預設 `maxVideoBufferBytes=15 MiB`、`maxVideoBufferDuration=0.1s`；`BufferCount` 只是手動 frame cap，不是 MB 預算，且仍受 bytes／age 限制。
+
+App 目前分開設定：
+
+| 來源 | 預設上限 | 預設最長停留 |
+| ------ | ------: | ------: |
+| ScreenCaptureKit（主 App） | 32 MB | 150 ms |
+| ReplayKit（擴展） | 15 MB | 100 ms |
+
+設定在 `screenCaptureKitVideoBufferMB`／`screenCaptureKitVideoBufferDurationMS`、`replayKitVideoBufferMB`／`replayKitVideoBufferDurationMS`。診斷會顯示 `byteLimit`、`bytes`、`queued`、`peakBytes`、`oldestAge`、capacity／expired／oversized drops、input／output idle；若 `capacityDrops` 與 `queued ≈ limit` 增加才考慮放寬，若 `expiredDrops` 增加則應先查 encoder 或 worker 效率。
+
 ### 診斷邏輯
 
 - `align-drop`：`AudioRingBuffer.align()` 丟棄非 main track 樣本。這是目前最可疑的 content-level 斷音來源（雙軌 PTS 基座差被當成 desync）。

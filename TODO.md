@@ -398,6 +398,7 @@ API 遷移屬後續技術評估，不作為以上功能完成的條件；需要�
 - [x] **VT 編碼器健康摘要**：`VideoEncoderHealth` 已接 `pendingFrames`、VT drop／failure／yield／PTS reset；串流診斷頁先顯示摘要。待 fork CI、ReplyKit CI 與實機驗證。
 - [x] **AVAudioConverter 診斷**：Mixer track 已有 convert status／input request／output frame 計數；AAC encoder converter 尚未接入。待 fork CI 與 AHealth UI 驗證。
 - [x] **Keyframe／BufferCount 明確策略**：0 統一 automatic，BufferCount 0 映射 VT -1/nil，ReplayKit 與 SCK 共用 clamp；待 fork 測試與實機驗證。
+- [x] **編碼輸入緩衝診斷與來源分流**：接出 `VideoPipelineSnapshot.encoderInput`（byteLimit／已用 bytes／queued／peak／oldest／capacity／expired／oversized drop／idle）；SCK 預設 32 MB／150 ms，ReplayKit 預設 15 MB／100 ms，兩者分開設定並納入備份。待實機 A/B 驗證。
 - [x] **Release 名稱自動分類**：`Scripts/classify_release.py` 依路徑與 trailer 產生 Core／UI、子系統與 Exp；Release 名稱與 body 由 `main.yml` 更新，tag 維持 `x.y.z`。待 push 後驗證下一個 Release。
 - [x] **音訊環形緩衝格式／PTS 缺陷**：修 Float32／Int32 的 pointer offset、PTS 大幅倒退重建與 AudioTime 不連續重建；fork 本地 `56d1e93c`，尚未 push。待 macOS/iOS 測試與實機驗證。
 - [x] **混音 main track fallback**：HaishinKit fork `14c41945` 已加入 active-clock 切換與 PTS 跳躍重設；尚未 push。待 push、更新 `Package.resolved` 與實機驗證 mic 啟停／雙軌混音。

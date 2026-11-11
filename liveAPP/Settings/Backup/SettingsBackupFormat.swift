@@ -77,6 +77,8 @@ enum SettingsBackupRegistry {
         add("KeyFrameInterval", .integer(0...60))
         add("BitRateMode logMode", .integer(0...2))
         add("BufferCount", .integer(-1...1000))
+        add("screenCaptureKitVideoBufferMB replayKitVideoBufferMB", .integer(8...64))
+        add("screenCaptureKitVideoBufferDurationMS replayKitVideoBufferDurationMS", .integer(50...500))
         add("Rotate LOrientation", .integer(0...360))
         add("socketListenPort", .integer(1...65535))
         add("directRecordingFPS recordingCompressionFPS", .integer(0...240))

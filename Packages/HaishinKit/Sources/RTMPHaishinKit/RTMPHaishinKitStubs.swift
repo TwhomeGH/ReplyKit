@@ -25,6 +25,7 @@ open class RTMPStream: StreamConvertible {
     open func publish(_: String) async throws {}
     open func close() async throws {}
     open func setVideoInputBufferCounts(_: Int) async {}
+    open func setVideoInputBufferLimits(bytes _: Int, duration _: TimeInterval) {}
 
     public var videoSettings: VideoCodecSettings {
         get async { VideoCodecSettings() }

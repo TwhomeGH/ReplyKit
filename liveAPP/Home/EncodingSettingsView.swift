@@ -10,6 +10,14 @@ struct EncodingSettingsView: View {
     @AppStorage("odstH", store: userDefaults) private var height = 0
     @AppStorage("isLowLatencyRateControlEnabled", store: userDefaults) private var lowLatency = false
     @AppStorage("BufferCount", store: userDefaults) private var bufferCount = -1
+    @AppStorage("screenCaptureKitVideoBufferMB", store: userDefaults)
+    private var sckBufferMB = 32
+    @AppStorage("screenCaptureKitVideoBufferDurationMS", store: userDefaults)
+    private var sckBufferDurationMS = 150
+    @AppStorage("replayKitVideoBufferMB", store: userDefaults)
+    private var replayKitBufferMB = 15
+    @AppStorage("replayKitVideoBufferDurationMS", store: userDefaults)
+    private var replayKitBufferDurationMS = 100
     @State private var result: H264CapabilityResult?
     @State private var loading = false
     @State private var refreshID = 0
@@ -141,6 +149,41 @@ struct EncodingSettingsView: View {
             Text(AppLanguage.localized("gpu.buffer.recommendation"))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+
+            Divider()
+
+            Text("編碼前原始影格佇列")
+                .font(.caption.weight(.semibold))
+            Text("這是 byte budget 與最長停留時間，不是 RTMP 待送 bytes；下一次推流生效。")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
+            inputBufferRow("ScreenCaptureKit（主 App）",
+                           budget: $sckBufferMB, duration: $sckBufferDurationMS,
+                           budgets: [16, 24, 32, 48, 64],
+                           durations: [100, 150, 200, 300, 500])
+            inputBufferRow("ReplayKit（擴展）",
+                           budget: $replayKitBufferMB, duration: $replayKitBufferDurationMS,
+                           budgets: [8, 12, 16, 24],
+                           durations: [100, 150, 200])
+        }
+    }
+
+    /// 分開顯示兩種來源的 byte budget；ReplayKit 不應套用主 App 的 64 MB 上限。
+    private func inputBufferRow(_ title: String, budget: Binding<Int>, duration: Binding<Int>,
+                                budgets: [Int], durations: [Int]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.caption)
+            HStack(spacing: 12) {
+                Picker("上限", selection: budget) {
+                    ForEach(budgets, id: \.self) { Text("\($0) MB").tag($0) }
+                }
+                .pickerStyle(.menu)
+                Picker("停留", selection: duration) {
+                    ForEach(durations, id: \.self) { Text("\($0) ms").tag($0) }
+                }
+                .pickerStyle(.menu)
+            }
         }
     }
 }

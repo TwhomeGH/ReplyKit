@@ -14,6 +14,7 @@
 - Archive／Release workflow 以 release tag 覆寫 `MARKETING_VERSION`，並以 UTC 時間自動產生 `CURRENT_PROJECT_VERSION`：不修改 repo 的 `project.pbxproj`，但主 App 與 extension 的 `CFBundleShortVersionString`／`CFBundleVersion` 會是本次 release 值；CI 摘要記錄舊值與 effective 值，archive 後再驗證實際 Info.plist 相符。AltStore 來源因此直接取得正確 version／buildVersion，測試 target 的 `1.0` 仍不列入比較。
 - DocC Pages 部署避免殘留卡住：workflow 層不再取消整個 run，只讓 DocC 建置 job 可被新 ref 取代；deploy job 保持 `cancel-in-progress: false`，新增 15 分鐘 job timeout 與 `deploy-pages` 10 分鐘輪詢 timeout，卡住的部署會讓 job 失敗並釋放 concurrency，不再無限期等到六小時。
 - TTS 過濾器新增三段式「重複無意義字串」設定：關閉／整句都是 ASCII 同字元重複 3 次以上時跳過／移除重複 token 後朗讀其餘內容。`wwww 你好` 在第三段只念「你好」；`hahaha`、`abc`、`asweffeteteh` 與混合正常詞句不會被自動誤刪。設定寫入 `SpeechFilterSettings`、支援 JSON 匯入／匯出與既有備份；預設關閉。
+- 編碼輸入緩衝接出 `VideoPipelineSnapshot.encoderInput`：顯示 byteLimit、已用 bytes、queued／peak、最舊影格、capacity／expired／oversized drop 與 input／output idle，並與 VT pending、RTMP queuedBytes 分開。SCK 預設 32 MB／150 ms、ReplayKit 預設 15 MB／100 ms，兩者分開設定；`BufferCount` 仍只是手動 frame cap。設定納入備份。
 - `add_legacy_alternate_icons.sh` 不再把未被 `CFBundleIconFiles` 引用的 1024 `PersonalIcon.png` 複製到 App 根目錄；Assets.car 仍保留 marketing rendition，約減少 1.79 MB 的重複圖示資料。
 - `AppIcon.appiconset` 原本的 `AppIcon 1.png`／`AppIcon 2.png` 不是不同尺寸，而是與 default 相同 SHA256 的 dark／tinted appearance 變體。已移除兩張重複檔，只保留單張 1024 default；iOS 其餘尺寸由 actool 產生，不再以 legacy 多尺寸重複塞入 catalog。
 - GPU 旋轉處理設定頁改為 `AdaptiveSettingsGrid` 卡片：配置、畫布尺寸、方向與縮放三個區塊；寬螢幕並排、窄螢幕單欄，OD／AD 寬高欄位以同一列呈現，減少 iPad 全域捲動。

@@ -32,6 +32,46 @@ struct StreamDiagnosticsSnapshot: Codable, Sendable {
     var encoderHealth: VideoEncoderHealth?
     /// Mixer 各軌的 AVAudioConverter／ring buffer／align 摘要；舊來源為 nil。
     var audioTracks: [AudioTrackDiagnostics]?
+    /// RTMPStream 的編碼前原始影格佇列；與 VT pending、RTMP 網路佇列不同。
+    var encoderInput: EncoderInputBufferDiagnostics?
+
+    /// 編碼輸入佇列的唯讀摘要；nil 欄位代表該版本或階段沒有提供。
+    struct EncoderInputBufferDiagnostics: Codable, Sendable {
+        let availability: String
+        let generation: UInt64?
+        let queued: Int?
+        let bytes: Int?
+        let byteLimit: Int?
+        let peakBytes: Int?
+        let maxAge: Double?
+        let oldestAge: Double?
+        let manualFrameLimit: Int?
+        let capacityDrops: Int?
+        let expiredDrops: Int?
+        let oversizedDrops: Int?
+        let inputIdle: Double?
+        let outputIdle: Double?
+
+        /// 保留 queue 的可用狀態；不要把 ownerLockBusy 當成空佇列。
+        static func from(_ stage: VideoQueueStageSnapshot) -> Self {
+            let queue = stage.queue
+            return Self(
+                availability: stage.availability.rawValue,
+                generation: stage.generation,
+                queued: queue?.queued,
+                bytes: queue?.bytes,
+                byteLimit: queue?.byteLimit,
+                peakBytes: queue?.peakBytes,
+                maxAge: queue?.maxAge,
+                oldestAge: queue?.oldestAge,
+                manualFrameLimit: queue?.manualFrameLimit,
+                capacityDrops: queue?.capacityDrops,
+                expiredDrops: queue?.expiredDrops,
+                oversizedDrops: queue?.oversizedDrops,
+                inputIdle: queue?.inputIdle,
+                outputIdle: queue?.outputIdle)
+        }
+    }
 
     /// 單一音軌的轉換器與緩衝診斷；只放純量，不攜帶 PCM buffer。
     struct AudioTrackDiagnostics: Codable, Sendable, Identifiable {
@@ -200,6 +240,7 @@ final class StreamDiagnosticsProbe: MediaMixerOutput, @unchecked Sendable {
         result.firstEncoderTiming = pipeline.encoder?.firstEncoderTiming
         result.lastEncoderTiming = pipeline.encoder?.lastEncoderTiming
         result.encoderHealth = pipeline.encoderHealth
+        result.encoderInput = EncoderInputBufferDiagnostics.from(pipeline.encoderInput)
         result.videoSettings = "\(video.profileLevel) · \(Int(video.videoSize.width))×\(Int(video.videoSize.height)) · \(video.bitRate / 1000) kbps"
         result.audioSettings = "\(audio.format.rawValue) · \(audio.bitRate / 1000) kbps"
         result.encodedVideoFrames = pipeline.encoder?.events["encoderDelivered"]?.count

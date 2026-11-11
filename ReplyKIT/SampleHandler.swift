@@ -1022,6 +1022,9 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
         let bufferPolicy = VideoBufferPolicy.resolve(
             rawValue: RPConfig.shared.state.BufferCount)
         await rtmpStream.setVideoInputBufferCounts(bufferPolicy.rawValue)
+        let inputBuffer = VideoInputBufferSettings.load(from: SharedDefaults.group, source: .replayKit)
+        await rtmpStream.setVideoInputBufferLimits(bytes: inputBuffer.budgetBytes,
+                                                  duration: inputBuffer.duration)
 
         // 在 frame 到來前先用 socket 配置設定 encoder video size。
         // OD/odst 是最終畫布輸出；AD/dst 只作為 GPU 中間處理尺寸。

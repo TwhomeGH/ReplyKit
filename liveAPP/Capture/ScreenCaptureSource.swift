@@ -601,6 +601,9 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         startupStage = "pipeline.videoSettings"
         try await stream.setVideoSettings(video)
         await stream.setVideoInputBufferCounts(bufferPolicy.rawValue)
+        let inputBuffer = VideoInputBufferSettings.load(from: defaults, source: .screenCaptureKit)
+        await stream.setVideoInputBufferLimits(bytes: inputBuffer.budgetBytes,
+                                              duration: inputBuffer.duration)
         await stream.setBitRateStrategy(StreamVideoAdaptiveBitRateStrategy(mamimumVideoBitrate: video.bitRate))
         await conn.setReconnectEnabled(true)
         let reconnectSession = state.id

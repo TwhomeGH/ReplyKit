@@ -167,6 +167,7 @@ struct StreamDiagnosticsSections: View {
                     DisclosureGroup {
                         diagnosticsSummary(value)
                         formatSection(value)
+                        encoderInputSection(value)
                         encoderSection(value)
                         transportSection(value)
                         timingSection(value)
@@ -220,6 +221,45 @@ struct StreamDiagnosticsSections: View {
             Text("Mixer 像素與色彩資料屬編碼前畫面；實際格式來自壓縮樣本，不用設定值補值。")
                 .font(.caption).foregroundStyle(.secondary)
         }
+    }
+
+    /// 編碼前原始影格 queue；與 VT pending、RTMP 網路待送 bytes 分開呈現。
+    @ViewBuilder
+    private func encoderInputSection(_ value: StreamDiagnosticsSnapshot) -> some View {
+        group("編碼輸入緩衝") {
+            if let input = value.encoderInput {
+                detail("佇列狀態", input.availability)
+                detail("容量", [
+                    megabytes(input.byteLimit).map { "上限 \($0)" },
+                    input.manualFrameLimit.map { "手動上限 \($0) frames" } ?? "自動（無手動 frame cap）",
+                    input.maxAge.map { "最長 \(milliseconds($0))" }
+                ].compactMap { $0 }.joined(separator: " · "))
+                detail("目前使用", [
+                    megabytes(input.bytes).map { "已用 \($0)" },
+                    input.queued.map { "\($0) frames" },
+                    megabytes(input.peakBytes).map { "峰值 \($0)" }
+                ].compactMap { $0 }.joined(separator: " · "))
+                detail("最舊影格", input.oldestAge.map { milliseconds($0) })
+                detail("丟棄", [
+                    input.capacityDrops.map { "capacity \($0)" },
+                    input.expiredDrops.map { "expired \($0)" },
+                    input.oversizedDrops.map { "oversized \($0)" }
+                ].compactMap { $0 }.joined(separator: " · "))
+                detail("閒置", [
+                    input.inputIdle.map { "input \(milliseconds($0))" },
+                    input.outputIdle.map { "output \(milliseconds($0))" }
+                ].compactMap { $0 }.joined(separator: " · "))
+                Text("這是編碼前的原始影格 queue，不是 VT pending，也不是 RTMP 已編碼待送 bytes。")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                Text("此快照沒有編碼輸入緩衝資料。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func milliseconds(_ seconds: Double) -> String {
+        String(format: "%.1f ms", max(0, seconds) * 1000)
     }
 
     @ViewBuilder
@@ -390,6 +430,10 @@ struct StreamDiagnosticsSections: View {
     /// 保留傳輸計數的原始 bytes 與 nil，讓明細統一處理未提供資料。
     private func bytes(_ value: Int?) -> String? {
         value.map { "\($0) bytes" }
+    }
+
+    private func megabytes(_ value: Int?) -> String? {
+        value.map { String(format: "%.1f MB", Double($0) / 1_048_576) }
     }
 
     /// 格式來自壓縮樣本，色彩附件缺漏不以設定或 Mixer 像素格式補值。
