@@ -280,10 +280,11 @@ struct FileLogView: View {
             startRefreshIfNeeded()
         }
         .onChange(of: scenePhase) { phase in
-            if phase == .active, isVisible {
-                startRefreshIfNeeded()
-            } else {
+            // inactive 可能是通知中心／控制中心；只有真正進背景才停止刷新。
+            if phase == .background {
                 stopRefresh()
+            } else if isVisible {
+                startRefreshIfNeeded()
             }
         }
         .onDisappear {
@@ -295,7 +296,7 @@ struct FileLogView: View {
 
     /// 單一刷新 task；頁面切換或進背景時停止，避免隱藏分頁持續每秒讀取。
     private func startRefreshIfNeeded() {
-        guard refreshTask == nil, isVisible, scenePhase == .active else { return }
+        guard refreshTask == nil, isVisible, scenePhase != .background else { return }
         refreshGeneration &+= 1
         let generation = refreshGeneration
         refreshTask = Task { @MainActor in

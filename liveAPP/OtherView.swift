@@ -609,10 +609,11 @@ struct DeviceView: View {
             startSamplingIfNeeded()
         }
         .onChange(of: scenePhase) { phase in
-            if phase == .active, isVisible {
-                startSamplingIfNeeded()
-            } else {
+            // 通知中心／控制中心只會讓 App 進入 inactive；不要因此停掉圖表取樣。
+            if phase == .background {
                 stopSampling()
+            } else if isVisible {
+                startSamplingIfNeeded()
             }
         }
         .onDisappear {
@@ -1121,7 +1122,7 @@ struct DeviceView: View {
 
     /// 單一採樣 task；避開 `.task(id:)` 在頁面切換時重複啟動。
     private func startSamplingIfNeeded() {
-        guard samplingTask == nil, isVisible, scenePhase == .active else { return }
+        guard samplingTask == nil, isVisible, scenePhase != .background else { return }
         cpuInfo = SystemCPU()
         diskIO = SystemDiskIO()
         networkTraffic = NetworkTrafficSampler()

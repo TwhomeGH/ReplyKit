@@ -1219,6 +1219,12 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             return false
         }
 
+        if displayLayer.status == .failed {
+            // AVSampleBufferDisplayLayer 在 App inactive／系統切換後可能進入 failed；
+            // flush 後再 enqueue，否則 isReadyForMoreMediaData 會一直 false 形成黑畫面。
+            PIPLogTo("displayLayer failed: \(String(describing: displayLayer.error))；flush 後重試")
+            displayLayer.flush()
+        }
         guard displayLayer.isReadyForMoreMediaData else {
             backpressureSkips += 1
             decayFPSIfNeeded()
@@ -1311,6 +1317,9 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
 
     func appWillEnterForeground() {
         isInBackground = false
+        // 通知中心／控制中心可能讓 sample-buffer layer 留下空白畫面；
+        // 回到 active 時清掉舊畫面，再由 forceRender 補一張新幀。
+        displayLayer?.flush()
         reAttachDisplayLayerIfNeeded()
 
         if pixelBufferPool == nil && OframeSize.width > 0 && OframeSize.height > 0 {
