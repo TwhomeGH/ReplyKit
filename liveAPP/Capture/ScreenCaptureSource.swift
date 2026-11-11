@@ -178,6 +178,8 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     }
     private var audioProbe: ScreenAudioProbe?
     private var streamDiagnosticsProbe: StreamDiagnosticsProbe?
+    /// 每軌已記錄到的 gap 事件序號；避免同一個缺口每 5 秒重複寫 log。
+    private var lastAudioGapSequence: [UInt8: UInt64] = [:]
     private var telemetry = CaptureStreamTelemetry()
     private let telemetryChanged: @MainActor (CaptureStreamTelemetry) -> Void
     private var recording: ScreenRecordingSession?
@@ -409,8 +411,17 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                 if let mixer = self.pipeline?.mixer {
                     let health = await mixer.audioPipelineDiagnostics()
                     guard !Task.isCancelled else { return }
+                    for track in health.tracks {
+                        let previousSequence = lastAudioGapSequence[track.trackId] ?? 0
+                        for event in track.gapEvents where event.sequence > previousSequence {
+                            sendlog(message: "[CaptureAudioGap] session=\(token) track=\(track.trackId) sequence=\(event.sequence) previousPTS=\(event.previousPTS) currentPTS=\(event.currentPTS) gapSamples=\(event.gapSamples) mode=\(event.mode) bufferedBefore=\(event.bufferedBefore) bufferedAfter=\(event.bufferedAfter) dropped=\(event.droppedSamples)")
+                        }
+                        if let last = track.gapEvents.last?.sequence {
+                            lastAudioGapSequence[track.trackId] = max(previousSequence, last)
+                        }
+                    }
                     let tracks = health.tracks.map {
-                        "track=\($0.trackId) rms=\($0.outputChannelRMS) converted=\($0.outputFrames) noData=\($0.resampleNoDataCount) buffered=\($0.ringBufferCounts) overflow=\($0.overflowDroppedSamples) gap=\($0.skipInsertedSamples) alignDrop=\($0.alignDroppedSamples) alignInsert=\($0.alignInsertedSamples) alignFire=\($0.alignFireCount) alignDiff=\($0.lastAlignDiff)"
+                        "track=\($0.trackId) rms=\($0.outputChannelRMS) converted=\($0.outputFrames) noData=\($0.resampleNoDataCount) buffered=\($0.ringBufferCounts) overflow=\($0.overflowDroppedSamples) gap=\($0.skipInsertedSamples) zeroFill=\($0.gapZeroFillCount) rebase=\($0.gapRebaseCount) alignDrop=\($0.alignDroppedSamples) alignInsert=\($0.alignInsertedSamples) alignFire=\($0.alignFireCount) alignDiff=\($0.lastAlignDiff)"
                     }.joined(separator: " | ")
                     self.telemetry.mixerAudio = "mixed=\(health.mixerOutputFrames) ready=\(health.mixerReady) channels=\(health.outputChannels) \(self.audioProbe?.summary() ?? "probe=none")"
                     audioTrackDetails = StreamDiagnosticsSnapshot.audioTrackDiagnostics(

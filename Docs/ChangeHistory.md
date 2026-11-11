@@ -2,6 +2,7 @@
 
 ## 2026.11.10 音訊主時鐘與 RTMP 診斷可讀性
 
+- 音訊 PTS 缺口改為大小分流：小於 250 ms 才補零；超過時重建來源時間軸（`rebase`），不再用數秒靜音塞滿環形緩衝並擠掉歷史音訊。`AudioRingBuffer` 產生最多 8 筆 `GapEvent`，含前後 PTS、gap samples、mode、緩衝前後量與 dropped samples；SCK／ReplayKit 會寫出 `[CaptureAudioGap]` event-level log，週期摘要也新增 `zeroFill`／`rebase` 計數。
 - `CaptureMediaPipeline.audioSettings` 在麥克風啟用時改用 mic（track 1）作為 Mixer 主時鐘，輸出格式仍取 App 軌；避免 App 軌靜默但持續 callback 時，mic 被當成非主軌反覆 align／丟樣本而斷續。mic 停止或關閉時，底層 `activeClockTrack` 會 fallback 到 App 軌。
 - 2ch mixer 測試現在會斷言輸出內容不是靜音（`channelRMS`），補上先前只檢查格式、未檢查實際混音的盲點。
 - `AudioPipelineDiagnostics.Track` 新增每軌輸出 RMS；`ScreenCaptureSource` 的 `[CaptureAudioPipeline]` 同時記錄 `alignDrop`／`alignInsert`／`alignDiff`，可區分麥克風真正斷斷續續與只看到 mixed snapshot。

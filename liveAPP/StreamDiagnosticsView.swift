@@ -132,6 +132,11 @@ struct MixerPipelineCard: View {
                             .map { String(format: "%.4f", $0) }
                             .joined(separator: ", "))
                             .font(.caption2)
+                        if let gap = track.gapEvents?.last {
+                            Text("最近缺口：\(gap.mode) · \(gap.gapSamples) samples · PTS \(String(format: "%.3f", gap.previousPTS))→\(String(format: "%.3f", gap.currentPTS)) · dropped \(gap.droppedSamples)")
+                                .font(.caption2)
+                                .foregroundStyle(gap.mode == "rebase" ? Color.orange : Color.secondary)
+                        }
                         if let lastError = track.lastError {
                             Text(lastError).font(.caption2).foregroundStyle(.red)
                         }

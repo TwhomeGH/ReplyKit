@@ -292,6 +292,7 @@ API 遷移屬後續技術評估，不作為以上功能完成的條件；需要�
 
 - [x] 移除強制揚聲器與失敗收尾的排他音訊還原，補上音訊生命週期診斷。
 - [ ] 實機測試推流逾時及正常停止不打斷外部影片，涵蓋麥克風開關、耳機及 PiP／TTS。
+- [ ] **音訊缺口新策略驗收**：下一次長直播確認 `[CaptureAudioGap]` 會記錄 `zeroFill`／`rebase`、前後 PTS、gap samples 與 dropped；小缺口仍補零，大缺口不再用數秒靜音擠掉歷史音訊。需與 `CaptureCallbacks` audio gap、App footprint 對照，確認是否為系統高負載造成 callback starvation。
 
 ## 本地錄影資訊與分析
 

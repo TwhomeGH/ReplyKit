@@ -736,6 +736,21 @@ App 目前分開設定：
 
 設定在 `screenCaptureKitVideoBufferMB`／`screenCaptureKitVideoBufferDurationMS`、`replayKitVideoBufferMB`／`replayKitVideoBufferDurationMS`。診斷會顯示 `byteLimit`、`bytes`、`queued`、`peakBytes`、`oldestAge`、capacity／expired／oversized drops、input／output idle；若 `capacityDrops` 與 `queued ≈ limit` 增加才考慮放寬，若 `expiredDrops` 增加則應先查 encoder 或 worker 效率。
 
+### 音訊 PTS 缺口（2026-11-11）
+
+來源 PTS 缺口不再一律補零：
+
+- `<= 250 ms`：`zeroFill`，把精確長度的靜音補在尾端。
+- `> 250 ms`：`rebase`，直接採用新來源時間，不把數秒靜音塞進環形緩衝；既有待消費音訊不會被 `appendZeros` 的 overflow 先擠掉。
+
+每個缺口最多保留 8 筆 `AudioPipelineDiagnostics.GapEvent`，包含 sequence、前後 PTS、gapSamples、mode、緩衝前後量與 droppedSamples。SCK／ReplayKit 會寫出：
+
+```text
+[CaptureAudioGap] track=0 sequence=... previousPTS=... currentPTS=... gapSamples=... mode=... bufferedBefore=... bufferedAfter=... dropped=...
+```
+
+週期摘要新增 `zeroFill`／`rebase` 計數。這讓下一次長直播可以直接看到缺口發生點，而不是只看到累計 `gap` 數字；若 `rebase` 與 `CaptureCallbacks` 的 audio gap 同時增加，優先查來源 callback／系統負載，而不是 mixer align。
+
 ### 診斷邏輯
 
 - `align-drop`：`AudioRingBuffer.align()` 丟棄非 main track 樣本。這是目前最可疑的 content-level 斷音來源（雙軌 PTS 基座差被當成 desync）。

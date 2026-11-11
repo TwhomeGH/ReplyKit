@@ -93,8 +93,24 @@ struct StreamDiagnosticsSnapshot: Codable, Sendable {
         let alignFireCount: Int
         let lastAlignDiff: Int
         let outputRMS: [Float]
+        /// 來源 PTS 缺口事件；舊版來源沒有此欄位。
+        let gapEvents: [AudioGapEvent]?
+        let gapZeroFillCount: Int?
+        let gapRebaseCount: Int?
 
         var id: UInt8 { trackId }
+    }
+
+    /// 單次音訊缺口的純量摘要；不攜帶 PCM。
+    struct AudioGapEvent: Codable, Sendable {
+        let sequence: UInt64
+        let previousPTS: Double
+        let currentPTS: Double
+        let gapSamples: Int
+        let mode: String
+        let bufferedBefore: Int
+        let bufferedAfter: Int
+        let droppedSamples: Int
     }
 
     /// 將 Mixer 的 AVCon／緩衝診斷轉成可跨 Socket 傳送的純量快照。
@@ -120,7 +136,16 @@ struct StreamDiagnosticsSnapshot: Codable, Sendable {
                 alignInsertedSamples: track.alignInsertedSamples,
                 alignFireCount: track.alignFireCount,
                 lastAlignDiff: track.lastAlignDiff,
-                outputRMS: track.outputChannelRMS)
+                outputRMS: track.outputChannelRMS,
+                gapEvents: track.gapEvents.map {
+                    AudioGapEvent(sequence: $0.sequence, previousPTS: $0.previousPTS,
+                                  currentPTS: $0.currentPTS, gapSamples: $0.gapSamples,
+                                  mode: $0.mode, bufferedBefore: $0.bufferedBefore,
+                                  bufferedAfter: $0.bufferedAfter,
+                                  droppedSamples: $0.droppedSamples)
+                },
+                gapZeroFillCount: track.gapZeroFillCount,
+                gapRebaseCount: track.gapRebaseCount)
         }
     }
     /// ScreenCaptureKit 畫面加工摘要；未走本機加工時為 nil。

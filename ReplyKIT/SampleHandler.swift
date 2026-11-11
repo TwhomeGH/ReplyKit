@@ -1459,6 +1459,15 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
                             sendlog(message: "[ReplayVideoProcessing] \(processing.summary) busyPercent=\(processing.load.map { String($0.busyPercent) } ?? "unknown")")
                         }
                         let audio = await self.mediaMixer.audioPipelineDiagnostics()
+                        for track in audio.tracks {
+                            let previousSequence = self.lastAudioGapSequence[track.trackId] ?? 0
+                            for gap in track.gapEvents where gap.sequence > previousSequence {
+                                sendlog(message: "[CaptureAudioGap] source=ReplayKit track=\(track.trackId) sequence=\(gap.sequence) previousPTS=\(gap.previousPTS) currentPTS=\(gap.currentPTS) gapSamples=\(gap.gapSamples) mode=\(gap.mode) bufferedBefore=\(gap.bufferedBefore) bufferedAfter=\(gap.bufferedAfter) dropped=\(gap.droppedSamples)")
+                            }
+                            if let last = track.gapEvents.last?.sequence {
+                                self.lastAudioGapSequence[track.trackId] = max(previousSequence, last)
+                            }
+                        }
                         snapshot.audioTracks = StreamDiagnosticsSnapshot.audioTrackDiagnostics(
                             from: audio.tracks)
                         SocketClient.shared.sendStreamDiagnostics(snapshot)
@@ -1822,6 +1831,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
     private var appAudioGapMax: Double = 0
     private var micAudioGapMax: Double = 0
     private var lastAudioDiagByTrack: [UInt8: AudioDiagCounter] = [:]
+    private var lastAudioGapSequence: [UInt8: UInt64] = [:]
     private var lastMixerOutputFrames: Int = 0
     private var lastAudioDiagnosticsTime: Double?
     private var lastAudioFormats: [String: (format: AudioStreamBasicDescription, samples: Int)] = [:]
