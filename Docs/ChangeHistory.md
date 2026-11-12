@@ -2,6 +2,7 @@
 
 ## 2026.11.10 音訊主時鐘與 RTMP 診斷可讀性
 
+- 錄影 manifest（sidecar）新增 `sourceStartPTS`／`sourceEndPTS`／`fileStartPTS`，由 `SegmentedRecordingWriter` 在第一個 video sample 與完成時寫入；`filePTS = sourcePTS - sourceStartPTS + fileStartPTS` 可對照 App 擷取時鐘與檔案時間軸。此階段只建立對照，不改檔案時間戳。
 - A/V Lag 新增 `sourcePTSDeltaDrift`／`sourcePTSDeltaPerMinute`／`avClockDrift`／`avSyncState`，以第一筆有效來源差為基準區分 stable／drifting／jumped；報告頁與 JSON 都能看到漂移趨勢，不直接用 `publish throughput avOffset` 判斷口型同步。
 - 編碼輸入緩衝 UI 改稱「佇列保留」，新增 `received`／`consumed` 累計交接數；文件明確說明直接 handoff 時 `bytes=0`、`peakBytes=0` 是正常，不代表影格沒有進入編碼，也不代表沒有配置容量。
 - TTS 最小朗讀字數預設改為 5，並把 UI 的 `@AppStorage` 與 `TTSService` 的 fallback 統一由 `TTSDefaults` 提供，避免兩邊預設值不同。最小／最大字數、佇列上限與溢出策略現在變更時立即 `updateDefault()`，不再只依賴離開設定頁或按「套用設定」才生效；`[TTS]` 同步日誌會輸出目前生效的 `minLen`／`maxLen`／`maxQueue`。

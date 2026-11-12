@@ -92,6 +92,13 @@ struct LocalRecording: Identifiable, Codable {
     /// 同一場可控錄製的群組與片段序號，舊紀錄為 nil。
     var segmentGroup: UUID?
     var segmentNumber: Int?
+    /// 本段第一個 video source PTS；舊紀錄或未開始寫入時為 nil。
+    /// 這是 App 擷取時間軸，不是 MP4 的檔內 PTS。
+    var sourceStartPTS: Double?
+    /// 本段最後成功寫入的 source PTS（影片與音訊尾端取較大者）。
+    var sourceEndPTS: Double?
+    /// MP4 檔內第一個可播放 sample 的 PTS；正常由 writer 設為 0。
+    var fileStartPTS: Double?
     /// 合併產物所屬群組；與原始片段分開保存，不參與再次合併。
     var mergedFromGroup: UUID?
     /// 轉碼暫存檔大小；完成前不可當作可播放產物。

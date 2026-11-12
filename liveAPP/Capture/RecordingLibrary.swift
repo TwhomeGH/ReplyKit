@@ -82,6 +82,25 @@ import Photos
         do { try persist(recordings[index]) }
         catch { errorMessage = "片段索引無法保存。" }
     }
+    /// 寫入此片段與 App 擷取時間軸的對照；manifest JSON 就是 sidecar。
+    /// sourceStartPTS 是本段第一個 video PTS，fileStartPTS 正常為 0。
+    func recordSourceRange(_ id: UUID, sourceStartPTS: Double?, sourceEndPTS: Double?, persist: Bool = true) {
+        guard let index = recordings.firstIndex(where: { $0.id == id }) else { return }
+        var item = recordings[index]
+        if let sourceStartPTS, item.sourceStartPTS == nil {
+            item.sourceStartPTS = sourceStartPTS
+            item.fileStartPTS = item.fileStartPTS ?? 0
+        }
+        if let sourceEndPTS, sourceEndPTS.isFinite {
+            item.sourceEndPTS = max(item.sourceEndPTS ?? sourceEndPTS, sourceEndPTS)
+        }
+        recordings[index] = item
+        // 進度更新只留在記憶體；phase 轉換時才落盤，避免每秒寫 manifest。
+        guard persist else { return }
+        do { try persist(item) }
+        catch { errorMessage = "錄影時間軸無法保存。" }
+    }
+
     /// 只允許使用者驗證中斷片段；可讀到有效影像才開放播放與匯出。
     func recover(_ item: LocalRecording) async throws {
         guard item.phase == .interrupted else { return }

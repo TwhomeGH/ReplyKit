@@ -341,6 +341,12 @@ actor RecordingSegmentWriter {
         let sizeWarning = sizeReadError == nil ? "" : " · 大小讀取失敗（目前大小未確認）"
         let duration = completedDuration ?? (lastVideo.isValid ? max(0, lastVideo.seconds - start.seconds) : 0)
         let bitrate = settings.automaticBitrate ? "編碼器自動碼率" : "目標 \(settings.encoding.megabits) Mbps"
+        let sourceStart = start.isValid ? start.seconds : nil
+        var sourceEnd: Double?
+        if lastVideo.isValid { sourceEnd = lastVideo.seconds }
+        if audioEnd.isValid { sourceEnd = max(sourceEnd ?? audioEnd.seconds, audioEnd.seconds) }
+        await library.recordSourceRange(id, sourceStartPTS: sourceStart, sourceEndPTS: sourceEnd,
+                                        persist: phase != nil)
         await library.update(id, phase: phase, duration: duration, bytes: bytes,
             message: "可控錄製 · 第 \(number) 段 · \(bitrate) · 寫入端丟棄 \(dropped) 個樣本" + sizeWarning)
     }

@@ -50,6 +50,9 @@ import Testing
             let actualBytes = try #require((attributes[.size] as? NSNumber)?.int64Value)
             #expect(actualBytes > 0, Comment(rawValue: context))
             #expect(item.bytes == actualBytes, Comment(rawValue: context))
+            #expect(item.sourceStartPTS != nil, Comment(rawValue: context))
+            #expect(item.sourceEndPTS != nil, Comment(rawValue: context))
+            #expect(item.fileStartPTS == 0, Comment(rawValue: context))
         }
         #expect(Set(library.recordings.compactMap(\.segmentGroup)).count == 1)
         #expect(Set(library.recordings.compactMap(\.segmentNumber)) == [1, 2])

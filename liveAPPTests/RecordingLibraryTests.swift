@@ -39,6 +39,19 @@ import Testing
         #expect(!FileManager.default.fileExists(atPath: url.path))
         #expect(RecordingLibrary(directory: directory).recordings.isEmpty)
     }
+    @Test func sourceRangePersistsForFileMapping() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let library = RecordingLibrary(directory: directory)
+        let item = try library.create()
+        library.recordSourceRange(item.id, sourceStartPTS: 215880.58, sourceEndPTS: 215940.58)
+        let reopened = RecordingLibrary(directory: directory)
+        let restored = reopened.recordings.first { $0.id == item.id }
+        #expect(restored?.sourceStartPTS == 215880.58)
+        #expect(restored?.sourceEndPTS == 215940.58)
+        #expect(restored?.fileStartPTS == 0)
+    }
+
     @Test func malformedManifestDoesNotHideOtherRecordings() throws {
         let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
