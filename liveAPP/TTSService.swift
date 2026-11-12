@@ -15,6 +15,14 @@ enum TTSQueueOverflowAction: Int {
     case clearPending = 2  // 清空待朗讀（停止目前 + 清佇列），不讀新訊息
 }
 
+/// TTS 設定的單一預設來源；UI 與服務不各自寫死不同數字。
+enum TTSDefaults {
+    /// 預設至少要 5 個字才朗讀；這是預設值，不是可設定下限。
+    static let minLength = 5
+    /// 未指定上限時採用的最大朗讀字數。
+    static let maxLength = 120
+}
+
 @MainActor
 final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
     static let shared = TTSService()
@@ -32,7 +40,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
     #endif
 
     var isEnabled:Bool
-    var minLen:Int = 3
+    var minLen:Int = TTSDefaults.minLength
     var readMainOnly:Bool = true
     var includeUser:Bool = true
     var maxLen:Int = 0
@@ -63,7 +71,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
     func updateDefault() {
 
         isEnabled = userDefaults?.bool(forKey: "TTSEnabled") ?? false
-        minLen = userDefaults?.integer(forKey: "TTSMinLength") ?? 3
+        minLen = userDefaults?.integer(forKey: "TTSMinLength") ?? TTSDefaults.minLength
         readMainOnly = (userDefaults?.object(forKey: "TTSReadMainOnly") as? Bool) ?? true
 
         includeUser = (userDefaults?.object(forKey: "TTSReadUserName") as? Bool) ?? true
@@ -88,7 +96,8 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
         storedPitch = userDefaults?.double(forKey: "TTSPitch") ?? 0
         storedVolume = userDefaults?.double(forKey: "TTSVolume") ?? 0
 
-        sendlog(message:"已同步TTS設定")
+        let effectiveMaxLen = maxLen > 0 ? maxLen : TTSDefaults.maxLength
+        sendlog(message:"已同步TTS設定 minLen=\(minLen) maxLen=\(effectiveMaxLen) maxQueue=\(maxQueueSize)")
 
     }
     func updateState(isON:Bool? = nil,min_Len:Int? = nil,MainOnly:Bool? = nil) {
@@ -114,7 +123,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
 
         // 部分初始化不能分離 應保留部分在此位置
         isEnabled = userDefaults?.bool(forKey: "TTSEnabled") ?? false
-        minLen = userDefaults?.integer(forKey: "TTSMinLength") ?? 3
+        minLen = userDefaults?.integer(forKey: "TTSMinLength") ?? TTSDefaults.minLength
         readMainOnly = (userDefaults?.object(forKey: "TTSReadMainOnly") as? Bool) ?? true
 
         includeUser = (userDefaults?.object(forKey: "TTSReadUserName") as? Bool) ?? true
@@ -221,7 +230,7 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
 
         
         let storedMaxLength = maxLen
-        let maxLength = storedMaxLength > 0 ? storedMaxLength : 120
+        let maxLength = storedMaxLength > 0 ? storedMaxLength : TTSDefaults.maxLength
 
         
         // TTS 郎讀內容

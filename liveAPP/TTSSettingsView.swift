@@ -720,8 +720,8 @@ struct TTSSettingsView: View {
     @AppStorage("TTSRate", store: userDefaults) private var rate = Double(AVSpeechUtteranceDefaultSpeechRate)
     @AppStorage("TTSPitch", store: userDefaults) private var pitch = 1.0
     @AppStorage("TTSVolume", store: userDefaults) private var volume = 1.0
-    @AppStorage("TTSMaxLength", store: userDefaults) private var maxLength = 120
-    @AppStorage("TTSMinLength", store: userDefaults) private var minLength = 3
+    @AppStorage("TTSMaxLength", store: userDefaults) private var maxLength = TTSDefaults.maxLength
+    @AppStorage("TTSMinLength", store: userDefaults) private var minLength = TTSDefaults.minLength
 
     //@State private var Cache_MaxLength = 100
     let options = Array(stride(from: 5, through: 500, by: 5))
@@ -970,6 +970,20 @@ struct TTSSettingsView: View {
             saveMiddleNameDraft()
             saveVoiceControlDrafts()
 
+            TTSService.shared.updateDefault()
+        }
+        // 訊息限制是直接寫入 @AppStorage，不能只依賴離開頁面時才同步；
+        // 使用者在頁面上改完立刻送下一則訊息時也要套用新值。
+        .onChange(of: minLength) { _ in
+            TTSService.shared.updateDefault()
+        }
+        .onChange(of: maxLength) { _ in
+            TTSService.shared.updateDefault()
+        }
+        .onChange(of: maxQueueSize) { _ in
+            TTSService.shared.updateDefault()
+        }
+        .onChange(of: queueOverflowAction) { _ in
             TTSService.shared.updateDefault()
         }
     }
