@@ -84,12 +84,16 @@ import Photos
     }
     /// 寫入此片段與 App 擷取時間軸的對照；manifest JSON 就是 sidecar。
     /// sourceStartPTS 是本段第一個 video PTS，fileStartPTS 正常為 0。
-    func recordSourceRange(_ id: UUID, sourceStartPTS: Double?, sourceEndPTS: Double?, persist: Bool = true) {
+    func recordSourceRange(_ id: UUID, sourceStartPTS: Double?, sourceEndPTS: Double?,
+                           sourceAudioStartPTS: Double? = nil, persist: Bool = true) {
         guard let index = recordings.firstIndex(where: { $0.id == id }) else { return }
         var item = recordings[index]
         if let sourceStartPTS, item.sourceStartPTS == nil {
             item.sourceStartPTS = sourceStartPTS
             item.fileStartPTS = item.fileStartPTS ?? 0
+        }
+        if let sourceAudioStartPTS, item.sourceAudioStartPTS == nil {
+            item.sourceAudioStartPTS = sourceAudioStartPTS
         }
         if let sourceEndPTS, sourceEndPTS.isFinite {
             item.sourceEndPTS = max(item.sourceEndPTS ?? sourceEndPTS, sourceEndPTS)

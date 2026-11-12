@@ -119,6 +119,8 @@ actor RecordingSegmentWriter {
     private var lastVideo: CMTime = .invalid
     /// 本段最後成功寫入的音訊 PTS；尚未寫入時為 invalid。
     private var lastAudio: CMTime = .invalid
+    /// 本段第一個實際寫入的音訊 PTS；用來量測檔案 A/V 起點。
+    private var firstAudio: CMTime = .invalid
     /// 最後一次報告的時間戳（秒）。
     private var lastReport = -Double.infinity
     /// 本段最近成功讀取的檔案大小；讀取失敗時保留，不以零覆寫。
@@ -205,6 +207,7 @@ actor RecordingSegmentWriter {
             lastVideo = pts
             videoCount += 1
         } else {
+            if !firstAudio.isValid { firstAudio = pts }
             lastAudio = pts
             audioCount += 1
             audioEnd = sample.duration.isValid ? pts + sample.duration : pts
@@ -352,6 +355,7 @@ actor RecordingSegmentWriter {
             id,
             sourceStartPTS: sourceStart,
             sourceEndPTS: persistSourceRange ? sourceEnd : nil,
+            sourceAudioStartPTS: persistSourceRange && firstAudio.isValid ? firstAudio.seconds : nil,
             persist: persistSourceRange)
         await library.update(id, phase: phase, duration: duration, bytes: bytes,
             message: "可控錄製 · 第 \(number) 段 · \(bitrate) · 寫入端丟棄 \(dropped) 個樣本" + sizeWarning)

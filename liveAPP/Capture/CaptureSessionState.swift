@@ -97,6 +97,8 @@ struct LocalRecording: Identifiable, Codable {
     var sourceStartPTS: Double?
     /// 本段最後成功寫入的 source PTS（影片與音訊尾端取較大者）。
     var sourceEndPTS: Double?
+    /// 本段第一個實際寫入的音訊 source PTS；用來量測 A/V 起點差。
+    var sourceAudioStartPTS: Double?
     /// MP4 檔內第一個可播放 sample 的 PTS；正常由 writer 設為 0。
     var fileStartPTS: Double?
     /// 合併產物所屬群組；與原始片段分開保存，不參與再次合併。
