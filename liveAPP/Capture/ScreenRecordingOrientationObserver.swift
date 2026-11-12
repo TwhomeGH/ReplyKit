@@ -14,6 +14,8 @@ final class ScreenRecordingOrientationObserver: NSObject, SCStreamOutput, @unche
     private var firstPTS: Double?
     private var lastPTS: Double?
     private var maxFrameGap: Double = 0
+    private var maxFrameGapAtPTS: Double?
+    private var lastFrameGap: Double?
     private var frameGapsOver100ms = 0
     private var lastArrival: Double?
 
@@ -26,7 +28,8 @@ final class ScreenRecordingOrientationObserver: NSObject, SCStreamOutput, @unche
         }
         let idle = lastArrival.map { max(0, now - $0) } ?? -1
         return "frames=\(frameCount) firstPTS=\(number(firstPTS)) lastPTS=\(number(lastPTS)) "
-            + "maxGap=\(number(maxFrameGap)) gapsOver100ms=\(frameGapsOver100ms) idle=\(number(idle))"
+            + "maxGap=\(number(maxFrameGap)) maxGapAtPTS=\(number(maxFrameGapAtPTS)) "
+            + "lastGap=\(number(lastFrameGap)) gapsOver100ms=\(frameGapsOver100ms) idle=\(number(idle))"
     }
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
@@ -38,18 +41,27 @@ final class ScreenRecordingOrientationObserver: NSObject, SCStreamOutput, @unche
             ?? (CMGetAttachment(sampleBuffer, key: SCStreamFrameInfo.videoOrientation.rawValue as CFString, attachmentModeOut: nil) as? NSNumber)?.intValue
         let seconds = sampleBuffer.presentationTimeStamp.seconds
         let arrival = CMClockGetTime(CMClockGetHostTimeClock()).seconds
+        var longGap: (previous: Double, current: Double, gap: Double)?
         if seconds.isFinite, seconds > 0 {
             frameLock.lock()
             frameCount += 1
             if firstPTS == nil { firstPTS = seconds }
             if let previous = lastPTS {
                 let gap = seconds - previous
-                if gap > maxFrameGap { maxFrameGap = gap }
+                lastFrameGap = gap
+                if gap > maxFrameGap {
+                    maxFrameGap = gap
+                    maxFrameGapAtPTS = previous
+                }
                 if gap > 0.100 { frameGapsOver100ms += 1 }
+                if gap >= 0.500 { longGap = (previous, seconds, gap) }
             }
             lastPTS = seconds
             if arrival.isFinite { lastArrival = arrival }
             frameLock.unlock()
+        }
+        if let longGap {
+            sendlog(message: "[RecordingFrameGap] previousPTS=\(longGap.previous) currentPTS=\(longGap.current) gap=\(longGap.gap)")
         }
         timeline.observe(seconds: seconds, orientation: raw)
         if raw != lastOrientation || (raw == nil && !loggedMissing) {
