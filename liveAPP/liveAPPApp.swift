@@ -1386,7 +1386,8 @@ AVCaptureDevice.requestAccess(for: .audio) { granted in
                 .onChange(of: scenePhase) { phase in
                     switch phase {
                     case .inactive:
-                        break
+                        // 面板、切換器等中斷前景但仍可見；保留事件供背景／PiP 排程對照。
+                        logAppEnvironment("inactive")
 
                     case .background:
                         AppSession.markBackground()

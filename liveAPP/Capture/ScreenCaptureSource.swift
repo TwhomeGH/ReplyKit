@@ -383,6 +383,9 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                 if sourceLog {
                     sendlog(message: "[CaptureSource] backend=screenCaptureKit session=\(token) mode=\(self.mode.rawValue) capturePhase=\(self.state.phase.rawValue) publishPhase=\(self.publishingStage) \(queues)")
                 }
+                if let observer = self.recordingOrientation {
+                    sendlog(message: "[RecordingFrame] session=\(token) \(observer.frameSummary(now: CMClockGetTime(CMClockGetHostTimeClock()).seconds))")
+                }
                 if let sink = self.recordingSink, detailedLog { sendlog(message: "[SegmentedRecordingQueue] \(sink.summary)") }
                 let processingLoad = self.pump?.processing.sampleLoad()
                 if let load = processingLoad, detailedLog {
@@ -736,6 +739,9 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     /// 停止音量同步、解除來源回呼並等待取樣工作結束，再卸載探針與收尾錄製。
     /// 釋放 Mixer 管線；SCStream 本身與 RTMP 連線由外層分別停止。
     private func stopMediaPipeline() async {
+        if let observer = recordingOrientation {
+            sendlog(message: "[RecordingFrame] session=\(state.id?.uuidString ?? "unknown") final \(observer.frameSummary(now: CMClockGetTime(CMClockGetHostTimeClock()).seconds))")
+        }
         LiveVolumeModel.shared.endCapture(state.id?.uuidString ?? "none")
         volumeUpdates?.cancel()
         await volumeUpdates?.value; volumeUpdates = nil

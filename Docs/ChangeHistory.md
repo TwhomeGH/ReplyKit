@@ -3,6 +3,8 @@
 ## 2026.11.10 音訊主時鐘與 RTMP 診斷可讀性
 
 - 錄影 manifest（sidecar）只在開始、完成或中斷等 phase 轉換時持久化 `sourceStartPTS`／`sourceEndPTS`；進度回報不把尾端累積在記憶體等待落盤，避免長錄影產生額外的狀態寫入。失敗收尾會主動釋放 `AVAssetWriter` 與檔案 URL，不讓失敗片段持有 handle。
+- 原生 `SCRecordingOutput` 錄影路徑新增 `[RecordingFrame]` 診斷：由 `ScreenRecordingOrientationObserver` 統計影片 frame 數、first/last PTS、最大 gap、超過 100 ms 的 gap 與最後回呼 idle；`ScreenCaptureSource` 每 5 秒與停止時輸出。這條路徑沒有 `ScreenSamplePump`／AVLag，先前無法看出背景排程造成的影片停頓。
+- `scenePhase == .inactive` 現在會寫 `[AppEnvironment] event=inactive`；先前直接 `break`，無法對照 inactive／background／active 排程。
 - 錄影 manifest（sidecar）新增 `sourceAudioStartPTS`，用來量測第一個實際寫入音訊 sample 與 `sourceStartPTS`（第一個 video）的起點差；這只在 phase 轉換時落盤。
 - 錄影 manifest（sidecar）新增 `sourceStartPTS`／`sourceEndPTS`／`fileStartPTS`，由 `SegmentedRecordingWriter` 在第一個 video sample 與完成時寫入；`filePTS = sourcePTS - sourceStartPTS + fileStartPTS` 可對照 App 擷取時鐘與檔案時間軸。此階段只建立對照，不改檔案時間戳。
 - A/V Lag 新增 `sourcePTSDeltaDrift`／`sourcePTSDeltaPerMinute`／`avClockDrift`／`avSyncState`，以第一筆有效來源差為基準區分 stable／drifting／jumped；報告頁與 JSON 都能看到漂移趨勢，不直接用 `publish throughput avOffset` 判斷口型同步。
