@@ -736,6 +736,8 @@ App 目前分開設定：
 
 設定在 `screenCaptureKitVideoBufferMB`／`screenCaptureKitVideoBufferDurationMS`、`replayKitVideoBufferMB`／`replayKitVideoBufferDurationMS`。診斷會顯示 `byteLimit`、`bytes`、`queued`、`peakBytes`、`oldestAge`、capacity／expired／oversized drops、input／output idle；若 `capacityDrops` 與 `queued ≈ limit` 增加才考慮放寬，若 `expiredDrops` 增加則應先查 encoder 或 worker 效率。
 
+`bytes` 與 `queued` 是**取樣當下佇列仍保留的量**，不是累計送入量。`AdaptiveMediaQueue.offer()` 若發現 consumer 正在等待，會直接交接影格，不會 append 到 entries，所以 `queued=0`、`bytes=0`、甚至 `peakBytes=0` 可以是正常的即時 handoff；此時 `received`／`consumed` 仍會增加。只有在 consumer 落後時，`bytes`、`oldestAge` 與 drops 才會反映真正的 backlog。
+
 ### 音訊 PTS 缺口（2026-11-11）
 
 來源 PTS 缺口不再一律補零：

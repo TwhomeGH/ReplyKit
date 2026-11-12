@@ -39,6 +39,10 @@ struct StreamDiagnosticsSnapshot: Codable, Sendable {
     struct EncoderInputBufferDiagnostics: Codable, Sendable {
         let availability: String
         let generation: UInt64?
+        /// offer() 嘗試送入的累計影格數；包含拒收，不等於已編碼數。
+        let received: Int?
+        /// 已交付消費端的累計影格數。
+        let consumed: Int?
         let queued: Int?
         let bytes: Int?
         let byteLimit: Int?
@@ -58,6 +62,8 @@ struct StreamDiagnosticsSnapshot: Codable, Sendable {
             return Self(
                 availability: stage.availability.rawValue,
                 generation: stage.generation,
+                received: queue?.received,
+                consumed: queue?.consumed,
                 queued: queue?.queued,
                 bytes: queue?.bytes,
                 byteLimit: queue?.byteLimit,

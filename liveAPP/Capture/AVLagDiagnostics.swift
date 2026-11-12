@@ -14,6 +14,14 @@ struct AVLagObservation: Codable, Equatable, Sendable {
     var videoProcessAge: Double?
     var videoSourceAge: Double?
     var sourcePTSDelta: Double?
+    /// 相對本 session 第一筆有效 `sourcePTSDelta` 的累積變化；負值代表音訊 PTS 相對影片持續往後。
+    var sourcePTSDeltaDrift: Double?
+    /// 上述漂移換算成每分鐘變化；取樣時間太短時為 nil。
+    var sourcePTSDeltaPerMinute: Double?
+    /// 音訊 host-minus-PTS 減影片 host-minus-PTS；用來觀察來源時鐘漂移。
+    var avClockDrift: Double?
+    /// stable / drifting / jumped；只是診斷，不直接修正時間戳。
+    var avSyncState: String?
     var videoQueue: String?
     var contentAgeJump: Double?
     var videoFrames = 0
@@ -29,6 +37,8 @@ struct AVLagObservation: Codable, Equatable, Sendable {
             + "videoQueueAge=\(number(videoQueueAge)) videoQueueOldestAge=\(number(videoQueueOldestAge)) "
             + "videoProcessAge=\(number(videoProcessAge)) "
             + "videoSourceAge=\(number(videoSourceAge)) sourcePTSDelta=\(number(sourcePTSDelta)) "
+            + "deltaDrift=\(number(sourcePTSDeltaDrift)) deltaPerMin=\(number(sourcePTSDeltaPerMinute)) "
+            + "clockDrift=\(number(avClockDrift)) syncState=\(avSyncState ?? "unknown") "
             + "jump=\(number(contentAgeJump)) frames=\(videoFrames)/\(audioFrames) "
             + "queue=\(videoQueue ?? "unknown")"
     }
@@ -51,6 +61,10 @@ final class AVLagDiagnostics: @unchecked Sendable {
     private var videoFrames = 0
     private var audioFrames = 0
     private var lastVideoAt: Double?
+    private var firstSourceDelta: Double?
+    private var firstSourceDeltaAt: Double?
+    private var lastSourceDelta: Double?
+    private var lastSourceDeltaAt: Double?
 
     /// 影片從 SCStream 交給 worker 時呼叫；contentAge 是回呼到達時間減來源 PTS。
     func recordVideo(arrival: Double, pts: Double, at now: Double,
@@ -102,6 +116,44 @@ final class AVLagDiagnostics: @unchecked Sendable {
         } else {
             sourceDelta = nil
         }
+
+        if let sourceDelta {
+            if firstSourceDelta == nil {
+                firstSourceDelta = sourceDelta
+                firstSourceDeltaAt = now
+            }
+        }
+        let sourceDeltaDrift = sourceDelta.flatMap { current in
+            firstSourceDelta.map { current - $0 }
+        }
+        let sourceDeltaPerMinute: Double?
+        if let sourceDeltaDrift, let firstSourceDeltaAt, now > firstSourceDeltaAt {
+            sourceDeltaPerMinute = sourceDeltaDrift / ((now - firstSourceDeltaAt) / 60)
+        } else {
+            sourceDeltaPerMinute = nil
+        }
+        let clockDrift: Double?
+        if let audioContentAge, let videoContentAge {
+            clockDrift = audioContentAge - videoContentAge
+        } else {
+            clockDrift = nil
+        }
+        var syncState: String?
+        if let sourceDelta {
+            // 100 ms 以上的變化只在短時間內視為跳變；累積 60 秒的變化
+            // 應標成 drifting，不要讓一次正常取樣窗口掩蓋漂移趨勢。
+            let changedQuickly = lastSourceDeltaAt.map { now - $0 < 10 } ?? false
+            let jumped = changedQuickly
+                && (lastSourceDelta.map { abs(sourceDelta - $0) >= 0.100 } ?? false)
+            let drifting = abs(sourceDeltaDrift ?? 0) >= 0.080
+                || abs(clockDrift ?? 0) >= 0.080
+            syncState = jumped ? "jumped" : (drifting ? "drifting" : "stable")
+        }
+        if sourceDelta != nil {
+            lastSourceDelta = sourceDelta
+            lastSourceDeltaAt = now
+        }
+
         let observation = AVLagObservation(
             session: session,
             sampledAt: sampledAt,
@@ -115,6 +167,10 @@ final class AVLagDiagnostics: @unchecked Sendable {
             videoProcessAge: videoProcessAge,
             videoSourceAge: videoSourceAge,
             sourcePTSDelta: sourceDelta,
+            sourcePTSDeltaDrift: sourceDeltaDrift,
+            sourcePTSDeltaPerMinute: sourceDeltaPerMinute,
+            avClockDrift: clockDrift,
+            avSyncState: syncState,
             videoQueue: videoQueue,
             contentAgeJump: pendingJump,
             videoFrames: videoFrames,

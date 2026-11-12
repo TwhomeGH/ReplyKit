@@ -36,6 +36,23 @@ struct AVLagDiagnosticsTests {
         #expect(diagnostics.snapshot(session: "s", now: 21)?.contentAgeJump == nil)
     }
 
+    @Test func reportsSourceDeltaDriftAndSyncState() {
+        let diagnostics = AVLagDiagnostics()
+        diagnostics.recordVideo(arrival: 100, pts: 100, at: 100, queue: "q", queueOldestAge: nil)
+        diagnostics.recordAudio(arrival: 100, pts: 99.97, at: 100, isMic: false)
+        let baseline = diagnostics.snapshot(session: "s", now: 100)
+        #expect(abs((baseline?.sourcePTSDeltaDrift ?? 1) - 0) < 0.0001)
+        #expect(baseline?.avSyncState == "stable")
+
+        diagnostics.recordVideo(arrival: 160, pts: 160, at: 160, queue: "q", queueOldestAge: nil)
+        diagnostics.recordAudio(arrival: 160, pts: 159.77, at: 160, isMic: false)
+        let drifted = diagnostics.snapshot(session: "s", now: 160)
+        #expect(abs((drifted?.sourcePTSDeltaDrift ?? 0) - 0.2) < 0.0001)
+        #expect(abs((drifted?.sourcePTSDeltaPerMinute ?? 0) - 0.2) < 0.0001)
+        #expect(abs((drifted?.avClockDrift ?? 0) - 0.23) < 0.0001)
+        #expect(drifted?.avSyncState == "drifting")
+    }
+
     @Test func noVideoMeansUnknownInsteadOfZero() {
         let diagnostics = AVLagDiagnostics()
         diagnostics.recordAudio(arrival: 1, pts: 1, at: 1, isMic: false)

@@ -234,15 +234,19 @@ struct StreamDiagnosticsSections: View {
         group("編碼輸入緩衝") {
             if let input = value.encoderInput {
                 detail("佇列狀態", input.availability)
-                detail("容量", [
+                detail("佇列上限", [
                     megabytes(input.byteLimit).map { "上限 \($0)" },
                     input.manualFrameLimit.map { "手動上限 \($0) frames" } ?? "自動（無手動 frame cap）",
                     input.maxAge.map { "最長 \(milliseconds($0))" }
                 ].compactMap { $0 }.joined(separator: " · "))
-                detail("目前使用", [
-                    megabytes(input.bytes).map { "已用 \($0)" },
+                detail("佇列保留", [
+                    megabytes(input.bytes).map { "保留 \($0)" },
                     input.queued.map { "\($0) frames" },
-                    megabytes(input.peakBytes).map { "峰值 \($0)" }
+                    megabytes(input.peakBytes).map { "佇列峰值 \($0)" }
+                ].compactMap { $0 }.joined(separator: " · "))
+                detail("累計交接", [
+                    input.received.map { "已接收 \($0)" },
+                    input.consumed.map { "已取出 \($0)" }
                 ].compactMap { $0 }.joined(separator: " · "))
                 detail("最舊影格", input.oldestAge.map { milliseconds($0) })
                 detail("丟棄", [
@@ -254,7 +258,7 @@ struct StreamDiagnosticsSections: View {
                     input.inputIdle.map { "input \(milliseconds($0))" },
                     input.outputIdle.map { "output \(milliseconds($0))" }
                 ].compactMap { $0 }.joined(separator: " · "))
-                Text("這是編碼前的原始影格 queue，不是 VT pending，也不是 RTMP 已編碼待送 bytes。")
+                Text("這是編碼前的原始影格 queue，不是 VT pending，也不是 RTMP 已編碼待送 bytes。保留 0.0 MB／0 frames 可能代表 worker 正在等待、影格已直接交接；不代表沒有影格進入編碼。佇列峰值只計算實際堆積，不包含直接交接。")
                     .font(.caption).foregroundStyle(.secondary)
             } else {
                 Text("此快照沒有編碼輸入緩衝資料。")

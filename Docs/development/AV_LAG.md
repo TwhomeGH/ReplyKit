@@ -27,6 +27,10 @@ videoContentAge = arrival - videoPTS
 | `videoSourceAge` | 加工完成時間 - 影片來源 PTS |
 | `audioContentAge` | 系統音訊回呼到達時間 - 音訊來源 PTS |
 | `sourcePTSDelta` | `videoPTS - audioPTS`，只作交叉比對 |
+| `sourcePTSDeltaDrift` | 相對本 session 第一筆有效 `sourcePTSDelta` 的累積變化；負值代表音訊 PTS 持續往後 |
+| `sourcePTSDeltaPerMinute` | 上述漂移換算成每分鐘變化 |
+| `avClockDrift` | `audioContentAge - videoContentAge`，觀察來源時鐘相對 host clock 的漂移 |
+| `avSyncState` | `stable`／`drifting`／`jumped`；只作診斷，不直接修改時間戳 |
 | `contentAgeJump` | 與上一次內容年齡相差 ≥1 秒時記錄；沒有階梯事件時顯示 none，不是尚未實作 |
 | `videoQueue` | `CaptureMailbox` 的 queued／dropped／bytes 摘要 |
 
@@ -62,5 +66,6 @@ videoContentAge = arrival - videoPTS
 
 1. `videoContentAge` 與 `videoQueueOldestAge` 同時階梯上升 → 影片管線 backlog，優先查 queue／PiP／主執行緒 stall。
 2. `videoContentAge` 穩定但 `publishPTS - sourcePTS` 變大 → timestamp 重基準。
-3. `videoSourcePTS - audioSourcePTS` 長期漂移 → 來源時鐘或 audio preferredDelta。
-4. 只有 PiP 計時器落後、遊戲畫面正常 → 檢查 overlay timer 本身，不要用 timer retime 整段 video。
+3. `sourcePTSDeltaDrift`／`sourcePTSDeltaPerMinute` 長期單向變化 → 來源音訊時鐘或 audio preferredDelta；先看 `avClockDrift` 是否同時變大。
+4. `avSyncState=jumped` 表示 10 秒內來源 A/V 差突然超過 100 ms；只當事件，不要直接推論整段漂移。
+5. 只有 PiP 計時器落後、遊戲畫面正常 → 檢查 overlay timer 本身，不要用 timer retime 整段 video。

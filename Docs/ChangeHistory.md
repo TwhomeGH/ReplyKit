@@ -2,6 +2,8 @@
 
 ## 2026.11.10 音訊主時鐘與 RTMP 診斷可讀性
 
+- A/V Lag 新增 `sourcePTSDeltaDrift`／`sourcePTSDeltaPerMinute`／`avClockDrift`／`avSyncState`，以第一筆有效來源差為基準區分 stable／drifting／jumped；報告頁與 JSON 都能看到漂移趨勢，不直接用 `publish throughput avOffset` 判斷口型同步。
+- 編碼輸入緩衝 UI 改稱「佇列保留」，新增 `received`／`consumed` 累計交接數；文件明確說明直接 handoff 時 `bytes=0`、`peakBytes=0` 是正常，不代表影格沒有進入編碼，也不代表沒有配置容量。
 - TTS 最小朗讀字數預設改為 5，並把 UI 的 `@AppStorage` 與 `TTSService` 的 fallback 統一由 `TTSDefaults` 提供，避免兩邊預設值不同。最小／最大字數、佇列上限與溢出策略現在變更時立即 `updateDefault()`，不再只依賴離開設定頁或按「套用設定」才生效；`[TTS]` 同步日誌會輸出目前生效的 `minLen`／`maxLen`／`maxQueue`。
 - 贊助訊息 `text` 內的圖片 URL 不再只依副檔名判斷：`extractAllImageURLs` 可接受呼叫端提供的 `knownImageURLs`（例如 `iconURL`），因此 `/media/<hash>` 這類沒有 `.png` 的網址也能被解析成行內 emoji，不再把原始 URL 留在文案中被切成多頁。插圖位置改以 UTF-16 index 計算，修正 emoji 在前時與 CoreText／NSString 位置不一致；一般非圖片連結仍保留原文。
 - 音訊 PTS 缺口改為大小分流：小於 250 ms 才補零；超過時重建來源時間軸（`rebase`），不再用數秒靜音塞滿環形緩衝並擠掉歷史音訊。`AudioRingBuffer` 產生最多 8 筆 `GapEvent`，含前後 PTS、gap samples、mode、緩衝前後量與 dropped samples；SCK／ReplayKit 會寫出 `[CaptureAudioGap]` event-level log，週期摘要也新增 `zeroFill`／`rebase` 計數。

@@ -24,6 +24,10 @@ struct AVLagReportView: View {
                     row("video process age", seconds(latest.videoProcessAge))
                     row("video source age", seconds(latest.videoSourceAge))
                     row("video PTS - audio PTS", seconds(latest.sourcePTSDelta))
+                    row("A/V source drift", seconds(latest.sourcePTSDeltaDrift))
+                    row("A/V drift per minute", seconds(latest.sourcePTSDeltaPerMinute))
+                    row("audio - video host offset", seconds(latest.avClockDrift))
+                    row("A/V sync state", latest.avSyncState ?? "unknown")
                     row("content age jump", latest.contentAgeJump.map { seconds($0) }
                         ?? AppLanguage.localized("avLag.noJump"))
                     row("frames", "\(latest.videoFrames) video / \(latest.audioFrames) audio")
