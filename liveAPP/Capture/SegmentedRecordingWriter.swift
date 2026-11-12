@@ -345,8 +345,14 @@ actor RecordingSegmentWriter {
         var sourceEnd: Double?
         if lastVideo.isValid { sourceEnd = lastVideo.seconds }
         if audioEnd.isValid { sourceEnd = max(sourceEnd ?? audioEnd.seconds, audioEnd.seconds) }
-        await library.recordSourceRange(id, sourceStartPTS: sourceStart, sourceEndPTS: sourceEnd,
-                                        persist: phase != nil)
+        // 進度回報不把 sourceEnd 留在記憶體等落盤；只有 phase 轉換時才一次寫入
+        // 起點與目前尾端，避免長時間錄影的反覆狀態更新。
+        let persistSourceRange = phase != nil
+        await library.recordSourceRange(
+            id,
+            sourceStartPTS: sourceStart,
+            sourceEndPTS: persistSourceRange ? sourceEnd : nil,
+            persist: persistSourceRange)
         await library.update(id, phase: phase, duration: duration, bytes: bytes,
             message: "可控錄製 · 第 \(number) 段 · \(bitrate) · 寫入端丟棄 \(dropped) 個樣本" + sizeWarning)
     }
@@ -356,6 +362,13 @@ actor RecordingSegmentWriter {
     func failed(_ failure: Error) async {
         writer?.cancelWriting()
         await report(phase: .interrupted)
+        // 失敗後仍可能被 router 持有到整場結束；主動釋放 writer 與檔案 URL，
+        // 不要讓 AVAssetWriter 的檔案 handle 跟著失敗片段一起留在記憶體。
+        writer = nil
+        video = nil
+        audio = nil
+        id = nil
+        url = nil
         sendlog(message: "[SegmentedRecording] group=\(group) failed=\(failure)")
     }
 }

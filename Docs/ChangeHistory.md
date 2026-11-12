@@ -2,6 +2,7 @@
 
 ## 2026.11.10 音訊主時鐘與 RTMP 診斷可讀性
 
+- 錄影 manifest（sidecar）只在開始、完成或中斷等 phase 轉換時持久化 `sourceStartPTS`／`sourceEndPTS`；進度回報不把尾端累積在記憶體等待落盤，避免長錄影產生額外的狀態寫入。失敗收尾會主動釋放 `AVAssetWriter` 與檔案 URL，不讓失敗片段持有 handle。
 - 錄影 manifest（sidecar）新增 `sourceStartPTS`／`sourceEndPTS`／`fileStartPTS`，由 `SegmentedRecordingWriter` 在第一個 video sample 與完成時寫入；`filePTS = sourcePTS - sourceStartPTS + fileStartPTS` 可對照 App 擷取時鐘與檔案時間軸。此階段只建立對照，不改檔案時間戳。
 - A/V Lag 新增 `sourcePTSDeltaDrift`／`sourcePTSDeltaPerMinute`／`avClockDrift`／`avSyncState`，以第一筆有效來源差為基準區分 stable／drifting／jumped；報告頁與 JSON 都能看到漂移趨勢，不直接用 `publish throughput avOffset` 判斷口型同步。
 - 編碼輸入緩衝 UI 改稱「佇列保留」，新增 `received`／`consumed` 累計交接數；文件明確說明直接 handoff 時 `bytes=0`、`peakBytes=0` 是正常，不代表影格沒有進入編碼，也不代表沒有配置容量。
