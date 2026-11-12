@@ -85,7 +85,7 @@ import Photos
     /// 寫入此片段與 App 擷取時間軸的對照；manifest JSON 就是 sidecar。
     /// sourceStartPTS 是本段第一個 video PTS，fileStartPTS 正常為 0。
     func recordSourceRange(_ id: UUID, sourceStartPTS: Double?, sourceEndPTS: Double?,
-                           sourceAudioStartPTS: Double? = nil, persist: Bool = true) {
+                           sourceAudioStartPTS: Double? = nil, writeToDisk: Bool = true) {
         guard let index = recordings.firstIndex(where: { $0.id == id }) else { return }
         var item = recordings[index]
         if let sourceStartPTS, item.sourceStartPTS == nil {
@@ -100,7 +100,7 @@ import Photos
         }
         recordings[index] = item
         // 進度更新只留在記憶體；phase 轉換時才落盤，避免每秒寫 manifest。
-        guard persist else { return }
+        guard writeToDisk else { return }
         do { try persist(item) }
         catch { errorMessage = "錄影時間軸無法保存。" }
     }

@@ -356,7 +356,7 @@ actor RecordingSegmentWriter {
             sourceStartPTS: sourceStart,
             sourceEndPTS: persistSourceRange ? sourceEnd : nil,
             sourceAudioStartPTS: persistSourceRange && firstAudio.isValid ? firstAudio.seconds : nil,
-            persist: persistSourceRange)
+            writeToDisk: persistSourceRange)
         await library.update(id, phase: phase, duration: duration, bytes: bytes,
             message: "可控錄製 · 第 \(number) 段 · \(bitrate) · 寫入端丟棄 \(dropped) 個樣本" + sizeWarning)
     }
