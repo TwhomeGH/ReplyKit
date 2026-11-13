@@ -6,6 +6,7 @@ struct AVLagStoredSessionView: View {
     let summary: AVLagSessionSummary
     @ObservedObject private var model = AVLagModel.shared
     @State private var documents: [AVLagReportDocument] = []
+    @State private var shareURLs: [Int: URL] = [:]
     @State private var isLoading = true
 
     private var isActiveSession: Bool {
@@ -56,9 +57,16 @@ struct AVLagStoredSessionView: View {
                             Text("\(document.sampleCount) samples")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                            ShareLink(item: document.jsonText) {
-                                Label(AppLanguage.localized("avLag.stored.share"),
-                                      systemImage: "square.and.arrow.up")
+                            if let url = shareURLs[document.segmentIndex] {
+                                ShareLink(item: url) {
+                                    Label(AppLanguage.localized("avLag.stored.share"),
+                                          systemImage: "square.and.arrow.up")
+                                }
+                            } else {
+                                ShareLink(item: document.jsonText) {
+                                    Label(AppLanguage.localized("avLag.stored.share"),
+                                          systemImage: "square.and.arrow.up")
+                                }
                             }
                         }
                     }
@@ -68,6 +76,9 @@ struct AVLagStoredSessionView: View {
         .navigationTitle(AppLanguage.localized("avLag.stored.title"))
         .task {
             documents = await AVLagReportStore.shared.documents(for: summary.id)
+            shareURLs = Dictionary(uniqueKeysWithValues: documents.compactMap { document in
+                AVLagReportExport.url(for: document).map { (document.segmentIndex, $0) }
+            })
             isLoading = false
         }
     }

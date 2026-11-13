@@ -3,7 +3,7 @@
 ## 快速入口
 
 - 裝置資訊頁 → **A/V Lag** → **查看目前 AV Lag 報告**
-- 報告頁可複製／分享 JSON，給回放 retime 工具做交叉比對
+- 報告頁可複製／分享 JSON，給回放 retime 工具做交叉比對；分享的是實際 `.json` 檔案，可直接交給分析工具
 - 日誌關鍵字：`[AVLag]`
 
 ## 這份報告回答什麼
@@ -46,11 +46,14 @@ videoContentAge = arrival - videoPTS
 ## 保存與長場次分段
 
 - 預設**僅本次記憶體**；關閉 App 即清除。
-- 可選**保留最近 5 場**：停止時寫入 Application Support/AVLagReports，最多 5 個 session、總量約 50 MiB。
+- 可選**保留最近 5 場**：停止時寫入 `Documents/AVLagReports`，最多 5 個 session、總量約 50 MiB。App 的 `Info.plist` 已啟用 `UIFileSharingEnabled`，因此可在「檔案」App → 我的 iPhone → 松鼠推流 → `AVLagReports` 直接看到。
 - 可選**長場次分段**：每段長度 1／2／4／8 小時（預設 4）；每段仍受 2 MiB 上限。8 小時以上會自然拆成多段，但報告頁以 `sessionID` 分組，不會當成多場。
 - 分段之間保留 `segmentIndex`／`segmentStartedAt`／`segmentEndedAt`；最後一段可標記 `inProgress`，App 中途被殺仍可辨識。
+- `complete=false` 的檔案是進行中 checkpoint，不是最終報告。若只有 3 筆樣本且時間只涵蓋開始後十幾秒，先看它的 `startedAt`／`segmentStartedAt`，不要直接當成長場次結論；目前報告頁的「目前 session」應在停止後再分享。
 - 未開分段而超過上限：保留最新區間，並在報告標記 `truncatedBefore`。
-- 停止、分段與進背景時會嘗試保存；寫檔為原子寫入，不阻塞擷取。
+- `recentSessions` 模式每 60 秒會 checkpoint 進行中的 segment；停止、分段與進背景時也會保存。長場次被中止時，檔案最多落後一個 checkpoint 週期，不會只剩進入背景當下的少量樣本。
+- 儲存任務依呼叫順序串接；較舊的 checkpoint 不會覆蓋較新的 final 文件。寫檔為原子寫入，不阻塞擷取。
+- 目前報告與每個已保存 segment 都可分享成 `.json` 檔案；文字複製仍保留給快速檢查。報告檔同時寫在 `Documents/AVLagReports`，可直接從「檔案」App 取得。
 
 ## JSON 用途
 

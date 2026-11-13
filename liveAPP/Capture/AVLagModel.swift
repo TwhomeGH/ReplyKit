@@ -17,6 +17,14 @@ final class AVLagModel: ObservableObject {
     private var truncatedBefore = false
     private var estimatedSampleBytes = 0
     private let maxSampleBytes = 2 * 1024 * 1024
+    /// 長時間擷取時定期更新進行中 segment，避免 App 在背景被中止後只剩
+    /// 進入背景當下的少量樣本。
+    private let checkpointInterval: TimeInterval = 60
+    private var lastCheckpointAt: Date?
+    private var recordedSampleCount = 0
+    private var lastCheckpointRecordedCount = 0
+    /// 儲存任務必須依序完成；較舊的 checkpoint 不能覆蓋較新的 final 文件。
+    private var persistTask: Task<Void, Never>?
 
     private var maxSamples: Int {
         max(1, AVLagSettings.maxSamplesPerSegment)
@@ -48,6 +56,9 @@ final class AVLagModel: ObservableObject {
         segmentIndex = 0
         segmentStartedAt = Date()
         truncatedBefore = false
+        lastCheckpointAt = Date()
+        recordedSampleCount = 0
+        lastCheckpointRecordedCount = 0
     }
 
     func record(_ observation: AVLagObservation) {
@@ -58,16 +69,32 @@ final class AVLagModel: ObservableObject {
         }
         latest = observation
         samples.append(observation)
+        recordedSampleCount += 1
         estimatedSampleBytes += estimatedBytes(observation)
         trimLocked()
+        checkpointIfNeeded(now: now)
     }
 
-    /// 背景時保存目前未完成 segment；畫面恢復後若繼續累積，停止時會覆寫為 complete。
+    /// 進行中的檔案最多落後一個 checkpoint 週期；只在有新增樣本時寫入。
+    private func checkpointIfNeeded(now: Date) {
+        guard AVLagSettings.mode == .recentSessions,
+              !samples.isEmpty,
+              recordedSampleCount != lastCheckpointRecordedCount,
+              now.timeIntervalSince(lastCheckpointAt ?? now) >= checkpointInterval else { return }
+        persistInProgress(force: false, now: now)
+    }
+
+    /// 背景或定期 checkpoint 保存目前未完成 segment；停止時再覆寫為 complete。
     func persistInProgress() {
+        persistInProgress(force: true, now: Date())
+    }
+
+    private func persistInProgress(force: Bool, now: Date) {
         guard endedAt == nil,
               AVLagSettings.mode == .recentSessions,
               let session, let startedAt, let segmentStartedAt,
               !samples.isEmpty else { return }
+        if !force, recordedSampleCount == lastCheckpointRecordedCount { return }
         persist(
             session: session,
             startedAt: startedAt,
@@ -78,6 +105,8 @@ final class AVLagModel: ObservableObject {
             sessionComplete: false,
             truncatedBefore: truncatedBefore,
             samples: samples)
+        lastCheckpointAt = now
+        lastCheckpointRecordedCount = recordedSampleCount
     }
 
     func end(session: String? = nil) {
@@ -105,6 +134,11 @@ final class AVLagModel: ObservableObject {
     }
 
     /// 供人工檢查與回放修復工具讀取的穩定 JSON；只含時間與量測值，不含串流金鑰。
+    func reportFileURL() -> URL? {
+        guard let session else { return nil }
+        return AVLagReportExport.url(text: reportJSON(), session: session, segmentIndex: segmentIndex)
+    }
+
     func reportJSON() -> String {
         guard let session else { return "{\"schema\":1,\"samples\":[]}" }
         let started = startedAt ?? Date()
@@ -153,6 +187,8 @@ final class AVLagModel: ObservableObject {
         truncatedBefore = false
         segmentIndex += 1
         self.segmentStartedAt = now
+        lastCheckpointAt = now
+        lastCheckpointRecordedCount = recordedSampleCount
     }
 
     private func trimLocked() {
@@ -187,9 +223,18 @@ final class AVLagModel: ObservableObject {
             truncatedBefore: truncatedBefore,
             sampleCount: samples.count,
             samples: samples)
-        Task {
-            do { try await AVLagReportStore.shared.save(document) }
-            catch { sendlog(message: "[AVLagStore] save failed session=\(session) segment=\(segmentIndex) error=\(error)") }
+        // 依呼叫順序串接，避免背景 checkpoint 晚於 final save 完成而蓋掉較新的內容。
+        let previous = persistTask
+        persistTask = Task {
+            _ = await previous?.value
+            do {
+                try await AVLagReportStore.shared.save(document)
+                if complete {
+                    sendlog(message: "[AVLagStore] saved session=\(session) segment=\(segmentIndex) samples=\(samples.count) complete=true")
+                }
+            } catch {
+                sendlog(message: "[AVLagStore] save failed session=\(session) segment=\(segmentIndex) error=\(error)")
+            }
         }
     }
 

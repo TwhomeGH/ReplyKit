@@ -6,6 +6,8 @@ import UIKit
 struct AVLagReportView: View {
     @ObservedObject private var model = AVLagModel.shared
     @State private var reportText = ""
+    @State private var reportFileURL: URL?
+    @State private var lastFileRefresh = Date.distantPast
     @State private var copied = false
     @State private var summaries: [AVLagSessionSummary] = []
     @State private var pendingDelete: AVLagSessionSummary?
@@ -97,10 +99,18 @@ struct AVLagReportView: View {
                         copied ? AppLanguage.localized("avLag.copied") : AppLanguage.localized("avLag.copy"),
                         systemImage: copied ? "checkmark" : "doc.on.doc")
                 }
-                ShareLink(item: reportText) {
-                    Label(AppLanguage.localized("avLag.share"), systemImage: "square.and.arrow.up")
+                if let reportFileURL {
+                    ShareLink(item: reportFileURL) {
+                        Label(AppLanguage.localized("avLag.share"), systemImage: "square.and.arrow.up")
+                    }
+                } else {
+                    ShareLink(item: reportText) {
+                        Label(AppLanguage.localized("avLag.share"), systemImage: "square.and.arrow.up")
+                    }
                 }
                 Text(String(format: AppLanguage.localized("avLag.sampleCount"), model.samples.count))
+                    .font(.caption).foregroundStyle(.secondary)
+                Text(AppLanguage.localized("avLag.storage.location"))
                     .font(.caption).foregroundStyle(.secondary)
                 DisclosureGroup("JSON") {
                     Text(reportText)
@@ -144,6 +154,12 @@ struct AVLagReportView: View {
 
     private func refreshReport() {
         reportText = model.reportJSON()
+        // 分享檔不需要跟著每 5 秒的畫面刷新重寫；最多落後一分鐘，避免長場次
+        // 在報告頁開著時持續寫入數百 KB。
+        if reportFileURL == nil || Date().timeIntervalSince(lastFileRefresh) >= 60 {
+            reportFileURL = model.reportFileURL()
+            lastFileRefresh = Date()
+        }
         copied = false
     }
 

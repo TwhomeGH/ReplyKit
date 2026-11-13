@@ -6,6 +6,14 @@
 
 > 新待辦請寫在這裡，不要在各文件的角落另開 TODO 區塊；完成後改為 `[x]`（整批清理時可移除已完成項）。
 
+## 2026-11-13 核對摘要
+
+- [x] AV Lag 進行中 segment 每 60 秒 checkpoint；停止時的 final save 會依序排在 checkpoint 後，避免舊文件覆蓋新文件。
+- [x] AV Lag 目前報告與已保存 segment 改為分享 `.json` 檔案；不再只提供文字。報告改存 `Documents/AVLagReports`，可直接在「檔案」App → 我的 iPhone → 松鼠推流 → AVLagReports 取得；舊 Application Support 檔會自動搬移。
+- [x] 新增 `Scripts/diagnostic_viewer.py`：把 `diagnostic-*.txt` 依分類／session／嚴重度拆開，支援搜尋與欄位展開；指定 port 被占用時自動往後找。
+- [ ] 待實機驗證：長場次停止後分享的 JSON 應有完整 sampleCount；若只看到 `complete=false` 的檔案，先確認它是進行中 checkpoint，不是最終報告。
+- [ ] 待實機驗證：診斷檢視器在 Windows PowerShell 與檔案路徑含空白／中文時可啟動。
+
 ## 2026-11-09 核對摘要
 
 - 已實作並 push fork：音訊 main-clock fallback、active clock／PTS 重建、`AudioRingBuffer` Float32／Int32 指標修正、AVAudioConverter track 診斷；Keyframe automatic／PTS 重置；BufferCount 明確 policy；動態範圍錯誤回傳；相機 FPS 與 offscreen FPS 分離；VT Encoder Health（pending frames／drop 原因）；Release 自動分類；2ch mixer 交錯格式的平台差異修正；每軌輸出 RMS／align 診斷；CI 摘要不再把測試斷言誤標 runner failure。

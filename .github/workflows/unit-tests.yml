@@ -157,6 +157,9 @@ jobs:
       - name: Verify release classifier
         run: python3 Scripts/test_classify_release.py
 
+      - name: Verify diagnostic viewer
+        run: python3 -m unittest Scripts.test_diagnostic_viewer
+
       - name: Run liveAPP unit tests
         timeout-minutes: 20
         env:

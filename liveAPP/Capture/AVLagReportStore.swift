@@ -55,6 +55,33 @@ private struct AVLagReportIndex: Codable {
     var sessions: [AVLagSessionSummary] = []
 }
 
+/// 產生可直接分享的 JSON 檔案；分享的是檔案 URL，不再只分享一大段文字。
+enum AVLagReportExport {
+    static func url(for document: AVLagReportDocument) -> URL? {
+        url(text: document.jsonText, session: document.session,
+            segmentIndex: document.segmentIndex)
+    }
+
+    static func url(text: String, session: String, segmentIndex: Int) -> URL? {
+        let directory = FileManager.default.urls(for: .documentDirectory,
+                                                 in: .userDomainMask)[0]
+            .appendingPathComponent("AVLagReports", isDirectory: true)
+        let safeSession = session.map { character in
+            character.isLetter || character.isNumber || character == "-" || character == "_"
+                ? String(character) : "_"
+        }.joined()
+        let file = directory.appendingPathComponent("AVLag-\(safeSession)-\(segmentIndex).json")
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try Data(text.utf8).write(to: file, options: .atomic)
+            return file
+        } catch {
+            sendlog(message: "[AVLagExport] write failed session=\(session) segment=\(segmentIndex) error=\(error)")
+            return nil
+        }
+    }
+}
+
 /// 只在停止、分段或背景時寫入；以 session 為保留單位，子 segment 一起刪除。
 actor AVLagReportStore {
     static let shared = AVLagReportStore()
@@ -66,10 +93,36 @@ actor AVLagReportStore {
     private let maxTotalBytes = AVLagSettings.maxTotalBytes
 
     private init() {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory,
-                                            in: .userDomainMask)[0]
-        root = base.appendingPathComponent("AVLagReports", isDirectory: true)
+        // 放在 Documents 才能透過 Info.plist 的 UIFileSharingEnabled 在
+        // 「檔案」App 直接看到；Application Support 不會暴露給使用者。
+        let documents = FileManager.default.urls(for: .documentDirectory,
+                                                 in: .userDomainMask)[0]
+        root = documents.appendingPathComponent("AVLagReports", isDirectory: true)
         indexURL = root.appendingPathComponent("index.json")
+        migrateLegacyReportsIfNeeded()
+    }
+
+    /// 舊版寫在 Application Support；搬到 Documents 後才看得到。
+    private nonisolated func migrateLegacyReportsIfNeeded() {
+        let legacy = FileManager.default.urls(for: .applicationSupportDirectory,
+                                              in: .userDomainMask)[0]
+            .appendingPathComponent("AVLagReports", isDirectory: true)
+        guard legacy.path != root.path,
+              FileManager.default.fileExists(atPath: legacy.path) else { return }
+        do {
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            let items = try FileManager.default.contentsOfDirectory(
+                at: legacy, includingPropertiesForKeys: nil)
+            for item in items {
+                let destination = root.appendingPathComponent(item.lastPathComponent)
+                if !FileManager.default.fileExists(atPath: destination.path) {
+                    try FileManager.default.moveItem(at: item, to: destination)
+                }
+            }
+            try? FileManager.default.removeItem(at: legacy)
+        } catch {
+            sendlog(message: "[AVLagStore] migrate failed error=\(error)")
+        }
     }
 
     private func ensureDirectory() throws {

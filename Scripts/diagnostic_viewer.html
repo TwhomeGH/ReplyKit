@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ReplyKit 診斷檢視器</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #111318;
+    --panel: #191c23;
+    --panel-2: #20242d;
+    --border: #303641;
+    --text: #e7eaf0;
+    --muted: #9aa3b2;
+    --accent: #6ea8fe;
+    --warn: #f0b429;
+    --error: #ff6b6b;
+    --ok: #4ade80;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  header { padding: 18px 22px; border-bottom: 1px solid var(--border);
+           background: linear-gradient(180deg, #1b2029, #141820); }
+  header h1 { margin: 0 0 4px; font-size: 18px; font-weight: 600; }
+  header .meta { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+  .layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: calc(100vh - 82px); }
+  aside { border-right: 1px solid var(--border); padding: 14px; background: var(--panel); }
+  aside h2 { margin: 0 0 10px; font-size: 12px; letter-spacing: .06em;
+             text-transform: uppercase; color: var(--muted); }
+  button.cat { display: flex; justify-content: space-between; width: 100%;
+         padding: 7px 9px; margin: 2px 0; border: 0; border-radius: 7px;
+         background: transparent; color: var(--text); cursor: pointer; text-align: left; }
+  button.cat:hover { background: var(--panel-2); }
+  button.cat.active { background: #2a3a55; color: #dbe8ff; }
+  button.cat .count { color: var(--muted); font-variant-numeric: tabular-nums; }
+  main { padding: 16px; min-width: 0; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+           gap: 10px; margin-bottom: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+          padding: 10px 12px; }
+  .card .label { color: var(--muted); font-size: 11px; }
+  .card .value { font-size: 18px; font-weight: 600; margin-top: 3px;
+                 overflow-wrap: anywhere; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+             margin-bottom: 10px; }
+  input[type="search"], select { background: var(--panel-2); color: var(--text);
+        border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+  input[type="search"] { min-width: 260px; flex: 1 1 320px; }
+  .pill { border: 1px solid var(--border); background: var(--panel-2);
+          color: var(--muted); border-radius: 999px; padding: 5px 10px; cursor: pointer; }
+  .pill.active { border-color: var(--accent); color: var(--accent); }
+  .status { color: var(--muted); font-size: 12px; margin: 8px 0; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  th, td { padding: 8px 9px; border-bottom: 1px solid var(--border);
+           vertical-align: top; text-align: left; }
+  th { position: sticky; top: 0; background: var(--panel); color: var(--muted);
+       font-size: 11px; font-weight: 600; z-index: 1; }
+  td.time { white-space: nowrap; color: var(--muted); font-size: 12px; width: 150px; }
+  td.cat { width: 170px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+           font-size: 12px; color: var(--accent); overflow-wrap: anywhere; }
+  td.msg { overflow-wrap: anywhere; }
+  tr.error td.msg { color: #ffc2c2; }
+  tr.warn td.msg { color: #ffe2a3; }
+  .fields { margin-top: 4px; }
+  .fields summary { color: var(--muted); cursor: pointer; font-size: 11px; }
+  .fields pre { margin: 6px 0 0; padding: 8px; background: #0d1015;
+                border: 1px solid var(--border); border-radius: 6px;
+                white-space: pre-wrap; font-size: 11px; color: #c7d2e4; }
+  .load { margin: 12px 0; padding: 8px 16px; border-radius: 8px;
+          border: 1px solid var(--border); background: var(--panel-2);
+          color: var(--text); cursor: pointer; }
+  .empty { color: var(--muted); padding: 24px 0; text-align: center; }
+  @media (max-width: 820px) {
+    .layout { grid-template-columns: 1fr; }
+    aside { border-right: 0; border-bottom: 1px solid var(--border);
+            max-height: 220px; overflow: auto; }
+    td.cat { width: 120px; }
+    td.time { width: 110px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>ReplyKit 診斷檢視器</h1>
+  <div class="meta" id="fileMeta">載入中…</div>
+</header>
+<div class="layout">
+  <aside>
+    <h2>分類</h2>
+    <div id="categories"></div>
+  </aside>
+  <main>
+    <div class="cards" id="cards"></div>
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="搜尋訊息、session、數值…" autocomplete="off">
+      <select id="severity" title="嚴重度">
+        <option value="">全部嚴重度</option>
+        <option value="error">錯誤</option>
+        <option value="warn">警告</option>
+        <option value="info">一般</option>
+      </select>
+      <select id="session" title="Session"><option value="">全部 Session</option></select>
+      <button class="pill active" id="reset" type="button">清除篩選</button>
+    </div>
+    <div class="status" id="status"></div>
+    <table>
+      <thead><tr><th>時間</th><th>分類</th><th>內容</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div id="empty" class="empty" hidden>沒有符合條件的紀錄。</div>
+    <button class="load" id="more" type="button" hidden>載入更多</button>
+  </main>
+</div>
+<script>
+const state = { category: "", q: "", severity: "", session: "", offset: 0, limit: 300, total: 0 };
+const $ = (id) => document.getElementById(id);
+let searchTimer = 0;
+
+function text(tag, value) {
+  const el = document.createElement(tag);
+  el.textContent = value == null ? "" : String(value);
+  return el;
+}
+
+function card(label, value, color) {
+  const box = document.createElement("div");
+  box.className = "card";
+  box.appendChild(text("div", label)).className = "label";
+  const val = text("div", value);
+  val.className = "value";
+  if (color) val.style.color = color;
+  box.appendChild(val);
+  return box;
+}
+
+function renderSummary(s) {
+  $("fileMeta").textContent = `${s.file} · ${s.range} · ${s.lines} 行`;
+  const cards = $("cards");
+  cards.replaceChildren(
+    card("總行數", s.lines),
+    card("時間範圍", s.range),
+    card("Session", s.sessions.length),
+    card("警告", s.warn, "var(--warn)"),
+    card("錯誤", s.error, "var(--error)")
+  );
+  const categories = $("categories");
+  categories.replaceChildren();
+  const all = document.createElement("button");
+  all.className = "cat" + (state.category === "" ? " active" : "");
+  all.dataset.category = "";
+  all.appendChild(text("span", "全部"));
+  all.appendChild(text("span", String(s.lines))).className = "count";
+  all.onclick = () => { state.category = ""; state.offset = 0; load(); };
+  categories.appendChild(all);
+  for (const item of s.categories) {
+    const button = document.createElement("button");
+    button.className = "cat" + (state.category === item.name ? " active" : "");
+    button.dataset.category = item.name;
+    button.appendChild(text("span", item.name));
+    const count = text("span", item.count);
+    count.className = "count";
+    button.appendChild(count);
+    button.onclick = () => { state.category = item.name; state.offset = 0; load(); };
+    categories.appendChild(button);
+  }
+  const session = $("session");
+  const current = state.session;
+  session.replaceChildren(new Option("全部 Session", ""));
+  for (const id of s.sessions) session.appendChild(new Option(id, id));
+  session.value = current;
+}
+
+function syncActiveCategory() {
+  for (const button of document.querySelectorAll(".cat")) {
+    button.classList.toggle("active", (button.dataset.category || "") === state.category);
+  }
+}
+
+function renderRows(data, append) {
+  const body = $("rows");
+  if (!append) body.replaceChildren();
+  for (const line of data.lines) {
+    const tr = document.createElement("tr");
+    tr.className = line.severity;
+    const time = text("td", line.time);
+    time.className = "time";
+    const cat = text("td", line.category);
+    cat.className = "cat";
+    const msg = document.createElement("td");
+    msg.className = "msg";
+    msg.appendChild(text("div", line.message));
+    if (line.fields && Object.keys(line.fields).length) {
+      const details = document.createElement("details");
+      details.className = "fields";
+      details.appendChild(text("summary", `${Object.keys(line.fields).length} 個欄位`));
+      const pre = text("pre", Object.entries(line.fields)
+        .map(([k, v]) => `${k} = ${v}`).join("\n"));
+      details.appendChild(pre);
+      msg.appendChild(details);
+    }
+    tr.append(time, cat, msg);
+    body.appendChild(tr);
+  }
+  $("empty").hidden = data.lines.length !== 0;
+  $("more").hidden = !data.hasMore;
+  $("more").textContent = `載入更多（目前 ${data.offset + data.lines.length} / ${data.total}）`;
+  syncActiveCategory();
+}
+
+async function load(append = false) {
+  if (!append) {
+    state.offset = 0;
+    $("status").textContent = "載入中…";
+  }
+  const params = new URLSearchParams({
+    category: state.category, q: state.q, severity: state.severity,
+    session: state.session, offset: String(state.offset), limit: String(state.limit)
+  });
+  const response = await fetch("/api/lines?" + params);
+  if (!response.ok) {
+    $("status").textContent = "讀取失敗：" + response.status;
+    return;
+  }
+  const data = await response.json();
+  state.total = data.total;
+  renderRows(data, append);
+  $("status").textContent = `${data.total} 筆符合 · 顯示 ${data.offset + data.lines.length} 筆`
+    + (state.category ? ` · 分類 ${state.category}` : "");
+  if (data.hasMore) state.offset = data.offset + data.lines.length;
+}
+
+function scheduleSearch() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { state.q = $("search").value.trim(); load(); }, 220);
+}
+
+$("search").addEventListener("input", scheduleSearch);
+$("severity").addEventListener("change", () => { state.severity = $("severity").value; load(); });
+$("session").addEventListener("change", () => { state.session = $("session").value; load(); });
+$("more").addEventListener("click", () => load(true));
+$("reset").addEventListener("click", () => {
+  state.category = ""; state.q = ""; state.severity = ""; state.session = ""; state.offset = 0;
+  $("search").value = ""; $("severity").value = ""; $("session").value = "";
+  load();
+});
+
+(async function boot() {
+  const response = await fetch("/api/summary");
+  if (!response.ok) {
+    $("fileMeta").textContent = "讀取失敗：" + response.status;
+    return;
+  }
+  const summary = await response.json();
+  renderSummary(summary);
+  await load();
+})();
+</script>
+</body>
+</html>

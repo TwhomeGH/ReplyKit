@@ -1,5 +1,13 @@
 # 變更歷史
 
+## 2026.11.13 AV Lag 進行中存檔與診斷檢視器
+
+- AV Lag 在 `recentSessions` 模式新增每 60 秒的進行中 segment checkpoint，不再只在進入背景時寫一次。先前長時間推流後若 App 被中止，磁碟上的 segment 可能停在進入背景當下的少量樣本；長場次實際已累積 1,775 筆，但分享出的 JSON 只有 3 筆。
+- AV Lag 的儲存任務改為依序串接，避免較舊的 checkpoint 晚於 final save 完成而覆蓋較新的文件；完成時會記錄 `[AVLagStore] saved ... complete=true`。
+- AV Lag 目前報告與已保存 segment 的分享改為真正的 `.json` 檔案 URL，不再只分享一大段文字；報告與分享檔改存到 `Documents/AVLagReports`，透過既有 `UIFileSharingEnabled` 可直接在「檔案」App → 我的 iPhone → 松鼠推流 → AVLagReports 取得。舊的 Application Support 報告會在啟動時搬移。
+- 新增 `Scripts/diagnostic_viewer.py` 與 `Scripts/diagnostic_viewer.html`：本機網頁檢視 `diagnostic-*.txt`，依 `[Tag]`／session／嚴重度分類，支援搜尋與 `key=value` 欄位展開。`failed=0`、`lastError=none` 與累積 `dropped` 不會被誤標成錯誤。
+- 新增 `Scripts/test_diagnostic_viewer.py`（5 個測試）與 `Docs/development/DIAGNOSTIC_LOG_VIEWER.md`；指定 port 被占用時會自動往後找可用 port，不會直接開不起來。
+
 ## 2026.11.10 音訊主時鐘與 RTMP 診斷可讀性
 
 - 錄影 manifest（sidecar）只在開始、完成或中斷等 phase 轉換時持久化 `sourceStartPTS`／`sourceEndPTS`；進度回報不把尾端累積在記憶體等待落盤，避免長錄影產生額外的狀態寫入。失敗收尾會主動釋放 `AVAssetWriter` 與檔案 URL，不讓失敗片段持有 handle。

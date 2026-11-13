@@ -89,4 +89,5 @@ Pages 沿用既有 `documentation.yml` 單一部署：DocC 模組保留原路徑
 | ------ | ------ |
 | [`crash_trace.py`](crash_trace.py) / [`crash_trace.sh`](crash_trace.sh) | `.ips` 崩潰符號化、死因判定、跨執行緒死鎖分析 |
 | [`crashlog_analyzer.py`](crashlog_analyzer.py) | 跨平台日誌／IPS 快速瀏覽工具 |
+| [`../Scripts/diagnostic_viewer.py`](../Scripts/diagnostic_viewer.py) | `diagnostic-*.txt` 本機網頁檢視器：分類、session、嚴重度、搜尋與欄位展開（[說明](development/DIAGNOSTIC_LOG_VIEWER.md)） |
 | [`../Scripts/change_log.py`](../Scripts/change_log.py) / [`../Scripts/change_log.cmd`](../Scripts/change_log.cmd) | 變更歷史工具：本機網頁 GUI（新增／搜尋／就地編輯／刪除、深淺色切換、GitHub alert 樣式預覽）＋ CLI 子命令 |
