@@ -55,7 +55,7 @@ struct CaptureSessionTests {
     }
     @Test func oversizedAndExpiredSamplesAreNotDelivered() async {
         let clock = CaptureTestClock()
-        let queue = CaptureMailbox<Int>(budget: 8, clock: { clock.now() })
+        let queue = CaptureMailbox<Int>(budget: 8, maxDelay: 0.1, clock: { clock.now() })
         queue.offer(1, bytes: 9)
         queue.offer(2, bytes: 4)
         clock.advance(0.2)
