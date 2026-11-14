@@ -12,7 +12,9 @@
 - [x] 本地錄影群組在已有合併檔時顯示「已合併，原片段保留」；合併檔位於同一群組內，標示「整場合併影片（原片段保留）」並顯示 UUID。
 - [x] 分段片段若影片尾端比音訊少超過 2 秒，標記 `qualityIssue` 並跳過自動合併，避免產出凍結影片；原片段保留。
 - [ ] 無 PiP 背景錄影的影片 starvation：本次 segment 3 只有 55 個 video sample、7026 個 audio sample，tail gap 約 -43.9 秒；`CaptureVideoProcessing` 同時大量 dropped。背景擷取停止供應影片時，不能把合併檔當成正確成品；需另外設計背景影片保活或明確中止／分段策略。
-- [ ] 影片佇列預算：`ScreenSamplePump` 固定 12 MiB，高解析度單幀可能接近或超過預算，慢消費時直接淘汰；需評估依來源解析度動態調整，而不是只加固定常數。
+- [x] 擷取佇列改為 `CaptureQueuePolicy`：推流 0.5 秒／12 MiB、推流並錄製 1 秒／24 MiB、只錄製 5 秒／32 MiB；音訊不用等待時間淘汰。
+- [x] `CaptureMailbox` 將 `age` 更名為 `maxDelay`，並分開 `delayDropped`／`capacityDropped`／`oversizedDropped`／`closedDropped` 計數。
+- [ ] 影片佇列預算：目前以固定模式值處理，尚未依實際來源解析度動態調整；需用下一場長錄影確認 12／24／32 MiB 是否足夠。
 
 ## 2026-11-13 核對摘要
 

@@ -1,5 +1,16 @@
 # 變更歷史
 
+## 2026.11.15 擷取佇列改用等待延遲政策
+
+- `CaptureMailbox` 的 `age` 改為 `maxDelay`：它代表樣本在佇列中的最長等待時間，不是緩衝長度、編碼器延遲或 GPU 處理時間。`oldestAgeSeconds` 改為 `oldestDelaySeconds`。
+- 新增 `CaptureQueuePolicy`，依模式分開設定：
+  - 只推流：影片 12 MiB／最長等待 0.5 秒。
+  - 推流並錄製：影片 24 MiB／最長等待 1 秒。
+  - 只錄製：影片 32 MiB／最長等待 5 秒。
+  - 音訊／麥克風：2 MiB，不用等待時間淘汰。
+- `CaptureMailbox` 將丟棄原因拆成 `delayDropped`、`capacityDropped`、`oversizedDropped`、`closedDropped`，log 可區分「等太久」與「容量不足」。
+- `[CaptureQueuePolicy]` 會記錄本次 session 實際的 budget 與 maxDelay；不要再用 0.1 秒的固定值推論 GPU 是否跟不上。
+
 ## 2026.11.15 分段錄影合併去重與輸出路徑
 
 - 分段錄影的合併結果現在只保留一份：`RecordingGroup.merged` 會找出同群組已完成的合併檔，重複自動或手動合併時直接重用，不再產生第二個內容相同但 UUID 不同的 MP4。`[RecordingMerge]` 日誌新增 `path=`，可直接看到輸出檔案位置。

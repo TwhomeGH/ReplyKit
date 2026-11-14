@@ -21,7 +21,7 @@ videoContentAge = arrival - videoPTS
 | 欄位 | 意義 |
 | --- | --- |
 | `videoQueueAge` | 回呼到 worker 取得樣本的時間 |
-| `videoQueueOldestAge` | 擷取佇列目前最舊樣本年齡；佇列為空時顯示 empty，不是尚未實作 |
+| `videoQueueOldestAge` | 擷取佇列目前最舊樣本已等待秒數；欄位名稱保留相容，實際語意是 queue delay。佇列為空時顯示 empty，不是尚未實作 |
 | `videoIdleAge` | 距離最後一次影片回呼的時間；用來判斷目前數字是否已過期 |
 | `videoProcessAge` | 回呼到影片加工完成的時間 |
 | `videoSourceAge` | 加工完成時間 - 影片來源 PTS |
@@ -31,7 +31,7 @@ videoContentAge = arrival - videoPTS
 | `sourcePTSDeltaPerMinute` | 上述漂移換算成每分鐘變化 |
 | `avClockDrift` | `audioContentAge - videoContentAge`，觀察來源時鐘相對 host clock 的漂移 |
 | `avSyncState` | `stable`／`drifting`／`jumped`；只作診斷，不直接修改時間戳 |
-| `contentAgeJump` | 與上一次內容年齡相差 ≥1 秒時記錄；沒有階梯事件時顯示 none，不是尚未實作 |
+| `contentAgeJump` | 與上一次內容延遲相差 ≥1 秒時記錄；沒有階梯事件時顯示 none，不是尚未實作 |
 | `videoQueue` | `CaptureMailbox` 的 queued／dropped／bytes 摘要 |
 
 `unknown` 代表尚未取得該階段資料，不把 0 當成有效值。`videoQueueOldestAge` 的 empty 是「目前沒有待處理樣本」，`contentAgeJump` 的 none 是「這段時間沒有 ≥1 秒階梯」，兩者都不是功能未完成。`videoContentAge` 假設來源 PTS 與 host clock 可比較；目前 `[CaptureCallbacks]` 仍標示 `clockComparison=unverified`，所以要和 PiP 計時器／遊戲內事件交叉確認，不能只憑這個欄位斷言畫面延遲。
@@ -39,7 +39,7 @@ videoContentAge = arrival - videoPTS
 ## 日誌與保留
 
 - 一般 `[AVLag]` 每 10 秒一筆；啟動 60 秒內維持較密集。
-- 內容年齡 ≥1 秒或出現 `contentAgeJump` 時即時記錄。
+- 內容延遲 ≥1 秒或出現 `contentAgeJump` 時即時記錄。
 - 報告序列每 5 秒取樣，單一 segment 的樣本數依「每段長度」設定，並受 2 MiB 上限限制；新的擷取 session 會重新開始。
 - `[AVLag]` 不會自動修改播放檔案；只提供診斷與 retime 參考。
 

@@ -34,19 +34,26 @@ private final class FinishResumeOnce: @unchecked Sendable {
     }
 }
 
-/// 回呼只交付樣本，消費端各自保序；總排隊預算 14 MiB，不含消費端/GPU/編碼器。
+/// 回呼只交付樣本，消費端各自保序；容量與樣本停留上限由 `CaptureQueuePolicy`
+/// 依推流／錄製模式決定，不含消費端/GPU/編碼器。
 @available(iOS 27.0, *)
 private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Sendable {
-    let video = CaptureMailbox<CapturedSample>(budget: 12 * 1024 * 1024)
-    let audio = CaptureMailbox<CapturedSample>(budget: 1024 * 1024)
-    let mic = CaptureMailbox<CapturedSample>(budget: 1024 * 1024)
+    let video: CaptureMailbox<CapturedSample>
+    let audio: CaptureMailbox<CapturedSample>
+    let mic: CaptureMailbox<CapturedSample>
+    let queuePolicy: CaptureQueuePolicy
     private var workers: [Task<Void, Never>] = []
     private var loggedFrameSize = CGSize.zero
     let callbacks = CaptureCallbackDiagnostics()
     let processing: VideoProcessingDiagnostics
     let avLag = AVLagDiagnostics()
     init(mixer: MediaMixer, probe: ScreenAudioProbe, rotateLeft: Bool,
-         canvas: CGSize? = nil, fills: Bool = false) throws {
+         canvas: CGSize? = nil, fills: Bool = false,
+         queuePolicy: CaptureQueuePolicy) throws {
+        self.queuePolicy = queuePolicy
+        video = CaptureMailbox(budget: queuePolicy.videoBudget, maxDelay: queuePolicy.videoMaxDelay)
+        audio = CaptureMailbox(budget: queuePolicy.audioBudget, maxDelay: queuePolicy.audioMaxDelay)
+        mic = CaptureMailbox(budget: queuePolicy.audioBudget, maxDelay: queuePolicy.audioMaxDelay)
         let compositor = try ScreenStreamVideoRotator(rotateLeft: rotateLeft, overlay: ScreenOverlayComposer(),
                                                       canvas: canvas, fills: fills)
         processing = compositor.diagnostics
@@ -60,13 +67,13 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                         let now = CMClockGetTime(CMClockGetHostTimeClock()).seconds
                         avLag.recordVideo(arrival: sample.arrival, pts: sample.pts, at: now,
                                           queue: video.summary,
-                                          queueOldestAge: video.oldestAgeSeconds)
+                                          queueOldestAge: video.oldestDelaySeconds)
                         do {
                             let rotated = try compositor.rotate(sample.buffer)
                             let processedAt = CMClockGetTime(CMClockGetHostTimeClock()).seconds
                             avLag.recordVideoProcessed(arrival: sample.arrival, pts: sample.pts,
                                                        at: processedAt, queue: video.summary,
-                                                       queueOldestAge: video.oldestAgeSeconds)
+                                                       queueOldestAge: video.oldestDelaySeconds)
                             await mixer.append(rotated, track: track)
                         } catch {
                             rotationFailures += 1
@@ -502,9 +509,12 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         let canvas = geometry.rotatorCanvas
         let fills = usesRecordingCanvas ? recordingSettings.fillsCanvas : policy.fillsCanvas
         sendlog(message: "[CaptureCanvas] recording=\(usesRecordingCanvas) canvas=\(canvas.width)x\(canvas.height) intermediate=\(String(describing: geometry.intermediateSize)) fills=\(fills) orientation=\(geometry.orientation) overlayCoordinates=canvas")
+        let queuePolicy = CaptureQueuePolicy.make(streaming: mode.wantsStreaming,
+                                                  recording: mode.wantsRecording)
+        sendlog(message: "[CaptureQueuePolicy] streaming=\(mode.wantsStreaming) recording=\(mode.wantsRecording) \(queuePolicy.summary)")
         let pump = try ScreenSamplePump(mixer: pipeline.mixer, probe: probe,
             rotateLeft: geometry.rotation == .left,
-            canvas: canvas, fills: fills)
+            canvas: canvas, fills: fills, queuePolicy: queuePolicy)
         self.pump = pump
         try source.addStreamOutput(pump, type: .screen, sampleHandlerQueue: sampleQueue)
         try source.addStreamOutput(pump, type: .audio, sampleHandlerQueue: sampleQueue)
