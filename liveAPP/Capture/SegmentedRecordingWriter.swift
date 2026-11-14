@@ -21,7 +21,7 @@ final class SegmentedRecordingSink: MediaMixerOutput, @unchecked Sendable {
     ///   - library: 管理片段清單與檔案路徑的錄製庫。
     ///   - failed: 寫入或收尾失敗時在 MainActor 執行的通知，參數為顯示訊息。
     init(settings: DirectRecordingSettings, library: RecordingLibrary, failed: @escaping @MainActor @Sendable (String) -> Void) {
-        let mailbox = CaptureMailbox<RecordingSample>(budget: 48 * 1024 * 1024, age: 2)
+        let mailbox = CaptureMailbox<RecordingSample>(budget: 48 * 1024 * 1024, maxDelay: 2)
         self.mailbox = mailbox
         worker = Task {
             let writer = SegmentedRecordingWriter(settings: settings, library: library)

@@ -45,7 +45,7 @@ struct CaptureSessionTests {
         #expect(state.phase == .selecting)
     }
     @Test func mailboxEvictsOldSamplesWithinByteBudget() async {
-        let queue = CaptureMailbox<Int>(budget: 10, age: 10)
+        let queue = CaptureMailbox<Int>(budget: 10, maxDelay: 10)
         queue.offer(1, bytes: 6); queue.offer(2, bytes: 6)
         var iterator = queue.stream().makeAsyncIterator()
         #expect(await iterator.next() == 2)
