@@ -1,5 +1,12 @@
 # 變更歷史
 
+## 2026.11.15 分段錄影合併去重與輸出路徑
+
+- 分段錄影的合併結果現在只保留一份：`RecordingGroup.merged` 會找出同群組已完成的合併檔，重複自動或手動合併時直接重用，不再產生第二個內容相同但 UUID 不同的 MP4。`[RecordingMerge]` 日誌新增 `path=`，可直接看到輸出檔案位置。
+- 本地錄影群組標題在已有合併檔時顯示「已合併，原片段保留」；合併檔仍位於同一群組內，標示「整場合併影片（原片段保留）」並顯示 UUID，對應 `Documents/ScreenRecordings/<UUID>.mp4`。
+- 分段片段若影片尾端比音訊少超過 2 秒，會寫入 `qualityIssue` 並在本地錄影列表顯示「片段有影片缺口」；自動合併會跳過此群組，不再把凍結影片包成正常成品。原片段仍保留，使用者可自行檢查或手動合併。
+- 2026-11-15 的分段測試顯示：無 PiP 的背景擷取在約 3 分鐘後影片回呼停止，音訊仍持續；segment 3 只有 55 個 video sample、7026 個 audio sample，tail gap 約 -43.9 秒。`CaptureVideoProcessing` 的 queue 同時出現大量 dropped（15,412），因此該場合併檔不能當作正確的 A/V 成品；合併檔實測 video 339.85 秒、audio 391.83 秒，影片少了約 52 秒，且 freezedetect 找到多段 5～33 秒凍結。後續要處理背景影片 starvation 與 12 MiB 影片佇列小於高解析度單幀的問題。
+
 ## 2026.11.13 AV Lag 進行中存檔與診斷檢視器
 
 - AV Lag 在 `recentSessions` 模式新增每 60 秒的進行中 segment checkpoint，不再只在進入背景時寫一次。先前長時間推流後若 App 被中止，磁碟上的 segment 可能停在進入背景當下的少量樣本；長場次實際已累積 1,775 筆，但分享出的 JSON 只有 3 筆。

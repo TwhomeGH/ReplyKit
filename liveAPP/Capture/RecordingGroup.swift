@@ -5,6 +5,15 @@ struct RecordingGroup: Identifiable {
     let id: UUID
     let items: [LocalRecording]
     var segments: [LocalRecording] { items.filter { $0.segmentGroup == id } }
+    /// 同一群組已完成的合併產物；用來避免重複合併並在列表標示。
+    var merged: LocalRecording? {
+        items.first { $0.mergedFromGroup == id && $0.phase == .ready }
+    }
+    /// 影片樣本少了明顯一段的片段；不讓自動合併把凍結影片包成正常成品。
+    var qualityIssues: [LocalRecording] {
+        segments.filter { $0.qualityIssue != nil }
+    }
+    var hasQualityIssue: Bool { !qualityIssues.isEmpty }
     var isSegmented: Bool { !segments.isEmpty }
     var segmentCount: Int { segments.count }
     var created: Date { items.map(\.created).min() ?? .distantPast }
@@ -12,6 +21,8 @@ struct RecordingGroup: Identifiable {
     var bytes: Int64 { segments.reduce(0) { $0 + $1.bytes } }
     /// 單段完成與缺段分開提示，避免把不需合併誤認為錄影失敗。
     var statusText: String {
+        if hasQualityIssue { return "片段有影片缺口，已停止自動合併" }
+        if merged != nil { return "已合併，原片段保留" }
         if canMerge { return "片段已完成，可展開播放或合併" }
         if segments.count == 1, segments.first?.phase == .ready, segments.first?.segmentNumber == 1 {
             return "單段錄影已完成，無需合併"

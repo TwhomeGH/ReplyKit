@@ -87,6 +87,8 @@ struct LocalRecording: Identifiable, Codable {
     var duration: Double = 0
     var bytes: Int64 = 0
     var message: String?
+    /// 影片樣本明顯少於音訊尾端時的品質警告；舊紀錄為 nil。
+    var qualityIssue: String?
     /// 系統完成錄影時的原始檔大小；舊紀錄無此資訊。
     var originalBytes: Int64?
     /// 同一場可控錄製的群組與片段序號，舊紀錄為 nil。

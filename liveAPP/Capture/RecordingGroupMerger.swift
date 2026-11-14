@@ -17,6 +17,14 @@ extension RecordingLibrary {
         guard let source = RecordingGroup.make(recordings).first(where: { $0.id == group }), source.canMerge else {
             throw failure("需要至少兩個已完成且序號連續的片段，才能合併。")
         }
+        // 同一個群組只保留一份合併產物；重複按合併或自動合併時重用既有結果，
+        // 不再產生第二個內容相同但 UUID 不同的檔案。
+        if let existing = source.merged,
+           existing.created >= (source.segments.map(\.created).max() ?? .distantPast),
+           FileManager.default.fileExists(atPath: fileURL(for: existing.id).path) {
+            sendlog(message: "[RecordingMerge] group=\(group) output=\(existing.id) reused=true")
+            return existing.id
+        }
         let composition = AVMutableComposition()
         guard let video = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid),
               let audio = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else {
@@ -99,7 +107,7 @@ extension RecordingLibrary {
                 throw failure("合併產物大小無效。")
             }
             update(result.id, phase: .ready, duration: duration.seconds, bytes: bytes, message: "整場合併影片；原片段已保留。")
-            sendlog(message: "[RecordingMerge] group=\(group) output=\(result.id) segments=\(source.segmentCount) bytes=\(bytes)")
+            sendlog(message: "[RecordingMerge] group=\(group) output=\(result.id) segments=\(source.segmentCount) bytes=\(bytes) path=\(destination.path)")
             return result.id
         } catch {
             update(result.id, phase: .failed, duration: 0, bytes: 0, message: error.localizedDescription)

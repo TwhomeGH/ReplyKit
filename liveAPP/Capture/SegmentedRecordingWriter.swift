@@ -32,7 +32,13 @@ final class SegmentedRecordingSink: MediaMixerOutput, @unchecked Sendable {
                     // writer.group 不存在需要await的操作
                     let group = writer.group
                     Task { @MainActor in
-                        guard library.recordings.filter({ $0.segmentGroup == group }).count >= 2 else { return }
+                        guard let model = RecordingGroup.make(library.recordings).first(where: { $0.id == group }),
+                              model.canMerge else { return }
+                        guard !model.hasQualityIssue else {
+                            library.errorMessage = "分段錄影有影片缺口，已保留原片段但不自動合併。"
+                            sendlog(message: "[RecordingMerge] group=\(group) autoMergeSkipped=qualityIssue")
+                            return
+                        }
                         do { _ = try await library.merge(group: group) }
                         catch {
                             library.errorMessage = "自動合併未完成：" + error.localizedDescription
@@ -306,6 +312,14 @@ actor RecordingSegmentWriter {
         }
         
         await report(phase: .ready, completedDuration: duration.seconds)
+        if let id, lastVideo.isValid, audioEnd.isValid {
+            let tailGap = lastVideo.seconds - audioEnd.seconds
+            if tailGap < -2 {
+                await library.markQualityIssue(
+                    id,
+                    issue: String(format: "影片尾端比音訊少 %.1f 秒；背景擷取可能停止，未自動合併。", -tailGap))
+            }
+        }
         
         sendlog(message: "[SegmentedRecording] group=\(group) segment=\(number) completed dropped=\(dropped)")
         // 清除實例持有的片段狀態；驗證用的 segmentURL 僅是區域快照。
@@ -357,8 +371,15 @@ actor RecordingSegmentWriter {
             sourceEndPTS: persistSourceRange ? sourceEnd : nil,
             sourceAudioStartPTS: persistSourceRange && firstAudio.isValid ? firstAudio.seconds : nil,
             writeToDisk: persistSourceRange)
+        var qualityWarning = ""
+        if lastVideo.isValid, audioEnd.isValid {
+            let tailGap = lastVideo.seconds - audioEnd.seconds
+            if tailGap < -2 {
+                qualityWarning = String(format: " · 影片尾端比音訊少 %.1f 秒，背景擷取可能停止", -tailGap)
+            }
+        }
         await library.update(id, phase: phase, duration: duration, bytes: bytes,
-            message: "可控錄製 · 第 \(number) 段 · \(bitrate) · 寫入端丟棄 \(dropped) 個樣本" + sizeWarning)
+            message: "可控錄製 · 第 \(number) 段 · \(bitrate) · 寫入端丟棄 \(dropped) 個樣本" + sizeWarning + qualityWarning)
     }
     /// 取消目前寫入並標記中斷，不改動先前已完成的片段。
     /// 取消寫入不保證保留未完成檔案；恢復前仍須確認檔案存在且可播放。

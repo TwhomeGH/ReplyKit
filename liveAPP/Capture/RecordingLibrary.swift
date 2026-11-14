@@ -82,6 +82,14 @@ import Photos
         do { try persist(recordings[index]) }
         catch { errorMessage = "片段索引無法保存。" }
     }
+    /// 標記片段有影片缺口；合併前可據此避免自動產出凍結影片。
+    func markQualityIssue(_ id: UUID, issue: String) {
+        guard let index = recordings.firstIndex(where: { $0.id == id }) else { return }
+        recordings[index].qualityIssue = issue
+        do { try persist(recordings[index]) }
+        catch { errorMessage = "錄影品質警告無法保存。" }
+    }
+
     /// 寫入此片段與 App 擷取時間軸的對照；manifest JSON 就是 sidecar。
     /// sourceStartPTS 是本段第一個 video PTS，fileStartPTS 正常為 0。
     func recordSourceRange(_ id: UUID, sourceStartPTS: Double?, sourceEndPTS: Double?,
@@ -191,7 +199,11 @@ import Photos
     private func recordingRow(_ item: LocalRecording) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(item.created.formatted(date: .abbreviated, time: .standard))
-            if item.mergedFromGroup != nil { Text("整場合併影片（原片段保留）").font(.caption) }
+            if item.mergedFromGroup != nil {
+                Text("整場合併影片（原片段保留）").font(.caption)
+                Text(item.id.uuidString).font(.caption2.monospaced()).foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
             if let number = item.segmentNumber { Text("分段錄影 \(item.segmentGroup?.uuidString.prefix(8) ?? "") · 第 \(number) 段").font(.caption) }
             if item.phase == .interrupted {
                 Button("驗證並恢復可播放部分") {
