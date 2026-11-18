@@ -10,6 +10,7 @@ enum PIPAdOverlayRenderer {
         let emojiImages: [UIImage?]
         let icon: UIImage?
         let alpha: CGFloat
+        var verticalOffset: CGFloat = 0
         let userFontSize: CGFloat
         let textFontSize: CGFloat
         let spacing: CGFloat
@@ -26,7 +27,7 @@ enum PIPAdOverlayRenderer {
 
         let bannerW = size.width * 0.88
         let bannerX = (size.width - bannerW) / 2
-        let bannerY: CGFloat = 85
+        let bannerY: CGFloat = 85 + scene.verticalOffset
 
         let labelFont = UIFont.boldSystemFont(ofSize: max(1, scene.userFontSize))
         let overlayFontSize = max(1, scene.textFontSize)

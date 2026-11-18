@@ -74,6 +74,27 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     private var adOverlayEmojiImages: [UIImage?] = []
     private var adOverlayStartTime: CFTimeInterval = 0
     private var adOverlayActive = false
+    /// 每次贊助內容替換都換世代，阻擋上一筆圖片覆蓋下一筆。
+    private var adOverlayID = UUID()
+    private var adFirstDrawMs: Double?
+    private var adLastDrawTime: Double?
+    private var adLastDrawWasTransition = false
+    private var adMaxFrameGapMs = 0.0
+    private var adMaxScheduleDelayMs = 0.0
+    private var adSummaryAt = -Double.infinity
+    private var adCompletedEvents = 0
+    private var adSummaryUndrawn = 0
+    private var adSummaryFirstMs = 0.0
+    private var adSummaryGapMs = 0.0
+    private var adSummaryDelayMs = 0.0
+
+    /// 動畫期間升頻，停留降到 2 FPS；不提高整場 PiP 的閒置頻率。
+    private var adTransitioning: Bool {
+        adOverlayActive && PIPAdAnimation.isTransitioning(
+            elapsed: CACurrentMediaTime() - adOverlayStartTime, duration: adOverlayPageDuration)
+    }
+    private var adAnimationFPS: Double { PIPDisplaySettings.powerSaving ? 15 : 30 }
+
     private var adOverlayLogSkipCounter: Int = 0
     private var adOverlayPageDuration: CFTimeInterval {
         max(1, LPConfig.shared.PIPAdOverlayDuration)
@@ -242,7 +263,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         }
         guard !isKeepaliveMode || adOverlayActive else { return }
         lastActiveRenderTime = CACurrentMediaTime()
-        let newFPS = messagesLayer?.isAnimating == true ? animationFPS : activeFPS
+        let newFPS = adTransitioning ? adAnimationFPS : (messagesLayer?.isAnimating == true ? animationFPS : activeFPS)
         guard abs(currentFPS - newFPS) > 0.1 else { return }
         currentFPS = newFPS
         rescheduleRenderTimer(fps: currentFPS)
@@ -274,7 +295,10 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             keepaliveInterval: configuredKeepaliveSeconds
         )
 
-        let targetFPS = isKeepaliveMode ? baseFPS : (baseFPS == PIPRenderPolicy.animationFPS ? animationFPS : (baseFPS == PIPRenderPolicy.activeFPS ? activeFPS : 1 / periodicRedrawInterval))
+        var targetFPS = isKeepaliveMode ? baseFPS : (baseFPS == PIPRenderPolicy.animationFPS ? animationFPS : (baseFPS == PIPRenderPolicy.activeFPS ? activeFPS : 1 / periodicRedrawInterval))
+        if adOverlayActive {
+            targetFPS = adTransitioning ? adAnimationFPS : (messagesLayer?.isAnimating == true ? animationFPS : 2)
+        }
         if abs(currentFPS - targetFPS) > 0.000001 {
             currentFPS = targetFPS
             if lastFPS != currentFPS {
@@ -398,6 +422,14 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     // 顯示贊助/廣告覆蓋層，支援多頁文字與行內 emoji 圖片
     @MainActor
     func addAdOverlay(user: String, text: String, iconURL: String?, useTTS: Bool) {
+        if adOverlayActive { reportAdPerformance() }
+        adOverlayID = UUID()
+        let eventID = adOverlayID
+        adFirstDrawMs = nil
+        adLastDrawTime = nil
+        adLastDrawWasTransition = false
+        adMaxFrameGapMs = 0
+        adMaxScheduleDelayMs = 0
         adOverlayUser = user
         adOverlayText = text
         adOverlayIconURL = iconURL
@@ -406,7 +438,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         adOverlayActive = true
 
         // 推下聊天訊息，為 overlay 騰出空間
-        messagesLayer?.setAdOverlayOffset(145)
+        messagesLayer?.setAdOverlayOffset(0)
 
         // 抽離文字中的圖片網址，用 \u{2003} 保留行內位置
         let knownImageURLs = iconURL.map { [$0] } ?? []
@@ -443,7 +475,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         for (idx, url) in emojiURLs.enumerated() {
             Task { [weak self] in
                 await PiPImageCache.shared.loadImage(urlString: url) { image in
-                    guard let self = self, idx < self.adOverlayEmojiImages.count else { return }
+                    guard let self = self, self.adOverlayID == eventID, self.adOverlayActive, idx < self.adOverlayEmojiImages.count else { return }
                     self.adOverlayEmojiImages[idx] = image
                     PIPLogTo("AdOverlay: emoji[\(idx)] loaded \(image != nil)")
                     self.setNeedsRedraw()
@@ -455,8 +487,9 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         if let iconURL, !iconURL.isEmpty {
             Task { [weak self] in
                 await PiPImageCache.shared.loadImage(urlString: iconURL) { image in
-                    self?.adOverlayIconImage = image
-                    self?.setNeedsRedraw()
+                    guard let self, self.adOverlayID == eventID, self.adOverlayActive else { return }
+                    self.adOverlayIconImage = image
+                    self.setNeedsRedraw()
                 }
             }
         }
@@ -466,6 +499,8 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     }
 
     func clearAdOverlay() {
+        if adOverlayActive { reportAdPerformance() }
+        adOverlayID = UUID()
         adOverlayActive = false
         adOverlayText = nil
         adOverlayCleanText = nil
@@ -767,6 +802,29 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         PIPTimeOverlayRenderer.draw(in: cg, size: size, scene: scene)
     }
 
+    /// 每事件累計、最多每分鐘輸出一筆；合併期間保留最差值，避免刷屏。
+    private func reportAdPerformance() {
+        adCompletedEvents += 1
+        if let first = adFirstDrawMs { adSummaryFirstMs = max(adSummaryFirstMs, first) }
+        else { adSummaryUndrawn += 1 }
+        adSummaryGapMs = max(adSummaryGapMs, adMaxFrameGapMs)
+        adSummaryDelayMs = max(adSummaryDelayMs, adMaxScheduleDelayMs)
+        flushAdPerformance()
+    }
+
+    /// 定期送出尚未回報的已結束事件，未繪製事件另計，不當作零耗時。
+    private func flushAdPerformance() {
+        let now = CACurrentMediaTime()
+        guard adCompletedEvents > 0, now - adSummaryAt >= 60 else { return }
+        sendlog(message: "[PiPAdPerformance] events=\(adCompletedEvents) undrawn=\(adSummaryUndrawn) maxFirstDrawMs=\(adSummaryFirstMs) maxTransitionFrameGapMs=\(adSummaryGapMs) maxScheduleDelayMs=\(adSummaryDelayMs) reducedAnimation=\(PIPDisplaySettings.powerSaving)")
+        adSummaryAt = now
+        adCompletedEvents = 0
+        adSummaryUndrawn = 0
+        adSummaryFirstMs = 0
+        adSummaryGapMs = 0
+        adSummaryDelayMs = 0
+    }
+
     // MARK: - Ad Overlay Drawing
     private func drawAdOverlay(in cg: CGContext, size: CGSize) {
         guard adOverlayActive, adOverlayText != nil else { return }
@@ -791,7 +849,14 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         let page = adOverlayPages[adOverlayPageIndex]
         let pageText = page.text
 
-        let alpha: CGFloat = min(1.0, max(0, remaining / 0.5))
+        let alpha = CGFloat(PIPAdAnimation.visibility(elapsed: elapsed, duration: adOverlayPageDuration))
+        let drawTime = CACurrentMediaTime()
+        if adFirstDrawMs == nil { adFirstDrawMs = max(0, elapsed * 1000) }
+        if let last = adLastDrawTime, adLastDrawWasTransition {
+            adMaxFrameGapMs = max(adMaxFrameGapMs, (drawTime - last) * 1000)
+        }
+        adLastDrawTime = drawTime
+        adLastDrawWasTransition = adTransitioning
 
         PIPAdOverlayRenderer.draw(in: cg, size: size, scene: PIPAdOverlayRenderer.Scene(
             user: adOverlayUser ?? "贊助訊息",
@@ -801,6 +866,7 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             emojiImages: adOverlayEmojiImages,
             icon: adOverlayIconImage,
             alpha: alpha,
+            verticalOffset: -12 * (1 - alpha),
             userFontSize: CGFloat(LPConfig.shared.PIPAdOverlayUserFontSize),
             textFontSize: CGFloat(LPConfig.shared.PIPAdOverlayFontSize),
             spacing: CGFloat(LPConfig.shared.PIPAdOverlaySpacing),
@@ -1070,7 +1136,11 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
     /// 安排唯一下一幀並以世代拒絕已取消的回呼；delay 為秒，nil 使用目前 FPS。
     private func scheduleNextRender(after delay: TimeInterval? = nil) {
         guard !renderCancelled else { return }
-        let interval = delay ?? PIPRenderPolicy.interval(for: currentFPS)
+        var interval = delay ?? PIPRenderPolicy.interval(for: currentFPS)
+        if adOverlayActive {
+            interval = PIPAdAnimation.nextInterval(elapsed: CACurrentMediaTime() - adOverlayStartTime,
+                duration: adOverlayPageDuration, proposed: interval)
+        }
         scheduledRender?.cancel()
         let token = renderGeneration.invalidate()
         scheduledRenderDeadline = CACurrentMediaTime() + interval
@@ -1079,6 +1149,10 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
             Task { @MainActor in
                 guard !self.renderCancelled, self.renderGeneration.accepts(token) else { return }
                 if let deadline = self.scheduledRenderDeadline {
+                    if self.adOverlayActive {
+                        self.adMaxScheduleDelayMs = max(self.adMaxScheduleDelayMs,
+                            max(0, CACurrentMediaTime() - deadline) * 1000)
+                    }
                     self.maxScheduleDelayMilliseconds = max(self.maxScheduleDelayMilliseconds,
                         max(0, CACurrentMediaTime() - deadline) * 1000)
                 }
@@ -1183,6 +1257,8 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         let mean = renderWorkSeconds * 1000 / Double(renderAttempts)
         let busy = renderWorkSeconds / window * 100
         let chatBytes = chatImage.map { $0.bytesPerRow * $0.height } ?? 0
+        flushAdPerformance()
+        Task { await PiPImageCache.shared.reportIfNeeded() }
         let summary = "[PiPPerformance] schema=1 session=\(performanceSession) reason=\(reason) mode=\(isKeepaliveMode ? "keepalive" : "chat") active=\(isPiPActive) windowSeconds=\(String(format: "%.2f", window)) targetFPS=\(currentFPS) clockSeconds=\(periodicRedrawInterval) keepaliveSeconds=\(configuredKeepaliveSeconds) reducedAnimation=\(PIPDisplaySettings.powerSaving) attempts=\(renderAttempts) redraws=\(drawnFrames) enqueued=\(sent) reused=\(reusedFrames) enqueueFPS=\(String(format: "%.2f", Double(sent) / window)) workMeanMs=\(String(format: "%.3f", mean)) workMaxMs=\(String(format: "%.3f", maxRenderMilliseconds)) workerBusyPercent=\(String(format: "%.2f", busy)) scheduleDelayMaxMs=\(String(format: "%.3f", maxScheduleDelayMilliseconds)) backpressureSkips=\(backpressureSkips) renderFailures=\(renderFailures) chatCacheBytes=\(chatBytes) poolEstimateMB=\(pixelBufferPool == nil ? 0 : estimatedPixelBufferPoolMB)"
         // 基礎性能摘要不受總日誌開關限制，也不轉送遠端。
         AppLogPersister.shared.append(line: "\(formatTime()): liveApp:\(summary)")
@@ -1236,6 +1312,15 @@ final class PIPService: NSObject, ObservableObject, @unchecked Sendable {
         if secondaryNoticeDeadline > 0, CACurrentMediaTime() >= secondaryNoticeDeadline {
             clearSecondaryNotice()
             needsRedraw = true
+        }
+        if adOverlayActive {
+            let visibility = PIPAdAnimation.visibility(elapsed: CACurrentMediaTime() - adOverlayStartTime,
+                                                      duration: adOverlayPageDuration)
+            let offset = CGFloat(145 * visibility)
+            if let layer = messagesLayer, abs(layer.adOverlayOffset - offset) > 0.01 {
+                layer.setAdOverlayOffset(offset)
+                chatImage = nil
+            }
         }
         let wasAnimating = messagesLayer?.tickAnimation() == true
         if wasAnimating { chatImage = nil }

@@ -29,234 +29,6 @@ struct ChatMessage: Identifiable, Equatable {
 
 
 
-// MARK: - Cache
-private var cache: NSCache<NSString, UIImage> = {
-    let cache = NSCache<NSString, UIImage>()
-    cache.countLimit = 20
-    cache.totalCostLimit = 20 * 1024 * 1024
-    return cache
-}()
-
-
-actor PiPImageCache {
-
-    static let shared = PiPImageCache()
-
-    private static let maxConcurrentDownloads = 5
-
-    // 共用 session：真實 UA + Accept、明確 timeout、HTTP cache、waitsForConnectivity。
-    private static let session: URLSession = {
-        let config = URLSessionConfiguration.default
-        config.httpAdditionalHeaders = [
-            "User-Agent": PiPImageCache.makeUserAgent(),
-            "Accept": "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8"
-        ]
-        config.timeoutIntervalForRequest = 10
-        config.timeoutIntervalForResource = 30
-        config.waitsForConnectivity = true
-        config.httpMaximumConnectionsPerHost = 4
-        config.requestCachePolicy = .useProtocolCachePolicy
-        config.urlCache = URLCache(
-            memoryCapacity: 20 * 1024 * 1024,
-            diskCapacity: 100 * 1024 * 1024,
-            diskPath: "PIPImageCache"
-        )
-        return URLSession(configuration: config)
-    }()
-
-    // 真實 Safari UA 樣板：只替換會變動的部分（裝置型號 + OS 版本 + Safari version），
-    // 固定段（AppleWebKit / Mobile / Safari build）來自實際抓取的 Safari UA：
-    //   Mozilla/5.0 (iPad; CPU OS 18_7 like Mac OS X) AppleWebKit/605.1.15
-    //   (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1
-    // 注意：Version token 目前跟隨 OS 版本（ProcessInfo），
-    // 但真實 Safari 的 Version（如 27.0）從 iOS 18 起與 OS 脫鉤，ProcessInfo 給不出。
-    private static func makeUserAgent() -> String {
-        let isIPad = DeviceInfo.deviceCode.hasPrefix("iPad")
-        let device = isIPad ? "iPad" : "iPhone"
-        let cpuToken = isIPad ? "CPU OS" : "CPU iPhone OS"
-        let os = ProcessInfo.processInfo.operatingSystemVersion
-        let osVersion = "\(os.majorVersion)_\(os.minorVersion)"
-        let safariVersion = "\(os.majorVersion).\(os.minorVersion)"
-        return "Mozilla/5.0 (\(device); \(cpuToken) \(osVersion) like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/\(safariVersion) Mobile/15E148 Safari/604.1"
-    }
-
-    private var inFlightTasks: [String: Task<UIImage?, Never>] = [:]
-    private var pendingCallbacks: [String: [(UIImage?) -> Void]] = [:]
-
-    private var currentDownloads = 0
-    private var waitingQueue: [String] = []
-
-    private init() {
-    }
-
-    func loadImage(urlString: String, completion: @escaping (UIImage?) -> Void) async {
-        if urlString.lowercased().hasPrefix("data:") {
-            guard let reference = ImageDataURI.reference(from: urlString) else {
-                await MainActor.run { completion(nil) }
-                return
-            }
-            await loadEmbedded(reference, completion: completion)
-            return
-        }
-
-        if let img = cache.object(forKey: urlString as NSString) {
-            await MainActor.run {
-                completion(img)
-            }
-            return
-        }
-
-        if inFlightTasks[urlString] != nil {
-            pendingCallbacks[urlString, default: []].append(completion)
-            return
-        }
-
-        // 已在 waiting queue（尚未開始下載）→ 只附加 callback，避免重複入隊
-        if pendingCallbacks[urlString] != nil {
-            pendingCallbacks[urlString]?.append(completion)
-            return
-        }
-
-        if currentDownloads >= Self.maxConcurrentDownloads {
-            waitingQueue.append(urlString)
-            pendingCallbacks[urlString] = [completion]
-            return
-        }
-
-        startDownload(urlString: urlString, completions: [completion])
-    }
-
-    /// 內嵌圖片是本機解碼，不佔用網路下載 slot，也不進 FIFO 佇列。
-    private func loadEmbedded(
-        _ reference: ImageDataURIReference,
-        completion: @escaping (UIImage?) -> Void
-    ) async {
-        let key = reference.cacheKey
-        if let image = cache.object(forKey: key as NSString) {
-            await MainActor.run { completion(image) }
-            return
-        }
-        if inFlightTasks[key] != nil || pendingCallbacks[key] != nil {
-            pendingCallbacks[key, default: []].append(completion)
-            return
-        }
-        pendingCallbacks[key] = [completion]
-        let task = Task<UIImage?, Never> {
-            let image = await Task.detached(priority: .utility) {
-                ImageDataURI.decode(reference)
-            }.value
-            await self.completeEmbedded(key: key, image: image)
-            return nil
-        }
-        inFlightTasks[key] = task
-    }
-
-    private func completeEmbedded(key: String, image: UIImage?) async {
-        let callbacks = pendingCallbacks.removeValue(forKey: key) ?? []
-        if let image {
-            cache.setObject(image, forKey: key as NSString, cost: Self.imageCost(image))
-        }
-        await MainActor.run {
-            for callback in callbacks {
-                callback(image)
-            }
-        }
-        inFlightTasks[key] = nil
-        startNextIfPossible()
-    }
-
-    private static func imageCost(_ image: UIImage) -> Int {
-        guard let cgImage = image.cgImage else { return 1 }
-        return max(1, cgImage.bytesPerRow * cgImage.height)
-    }
-
-    private func startDownload(urlString: String, completions: [(UIImage?) -> Void]) {
-        currentDownloads += 1
-        let task = Task<UIImage?, Never> {
-            await self.performDownload(urlString: urlString, completions: completions)
-            return nil
-        }
-        inFlightTasks[urlString] = task
-    }
-
-    private func performDownload(
-        urlString: String,
-        completions: [(UIImage?) -> Void]
-    ) async {
-        guard let url = URL(string: urlString) else {
-            await complete(urlString: urlString, completions: completions, image: nil)
-            return
-        }
-
-        do {
-            let (data, response) = try await Self.session.data(for: URLRequest(url: url))
-
-            guard let http = response as? HTTPURLResponse,
-                  (200..<300).contains(http.statusCode) else {
-                let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-                PIPLogTo("[PIPImageCache] HTTP \(status) 拒絕 \(urlString)")
-                await complete(urlString: urlString, completions: completions, image: nil)
-                return
-            }
-
-            let image = UIImage(data: data)
-            if let image {
-                cache.setObject(image, forKey: urlString as NSString)
-            } else {
-                PIPLogTo("[PIPImageCache] decode 失敗 (HTTP 200) \(urlString)")
-            }
-            await complete(urlString: urlString, completions: completions, image: image)
-        } catch {
-            PIPLogTo("[PIPImageCache] 下載失敗: \(error.localizedDescription) \(urlString)")
-            await complete(urlString: urlString, completions: completions, image: nil)
-        }
-    }
-
-    private func complete(
-        urlString: String,
-        completions: [(UIImage?) -> Void],
-        image: UIImage?
-    ) async {
-        let callbacks = pendingCallbacks.removeValue(forKey: urlString) ?? []
-        await MainActor.run {
-            for cb in completions {
-                cb(image)
-            }
-            for cb in callbacks {
-                cb(image)
-            }
-        }
-        finishDownload(urlString: urlString)
-    }
-
-    private func finishDownload(urlString: String) {
-        inFlightTasks[urlString] = nil
-        currentDownloads = max(0, currentDownloads - 1)
-        startNextIfPossible()
-    }
-
-    // 真正的 FIFO：slot 空出時從 waitingQueue pop 下一個，取代原本的 busy-wait
-    private func startNextIfPossible() {
-        while currentDownloads < Self.maxConcurrentDownloads, !waitingQueue.isEmpty {
-            let nextURL = waitingQueue.removeFirst()
-            let callbacks = pendingCallbacks.removeValue(forKey: nextURL) ?? []
-            guard !callbacks.isEmpty else { continue }
-            startDownload(urlString: nextURL, completions: callbacks)
-        }
-    }
-
-    func clear() {
-        cache.removeAllObjects()
-        inFlightTasks.values.forEach { $0.cancel() }
-        inFlightTasks.removeAll()
-        pendingCallbacks.removeAll()
-        waitingQueue.removeAll()
-        currentDownloads = 0
-    }
-}
-
-
-
 enum MessageType {
     case primary
     case secondary
@@ -566,8 +338,9 @@ final class PIPServiceMessages {
     }
 
     func setAdOverlayOffset(_ offset: CGFloat) {
+        guard abs(adOverlayOffset - offset) > 0.01 else { return }
         adOverlayOffset = offset
-        // 直接重新排版不觸發動畫，避免 overlay 顯示與訊息移動重疊
+        // 位移由贊助時間軸逐幀插值；這裡不再另開一套聊天動畫。
         let _ = relayoutTargetsOnly(updateTargetY: true, changeSY: true)
         for msg in stackedMessages where msg.alpha > 0 {
             msg.startY = msg.targetY
@@ -1502,7 +1275,8 @@ final class PIPServiceMessages {
             for (data, msg) in zip(insertSegments, groupMsgs) where data.avatarURL != nil {
                 if let avatarURL = data.avatarURL {
                     Task {
-                        await PiPImageCache.shared.loadImage(urlString: avatarURL) { image in
+                        await PiPImageCache.shared.loadImage(urlString: avatarURL) { [weak msg] image in
+                            guard let msg else { return }
                             msg.avatar?.contents = image?.cgImage
                             msg.avatarImage = image?.size
                         }
@@ -1513,7 +1287,8 @@ final class PIPServiceMessages {
             for (data, msg) in zip(insertSegments, groupMsgs) where data.giftURL != nil {
                 if let giftURL = data.giftURL {
                     Task {
-                        await PiPImageCache.shared.loadImage(urlString: giftURL) { image in
+                        await PiPImageCache.shared.loadImage(urlString: giftURL) { [weak msg] image in
+                            guard let msg else { return }
                             msg.gift?.contents = image?.cgImage
                             msg.giftImage = image?.size
                         }
