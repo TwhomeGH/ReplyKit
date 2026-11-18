@@ -19,14 +19,15 @@
     --ok: #4ade80;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text);
+  html { height: 100%; }
+  body { height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; margin: 0; background: var(--bg); color: var(--text);
          font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-  header { padding: 18px 22px; border-bottom: 1px solid var(--border);
+  header { flex: none; padding: 18px 22px; border-bottom: 1px solid var(--border);
            background: linear-gradient(180deg, #1b2029, #141820); }
   header h1 { margin: 0 0 4px; font-size: 18px; font-weight: 600; }
   header .meta { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-  .layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: calc(100vh - 82px); }
-  aside { border-right: 1px solid var(--border); padding: 14px; background: var(--panel); }
+  .layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); flex: 1; min-height: 0; overflow: hidden; }
+  aside { min-height: 0; overflow: auto; overscroll-behavior: contain; border-right: 1px solid var(--border); padding: 14px; background: var(--panel); }
   aside h2 { margin: 0 0 10px; font-size: 12px; letter-spacing: .06em;
              text-transform: uppercase; color: var(--muted); }
   button.cat { display: flex; justify-content: space-between; width: 100%;
@@ -35,7 +36,12 @@
   button.cat:hover { background: var(--panel-2); }
   button.cat.active { background: #2a3a55; color: #dbe8ff; }
   button.cat .count { color: var(--muted); font-variant-numeric: tabular-nums; }
-  main { padding: 16px; min-width: 0; }
+  /* 僅紀錄區捲動，搜尋與統計不隨長日誌離開畫面。 */
+  main { padding: 16px; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+  .controls { flex: none; max-height: 45%; overflow: auto; }
+  .log-scroll { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+  .status { flex: none; }
+  select { max-width: 100%; }
   .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
            gap: 10px; margin-bottom: 14px; }
   .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
@@ -73,8 +79,13 @@
           color: var(--text); cursor: pointer; }
   .empty { color: var(--muted); padding: 24px 0; text-align: center; }
   @media (max-width: 820px) {
-    .layout { grid-template-columns: 1fr; }
-    aside { border-right: 0; border-bottom: 1px solid var(--border);
+    .layout { grid-template-columns: 1fr; grid-template-rows: minmax(64px, 18%) minmax(0, 1fr); }
+    header { padding: 8px 12px; }
+    header .meta { max-height: 3em; overflow: auto; }
+    main { padding: 8px; }
+    .cards { grid-template-columns: repeat(5, minmax(125px, 1fr)); overflow-x: auto; }
+    input[type="search"] { min-width: 0; width: 100%; }
+    aside { min-height: 0; overflow: auto; overscroll-behavior: contain; border-right: 0; border-bottom: 1px solid var(--border);
             max-height: 220px; overflow: auto; }
     td.cat { width: 120px; }
     td.time { width: 110px; }
@@ -92,6 +103,7 @@
     <div id="categories"></div>
   </aside>
   <main>
+    <div class="controls">
     <div class="cards" id="cards"></div>
     <div class="toolbar">
       <input id="search" type="search" placeholder="搜尋訊息、session、數值…" autocomplete="off">
@@ -104,13 +116,16 @@
       <select id="session" title="Session"><option value="">全部 Session</option></select>
       <button class="pill active" id="reset" type="button">清除篩選</button>
     </div>
-    <div class="status" id="status"></div>
+    </div>
+    <div class="status" id="status" role="status"></div>
+    <section class="log-scroll" id="logScroll" tabindex="0" aria-label="診斷日誌">
     <table>
       <thead><tr><th>時間</th><th>分類</th><th>內容</th></tr></thead>
       <tbody id="rows"></tbody>
     </table>
     <div id="empty" class="empty" hidden>沒有符合條件的紀錄。</div>
     <button class="load" id="more" type="button" hidden>載入更多</button>
+    </section>
   </main>
 </div>
 <script>
@@ -212,6 +227,7 @@ function renderRows(data, append) {
 async function load(append = false) {
   if (!append) {
     state.offset = 0;
+    $("logScroll").scrollTop = 0;
     $("status").textContent = "載入中…";
   }
   const params = new URLSearchParams({
