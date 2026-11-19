@@ -61,6 +61,47 @@ struct ImageDataURITests {
         #expect(result.imagePositions == [3])
     }
 
+    @Test func separatedEmojiURLsPreserveTextAndUTF16Positions() {
+        let a = "https://cdn.example.com/a.png", b = "http://localhost:3332/media/hash.png"
+        let cases: [(String, String, [String], [Int])] = [
+            ("哈 \(a) sw", "哈 \u{2003} sw", [a], [2]),
+            ("哈  \(a)  sw", "哈  \u{2003}  sw", [a], [3]),
+            ("\(a) \(b)", "\u{2003} \u{2003}", [a, b], [0, 2]),
+            (a, "\u{2003}", [a], [0]),
+            ("🎉\t\(a)\n\(b)", "🎉\t\u{2003}\n\u{2003}", [a, b], [3, 5])
+        ]
+        for (input, cleaned, urls, positions) in cases {
+            let result = PIPServiceMessages.extractAllImageURLs(from: input)
+            #expect(result.cleaned == cleaned)
+            #expect(result.imageURLs == urls)
+            #expect(result.imagePositions == positions)
+        }
+    }
+
+    @Test func imageQueryAndFragmentArePreservedForDownload() {
+        let url = "https://example.com/a.PNG?token=abc%2Fdef&size=32#preview"
+        let result = PIPServiceMessages.extractAllImageURLs(from: url)
+        #expect(result.imageURLs == [url])
+    }
+
+    @Test func ambiguousOrInvalidURLsRemainText() {
+        for url in ["https://example.com/page?image=a.png", "https://example.com/page#a.png",
+                    "https://example.com/a.pngsw", "https://example.com/a.png)", "https:///a.png"] {
+            let result = PIPServiceMessages.extractAllImageURLs(from: url)
+            #expect(result.imageURLs.isEmpty)
+            #expect(result.cleaned == url)
+        }
+        let invalid = "https:///a.png"
+        #expect(PIPServiceMessages.extractAllImageURLs(from: invalid, knownImageURLs: [invalid]).imageURLs.isEmpty)
+    }
+
+    @Test func imageLimitRetainsRemainingURLAsText() {
+        let a = "https://example.com/a.png", b = "https://example.com/b.png"
+        let result = PIPServiceMessages.extractAllImageURLs(from: "\(a) \(b)", maxURLs: 1)
+        #expect(result.imageURLs == [a])
+        #expect(result.cleaned == "\u{2003} \(b)")
+    }
+
     @Test func redactsDataURIInLogs() throws {
         let uri = try pngDataURI()
         let redacted = ImageDataURI.redacted("send \(uri) end")

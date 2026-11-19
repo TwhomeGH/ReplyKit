@@ -975,10 +975,6 @@ final class PIPServiceMessages {
             return (message, [], [])
         }
         let known = Set(knownImageURLs)
-        let extensionPattern = try? NSRegularExpression(
-            pattern: "\\.(?:" + imageExtensions.joined(separator: "|") + ")(?:[?#]|$)",
-            options: [.caseInsensitive])
-
         let nsRange = NSRange(message.startIndex..., in: message)
         let matches = regex.matches(in: message, range: nsRange)
         var urls: [String] = []
@@ -995,10 +991,15 @@ final class PIPServiceMessages {
             let token = String(message[range])
             let lowercased = token.lowercased()
             let isDataURI = lowercased.hasPrefix("data:image/")
+            // 只看路徑副檔名，避免 /page?image=a.png 或 #a.png 被誤當圖片。
+            // 下載仍使用原始 token，不能丟失簽名參數，也不猜測 .pngsw 的文字邊界。
+            let components = URLComponents(string: token)
+            let isHTTP = ["http", "https"].contains(components?.scheme?.lowercased() ?? "")
+            let validHTTP = isHTTP && !(components?.host?.isEmpty ?? true) && components?.url != nil
+            let pathExtension = ((components?.path ?? "") as NSString).pathExtension.lowercased()
             let isKnown = known.contains(token)
-            let hasImageExtension = extensionPattern?.firstMatch(
-                in: token, range: NSRange(token.startIndex..., in: token)) != nil
-            var accepted = urls.count < maxURLs && (isKnown || hasImageExtension)
+            var accepted = urls.count < maxURLs && validHTTP &&
+                (isKnown || imageExtensions.contains(pathExtension))
 
             if isDataURI {
                 if let reference = ImageDataURI.reference(from: token),
