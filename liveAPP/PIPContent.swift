@@ -1090,7 +1090,8 @@ final class PIPServiceMessages {
 
             pendingSegments.append(contentsOf: segments)
             if pendingSegments.count > 200 {
-                pendingSegments.removeFirst(pendingSegments.count - 200)
+                let dropCount = PIPPendingPolicy.dropCount(parentIDs: pendingSegments.map(\.parentID), limit: 200)
+                pendingSegments.removeFirst(dropCount)
             }
 
             populateVisibleMessagesIfNeeded()
@@ -1210,7 +1211,8 @@ final class PIPServiceMessages {
         for index in 0..<groupEnd {
             let data = pendingSegments[index]
             let nextBottom = bottom + segmentHeight(data) + data.verticalSpacing
-            if nextBottom <= visibleInsertLimit || count == 0 && stackedMessages.isEmpty {
+            if PIPPendingPolicy.canInsert(nextBottom: Double(nextBottom), limit: Double(visibleInsertLimit),
+                                          isEmpty: count == 0 && stackedMessages.isEmpty) {
                 count += 1
                 bottom = nextBottom
             } else {
@@ -1534,7 +1536,7 @@ final class PIPServiceMessages {
             $0.isNew = false
         }
 
-        if IshasOverFlow() {
+        if IshasOverFlow() || isPendingInsertionBlocked {
             prepareFade()
         } else {
             phase = pendingSegments.isEmpty ? .idle : .pending
@@ -1546,6 +1548,13 @@ final class PIPServiceMessages {
 
 
 
+    /// 既有內容未超高也可能放不下下一段；使用與插入相同的計算，避免等待循環。
+    private var isPendingInsertionBlocked: Bool {
+        guard let first = pendingSegments.first, !stackedMessages.isEmpty else { return false }
+        return fittingPrefixCount(upTo: contiguousPendingGroupEnd(parentID: first.parentID),
+                                  currentBottom: currentVisibleBottom()).count == 0
+    }
+
     private func findFadeCandidate() -> MessageLayerTuple? {
 
         let leaders = stackedMessages
@@ -1553,7 +1562,10 @@ final class PIPServiceMessages {
                 msg.alpha > 0 &&
                 !msg.isNew &&
                 !msg.isFadingOut &&
-                abs(msg.startY - msg.targetY) < snapThreshold
+                abs(msg.startY - msg.targetY) < snapThreshold &&
+                stackedMessages.filter { member in
+                    msg.parentMessageID == nil ? member === msg : member.parentMessageID == msg.parentMessageID
+                }.allSatisfy { !$0.isNew && abs($0.startY - $0.targetY) < snapThreshold }
             }
 
         guard !leaders.isEmpty else { return nil }
@@ -1602,18 +1614,16 @@ final class PIPServiceMessages {
         }
 
 
-        if let msg = fadeCandidate {
-            
-                startFadeAnimation(for: msg)
-            
+        // 同一批已顯示片段共用同一時間步長，避免名稱先消失、尾段仍留在原處。
+        let group = stackedMessages.filter {
+            msg.parentMessageID == nil ? $0 === msg : $0.parentMessageID == msg.parentMessageID
         }
-
-
-        if msg.alpha > 0 {
-            return
-        }
-
-        removeMessage(msg)
+        let now = CACurrentMediaTime()
+        let elapsed = now - lastFadeTriggerTime
+        lastFadeTriggerTime = now
+        for member in group { startFadeAnimation(for: member, elapsed: elapsed) }
+        guard group.allSatisfy({ $0.alpha <= 0 }) else { return }
+        for member in group { removeMessage(member, refill: false) }
         fadeCandidate = nil
 
         _ = relayoutTargetsOnly(updateTargetY: true, changeSY: false)
@@ -1629,7 +1639,8 @@ final class PIPServiceMessages {
 
     }
 
-    func removeMessage(_ msg:MessageLayerTuple){
+    /// 批次移除同組時延後補位，避免尚未移完就插入下一批。
+    func removeMessage(_ msg:MessageLayerTuple, refill: Bool = true){
 
         if let avatar = msg.avatar {
             layerPool.recycleImageLayer(avatar)
@@ -1664,8 +1675,10 @@ final class PIPServiceMessages {
         animatingMessages.removeAll { $0 ===  msg }
         animatingMessages.removeAll { $0.alpha <= 0 }
 
-        populateVisibleMessagesIfNeeded()
-        layoutTargetsAndStartAnimation()
+        if refill {
+            populateVisibleMessagesIfNeeded()
+            layoutTargetsAndStartAnimation()
+        }
 
     }
 
@@ -1713,17 +1726,14 @@ final class PIPServiceMessages {
     }
 
 
-    private func startFadeAnimation(for msg: MessageLayerTuple) {
+    private func startFadeAnimation(for msg: MessageLayerTuple, elapsed: CFTimeInterval) {
 
         // 舊偏好若為零或非有限值，不得產生 NaN alpha 讓圖層永遠無法移除。
         let configuredDuration: CGFloat = LPConfig.shared.FadeAlpha
         let fadeDuration = configuredDuration.isFinite && configuredDuration > 0 ? configuredDuration : 0.25
 
-        let now = CACurrentMediaTime()
-        let elapsed = now - lastFadeTriggerTime
         let fadeStep = min(elapsed / fadeDuration, 1)
 
-        lastFadeTriggerTime = now
 
         let wasFadingOut = msg.isFadingOut
         msg.isFadingOut = true
