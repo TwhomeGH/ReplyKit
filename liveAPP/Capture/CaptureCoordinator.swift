@@ -203,7 +203,10 @@ import ScreenCaptureKit
                 statusLine.frame(maxWidth: .infinity, alignment: .leading)
             }
             if capture.isBusy {
-                Button { capture.stop() } label: {
+                Button {
+                    sendlog(message: "[CaptureStopRequest] origin=userButton")
+                    capture.stop()
+                } label: {
                     Label(capture.phase == .stopping ? AppLanguage.localized("capture.stopping") : AppLanguage.localized("capture.stop"), systemImage: "stop.circle")
                         .frame(maxWidth: .infinity)
                 }

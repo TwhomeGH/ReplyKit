@@ -202,6 +202,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     private var pump: ScreenSamplePump?
     private var operation: Task<Void, Never>?
     private var diagnostics: Task<Void, Never>?
+    private var serverStatusTask: Task<Void, Never>?
     private var ownsAudioSession = false
     private var previousIdleTimerDisabled: Bool?
     private var audioObservers: [NSObjectProtocol] = []
@@ -233,7 +234,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     nonisolated func contentSharingPicker(_ picker: SCContentSharingPicker, didCancelFor stream: SCStream?) {
         Task { @MainActor [weak self] in
             guard let self, self.state.phase == .selecting else { return }
-            await self.stop()
+            await self.finish(message: nil, reason: "pickerCancelled")
         }
     }
     nonisolated func contentSharingPickerStartDidFailWithError(_ error: Error) {
@@ -252,7 +253,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     /// - Parameter filter: 系統分享選擇器提供的擷取內容與麥克風選項。
     private func selected(_ filter: SCContentFilter) {
         if state.phase == .streaming {
-            Task { await finish(message: "分享選項已變更，請重新開始擷取以套用新選擇。") }
+            Task { await finish(message: "分享選項已變更，請重新開始擷取以套用新選擇。", reason: "pickerSelectionChanged") }
             return
         }
         guard let token = state.id, state.transition(.starting, for: token) else { return }
@@ -380,6 +381,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         // RTMP 失敗但本地可控錄製繼續時，仍能回報 Mixer 資料。
         diagnostics = Task { [weak self] in
             var sampleCount = 0
+            var sendProgress = CaptureSendProgress()
             AVLagModel.shared.begin(session: token.uuidString)
             while !Task.isCancelled {
                 guard let self else { return }
@@ -389,6 +391,14 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                 let detailedLog = sampleCount < 12 || sampleCount % 6 == 0
                 if sourceLog {
                     sendlog(message: "[CaptureSource] backend=screenCaptureKit session=\(token) mode=\(self.mode.rawValue) capturePhase=\(self.state.phase.rawValue) publishPhase=\(self.publishingStage) \(queues)")
+                }
+                if let connection = self.connection, let transport = await connection.transportDiagnostics() {
+                    guard !Task.isCancelled, self.state.id == token else { return }
+                    let summary = sendProgress.sample(generation: transport.generation, completed: transport.completedBytes,
+                        queued: transport.queuedBytes, failed: transport.failedBatches, now: ProcessInfo.processInfo.systemUptime)
+                    if detailedLog || summary.changed {
+                        sendlog(message: "[CaptureSendProgress] session=\(token) \(summary.text) peerACK=unavailable serverDecode=unknown")
+                    }
                 }
                 if let observer = self.recordingOrientation {
                     sendlog(message: "[RecordingFrame] session=\(token) \(observer.frameSummary(now: CMClockGetTime(CMClockGetHostTimeClock()).seconds))")
@@ -562,6 +572,16 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         connection = conn; output = stream
         let logSession = state.id?.uuidString ?? "none"
         let logSecrets = [url, key]
+        serverStatusTask?.cancel()
+        // 此連線由本來源直接建立，未交給 RTMPSession；只在此處持有 status 訂閱。
+        serverStatusTask = Task { [weak self] in
+            for await status in await conn.status {
+                guard !Task.isCancelled, let self, self.state.id?.uuidString == logSession else { return }
+                let detail = CaptureErrorDiagnostics.sanitize(
+                    "code=\(status.code) level=\(status.level) description=\(status.description)", secrets: logSecrets)
+                sendlog(message: "[CaptureServerStatus] session=\(logSession) \(detail)")
+            }
+        }
         await conn.setOnLog { [weak self] event in
             // 放行連線生命週期、低頻佇列／時間軸摘要及同步事件；仍遮蔽敏感資訊。
             let prefixes = ["VideoQueue", "TCP ", "State:", "S0 version", "S0S1 received",
@@ -796,7 +816,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             guard let self, let current = self.capture, ObjectIdentifier(current) == identity,
                   self.state.phase != .stopping else { return }
             self.logFailure(error, stage: "capture.delegateStop")
-            await self.finish(message: "系統已停止畫面分享（錯誤碼 \(code)）。")
+            await self.finish(message: "系統已停止畫面分享（錯誤碼 \(code)）。", reason: "systemCaptureError")
         }
     }
     /// 不能將仍啟用的共用 session 還原為排他 category，否則會中斷其他 App 播放。
@@ -879,20 +899,22 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         sendlog(message: "[CaptureScreen] idleTimerDisabled=\(previous)")
     }
 
-    func stop() async { await finish(message: nil) }
+    func stop() async { await finish(message: nil, reason: "driverStopRequested") }
     /// 結束整次擷取：取消並等待背景工作，收尾錄製、RTMP、Mixer 與系統觀察者。
     /// 收尾期間重複呼叫直接返回；完成後釋放音訊所有權並通知上層回到 idle。
     /// 不可由 operation／diagnostics／publishingTask 本身直接等待此函式，以免自我等待。
     /// - Parameter message: 收尾完成後顯示的訊息；正常停止可傳 nil。
-    private func finish(message: String?) async {
+    private func finish(message: String?, reason: String = "internalFinish") async {
         guard let token = state.id, state.phase != .stopping else { return }
         let started = CACurrentMediaTime()
         func mark(_ stage: String) {
             sendlog(message: "[CaptureSource] session=\(token) finish stage=\(stage) elapsedMs=\(Int((CACurrentMediaTime() - started) * 1000))")
         }
+        sendlog(message: "[CaptureStop] session=\(token) reason=\(reason) phase=\(state.phase.rawValue) publishPhase=\(publishingStage) hasErrorMessage=\(message != nil)")
         mark("begin")
         sendlog(message: "[CaptureSource] session=\(token) stopping publishPhase=\(publishingStage)")
         state.stopping(); update(.stopping, nil)
+        serverStatusTask?.cancel(); serverStatusTask = nil
         operation?.cancel(); diagnostics?.cancel()
         mark("diagnostics.wait")
         await awaitAtMost(2, task: diagnostics); diagnostics = nil

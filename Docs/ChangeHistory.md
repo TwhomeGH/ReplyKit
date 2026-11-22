@@ -1,5 +1,13 @@
 # 變更歷史
 
+## 2026.11.22 15:02 ScreenCaptureKit 停止與傳送診斷
+
+- 手動停止按鈕記錄 `CaptureStopRequest origin=userButton`；擷取清理記錄停止原因、session 與狀態，區分 picker 取消／選項變更、系統擷取錯誤及一般內部停止。
+- 直接建立的 RTMP 連線接收狀態事件，經既有敏感資訊遮蔽後記錄 `CaptureServerStatus`；此路徑未使用 RTMPSession，避免重複競爭單一 status 訂閱。
+- 每五秒觀察本機傳送進度，正常沿用低頻詳細摘要，狀態改變立即記錄；有待送資料且十秒未完成才標記 localSendStalled，換線重設基準。空佇列不代表伺服器播放正常。
+- 目前底層 acknowledgedBytes 固定為 nil，明確輸出 peerACK=unavailable、serverDecode=unknown；對端 ACK 計數仍待底層實作及 CI 後接入，不以本機完成 bytes 冒充。
+- 新增停滯／恢復／換線與空佇列政策測試；本機僅完成 Swift 語法檢查，Apple SDK 編譯與裝置驗收待完成。
+
 ## 2026.11.20 02:16 行內圖片網址判斷補強
 
 - 圖片副檔名改從 URL 路徑判斷，避免查詢參數或 fragment 含 .png 就誤判；HTTP(S) 必須具備非空主機及可解析 URL，已知圖片清單也遵守此規則。
