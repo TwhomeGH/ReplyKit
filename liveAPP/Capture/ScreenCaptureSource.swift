@@ -362,7 +362,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         if mode.wantsStreaming || (mode.wantsRecording && directRecordingEnabled) {
             startupStage = "pipeline.prepare"
             do {
-                try await prepareMediaPipeline(source: source, filter: filter, geometry: geometry)
+                try await prepareMediaPipeline(source: source, filter: filter, geometry: geometry, session: token.uuidString)
                 if mode.wantsStreaming { try await preparePublishing(size: geometry.encoderSize) }
             }
             catch is CancellationError { throw CancellationError() }
@@ -500,9 +500,10 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     /// - Parameters:
     ///   - source: 要掛載影音取樣接收器的 SCStream。
     ///   - filter: 用於判斷是否掛載麥克風輸入。
+    ///   - session: 擕取識別；寫入 VideoFrameTrace，供 ContentSyncAudit 配對。
     /// - Throws: 取樣處理器建立或系統輸出掛載失敗。
     private func prepareMediaPipeline(source: SCStream, filter: SCContentFilter,
-                                      geometry: CaptureStreamGeometry) async throws {
+                                      geometry: CaptureStreamGeometry, session: String) async throws {
         let defaults = userDefaults ?? .standard
         let pipeline = CaptureMediaPipeline()
         self.pipeline = pipeline
@@ -542,7 +543,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         let queuePolicy = CaptureQueuePolicy.make(streaming: mode.wantsStreaming,
                                                   recording: mode.wantsRecording)
         sendlog(message: "[CaptureQueuePolicy] streaming=\(mode.wantsStreaming) recording=\(mode.wantsRecording) \(queuePolicy.summary)")
-        let pump = try ScreenSamplePump(mixer: pipeline.mixer, session: token.uuidString, probe: probe,
+        let pump = try ScreenSamplePump(mixer: pipeline.mixer, session: session, probe: probe,
             rotateLeft: geometry.rotation == .left,
             canvas: canvas, fills: fills, queuePolicy: queuePolicy)
         self.pump = pump
