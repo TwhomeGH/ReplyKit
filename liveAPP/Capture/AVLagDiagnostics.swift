@@ -1,6 +1,6 @@
 import Foundation
 
-/// 一次 A/V 內容延遲取樣；秒為單位，nil 表示該階段尚未取得。
+/// 一次 A/V 來源時間戳取樣（不是實際內容同步量測）；秒為單位，nil 表示該階段尚未取得。
 struct AVLagObservation: Codable, Equatable, Sendable {
     var session: String
     var sampledAt: Date
@@ -9,6 +9,11 @@ struct AVLagObservation: Codable, Equatable, Sendable {
     var videoContentAge: Double?
     var videoIdleAge: Double?
     var audioContentAge: Double?
+    var audioIdleAge: Double?
+    var videoWorkerIdleAge: Double?
+    var audioWorkerIdleAge: Double?
+    var clockComparison: String? = "unverified"
+    var contentSynchronization: String? = "notMeasured"
     var videoQueueAge: Double?
     var videoQueueOldestAge: Double?
     var videoProcessAge: Double?
@@ -20,7 +25,7 @@ struct AVLagObservation: Codable, Equatable, Sendable {
     var sourcePTSDeltaPerMinute: Double?
     /// 音訊 host-minus-PTS 減影片 host-minus-PTS；用來觀察來源時鐘漂移。
     var avClockDrift: Double?
-    /// stable / drifting / jumped；只是診斷，不直接修正時間戳。
+    /// unpairedObservation / stale；未配對的觀測不判定影音同步。
     var avSyncState: String?
     var videoQueue: String?
     var contentAgeJump: Double?
@@ -33,12 +38,12 @@ struct AVLagObservation: Codable, Equatable, Sendable {
             value.map { String(format: "%.6f", $0) } ?? "unknown"
         }
         return "videoPTS=\(number(videoPTS)) audioPTS=\(number(audioPTS)) "
-            + "videoContentAge=\(number(videoContentAge)) videoIdleAge=\(number(videoIdleAge)) audioContentAge=\(number(audioContentAge)) "
+            + "videoContentAge=\(number(videoContentAge)) videoIdleAge=\(number(videoIdleAge)) audioContentAge=\(number(audioContentAge)) audioIdleAge=\(number(audioIdleAge)) videoWorkerIdleAge=\(number(videoWorkerIdleAge)) audioWorkerIdleAge=\(number(audioWorkerIdleAge)) "
             + "videoQueueAge=\(number(videoQueueAge)) videoQueueOldestAge=\(number(videoQueueOldestAge)) "
             + "videoProcessAge=\(number(videoProcessAge)) "
             + "videoSourceAge=\(number(videoSourceAge)) sourcePTSDelta=\(number(sourcePTSDelta)) "
             + "deltaDrift=\(number(sourcePTSDeltaDrift)) deltaPerMin=\(number(sourcePTSDeltaPerMinute)) "
-            + "clockDrift=\(number(avClockDrift)) syncState=\(avSyncState ?? "unknown") "
+            + "clockDrift=\(number(avClockDrift)) syncState=\(avSyncState ?? "unknown") clockComparison=\(clockComparison ?? "unknown") contentSync=\(contentSynchronization ?? "unknown") "
             + "jump=\(number(contentAgeJump)) frames=\(videoFrames)/\(audioFrames) "
             + "queue=\(videoQueue ?? "unknown")"
     }
@@ -60,11 +65,12 @@ final class AVLagDiagnostics: @unchecked Sendable {
     private var pendingJump: Double?
     private var videoFrames = 0
     private var audioFrames = 0
+    private var lastAudioAt: Double?
     private var lastVideoAt: Double?
+    private var lastVideoWorkerAt: Double?
+    private var lastAudioWorkerAt: Double?
     private var firstSourceDelta: Double?
     private var firstSourceDeltaAt: Double?
-    private var lastSourceDelta: Double?
-    private var lastSourceDeltaAt: Double?
 
     /// 影片從 SCStream 交給 worker 時呼叫；contentAge 是回呼到達時間減來源 PTS。
     func recordVideo(arrival: Double, pts: Double, at now: Double,
@@ -82,7 +88,8 @@ final class AVLagDiagnostics: @unchecked Sendable {
         videoQueueAge = max(0, now - arrival)
         videoQueueOldestAge = queueOldestAge
         videoQueue = queue
-        lastVideoAt = now
+        lastVideoAt = arrival
+        lastVideoWorkerAt = now
     }
 
     /// 影片加工完成時呼叫；processAge 是從回呼到加工完成的時間。
@@ -94,13 +101,15 @@ final class AVLagDiagnostics: @unchecked Sendable {
         videoSourceAge = max(0, now - pts)
         if let queueOldestAge { videoQueueOldestAge = queueOldestAge }
         videoQueue = queue
-        lastVideoAt = now
+        lastVideoWorkerAt = now
     }
 
     /// 系統音訊（track 0）回呼；麥克風不併入 A/V 來源偏移。
     func recordAudio(arrival: Double, pts: Double, at now: Double, isMic: Bool) {
         lock.lock(); defer { lock.unlock() }
         guard !isMic, arrival.isFinite, pts.isFinite, now.isFinite else { return }
+        lastAudioAt = arrival
+        lastAudioWorkerAt = now
         audioFrames += 1
         audioPTS = pts
         audioContentAge = arrival - pts
@@ -109,7 +118,16 @@ final class AVLagDiagnostics: @unchecked Sendable {
     /// 取樣並消耗一次階梯事件；沒有影片資料時回傳 nil，不以零冒充。
     func snapshot(session: String, now: Double, sampledAt: Date = Date()) -> AVLagObservation? {
         lock.lock(); defer { lock.unlock() }
-        guard lastVideoAt != nil else { return nil }
+        guard lastVideoAt != nil, now.isFinite else { return nil }
+        // 過期樣本只保留原始數值；恢復後另建基準，不延續停頓造成的假漂移。
+        let fresh = [lastVideoAt, lastAudioAt].allSatisfy { time in
+            guard let time else { return false }
+            return now >= time && now - time <= 0.5
+        }
+        if !fresh {
+            firstSourceDelta = nil
+            firstSourceDeltaAt = nil
+        }
         let sourceDelta: Double?
         if let videoPTS, let audioPTS, videoPTS.isFinite, audioPTS.isFinite {
             sourceDelta = videoPTS - audioPTS
@@ -117,7 +135,7 @@ final class AVLagDiagnostics: @unchecked Sendable {
             sourceDelta = nil
         }
 
-        if let sourceDelta {
+        if fresh, let sourceDelta {
             if firstSourceDelta == nil {
                 firstSourceDelta = sourceDelta
                 firstSourceDeltaAt = now
@@ -138,21 +156,8 @@ final class AVLagDiagnostics: @unchecked Sendable {
         } else {
             clockDrift = nil
         }
-        var syncState: String?
-        if let sourceDelta {
-            // 100 ms 以上的變化只在短時間內視為跳變；累積 60 秒的變化
-            // 應標成 drifting，不要讓一次正常取樣窗口掩蓋漂移趨勢。
-            let changedQuickly = lastSourceDeltaAt.map { now - $0 < 10 } ?? false
-            let jumped = changedQuickly
-                && (lastSourceDelta.map { abs(sourceDelta - $0) >= 0.100 } ?? false)
-            let drifting = abs(sourceDeltaDrift ?? 0) >= 0.080
-                || abs(clockDrift ?? 0) >= 0.080
-            syncState = jumped ? "jumped" : (drifting ? "drifting" : "stable")
-        }
-        if sourceDelta != nil {
-            lastSourceDelta = sourceDelta
-            lastSourceDeltaAt = now
-        }
+        // 最新樣本未做 arrival 配對，因此不再用數值門檻宣判同步或漂移。
+        let syncState = fresh ? "unpairedObservation" : "stale"
 
         let observation = AVLagObservation(
             session: session,
@@ -162,6 +167,9 @@ final class AVLagDiagnostics: @unchecked Sendable {
             videoContentAge: videoContentAge,
             videoIdleAge: lastVideoAt.map { max(0, now - $0) },
             audioContentAge: audioContentAge,
+            audioIdleAge: lastAudioAt.map { max(0, now - $0) },
+            videoWorkerIdleAge: lastVideoWorkerAt.map { max(0, now - $0) },
+            audioWorkerIdleAge: lastAudioWorkerAt.map { max(0, now - $0) },
             videoQueueAge: videoQueueAge,
             videoQueueOldestAge: videoQueueOldestAge,
             videoProcessAge: videoProcessAge,
@@ -179,7 +187,7 @@ final class AVLagDiagnostics: @unchecked Sendable {
         return observation
     }
 
-    /// 讓裝置頁在沒有新取樣時也能判斷資料是否過期。
+    /// 最近已送進 worker 的來源回呼時間；不以加工完成時間冒充來源更新。
     var lastVideoArrival: Double? {
         lock.lock(); defer { lock.unlock() }
         return lastVideoAt

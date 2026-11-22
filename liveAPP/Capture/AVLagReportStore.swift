@@ -2,7 +2,9 @@ import Foundation
 
 /// 單一 AV Lag segment 的可攜文件；schema 與即時報告共用，回放工具只需讀 samples。
 struct AVLagReportDocument: Codable, Sendable {
-    var schema = 1
+    var schema = 2
+    var timeZone: String? = "Asia/Taipei"
+    var measurementScope: String? = "source timestamp observations; not measured content synchronization"
     var session: String
     var startedAt: Date
     var endedAt: Date?
@@ -16,9 +18,7 @@ struct AVLagReportDocument: Codable, Sendable {
     var samples: [AVLagObservation]
 
     func encoded() throws -> Data {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        encoder.dateEncodingStrategy = .iso8601
+        let encoder = AVLagDateCoding.encoder()
         return try encoder.encode(self)
     }
 
@@ -133,18 +133,9 @@ actor AVLagReportStore {
         root.appendingPathComponent("\(session)-\(segment).json")
     }
 
-    private func encoder() -> JSONEncoder {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        encoder.dateEncodingStrategy = .iso8601
-        return encoder
-    }
+    private func encoder() -> JSONEncoder { AVLagDateCoding.encoder() }
 
-    private func decoder() -> JSONDecoder {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return decoder
-    }
+    private func decoder() -> JSONDecoder { AVLagDateCoding.decoder() }
 
     private func readIndex() -> AVLagReportIndex {
         guard let data = try? Data(contentsOf: indexURL),
@@ -309,5 +300,36 @@ actor AVLagReportStore {
         for segment in oldest.segments {
             try? FileManager.default.removeItem(at: fileURL(session: oldest.id, segment: segment.index))
         }
+    }
+}
+
+/// 共用報告與索引的日期契約：輸出台北時間含毫秒，兼容舊 UTC 日期。
+private enum AVLagDateCoding {
+    static func encoder() -> JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .custom { date, encoder in
+            var value = encoder.singleValueContainer()
+            let formatter = ISO8601DateFormatter()
+            formatter.timeZone = TimeZone(secondsFromGMT: 8 * 3600)
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            try value.encode(formatter.string(from: date))
+        }
+        return encoder
+    }
+
+    static func decoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let raw = try container.decode(String.self)
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = formatter.date(from: raw) { return date }
+            formatter.formatOptions = [.withInternetDateTime]
+            if let date = formatter.date(from: raw) { return date }
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid ISO8601 date")
+        }
+        return decoder
     }
 }

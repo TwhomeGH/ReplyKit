@@ -19,7 +19,7 @@ struct AVLagDiagnosticsTests {
         #expect(snapshot?.videoQueueOldestAge == 0.25)
         #expect(abs((snapshot?.videoProcessAge ?? 0) - 0.05) < 0.0001)
         #expect(abs((snapshot?.videoSourceAge ?? 0) - 0.55) < 0.0001)
-        #expect(abs((snapshot?.videoIdleAge ?? 0) - 0.15) < 0.0001)
+        #expect(abs((snapshot?.videoIdleAge ?? 0) - 0.20) < 0.0001)
         #expect(abs((snapshot?.sourcePTSDelta ?? 0) - 0.10) < 0.0001)
         #expect(snapshot?.videoFrames == 1)
         #expect(snapshot?.audioFrames == 1)
@@ -42,7 +42,7 @@ struct AVLagDiagnosticsTests {
         diagnostics.recordAudio(arrival: 100, pts: 99.97, at: 100, isMic: false)
         let baseline = diagnostics.snapshot(session: "s", now: 100)
         #expect(abs((baseline?.sourcePTSDeltaDrift ?? 1) - 0) < 0.0001)
-        #expect(baseline?.avSyncState == "stable")
+        #expect(baseline?.avSyncState == "unpairedObservation")
 
         diagnostics.recordVideo(arrival: 160, pts: 160, at: 160, queue: "q", queueOldestAge: nil)
         diagnostics.recordAudio(arrival: 160, pts: 159.77, at: 160, isMic: false)
@@ -50,7 +50,57 @@ struct AVLagDiagnosticsTests {
         #expect(abs((drifted?.sourcePTSDeltaDrift ?? 0) - 0.2) < 0.0001)
         #expect(abs((drifted?.sourcePTSDeltaPerMinute ?? 0) - 0.2) < 0.0001)
         #expect(abs((drifted?.avClockDrift ?? 0) - 0.23) < 0.0001)
-        #expect(drifted?.avSyncState == "drifting")
+        #expect(drifted?.avSyncState == "unpairedObservation")
+    }
+
+    @Test func staleSamplesDoNotClaimSynchronization() {
+        let diagnostics = AVLagDiagnostics()
+        diagnostics.recordVideo(arrival: 100, pts: 100, at: 100, queue: "q", queueOldestAge: nil)
+        diagnostics.recordAudio(arrival: 101, pts: 101, at: 101, isMic: false)
+        let sample = diagnostics.snapshot(session: "s", now: 101)
+        #expect(sample?.avSyncState == "stale")
+        #expect(sample?.contentSynchronization == "notMeasured")
+        #expect(sample?.audioIdleAge == 0)
+    }
+
+    @Test("來源過期不更新基準，恢復後重新觀測")
+    func staleBaselineResetsOnRecovery() {
+        let diagnostics = AVLagDiagnostics()
+        diagnostics.recordVideo(arrival: 100, pts: 100, at: 100, queue: "q", queueOldestAge: nil)
+        diagnostics.recordAudio(arrival: 100, pts: 99, at: 100, isMic: false)
+        _ = diagnostics.snapshot(session: "s", now: 100)
+        let stale = diagnostics.snapshot(session: "s", now: 101)
+        #expect(stale?.sourcePTSDeltaDrift == nil)
+        #expect(stale?.sourcePTSDeltaPerMinute == nil)
+        diagnostics.recordVideo(arrival: 102, pts: 102, at: 102, queue: "q", queueOldestAge: nil)
+        diagnostics.recordAudio(arrival: 102, pts: 102, at: 102, isMic: false)
+        #expect(diagnostics.snapshot(session: "s", now: 102)?.sourcePTSDeltaDrift == 0)
+    }
+
+    @Test("加工完成不刷新來源回呼時間，日誌保留兩軌新鮮度")
+    func workerProgressDoesNotRefreshSource() {
+        let diagnostics = AVLagDiagnostics()
+        diagnostics.recordVideo(arrival: 100, pts: 100, at: 101, queue: "q", queueOldestAge: nil)
+        diagnostics.recordVideoProcessed(arrival: 100, pts: 100, at: 102, queue: "q", queueOldestAge: nil)
+        diagnostics.recordAudio(arrival: 100, pts: 100, at: 102, isMic: false)
+        let sample = diagnostics.snapshot(session: "s", now: 102)
+        #expect(sample?.videoIdleAge == 2)
+        #expect(sample?.audioIdleAge == 2)
+        #expect(sample?.videoWorkerIdleAge == 0)
+        #expect(sample?.audioWorkerIdleAge == 0)
+        #expect(sample?.avSyncState == "stale")
+        #expect(sample?.logLine.contains("audioIdleAge=2.000000") == true)
+    }
+
+    @Test func exportHasTaipeiOffsetAndMilliseconds() throws {
+        let date = Date(timeIntervalSince1970: 0.125)
+        let document = AVLagReportDocument(session: "s", startedAt: date, segmentIndex: 0,
+            segmentStartedAt: date, complete: false, sessionComplete: false,
+            truncatedBefore: false, sampleCount: 0, samples: [])
+        let data = try document.encoded()
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["startedAt"] as? String == "1970-01-01T08:00:00.125+08:00")
+        #expect(object["timeZone"] as? String == "Asia/Taipei")
     }
 
     @Test func noVideoMeansUnknownInsteadOfZero() {

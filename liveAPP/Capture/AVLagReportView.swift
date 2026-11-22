@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 import UIKit
 
-/// 裝置頁入口：顯示目前 A/V 內容延遲，並提供可帶去回放修正工具的 JSON。
+/// 裝置頁入口：顯示來源時間戳與處理耗時，提供診斷 JSON（不能直接用作回放校正曲線）。
 struct AVLagReportView: View {
     @ObservedObject private var model = AVLagModel.shared
     @State private var reportText = ""
@@ -17,9 +17,9 @@ struct AVLagReportView: View {
             Section(AppLanguage.localized("avLag.current")) {
                 if let latest = model.latest {
                     row("session", latest.session)
-                    row("video content age", seconds(latest.videoContentAge))
-                    row("video idle age", seconds(latest.videoIdleAge))
-                    row("audio content age", seconds(latest.audioContentAge))
+                    row("影片 callback − 來源 PTS（時鐘未驗證）", seconds(latest.videoContentAge))
+                    row("影片來源回呼距今", seconds(latest.videoIdleAge))
+                    row("音訊 callback − 來源 PTS（時鐘未驗證）", seconds(latest.audioContentAge))
                     row("video queue age", seconds(latest.videoQueueAge))
                     row("video queue oldest", latest.videoQueueOldestAge.map { seconds($0) }
                         ?? AppLanguage.localized("avLag.queueEmpty"))
@@ -29,9 +29,14 @@ struct AVLagReportView: View {
                     row("A/V source drift", seconds(latest.sourcePTSDeltaDrift))
                     row("A/V drift per minute", seconds(latest.sourcePTSDeltaPerMinute))
                     row("audio - video host offset", seconds(latest.avClockDrift))
-                    row("A/V sync state", latest.avSyncState ?? "unknown")
+                    row("來源時間戳趨勢（非內容同步）", latest.avSyncState ?? "unknown")
                     row("content age jump", latest.contentAgeJump.map { seconds($0) }
                         ?? AppLanguage.localized("avLag.noJump"))
+                    row("實際內容同步", "未量測")
+                    row("時鐘可比性", latest.clockComparison ?? "unverified")
+                    row("音訊來源回呼距今", seconds(latest.audioIdleAge))
+                    row("影片 worker 更新距今", seconds(latest.videoWorkerIdleAge))
+                    row("音訊 worker 更新距今", seconds(latest.audioWorkerIdleAge))
                     row("frames", "\(latest.videoFrames) video / \(latest.audioFrames) audio")
                     if let queue = latest.videoQueue {
                         Text(queue).font(.caption.monospaced()).foregroundStyle(.secondary)
