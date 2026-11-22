@@ -42,6 +42,15 @@ class SharedDefaults {
 @available(iOS 10.0, *)
 class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
+    /// `[ContentSyncAudit]` 走 HaishinKit 全域 logger，不在 RTMP `setOnLog` 內；
+    /// 用額外 handler 轉送到 App 診斷，避免覆蓋 RTMPConnection 的 onLog。
+    private static let installHaishinKitLogBridge: Void = {
+        HaishinKit.logger.addLogHandler { _, message in
+            guard message.hasPrefix("[ContentSyncAudit]") else { return }
+            sendlog(title: "HaishinKit", message: message)
+        }
+    }()
+
 
     var DWidth = 0
     var DHeight = 0
@@ -668,6 +677,7 @@ class SampleHandler: RPBroadcastSampleHandler , @unchecked Sendable{
 
     // MARK: 初始化
     override init() {
+        _ = Self.installHaishinKitLogBridge
 
         ADWidth = RPConfig.shared.state.ADWidth
         ADHeight = RPConfig.shared.state.ADHeight

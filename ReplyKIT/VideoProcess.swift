@@ -430,6 +430,8 @@ actor FrameProcessorActor {
 final class VideoFrameProcessor {
     private let mediaMixer: MediaMixer
     private let sendlog: (String) -> Void
+    private let session: String
+    private var traceSequence: UInt64 = 0
     private var actor: FrameProcessorActor
     private var angle: RotationAngle
     private let stateLock = NSLock()
@@ -446,8 +448,16 @@ final class VideoFrameProcessor {
     var processedCount: Int { stateSnapshot().processedCount }
     var droppedCount: Int { stateSnapshot().droppedCount }
 
-    init(mediaMixer: MediaMixer, sendlog: @escaping (String) -> Void) {
+    private func nextTraceSequence() -> UInt64 {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        traceSequence &+= 1
+        return traceSequence
+    }
+
+    init(mediaMixer: MediaMixer, session: String = UUID().uuidString, sendlog: @escaping (String) -> Void) {
         self.mediaMixer = mediaMixer
+        self.session = session
         self.sendlog = sendlog
         self.angle = RotationAngle(rawValue: UInt32(RPConfig.shared.state.Rotate)) ?? .landscapeRight
         self.actor = FrameProcessorActor(
@@ -496,7 +506,13 @@ final class VideoFrameProcessor {
                 }
                 return
             }
-            await mediaMixer.append(rotated)
+            let trace = VideoFrameTrace(
+                session: session,
+                sequence: nextTraceSequence(),
+                sourcePTS: originalTime.presentationTimeStamp.seconds,
+                handedPTS: rotated.presentationTimeStamp.seconds
+            )
+            await mediaMixer.append(rotated, track: 0, videoTrace: trace)
             recordMixerReturned()
         }
     }

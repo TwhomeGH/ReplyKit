@@ -42,14 +42,16 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     let audio: CaptureMailbox<CapturedSample>
     let mic: CaptureMailbox<CapturedSample>
     let queuePolicy: CaptureQueuePolicy
+    let session: String
     private var workers: [Task<Void, Never>] = []
     private var loggedFrameSize = CGSize.zero
     let callbacks = CaptureCallbackDiagnostics()
     let processing: VideoProcessingDiagnostics
     let avLag = AVLagDiagnostics()
-    init(mixer: MediaMixer, probe: ScreenAudioProbe, rotateLeft: Bool,
+    init(mixer: MediaMixer, session: String, probe: ScreenAudioProbe, rotateLeft: Bool,
          canvas: CGSize? = nil, fills: Bool = false,
          queuePolicy: CaptureQueuePolicy) throws {
+        self.session = session
         self.queuePolicy = queuePolicy
         video = CaptureMailbox(budget: queuePolicy.videoBudget, maxDelay: queuePolicy.videoMaxDelay)
         audio = CaptureMailbox(budget: queuePolicy.audioBudget, maxDelay: queuePolicy.audioMaxDelay)
@@ -61,6 +63,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         for (queue, track, isVideo) in [(video, UInt8(0), true), (audio, UInt8(0), false), (mic, UInt8(1), false)] {
             workers.append(Task {
                 var rotationFailures = 0
+                var sequence: UInt64 = 0
                 for await sample in queue.stream() {
                     guard !Task.isCancelled else { break }
                     if isVideo {
@@ -74,7 +77,14 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                             avLag.recordVideoProcessed(arrival: sample.arrival, pts: sample.pts,
                                                        at: processedAt, queue: video.summary,
                                                        queueOldestAge: video.oldestDelaySeconds)
-                            await mixer.append(rotated, track: track)
+                            let trace = VideoFrameTrace(
+                                session: session,
+                                sequence: sequence,
+                                sourcePTS: sample.pts,
+                                handedPTS: rotated.presentationTimeStamp.seconds
+                            )
+                            sequence &+= 1
+                            await mixer.append(rotated, track: track, videoTrace: trace)
                         } catch {
                             rotationFailures += 1
                             if rotationFailures == 1 || rotationFailures % 300 == 0 {
@@ -168,6 +178,15 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     private let recordingPolicy: RecordingOrientationPolicy
     /// 與 session 分開的物件識別；停止清空 session 後仍可核對實際釋放。
     private let lifetimeID = UUID()
+
+    /// `[ContentSyncAudit]` 走 HaishinKit 全域 logger，不在 RTMP `setOnLog` 內；
+    /// 用額外 handler 轉送到 App 診斷，避免覆蓋 RTMPConnection 的 onLog。
+    private static let installHaishinKitLogBridge: Void = {
+        HaishinKit.logger.addLogHandler { _, message in
+            guard message.hasPrefix("[ContentSyncAudit]") else { return }
+            sendlog(title: "HaishinKit", message: message)
+        }
+    }()
 
     deinit {
         sendlog(message: "[CaptureLifetime] source=\(lifetimeID) event=deinit")
@@ -278,6 +297,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     /// - Throws: 無法繼續擷取的初始化錯誤、系統啟動錯誤或工作取消。
     ///   呼叫端負責呼叫 finish(message:) 收回已建立的資源。
     private func start(filter: SCContentFilter, token: UUID) async throws {
+        _ = Self.installHaishinKitLogBridge
         let defaults = userDefaults ?? .standard
         let od = CGSize(width: defaults.integer(forKey: "odstW"),
                         height: defaults.integer(forKey: "odstH"))
@@ -522,7 +542,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         let queuePolicy = CaptureQueuePolicy.make(streaming: mode.wantsStreaming,
                                                   recording: mode.wantsRecording)
         sendlog(message: "[CaptureQueuePolicy] streaming=\(mode.wantsStreaming) recording=\(mode.wantsRecording) \(queuePolicy.summary)")
-        let pump = try ScreenSamplePump(mixer: pipeline.mixer, probe: probe,
+        let pump = try ScreenSamplePump(mixer: pipeline.mixer, session: token.uuidString, probe: probe,
             rotateLeft: geometry.rotation == .left,
             canvas: canvas, fills: fills, queuePolicy: queuePolicy)
         self.pump = pump
