@@ -3,6 +3,7 @@ name: Check Changes & Trigger Tag
 on:
   workflow_dispatch:
   push:
+    branches: ["main"]
     paths-ignore:
       - "Docs/**"
       - "README.md"
