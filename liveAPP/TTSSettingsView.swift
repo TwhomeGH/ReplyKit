@@ -768,7 +768,7 @@ struct TTSSettingsView: View {
     var body: some View {
         GeometryReader { geometry in
             ScrollView {
-                AdaptiveSettingsGrid(width: geometry.size.width) {
+                AdaptiveSettingsGrid(width: max(0, geometry.size.width - 2 * SettingsCardLayoutPolicy.pagePadding)) {
                     GroupBox("朗讀開關") {
                         VStack(alignment: .leading, spacing: 12) {
                             Toggle(isOn: $ttsEnabled) {
@@ -953,7 +953,7 @@ struct TTSSettingsView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 }
-                .padding()
+                .padding(SettingsCardLayoutPolicy.pagePadding)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }

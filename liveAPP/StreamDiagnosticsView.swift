@@ -182,7 +182,8 @@ struct StreamDiagnosticsSections: View {
                             Text(source).font(.headline)
                             summaryLabel(value)
                                 .font(.caption)
-                                .lineLimit(2)
+                                .lineLimit(nil)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                 }

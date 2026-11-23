@@ -240,12 +240,12 @@ struct GPURotateView: View {
     var body: some View {
         GeometryReader { geometry in
             ScrollView {
-                AdaptiveSettingsGrid(width: geometry.size.width) {
+                AdaptiveSettingsGrid(width: max(0, geometry.size.width - 2 * SettingsCardLayoutPolicy.pagePadding)) {
                     presetCard
                     canvasCard
                     rotationCard
                 }
-                .padding(16)
+                .padding(SettingsCardLayoutPolicy.pagePadding)
             }
         }
         .navigationTitle(String(localized: "settings.gpu.title"))

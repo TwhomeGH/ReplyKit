@@ -577,33 +577,51 @@ struct DeviceView: View {
     var body: some View {
         GeometryReader { geometry in
             ScrollView {
-                AdaptiveSettingsColumns(width: geometry.size.width) {
-                    screenCard
-                    cpuCard
-                    storageCard
-                    networkCard
-                    systemCard
-                    gpuCard
-                    MixerPipelineCard(audio: false, now: Date())
-                    videoPipelineCard
-                    socketHealthCard
-                    liveActivityCard
-                } trailing: {
-                    outputSizeCard
-                    memoryCard
-                    diskIOCard
-                    #if os(iOS)
-                    metricReportsCard
-                    #endif
-                    StreamDiagnosticsSections(now: Date())
-                    if capture.streamTelemetry.pipelineSampledAt != nil {
-                        capturePipelineCard
+                VStack(alignment: .leading, spacing: 24) {
+                    deviceSectionHeader("系統資源", systemImage: "cpu",
+                                        detail: "裝置、記憶體、儲存與系統效能")
+                    AdaptiveSettingsColumns(width: max(0, geometry.size.width - 2 * SettingsCardLayoutPolicy.pagePadding)) {
+                        systemCard
+                        cpuCard
+                        gpuCard
+                        screenCard
+                        storageCard
+                    } trailing: {
+                        memoryCard
+                        diskIOCard
+                        #if os(iOS)
+                        metricReportsCard
+                        #endif
                     }
-                    avLagCard
-                    MixerPipelineCard(audio: true, now: Date())
-                    audioPipelineCard
+
+                    deviceSectionHeader("擷取與編碼", systemImage: "video",
+                                        detail: "來源、混合輸出與影音時間戳觀測")
+                    AdaptiveSettingsColumns(width: max(0, geometry.size.width - 2 * SettingsCardLayoutPolicy.pagePadding)) {
+                        outputSizeCard
+                        MixerPipelineCard(audio: false, now: Date())
+                        videoPipelineCard
+                    } trailing: {
+                        if capture.streamTelemetry.pipelineSampledAt != nil {
+                            capturePipelineCard
+                        }
+                        MixerPipelineCard(audio: true, now: Date())
+                        audioPipelineCard
+                        avLagCard
+                    }
+
+                    deviceSectionHeader("連線與傳輸", systemImage: "network",
+                                        detail: "網路介面、RTMP 與 App／擴展控制通道")
+                    AdaptiveSettingsColumns(width: max(0, geometry.size.width - 2 * SettingsCardLayoutPolicy.pagePadding)) {
+                        networkCard
+                        socketHealthCard
+                        liveActivityCard
+                    } trailing: {
+                        StreamDiagnosticsSections(now: Date())
+                    }
                 }
-                .padding(16)
+                .frame(maxWidth: SettingsCardLayoutPolicy.maximumContentWidth, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .top)
+                .padding(SettingsCardLayoutPolicy.pagePadding)
             }
         }
         .onAppear {
@@ -1068,6 +1086,18 @@ struct DeviceView: View {
         }
     }
 
+    /// 區段各自排欄，避免整頁由兩個獨立長欄造成跨主題錯位。
+    private func deviceSectionHeader(_ title: String, systemImage: String,
+                                     detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Label(title, systemImage: systemImage).font(.title3.bold())
+                .accessibilityAddTraits(.isHeader)
+            Text(detail).font(.caption).foregroundStyle(.secondary)
+        }
+        .lineLimit(nil)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
     /// 設備診斷卡片；沿用頁面採樣與服務狀態。
     private var socketHealthCard: some View {
         SettingsDashboardCard(header: { Label("Socket 伺服器健康度", systemImage: "network") }) {
@@ -1075,19 +1105,49 @@ struct DeviceView: View {
             if let health = socketHealthServer.health {
                 Text("取樣：\(health.sampledAt.formatted(date: .omitted, time: .standard)) · 每 5 秒更新")
                     .font(.caption).foregroundStyle(.secondary)
-                Text("連線：\(health.connections) · 待送訊息：\(health.pendingMessages)")
-                Text("待送：\(ByteCountFormatter.string(fromByteCount: Int64(health.pendingBytes), countStyle: .file)) · 傳送中：\(ByteCountFormatter.string(fromByteCount: Int64(health.inFlightBytes), countStyle: .file))")
-                Text("接收緩衝：\(ByteCountFormatter.string(fromByteCount: Int64(health.receivingBytes), countStyle: .file))")
-                Text("一般訊息最大入列等待：\(health.maxEnqueueWaitSeconds, specifier: "%.3f") 秒")
-                Text("最久傳送等待：\(health.oldestSendSeconds, specifier: "%.2f") 秒")
-                Text("程序累計傳送錯誤：\(health.sendErrors) · 慢速連線關閉：\(health.slowConnectionClosures)")
-                Text("程序最大傳送耗時：\(health.maxSendSeconds, specifier: "%.2f") 秒 · 取樣間隔：\(health.sampleGapSeconds, specifier: "%.1f") 秒")
+                socketHealthRow("連線數", "\(health.connections)")
+                Divider()
+                Text("目前收送").font(.subheadline.bold())
+                socketHealthRow("待送訊息", "\(health.pendingMessages)")
+                socketHealthRow("待送資料", socketByteCount(health.pendingBytes))
+                socketHealthRow("傳送中資料", socketByteCount(health.inFlightBytes))
+                socketHealthRow("接收緩衝", socketByteCount(health.receivingBytes))
+                socketHealthRow("最久傳送等待", String(format: "%.2f 秒", health.oldestSendSeconds))
+                socketHealthRow("取樣間隔", String(format: "%.1f 秒", health.sampleGapSeconds))
+                Divider()
+                Text("本次程序累計／最大值").font(.subheadline.bold())
+                socketHealthRow("一般訊息最大入列等待", String(format: "%.3f 秒", health.maxEnqueueWaitSeconds))
+                socketHealthRow("最大傳送耗時", String(format: "%.2f 秒", health.maxSendSeconds))
+                socketHealthRow("傳送錯誤", "\(health.sendErrors)")
+                socketHealthRow("慢速連線關閉", "\(health.slowConnectionClosures)")
+                Divider()
                 Text("每分鐘記錄摘要；取樣間隔可能包含背景暫停。本機傳送完成不代表對端已處理，這不是 RTMP 串流健康度。")
                     .font(.caption).foregroundStyle(.secondary)
             } else {
                 Text("等待首次取樣").foregroundStyle(.secondary)
             }
         }
+    }
+
+    /// 窄視窗放不下標籤和值時改成上下排列，保留完整內容與固定閱讀順序。
+    private func socketHealthRow(_ title: String, _ value: String) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(title).fixedSize()
+                Spacer(minLength: 12)
+                Text(value).monospacedDigit().fixedSize()
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).foregroundStyle(.secondary)
+                Text(value).monospacedDigit()
+            }
+        }
+        .lineLimit(nil)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func socketByteCount(_ value: Int) -> String {
+        ByteCountFormatter.string(fromByteCount: Int64(value), countStyle: .file)
     }
 
     private var liveActivityCard: some View {

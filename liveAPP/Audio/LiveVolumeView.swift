@@ -147,7 +147,7 @@ struct LiveVolumeView: View {
                                 .font(.caption).monospacedDigit()
                         }
                     }
-                    AdaptiveSettingsColumns(width: geometry.size.width) {
+                    AdaptiveSettingsColumns(width: max(0, geometry.size.width - 2 * SettingsCardLayoutPolicy.pagePadding)) {
                         channel(title: "volume.app", value: $appVolume,
                                 measured: Double(model.appVolumeLive), color: .blue,
                                 notification: "appVolumeChanged")
@@ -180,9 +180,9 @@ struct LiveVolumeView: View {
                         }
                     }
                 }
-                .frame(maxWidth: 1280)
+                .frame(maxWidth: SettingsCardLayoutPolicy.maximumContentWidth)
                 .frame(maxWidth: .infinity, alignment: .top)
-                .padding(16)
+                .padding(SettingsCardLayoutPolicy.pagePadding)
             }
         }
         .onAppear { model.setVisible(true, id: visibilityID) }
