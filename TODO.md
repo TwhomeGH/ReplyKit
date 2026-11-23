@@ -10,7 +10,7 @@
 
 來源：`FixVideoTools/docs/upstream-fixes.md`、`app-capture-pipeline.md`、`content-lag-repair.md`。這是事後修補工具整理出的上游需求；`encoderPressure` 只回答「編碼管線有沒有積壓」，不能取代這裡的內容延遲檢查。
 
-- [ ] **P0-A1 抓幀時就打 timestamp（真正的抓幀時間）**：SCK 目前只讀 `SCStreamFrameInfo.status`，`VideoFrameTrace.sourcePTS` 仍是 `sample.pts`；ReplayKit 仍用 `originalTime.presentationTimeStamp`。要先確認兩條路徑的來源時間契約，將真正的抓幀／顯示時間放進 trace，新增 `captureTimeSource`；`captureTime=missing` 必須是警告，不能當成同步正常。
+- [ ] **P0-A1 抓幀時就打 timestamp（真正的抓幀時間）**：SCK 已接入 `SCStreamFrameInfo.displayTime` → `VideoFrameTrace.captureHostTime`，`sourcePTS` 仍是媒體 PTS；ReplayKit 仍用 `originalTime.presentationTimeStamp`，尚未證明是真正抓幀時間。`captureTime=missing`／`sourcePTS` 必須是警告，不能當成同步正常；待 motion fixture 與實機驗證。
 - [ ] **P0-A2 有界佇列＋依內容年齡丟棄**：佇列已是有界（12MB），但 `delayDropped=0`，淘汰條件不是內容年齡。用 A1 的時間算 `age`，超過門檻（建議 200ms）丟過期幀並計數 `contentAgeDropped`；靜態畫面沒有新幀時不可誤丟，也不能只靠收播前 flush 清 backlog。
 - [ ] **P0-A3 flush／追上事件**：目前只能從 `sourcePTSDelta` 轉負或 `videoIdle` 事後推測。追上或清 backlog 時記 `event=flush lag=... dropped=... queue=...`，區分「真的追上」與「沒有新影格」。
 - [ ] **P1-A4 AVLag 覆蓋整場並綁定錄影**：已有 session／segment／`complete`，但沒有 `recordingId` 綁定，報告範圍與實際檔案可能不一致。每份樣本加 `recordingId`／錄影起訖，`complete` 要能區分「取樣中斷」與「錄影結束」。

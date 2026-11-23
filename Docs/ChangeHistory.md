@@ -1,5 +1,13 @@
 # 變更歷史
 
+## 2026.11.24 07:35 A1：ScreenCaptureKit 接入 displayTime（GMT+8）
+
+- `ScreenCaptureSource` 從 `SCStreamFrameInfo.displayTime` 取得 mach absolute time，轉成 host clock 後放入 `VideoFrameTrace.captureHostTime`；`sourcePTS` 仍是媒體 PTS。
+- `captureTimeSource=displayTime`；沒有 displayTime 時維持 unknown，不會用交付 PTS 冒充抓幀時間。
+- 新增 `[CaptureClock] hostMinusUptime=...` 一次性日誌，供核對 displayTime 與 `ProcessInfo.systemUptime` 的時鐘差。
+- ReplayKit 路徑仍只有 `presentationTime`，尚未證明是真正的抓幀時間；待 motion fixture 驗證。
+- 驗證：Swift 語法檢查通過；Apple SDK 編譯與實機內容年齡待 CI／裝置驗收。A2 的依內容年齡丟棄與 A3 的 flush 事件尚未實作。
+
 ## 2026.11.24 06:42 編碼壓力快照與設備診斷（GMT+8）
 
 - HaishinKit `videoPipelineSnapshot()` 新增 `encoderPressure`：合併 VT `pending`、編碼前佇列、最近回呼耗時與 5 秒內丟幀事件，輸出 `normal`／`queueBacklog`／`vtBacklog`／`callbackSlow`／`throttling`／`dropping`／`unavailable`。

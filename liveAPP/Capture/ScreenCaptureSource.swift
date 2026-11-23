@@ -14,6 +14,20 @@ private struct CapturedSample: @unchecked Sendable {
     let buffer: CMSampleBuffer
     let arrival: Double
     let pts: Double
+    /// 真正的抓幀／顯示時間，單位為 ProcessInfo.systemUptime 秒數；nil 表示未提供。
+    let captureHostTime: Double?
+    /// `captureHostTime` 的來源；沒有值時為 `.unknown`。
+    let captureTimeSource: VideoFrameCaptureTimeSource
+
+    init(buffer: CMSampleBuffer, arrival: Double, pts: Double,
+         captureHostTime: Double? = nil,
+         captureTimeSource: VideoFrameCaptureTimeSource = .unknown) {
+        self.buffer = buffer
+        self.arrival = arrival
+        self.pts = pts
+        self.captureHostTime = captureHostTime
+        self.captureTimeSource = captureTimeSource
+    }
 }
 
 /// 收尾等待的單次續接；工作完成或逾時只有一方能恢復。
@@ -81,7 +95,9 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                                 session: session,
                                 sequence: sequence,
                                 sourcePTS: sample.pts,
-                                handedPTS: rotated.presentationTimeStamp.seconds
+                                handedPTS: rotated.presentationTimeStamp.seconds,
+                                captureHostTime: sample.captureHostTime,
+                                captureTimeSource: sample.captureTimeSource
                             )
                             sequence &+= 1
                             await mixer.append(rotated, track: track, videoTrace: trace)
@@ -123,7 +139,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         outcome = .notReady
         guard CMSampleBufferDataIsReady(sampleBuffer) else { return }
         outcome = .offered
-        let sample = CapturedSample(buffer: sampleBuffer, arrival: arrival, pts: pts)
+        let baseSample = CapturedSample(buffer: sampleBuffer, arrival: arrival, pts: pts)
         switch type {
         case .screen:
             outcome = .missingStatus
@@ -143,14 +159,24 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             outcome = .missingImage
             guard let image = sampleBuffer.imageBuffer else { return }
             outcome = .offered
+            // displayTime 是 window server 的 mach absolute time；先轉成 host clock，
+            // 再換算到 ProcessInfo.systemUptime，才能與 MediaMixer 的 arrival 比較。
+            let captureHostTime: Double? = (attachments.first?[.displayTime] as? NSNumber).flatMap { value in
+                let hostSeconds = CMTimeGetSeconds(CMClockMakeHostTimeFromSystemUnits(value.uint64Value))
+                guard hostSeconds.isFinite, 0 < hostSeconds else { return nil }
+                return hostSeconds + (ProcessInfo.processInfo.systemUptime - arrival)
+            }
+            let sample = CapturedSample(buffer: sampleBuffer, arrival: arrival, pts: pts,
+                                        captureHostTime: captureHostTime,
+                                        captureTimeSource: captureHostTime == nil ? .unknown : .displayTime)
             let frameSize = CGSize(width: CVPixelBufferGetWidth(image), height: CVPixelBufferGetHeight(image))
             if frameSize != loggedFrameSize {
                 loggedFrameSize = frameSize
                 sendlog(message: "[CaptureFrame] size=\(Int(frameSize.width))x\(Int(frameSize.height))")
             }
             video.offer(sample, bytes: CVPixelBufferGetDataSize(image))
-        case .audio: audio.offer(sample, bytes: CMSampleBufferGetTotalSampleSize(sampleBuffer))
-        case .microphone: mic.offer(sample, bytes: CMSampleBufferGetTotalSampleSize(sampleBuffer))
+        case .audio: audio.offer(baseSample, bytes: CMSampleBufferGetTotalSampleSize(sampleBuffer))
+        case .microphone: mic.offer(baseSample, bytes: CMSampleBufferGetTotalSampleSize(sampleBuffer))
         @unknown default: outcome = .unknownType
         }
     }
@@ -316,6 +342,10 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             fixedCanvas: fixedCanvas,
             fallback: CGSize(width: 1920, height: 1080))
         CaptureAudioOwnership.shared.begin()
+        // displayTime 以 host clock 表示；記錄一次與 systemUptime 的差，供內容年齡換算核對。
+        let hostNow = CMClockGetTime(CMClockGetHostTimeClock()).seconds
+        let uptimeNow = ProcessInfo.processInfo.systemUptime
+        sendlog(message: "[CaptureClock] session=\(token) hostMinusUptime=\(hostNow - uptimeNow) clockComparison=unverified")
         observeAudioSession(token: token)
         logAudioSession("capture.begin")
         if filter.isMicrophoneEnabled {
