@@ -18,8 +18,13 @@
 | `mixerAudioFrames` | PCM sample frames 累計，不乘聲道數 |
 | `sampledUptime` | 同一 session 的單調時鐘取樣秒數 |
 | `encoding` | 可選 RTMPEncodingDiagnostics，實際壓縮格式與輸出活動 |
+| `encoderHealth` | VT 狀態與 pending frames；舊端為 nil |
+| `encoderPressure` | 送交／回呼／交付、VT pending、編碼前佇列與延遲的組合判讀；舊端為 nil |
+| `encoderInput` | 編碼前原始影格佇列；與 VT pending、RTMP 待送 bytes 不同 |
 
 `schemaVersion` 維持 1，舊端未提供時解碼為 nil。速率使用相鄰快照差分，每來源最多 60 筆。首次取樣、session 改變、計數倒退、間隔超過 15 秒均不推算速率；缺值不補零。停止後保留最後資料，不繼續追加假樣本。
+
+`encoderPressure` 的 `outstandingSubmissions`／`undeliveredCallbacks` 是事件累計差值，跨編碼器 session 重建可能被放大；目前積壓以 `pendingFrames`、`queued` 與 `oldestAgeSeconds` 為準，`unavailable` 不可當成零壓力。
 
 影片 FPS 是混合輸出速率；PCM sample frames/s 是交付速率，與格式宣告的取樣率不同。這些都不代表 RTMP 已傳送或伺服器成功解碼。
 

@@ -1,10 +1,12 @@
 import Foundation
 import SwiftUI
 import UIKit
+import HaishinKit
 
 /// 裝置頁入口：顯示來源時間戳與處理耗時，提供診斷 JSON（不能直接用作回放校正曲線）。
 struct AVLagReportView: View {
     @ObservedObject private var model = AVLagModel.shared
+    @ObservedObject private var diagnostics = StreamDiagnosticsModel.shared
     @State private var reportText = ""
     @State private var reportFileURL: URL?
     @State private var lastFileRefresh = Date.distantPast
@@ -50,6 +52,28 @@ struct AVLagReportView: View {
             Section(AppLanguage.localized("avLag.purpose")) {
                 Text(AppLanguage.localized("avLag.usage"))
                 Text(AppLanguage.localized("avLag.zeroSemantics"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section(AppLanguage.localized("avLag.pressure.title")) {
+                if let item = latestPressure {
+                    row(AppLanguage.localized("avLag.pressure.source"), item.source)
+                    row(AppLanguage.localized("avLag.pressure.state"), item.pressure.state.rawValue)
+                    row(AppLanguage.localized("avLag.pressure.counts"), "\(item.pressure.submitted) / \(item.pressure.callbacks) / \(item.pressure.delivered)")
+                    row(AppLanguage.localized("avLag.pressure.pending"), "\(item.pressure.outstandingSubmissions) / \(item.pressure.undeliveredCallbacks)")
+                    row(AppLanguage.localized("avLag.pressure.vtPending"), "\(item.pressure.pendingFrames.map(String.init) ?? "未知") / \(item.pressure.highWatermark)")
+                    row(AppLanguage.localized("avLag.pressure.queue"), [
+                        item.pressure.queued.map { "\($0) frames" },
+                        item.pressure.oldestAgeSeconds.map { String(format: "最舊 %.1f ms", $0 * 1000) },
+                        item.pressure.maxWaitSeconds.map { String(format: "最長 %.1f ms", $0 * 1000) }
+                    ].compactMap { $0 }.joined(separator: " · "))
+                    row(AppLanguage.localized("avLag.pressure.elapsed"), item.pressure.lastElapsedMilliseconds.map { String(format: "%.1f ms", $0) } ?? "未知")
+                } else {
+                    Text(AppLanguage.localized("avLag.pressure.empty"))
+                        .foregroundStyle(.secondary)
+                }
+                Text(AppLanguage.localized("avLag.pressure.footer"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -171,6 +195,16 @@ struct AVLagReportView: View {
     private func reloadSummaries() async {
         let activeSession = model.isCapturing ? model.session : nil
         summaries = await AVLagReportStore.shared.summaries(activeSessionID: activeSession)
+    }
+
+    /// 優先取 ScreenCaptureKit，沒有時退回 ReplayKit；只讀已收到的低頻快照。
+    private var latestPressure: (source: String, pressure: VideoEncoderPressureSnapshot)? {
+        for source in ["ScreenCaptureKit", "ReplayKit"] {
+            if let snapshot = diagnostics.snapshots[source], let pressure = snapshot.encoderPressure {
+                return (source, pressure)
+            }
+        }
+        return nil
     }
 
     private func row(_ title: String, _ value: String) -> some View {

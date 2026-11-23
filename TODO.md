@@ -6,6 +6,21 @@
 
 > 新待辦請寫在這裡，不要在各文件的角落另開 TODO 區塊；完成後改為 `[x]`（整批清理時可移除已完成項）。
 
+## 內容延遲與錄影驗收（FixVideoTools 觀察）
+
+來源：`FixVideoTools/docs/upstream-fixes.md`、`app-capture-pipeline.md`、`content-lag-repair.md`。這是事後修補工具整理出的上游需求；`encoderPressure` 只回答「編碼管線有沒有積壓」，不能取代這裡的內容延遲檢查。
+
+- [ ] **P0-A1 抓幀時就打 timestamp（真正的抓幀時間）**：SCK 目前只讀 `SCStreamFrameInfo.status`，`VideoFrameTrace.sourcePTS` 仍是 `sample.pts`；ReplayKit 仍用 `originalTime.presentationTimeStamp`。要先確認兩條路徑的來源時間契約，將真正的抓幀／顯示時間放進 trace，新增 `captureTimeSource`；`captureTime=missing` 必須是警告，不能當成同步正常。
+- [ ] **P0-A2 有界佇列＋依內容年齡丟棄**：佇列已是有界（12MB），但 `delayDropped=0`，淘汰條件不是內容年齡。用 A1 的時間算 `age`，超過門檻（建議 200ms）丟過期幀並計數 `contentAgeDropped`；靜態畫面沒有新幀時不可誤丟，也不能只靠收播前 flush 清 backlog。
+- [ ] **P0-A3 flush／追上事件**：目前只能從 `sourcePTSDelta` 轉負或 `videoIdle` 事後推測。追上或清 backlog 時記 `event=flush lag=... dropped=... queue=...`，區分「真的追上」與「沒有新影格」。
+- [ ] **P1-A4 AVLag 覆蓋整場並綁定錄影**：已有 session／segment／`complete`，但沒有 `recordingId` 綁定，報告範圍與實際檔案可能不一致。每份樣本加 `recordingId`／錄影起訖，`complete` 要能區分「取樣中斷」與「錄影結束」。
+- [ ] **P2-A5 收播順序：先停畫面再停音訊**：停止時記錄最後 video／audio PTS；目前文件觀察尾端有 4–8 秒「音訊已靜音、畫面還在動」。先量測再改順序，驗收 ≤1 秒。
+- [ ] **P2-A6 不可中途改變輸出幀率**：用 gap 分布區分「靜態 hold」與「真的 60→30 regime change」；持續掉半才告警，不要把 06:00 的 1.9fps 靜態 VFR 誤判成掉幀。
+- [ ] **P0-驗收 fixture**：建立有走動時鐘／動畫的 motion fixture 與一段長錄影；06:00 的靜態畫面沒有新內容可落後，不能驗證 A1–A3。
+- [ ] **驗收工具整合**：`check-fps-gop.ps1`（fps／GOP／音訊數位靜音）、`probe-av-lag.py`（內容延遲）、`fix-content-lag.py --check-only`（曲線）；App 端同時檢查 `contentAge`／`ageSkew`、`contentAgeDropped`、flush、停止前 PTS 與 fps regime。離線 OCR 工具不進 CI，CI 只放合成 fixture。
+
+共同門檻（來自 `upstream-fixes.md`）：單一 fps regime（收播卡可辨識）、A/V PTS 差 < 100ms、畫面內容延遲 < 0.5s、音訊無中途數位靜音、收播斷線保護可辨識。`fix-content-lag.py` 是事後補救，不是根因修復；48k + VFR 不得直接 retime。
+
 ## 2026-11-15 核對摘要
 
 - [x] 分段錄影合併去重：同群組已有完成的合併檔時重用，不再產生第二個同內容 MP4；`[RecordingMerge]` 加入 `path=`。

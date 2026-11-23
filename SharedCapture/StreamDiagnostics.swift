@@ -30,6 +30,8 @@ struct StreamDiagnosticsSnapshot: Codable, Sendable {
     var lastEncoderTiming: VideoEncoderTimingSample?
     /// VT 編碼器健康摘要；舊來源或無編碼器時為 nil。
     var encoderHealth: VideoEncoderHealth?
+    /// VT 編碼壓力（送交／回呼／交付、積壓與延遲）；舊來源為 nil。
+    var encoderPressure: VideoEncoderPressureSnapshot?
     /// Mixer 各軌的 AVAudioConverter／ring buffer／align 摘要；舊來源為 nil。
     var audioTracks: [AudioTrackDiagnostics]?
     /// RTMPStream 的編碼前原始影格佇列；與 VT pending、RTMP 網路佇列不同。
@@ -271,6 +273,7 @@ final class StreamDiagnosticsProbe: MediaMixerOutput, @unchecked Sendable {
         result.firstEncoderTiming = pipeline.encoder?.firstEncoderTiming
         result.lastEncoderTiming = pipeline.encoder?.lastEncoderTiming
         result.encoderHealth = pipeline.encoderHealth
+        result.encoderPressure = pipeline.encoderPressure
         result.encoderInput = StreamDiagnosticsSnapshot.EncoderInputBufferDiagnostics.from(pipeline.encoderInput)
         result.videoSettings = "\(video.profileLevel) · \(Int(video.videoSize.width))×\(Int(video.videoSize.height)) · \(video.bitRate / 1000) kbps"
         result.audioSettings = "\(audio.format.rawValue) · \(audio.bitRate / 1000) kbps"

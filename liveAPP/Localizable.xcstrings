@@ -5280,8 +5280,17 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "電量" } }
         }
 
-    }
-
+    },
+    "avLag.pressure.title": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "編碼壓力"}}, "en": {"stringUnit": {"state": "translated", "value": "Encoder pressure"}}, "ja": {"stringUnit": {"state": "translated", "value": "エンコーダー圧力"}}}},
+    "avLag.pressure.source": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "來源"}}, "en": {"stringUnit": {"state": "translated", "value": "Source"}}, "ja": {"stringUnit": {"state": "translated", "value": "ソース"}}}},
+    "avLag.pressure.state": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "狀態"}}, "en": {"stringUnit": {"state": "translated", "value": "State"}}, "ja": {"stringUnit": {"state": "translated", "value": "状態"}}}},
+    "avLag.pressure.counts": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "已提交／回呼／交付"}}, "en": {"stringUnit": {"state": "translated", "value": "Submitted / callbacks / delivered"}}, "ja": {"stringUnit": {"state": "translated", "value": "送信／コールバック／配信"}}}},
+    "avLag.pressure.pending": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "未回呼／未交付"}}, "en": {"stringUnit": {"state": "translated", "value": "Outstanding / undelivered"}}, "ja": {"stringUnit": {"state": "translated", "value": "未コールバック／未配信"}}}},
+    "avLag.pressure.vtPending": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "VT pending／高水位"}}, "en": {"stringUnit": {"state": "translated", "value": "VT pending / high watermark"}}, "ja": {"stringUnit": {"state": "translated", "value": "VT pending／高水位"}}}},
+    "avLag.pressure.queue": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "編碼前佇列"}}, "en": {"stringUnit": {"state": "translated", "value": "Pre-encode queue"}}, "ja": {"stringUnit": {"state": "translated", "value": "エンコード前キュー"}}}},
+    "avLag.pressure.elapsed": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "最近回呼耗時"}}, "en": {"stringUnit": {"state": "translated", "value": "Last callback time"}}, "ja": {"stringUnit": {"state": "translated", "value": "最新コールバック時間"}}}},
+    "avLag.pressure.empty": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "尚未取得編碼壓力快照。"}}, "en": {"stringUnit": {"state": "translated", "value": "No encoder pressure snapshot yet."}}, "ja": {"stringUnit": {"state": "translated", "value": "エンコーダー圧力のスナップショットはまだありません。"}}}},
+    "avLag.pressure.footer": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "累計差值跨 session 重建可能被放大；目前積壓請看 pending 與編碼前佇列。"}}, "en": {"stringUnit": {"state": "translated", "value": "Cumulative differences can be inflated by session rebuilds; use pending and the pre-encode queue for current backlog."}}, "ja": {"stringUnit": {"state": "translated", "value": "累計差分はセッション再構築で大きく見えることがあります。現在の滞留は pending とエンコード前キューで確認してください。"}}}}
   },
 
   "version" : "1.0"

@@ -202,6 +202,9 @@ struct StreamDiagnosticsSections: View {
             summaryMetric("VT 編碼器", value.encoderHealth.map {
                 "\($0.state.rawValue) · pending \($0.pendingFrames.map(String.init) ?? "未知")"
             } ?? "未提供")
+            summaryMetric("VT 壓力", value.encoderPressure.map {
+                "\($0.state.rawValue) · 未回呼 \($0.outstandingSubmissions) · 佇列 \($0.queued.map(String.init) ?? "未知")"
+            } ?? "未提供")
             summaryMetric("RTMP 批次", "待完成 \(bytes(value.queuedBytes) ?? "未提供") · 完成 \(value.completedBatches.map(String.init) ?? "未提供") · 失敗 \(value.failedBatches.map(String.init) ?? "未提供")")
         }
         .padding(.vertical, 4)
@@ -278,9 +281,26 @@ struct StreamDiagnosticsSections: View {
             detail("VT 首筆同幀時間", encoderTiming(value.firstEncoderTiming))
             detail("VT 最新同幀時間", encoderTiming(value.lastEncoderTiming))
             detail("VT 編碼器健康", value.encoderHealth?.summary)
+            if let pressure = value.encoderPressure {
+                let queueText = [
+                    pressure.queued.map { "\($0) frames" },
+                    pressure.oldestAgeSeconds.map { "最舊 \(milliseconds($0))" },
+                    pressure.maxWaitSeconds.map { "最長等待 \(milliseconds($0))" }
+                ].compactMap { $0 }.joined(separator: " · ")
+                detail("VT 壓力狀態", pressure.state.rawValue)
+                detail("已提交／回呼／交付", "\(pressure.submitted) / \(pressure.callbacks) / \(pressure.delivered)")
+                detail("未回呼／未交付", "\(pressure.outstandingSubmissions) / \(pressure.undeliveredCallbacks)")
+                detail("VT pending／高水位", "\(pressure.pendingFrames.map(String.init) ?? "未知") / \(pressure.highWatermark)")
+                detail("編碼前佇列", queueText)
+                detail("最近回呼耗時", pressure.lastElapsedMilliseconds.map { String(format: "%.1f ms", $0) })
+                detail("交付到編碼／收到到編碼", [
+                    pressure.lastHandoffWaitSeconds.map { "交付 \(milliseconds($0))" },
+                    pressure.lastReceivedToEncoderSeconds.map { "到編碼 \(milliseconds($0))" }
+                ].compactMap { $0 }.joined(separator: " · "))
+            }
             detail("編碼器交付影格累計", value.encodedVideoFrames.map(String.init))
             detail("RTMP 影片入列事件累計", value.videoMessagesQueued.map(String.init))
-            Text("VT 狀態區分 drops、filtered、keyframe suppressed 與下游拒收；pending 為取樣當下值。")
+            Text("VT 狀態區分 drops、filtered、keyframe suppressed 與下游拒收；pending 為取樣當下值。壓力差值是事件累計，跨 session 重建可能被放大，積壓請看 pending 與編碼前佇列。")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }

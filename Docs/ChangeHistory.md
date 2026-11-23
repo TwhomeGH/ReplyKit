@@ -1,5 +1,12 @@
 # 變更歷史
 
+## 2026.11.24 06:42 編碼壓力快照與設備診斷（GMT+8）
+
+- HaishinKit `videoPipelineSnapshot()` 新增 `encoderPressure`：合併 VT `pending`、編碼前佇列、最近回呼耗時與 5 秒內丟幀事件，輸出 `normal`／`queueBacklog`／`vtBacklog`／`callbackSlow`／`throttling`／`dropping`／`unavailable`。
+- `StreamDiagnosticsSnapshot` 轉送新欄位；串流診斷顯示「已提交／回呼／交付」、未回呼／未交付、VT pending／高水位、編碼前佇列、最近回呼耗時；AV Lag 報告新增「編碼壓力」區段。
+- 累計差值跨 session 重建可能被放大，畫面明示以 pending 與編碼前佇列判讀目前積壓；新增字串已補 zh-Hant／en／ja。
+- 驗證：HaishinKit 非 Apple harness 23 項與全部 11 個 harness 通過、Swift 語法檢查通過；HaishinKit Swift Tests（run 45283054377）與 DocC 已通過；實機 VT 壓力情境待裝置驗收。
+
 ## 2026.11.23 22:15 卡片依可讀寬度自適配（GMT+8）
 
 - 共用卡片排版以最小可讀寬度 420 pt、欄距 16 pt 計算最多兩欄，移除固定 900 pt 切欄門檻；卡片所需寬度隨 Dynamic Type 縮放，輔助使用字體維持單欄。
