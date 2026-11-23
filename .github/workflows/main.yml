@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   unit-tests:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
     uses: ./.github/workflows/unit-tests.yml
     permissions:
       contents: read
@@ -25,7 +25,7 @@ jobs:
 
   build:
     needs: unit-tests
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
     runs-on: xcode-27
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
