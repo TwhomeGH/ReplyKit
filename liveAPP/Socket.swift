@@ -6,6 +6,27 @@ import UIKit
 
 
 
+/// App／擴展控制 socket 快照；本機傳送完成不是對端 ACK，也不是 RTMP 健康判定。
+struct SocketServerHealth: Sendable {
+    var sampledAt: Date = Date()
+    var connections = 0
+    var pendingBytes = 0
+    var pendingMessages = 0
+    var receivingBytes = 0
+    var inFlightBytes = 0
+    var oldestSendSeconds: Double = 0
+    var sampleGapSeconds: Double = 0
+    var completedBytes: UInt64 = 0
+    var sendErrors: UInt64 = 0
+    var slowConnectionClosures: UInt64 = 0
+    var maxSendSeconds: Double = 0
+    var maxEnqueueWaitSeconds: Double = 0
+
+    var logSummary: String {
+        "connections=\(connections) pendingBytes=\(pendingBytes) pendingMessages=\(pendingMessages) receiveBufferedBytes=\(receivingBytes) inFlightBytes=\(inFlightBytes) oldestSendSeconds=\(oldestSendSeconds) sampleGapSeconds=\(sampleGapSeconds) completedBytes=\(completedBytes) sendErrors=\(sendErrors) slowClosures=\(slowConnectionClosures) maxSendSeconds=\(maxSendSeconds) maxEnqueueWaitSeconds=\(maxEnqueueWaitSeconds) enqueueScope=generalMessages scope=appControlSocket peerACK=unknown"
+    }
+}
+
 /// 主 App 的換行分隔 JSON Socket 服務，負責 listener、連線生命週期與訊息分派。
 /// 連線及收送緩衝主要由 queue 管理；@unchecked Sendable 並不代表所有狀態已隔離。
 class SocketServer:ObservableObject, @unchecked Sendable {
@@ -18,6 +39,47 @@ class SocketServer:ObservableObject, @unchecked Sendable {
     static let maxBufferSize = 1_048_576
     /// 同時接受的連線數上限。
     static let maxConnections = 10
+
+    @Published private(set) var health: SocketServerHealth?
+    private var healthTimer: DispatchSourceTimer?
+    private var healthLastSample: Double?
+    private var healthLastLog: Double?
+    private var healthCounters = SocketServerHealth()
+    private var healthInFlight: [ObjectIdentifier: (bytes: Int, started: Double)] = [:]
+
+    /// 與頁面生命週期無關；每五秒取樣，每分鐘落檔，不輸出訊息正文或端點。
+    /// 取樣間隔包含背景暫停，不能直接解讀為 socket 排程阻塞。
+    private func startHealthTimer() {
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + 5, repeating: 5, leeway: .seconds(1))
+        timer.setEventHandler { [weak self] in self?.sampleHealth() }
+        healthTimer = timer
+        timer.activate()
+    }
+
+    private func sampleHealth() {
+        dispatchPrecondition(condition: .onQueue(queue))
+        let now = ProcessInfo.processInfo.systemUptime
+        healthInFlight = healthInFlight.filter { connections[$0.key] != nil }
+        var snapshot = healthCounters
+        snapshot.sampledAt = Date()
+        snapshot.connections = connections.count
+        snapshot.pendingMessages = sendQueues.values.reduce(0) { $0 + $1.count }
+        snapshot.pendingBytes = sendQueues.values.reduce(0) { $0 + $1.reduce(0) { $0 + $1.count } }
+        snapshot.receivingBytes = receiveBuffers.reduce(0) {
+            $0 + max(0, $1.value.count - (receiveOffsets[$1.key] ?? 0))
+        }
+        snapshot.inFlightBytes = healthInFlight.values.reduce(0) { $0 + $1.bytes }
+        snapshot.oldestSendSeconds = healthInFlight.values.map { max(0, now - $0.started) }.max() ?? 0
+        snapshot.sampleGapSeconds = healthLastSample.map { max(0, now - $0) } ?? 0
+        healthLastSample = now
+        let published = snapshot
+        DispatchQueue.main.async { [weak self] in self?.health = published }
+        if healthLastLog == nil || now - (healthLastLog ?? now) >= 60 {
+            healthLastLog = now
+            sendlog(message: "[SocketServerHealth] \(snapshot.logSummary)")
+        }
+    }
 
     private var receiveBuffers: [ObjectIdentifier: Data] = [:]
     /// 各連線已消耗的緩衝位置，避免逐行移除 Data 造成大量複製。
@@ -316,6 +378,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
     /// notify 的 block 指定在服務 queue 執行，以 weak self 避免懸空的 observer 指標。
     init() {
         queue.setSpecific(key: queueKey, value: ())
+        startHealthTimer()
         var token: Int32 = 0
         let status = notify_register_dispatch("liveAPP.SocketRestart", &token, queue) { [weak self] _ in
             self?.requestRecovery(reason: "extensionHint")
@@ -330,6 +393,8 @@ class SocketServer:ObservableObject, @unchecked Sendable {
     /// 同步撤銷通知與資源，不從 deinit 排入依賴 self 的非同步清理工作。
     deinit {
         if let token = recoveryNotificationToken { notify_cancel(token) }
+        healthTimer?.setEventHandler {}
+        healthTimer?.cancel()
         keepaliveTimer?.setEventHandler {}
         keepaliveTimer?.cancel()
         listener?.stateUpdateHandler = nil
@@ -1598,8 +1663,13 @@ class SocketServer:ObservableObject, @unchecked Sendable {
 
     /// 為指定連線排入待送資料；實際入列與上限檢查只在 queue 內執行。
     private func enqueue(_ data: Data, to conn: NWConnection) {
+        let requested = ProcessInfo.processInfo.systemUptime
         queue.async { [weak self] in
-            self?.enqueueLocked(data, to: conn)
+            guard let self else { return }
+            // 僅涵蓋一般訊息 enqueue 入口，外部日誌廣播不冒充已量測。
+            self.healthCounters.maxEnqueueWaitSeconds = max(self.healthCounters.maxEnqueueWaitSeconds,
+                ProcessInfo.processInfo.systemUptime - requested)
+            self.enqueueLocked(data, to: conn)
         }
     }
 
@@ -1614,6 +1684,7 @@ class SocketServer:ObservableObject, @unchecked Sendable {
             pendingBytes: pendingBytes,
             pendingPayloads: pending.count,
             newBytes: data.count) == .enqueue else {
+            healthCounters.slowConnectionClosures &+= 1
             logTo("Socket send queue limit reached; closing slow connection pendingBytes=\(pendingBytes) newBytes=\(data.count)")
             removeConnection(conn)
             return
@@ -1644,10 +1715,21 @@ class SocketServer:ObservableObject, @unchecked Sendable {
 
             data.append(0x0A)
 
+            let sentBytes = data.count
+            let started = ProcessInfo.processInfo.systemUptime
+            self.healthInFlight[id] = (sentBytes, started)
             conn.send(content: data, completion: .contentProcessed { [weak self] error in
 
                 guard let self = self else { return }
 
+                self.queue.async {
+                    guard self.connections[id] === conn else { return }
+                    self.healthInFlight[id] = nil
+                    self.healthCounters.maxSendSeconds = max(self.healthCounters.maxSendSeconds,
+                        ProcessInfo.processInfo.systemUptime - started)
+                    if error != nil { self.healthCounters.sendErrors &+= 1 }
+                    else { self.healthCounters.completedBytes &+= UInt64(sentBytes) }
+                }
                 if let error {
                     self.removeConnection(conn)
                     self.logTo("Send error: \(error)")

@@ -528,6 +528,7 @@ final class SystemDiskIO {
 }
 
 struct DeviceView: View {
+    @ObservedObject private var socketHealthServer = SocketServer.shared
 
     @Environment(\.scenePhase) private var scenePhase
     @State private var isVisible = false
@@ -585,6 +586,7 @@ struct DeviceView: View {
                     gpuCard
                     MixerPipelineCard(audio: false, now: Date())
                     videoPipelineCard
+                    socketHealthCard
                     liveActivityCard
                 } trailing: {
                     outputSizeCard
@@ -1067,6 +1069,27 @@ struct DeviceView: View {
     }
 
     /// 設備診斷卡片；沿用頁面採樣與服務狀態。
+    private var socketHealthCard: some View {
+        SettingsDashboardCard(header: { Label("Socket 伺服器健康度", systemImage: "network") }) {
+            Text("App／擴展控制通道 · \(socketHealthServer.listenerStatus)")
+            if let health = socketHealthServer.health {
+                Text("取樣：\(health.sampledAt.formatted(date: .omitted, time: .standard)) · 每 5 秒更新")
+                    .font(.caption).foregroundStyle(.secondary)
+                Text("連線：\(health.connections) · 待送訊息：\(health.pendingMessages)")
+                Text("待送：\(ByteCountFormatter.string(fromByteCount: Int64(health.pendingBytes), countStyle: .file)) · 傳送中：\(ByteCountFormatter.string(fromByteCount: Int64(health.inFlightBytes), countStyle: .file))")
+                Text("接收緩衝：\(ByteCountFormatter.string(fromByteCount: Int64(health.receivingBytes), countStyle: .file))")
+                Text("一般訊息最大入列等待：\(health.maxEnqueueWaitSeconds, specifier: "%.3f") 秒")
+                Text("最久傳送等待：\(health.oldestSendSeconds, specifier: "%.2f") 秒")
+                Text("程序累計傳送錯誤：\(health.sendErrors) · 慢速連線關閉：\(health.slowConnectionClosures)")
+                Text("程序最大傳送耗時：\(health.maxSendSeconds, specifier: "%.2f") 秒 · 取樣間隔：\(health.sampleGapSeconds, specifier: "%.1f") 秒")
+                Text("每分鐘記錄摘要；取樣間隔可能包含背景暫停。本機傳送完成不代表對端已處理，這不是 RTMP 串流健康度。")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                Text("等待首次取樣").foregroundStyle(.secondary)
+            }
+        }
+    }
+
     private var liveActivityCard: some View {
         SettingsDashboardCard(header: { Label("即時動態 Live Activity", systemImage: "sparkles.tv") }) {
             HStack {
