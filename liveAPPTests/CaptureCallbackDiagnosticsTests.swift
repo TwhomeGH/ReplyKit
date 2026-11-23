@@ -28,4 +28,17 @@ struct CaptureCallbackDiagnosticsTests {
         #expect(summary.contains("minHostMinusPTSSeconds=-2.000000"))
         #expect(summary.contains("video{callbacks=0"))
     }
+
+    @Test func bucketsLongCallbackGaps() {
+        let probe = CaptureCallbackDiagnostics()
+        probe.record(track: .video, outcome: .offered, state: nil, arrival: 0, pts: 0)
+        probe.record(track: .video, outcome: .offered, state: nil, arrival: 0.6, pts: 0.6)
+        probe.record(track: .video, outcome: .offered, state: nil, arrival: 3.0, pts: 3.0)
+        probe.record(track: .video, outcome: .offered, state: nil, arrival: 9.0, pts: 9.0)
+        let summary = probe.summary(now: 9)
+        #expect(summary.contains("lastGapSeconds=6.000000"))
+        #expect(summary.contains("gapsOver500ms=3"))
+        #expect(summary.contains("gapsOver2s=2"))
+        #expect(summary.contains("gapsOver5s=1"))
+    }
 }
