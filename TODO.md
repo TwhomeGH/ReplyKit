@@ -14,6 +14,7 @@
 - [ ] **P0-A2 有界佇列＋依內容年齡丟棄**：SCK 已加 `CaptureContentAgeMonitor`（200ms、暖機 1s），在進入 queue／GPU 前用 `captureHostTime` 判斷；超過門檻記為 `stale`，並在 `[CaptureAge]` 記 `contentAgeDropped`。ReplayKit 沒有 host time 時只計 `clockMissing`，不丟幀。待 motion fixture 與實機驗收門檻是否足夠；若佇列等待造成二次老化，再補 worker 端閘門。
 - [ ] **P0-A3 flush／追上事件**：目前只能從 `sourcePTSDelta` 轉負或 `videoIdle` 事後推測。追上或清 backlog 時記 `event=flush lag=... dropped=... queue=...`，區分「真的追上」與「沒有新影格」。
 - [ ] **P1-A4 AVLag 覆蓋整場並綁定錄影**：已有 session／segment／`complete`，但沒有 `recordingId` 綁定，報告範圍與實際檔案可能不一致。每份樣本加 `recordingId`／錄影起訖，`complete` 要能區分「取樣中斷」與「錄影結束」。
+- [ ] **Swift-DocC 註解逐檔補齊**：優先補目前正在改的檔案；`AVLagObservation` 屬性已完成，接著依 A4／診斷工作補 public／internal API、參數與回傳值。不做一次全 repo 掃描，也不把註解當成行為驗收。
 - [ ] **P2-A5 收播順序：先停畫面再停音訊**：停止時記錄最後 video／audio PTS；目前文件觀察尾端有 4–8 秒「音訊已靜音、畫面還在動」。先量測再改順序，驗收 ≤1 秒。
 - [ ] **P2-A6 不可中途改變輸出幀率**：用 gap 分布區分「靜態 hold」與「真的 60→30 regime change」；持續掉半才告警，不要把 06:00 的 1.9fps 靜態 VFR 誤判成掉幀。
 - [ ] **P0-驗收 fixture**：建立有走動時鐘／動畫的 motion fixture 與一段長錄影；06:00 的靜態畫面沒有新內容可落後，不能驗證 A1–A3。

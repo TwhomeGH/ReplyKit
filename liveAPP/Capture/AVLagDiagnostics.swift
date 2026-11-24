@@ -2,22 +2,39 @@ import Foundation
 
 /// 一次 A/V 來源時間戳取樣（不是實際內容同步量測）；秒為單位，nil 表示該階段尚未取得。
 struct AVLagObservation: Codable, Equatable, Sendable {
+    /// AVLag 量測 session；同一場直播的樣本共用。
     var session: String
+    /// 建立這筆樣本的 wall-clock 時間，不是 media PTS。
     var sampledAt: Date
+    /// 最近一次影片來源回呼的 media PTS。
     var videoPTS: Double?
+    /// 最近一次系統音訊回呼的 media PTS；麥克風不計入。
     var audioPTS: Double?
+    /// 影片回呼到達時間減來源 PTS；是交付年齡，不是真正抓幀內容年齡。
     var videoContentAge: Double?
+    /// 距離最近一次影片來源回呼的時間；長時間沒有新影格時增加。
     var videoIdleAge: Double?
+    /// 音訊回呼到達時間減來源 PTS；不是口型同步誤差。
     var audioContentAge: Double?
+    /// 距離最近一次音訊來源回呼的時間。
     var audioIdleAge: Double?
+    /// 距離最近一次影片加工完成的時間；觀察 worker 是否停滯。
     var videoWorkerIdleAge: Double?
+    /// 距離最近一次音訊加工完成的時間。
     var audioWorkerIdleAge: Double?
+    /// 來源時鐘比對狀態；目前通常為 `unverified`，不代表已同步。
     var clockComparison: String? = "unverified"
+    /// 內容同步量測狀態；目前為 `notMeasured`，不可解讀為同步正常。
     var contentSynchronization: String? = "notMeasured"
+    /// 量測當下影格已在影片佇列停留的時間。
     var videoQueueAge: Double?
+    /// 佇列中最舊影格的年齡；unknown 時為 nil。
     var videoQueueOldestAge: Double?
+    /// 影片加工耗時：加工完成時間減回呼到達時間。
     var videoProcessAge: Double?
+    /// 加工完成時間減來源 PTS；仍不是真正抓幀時間。
     var videoSourceAge: Double?
+    /// 最新影片 PTS 減音訊 PTS；未做同幀配對，不能當 A/V 偏移結論。
     var sourcePTSDelta: Double?
     /// 相對本 session 第一筆有效 `sourcePTSDelta` 的累積變化；負值代表音訊 PTS 相對影片持續往後。
     var sourcePTSDeltaDrift: Double?
@@ -25,11 +42,15 @@ struct AVLagObservation: Codable, Equatable, Sendable {
     var sourcePTSDeltaPerMinute: Double?
     /// 音訊 host-minus-PTS 減影片 host-minus-PTS；用來觀察來源時鐘漂移。
     var avClockDrift: Double?
-    /// unpairedObservation / stale；未配對的觀測不判定影音同步。
+    /// `unpairedObservation`／`stale`；未配對的觀測不判定影音同步。
     var avSyncState: String?
+    /// 影片佇列的摘要文字，保留佇列／丟棄原因；不是時間量測。
     var videoQueue: String?
+    /// 內容年齡相對上一筆的階梯變化；nil 表示沒有超過門檻的跳變。
     var contentAgeJump: Double?
+    /// 本 session 累計的影片來源回呼數，不是輸出幀數。
     var videoFrames = 0
+    /// 本 session 累計的音訊來源回呼數，不是輸出 packet 數。
     var audioFrames = 0
 
     /// 單行日誌；數值保留六位小數，unknown 不假裝成 0。

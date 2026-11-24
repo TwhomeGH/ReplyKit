@@ -1,5 +1,11 @@
 # 變更歷史
 
+## 2026.11.25 05:54 Swift-DocC：AVLagObservation 屬性註解（GMT+8）
+
+- 補齊 `AVLagObservation` 的屬性說明，明確標示 contentAge／idleAge／queueAge／clockDrift／sourcePTSDelta 各自量什麼、不能拿來當 A/V 同步結論。
+- TODO 新增「Swift-DocC 註解逐檔補齊」：只補目前正在改的檔案，不一次全 repo 掃描；後續依 A4／診斷工作逐檔補參數與回傳值。
+- 驗證：`swiftc -parse` 通過；純註解變更，不影響行為。
+
 ## 2026.11.25 05:47 A3：CaptureAge flush 事件（GMT+8）
 
 - `CaptureContentAgeMonitor` 新增 stale episode：丟過 `contentAgeDrop` 後，收到下一張新鮮幀時發一次 `event=flush dropped=… lag=… gap=…`。
