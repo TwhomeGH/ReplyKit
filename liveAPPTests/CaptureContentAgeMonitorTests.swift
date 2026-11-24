@@ -50,7 +50,7 @@ struct CaptureContentAgeMonitorTests {
     }
 
     @Test("stale episode 結束後只發一次 flush")
-    func flushesAfterStaleEpisode() {
+    func flushesAfterStaleEpisode() throws {
         let monitor = CaptureContentAgeMonitor(threshold: 0.2, warmup: 0)
         let stale = monitor.evaluate(age: 0.5, now: 10)
         #expect(stale.drop == true)
@@ -60,7 +60,11 @@ struct CaptureContentAgeMonitorTests {
         #expect(fresh.event?.contains("event=flush") == true)
         #expect(fresh.event?.contains("dropped=1") == true)
         #expect(monitor.flushCount == 1)
-        #expect(monitor.lastFlush == CaptureContentAgeMonitor.Flush(dropped: 1, lag: 0.5, gap: 0.6))
+        // 10.6 - 10 在 Double 上是 0.5999999999999996；時間差不能用精確相等比較。
+        let flush = try #require(monitor.lastFlush)
+        #expect(flush.dropped == 1)
+        #expect(abs(flush.lag - 0.5) < 1e-9)
+        #expect(abs(flush.gap - 0.6) < 1e-9)
 
         let another = monitor.evaluate(age: 0.1, now: 10.7)
         #expect(another.event == nil)

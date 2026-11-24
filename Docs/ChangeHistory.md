@@ -1,5 +1,11 @@
 # 變更歷史
 
+## 2026.11.25 06:31 修正 A3 flush 測試的浮點比較（GMT+8）
+
+- `10.6 - 10` 實際是 `0.5999999999999996`，原本用 `Flush` 精確相等比較會失敗；改成 `#require` 取出後分別比較欄位，時間差用 `1e-9` 容差。
+- 這是測試斷言錯誤，不是 `CaptureContentAgeMonitor` 行為改變；flush 的 dropped／lag／gap 仍照原契約輸出。
+- `swiftc -parse` 通過；重新推送 feature 觸發 iOS Unit Tests。
+
 ## 2026.11.25 06:15 PIPContent 移除多餘的 weak msg（GMT+8）
 
 - 修正 Swift 警告 `weak ownership of capture 'msg' differs from implicitly-captured strong reference in outer scope`：外層 `Task` 已強參考 `MessageLayerTuple`，內層圖片完成閉包再寫 `[weak msg]` 造成同一變數兩種所有權。
