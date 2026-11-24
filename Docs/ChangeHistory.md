@@ -1,5 +1,13 @@
 # 變更歷史
 
+## 2026.11.25 05:44 TTS mainOnly gating 與設定同步（GMT+8）
+
+- 新增 `TTSMessagePolicy`：固定順序為停用 → mainOnly → 長度 → 空白，短的非主訊息不再先記成「太短」而掩蓋 mainOnly。
+- `speakStreamMessage` 改用政策判斷；只有 `isMain:true` 或關閉 mainOnly 時才會朗讀。
+- 設定頁的 `TTSReadMainOnly`、朗讀使用者名稱、打斷目前朗讀補上 `onChange` 同步 `TTSService.updateDefault()`；`TTSEnabled` 切換也先同步快取再處理音訊會話。
+- 新增 `TTSMessagePolicyTests`（mainOnly 優先、短訊息、force、停用、空白）。
+- 驗證：`swiftc -parse` 通過；設定頁的即時切換與實機朗讀待單元測試／實機確認。診斷 `20261125-0410-0538` 中 5 則 `isMain:true` 有 4 次 TTS start，96 則非主訊息沒有 TTS start；14 則長的被 mainOnly 跳過、75 則短訊息先被長度擋下。
+
 ## 2026.11.25 04:13 建置資訊加入分支與建置通道（GMT+8）
 
 - `BuildInfo.json` 新增 `appRef`／`appChannel`：前者記錄 branch、tag 或 commit，後者區分 `release`／`branch-test`／`ci`／`local`。

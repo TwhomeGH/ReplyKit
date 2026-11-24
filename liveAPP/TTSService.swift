@@ -23,6 +23,32 @@ enum TTSDefaults {
     static let maxLength = 120
 }
 
+/// 為何不朗讀一則 StreamMessage；順序固定，短訊息不能掩蓋 mainOnly 的判定。
+enum TTSMessageSkipReason: String, Equatable {
+    case disabled
+    case mainOnly
+    case tooShort
+    case empty
+}
+
+enum TTSMessagePolicy {
+    /// 只做 gating，不執行語音；讓 UI 與服務共用同一套判斷順序。
+    static func skipReason(
+        isEnabled: Bool,
+        readMainOnly: Bool,
+        isMain: Bool,
+        text: String,
+        minLen: Int,
+        force: Bool
+    ) -> TTSMessageSkipReason? {
+        guard isEnabled else { return .disabled }
+        if readMainOnly && !isMain { return .mainOnly }
+        if !force && text.count < minLen { return .tooShort }
+        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return .empty }
+        return nil
+    }
+}
+
 @MainActor
 final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
     static let shared = TTSService()
@@ -209,24 +235,29 @@ final class TTSService: NSObject, AVSpeechSynthesizerDelegate {
     ) {
         guard isEnabled else { return }
 
-        
         let RES_MSG = filter.processMessage(message)
 
-
-        if !force, RES_MSG.count < minLen {
-            sendlog(message:"太短了跳過 少於\(minLen)個字")
-            return;
-        }
-
-
-        if readMainOnly && !isMain {
-            sendlog(message:"跳過次要訊息")
+        switch TTSMessagePolicy.skipReason(
+            isEnabled: isEnabled,
+            readMainOnly: readMainOnly,
+            isMain: isMain,
+            text: RES_MSG,
+            minLen: minLen,
+            force: force
+        ) {
+        case .mainOnly:
+            sendlog(message: "跳過次要訊息")
             return
+        case .tooShort:
+            sendlog(message: "太短了跳過 少於\(minLen)個字")
+            return
+        case .disabled, .empty:
+            return
+        case nil:
+            break
         }
 
         let trimmedMessage = RES_MSG.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard !trimmedMessage.isEmpty else { return }
 
         
         let storedMaxLength = maxLen

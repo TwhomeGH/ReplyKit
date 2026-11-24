@@ -775,6 +775,8 @@ struct TTSSettingsView: View {
                                 Text("啟用聊天室TTS朗讀")
                             }
                             .onChange(of: ttsEnabled) { newValue in
+                                // 先同步快取狀態，再處理音訊會話；否則 isEnabled 會停在舊值。
+                                TTSService.shared.updateDefault()
                                 if newValue {
                                     TTSService.shared.refreshAudioSessionForCurrentSetting()
                                 } else {
@@ -787,10 +789,17 @@ struct TTSSettingsView: View {
                             Toggle(isOn: $TTSReadMainOnly) {
                                 Text("只朗讀主訊息 OnlyMain MSG")
                             }
+                            .onChange(of: TTSReadMainOnly) { newValue in
+                                TTSService.shared.updateDefault()
+                                sendlog(message: "TTS只朗讀主訊息: \(newValue)")
+                            }
 
 
                             Toggle(isOn: $readUserName) {
                                 Text("朗讀使用者名稱 Read User Name")
+                            }
+                            .onChange(of: readUserName) { _ in
+                                TTSService.shared.updateDefault()
                             }
 
                             Text("中間詞輸入框 ReadMiddleName")
@@ -808,6 +817,9 @@ struct TTSSettingsView: View {
 
                             Toggle(isOn: $interruptCurrent) {
                                 Text("新訊息打斷目前朗讀")
+                            }
+                            .onChange(of: interruptCurrent) { _ in
+                                TTSService.shared.updateDefault()
                             }
 
                             Button("列出可用語言清單") {
