@@ -1278,8 +1278,7 @@ final class PIPServiceMessages {
             for (data, msg) in zip(insertSegments, groupMsgs) where data.avatarURL != nil {
                 if let avatarURL = data.avatarURL {
                     Task {
-                        await PiPImageCache.shared.loadImage(urlString: avatarURL) { [weak msg] image in
-                            guard let msg else { return }
+                        await PiPImageCache.shared.loadImage(urlString: avatarURL) { image in
                             msg.avatar?.contents = image?.cgImage
                             msg.avatarImage = image?.size
                         }
@@ -1290,8 +1289,7 @@ final class PIPServiceMessages {
             for (data, msg) in zip(insertSegments, groupMsgs) where data.giftURL != nil {
                 if let giftURL = data.giftURL {
                     Task {
-                        await PiPImageCache.shared.loadImage(urlString: giftURL) { [weak msg] image in
-                            guard let msg else { return }
+                        await PiPImageCache.shared.loadImage(urlString: giftURL) { image in
                             msg.gift?.contents = image?.cgImage
                             msg.giftImage = image?.size
                         }
@@ -1302,8 +1300,8 @@ final class PIPServiceMessages {
             for (data, msg) in zip(insertSegments, groupMsgs) where !data.inlineEmojiURLs.isEmpty {
                 for (idx, emojiURL) in data.inlineEmojiURLs.enumerated() {
                     Task { [idx, msg] in
-                        await PiPImageCache.shared.loadImage(urlString: emojiURL) { [weak msg] image in
-                            guard let msg = msg, idx < msg.inlineEmojis.count else { return }
+                        await PiPImageCache.shared.loadImage(urlString: emojiURL) { image in
+                            guard idx < msg.inlineEmojis.count else { return }
                             msg.inlineEmojis[idx].contents = image?.cgImage
                             let newSize: CGSize
                             if let imgSize = image?.size {

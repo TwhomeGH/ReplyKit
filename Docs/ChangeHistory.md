@@ -1,5 +1,11 @@
 # 變更歷史
 
+## 2026.11.25 06:15 PIPContent 移除多餘的 weak msg（GMT+8）
+
+- 修正 Swift 警告 `weak ownership of capture 'msg' differs from implicitly-captured strong reference in outer scope`：外層 `Task` 已強參考 `MessageLayerTuple`，內層圖片完成閉包再寫 `[weak msg]` 造成同一變數兩種所有權。
+- 移除內層多餘的 weak／`guard let`，直接使用外層 Task 的強參考；圖片載入完成前訊息仍會被保留，才能安全更新 avatar／gift／emoji。
+- 驗證：`swiftc -parse` 通過；實際 Xcode 警告與 PIP 圖片更新待 iOS Unit Tests／實機確認。
+
 ## 2026.11.25 05:54 Swift-DocC：AVLagObservation 屬性註解（GMT+8）
 
 - 補齊 `AVLagObservation` 的屬性說明，明確標示 contentAge／idleAge／queueAge／clockDrift／sourcePTSDelta 各自量什麼、不能拿來當 A/V 同步結論。
