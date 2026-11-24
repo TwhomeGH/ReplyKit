@@ -61,6 +61,27 @@ class DiagnosticViewerTests(unittest.TestCase):
         self.assertEqual(summary["sessions"], ["C3EE"])
         self.assertEqual(summary["categories"][0]["name"], "AVLag")
 
+    def fake_lines(self, count=6):
+        return [viewer.LogLine(i + 1, "t", "Other", "info", None, f"m{i}")
+                for i in range(count)]
+
+    def test_context_is_deduped_and_match_flag_is_explicit(self):
+        lines = self.fake_lines()
+        page = viewer.page_with_context(lines, [1, 2], 0, 2, 1)
+        self.assertEqual([line.number for line, _ in page], [1, 2, 3, 4])
+        self.assertEqual([is_match for _, is_match in page], [False, True, True, False])
+
+    def test_context_respects_file_boundaries(self):
+        lines = self.fake_lines()
+        page = viewer.page_with_context(lines, [0, 5], 0, 2, 1)
+        self.assertEqual([line.number for line, _ in page], [1, 2, 5, 6])
+
+    def test_context_zero_returns_only_matches(self):
+        lines = self.fake_lines()
+        page = viewer.page_with_context(lines, [1, 4], 0, 1, 0)
+        self.assertEqual([line.number for line, _ in page], [2])
+        self.assertTrue(page[0][1])
+
 
 if __name__ == "__main__":
     unittest.main()

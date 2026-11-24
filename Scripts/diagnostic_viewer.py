@@ -206,8 +206,9 @@ class ViewerHandler(BaseHTTPRequestHandler):
         try:
             offset = max(0, int(first("offset") or "0"))
             limit = min(1000, max(1, int(first("limit") or "300")))
+            context = min(10, max(0, int(first("context") or "0")))
         except ValueError:
-            self.send_json({"error": "offset/limit 必須是整數"}, 400)
+            self.send_json({"error": "offset/limit/context 必須是整數"}, 400)
             return
 
         def matches(line: LogLine) -> bool:
@@ -226,15 +227,32 @@ class ViewerHandler(BaseHTTPRequestHandler):
                     return False
             return True
 
-        selected = [line for line in self.lines if matches(line)]
-        page = selected[offset:offset + limit]
+        matched_indices = [index for index, line in enumerate(self.lines) if matches(line)]
+        page_matches = matched_indices[offset:offset + limit]
+        page = page_with_context(self.lines, matched_indices, offset, limit, context)
         self.send_json({
-            "total": len(selected),
+            "total": len(matched_indices),
             "offset": offset,
             "limit": limit,
-            "hasMore": offset + len(page) < len(selected),
-            "lines": [line.as_dict() for line in page],
+            "context": context,
+            "matchCount": len(page_matches),
+            "lineCount": len(page),
+            "hasMore": offset + len(page_matches) < len(matched_indices),
+            "lines": [dict(line.as_dict(), isMatch=is_match) for line, is_match in page],
         })
+
+
+def page_with_context(lines: list[LogLine], matched: list[int],
+                      offset: int, limit: int, context: int) -> list[tuple[LogLine, bool]]:
+    """回傳本頁符合行與其前後鄰近行；is_match 為 True 表示真正符合篩選。"""
+    page = matched[offset:offset + limit]
+    wanted = set(page)
+    indices: set[int] = set()
+    for index in page:
+        start = max(0, index - context)
+        end = min(len(lines), index + context + 1)
+        indices.update(range(start, end))
+    return [(lines[index], index in wanted) for index in sorted(indices)]
 
 
 def bind_server(host: str, start_port: int, attempts: int = 20) -> ThreadingHTTPServer:

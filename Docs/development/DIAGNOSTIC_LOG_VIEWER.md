@@ -26,6 +26,7 @@ python Scripts/diagnostic_viewer.py <log.txt> --port 8777
 - Session 篩選：從 `session=<UUID>` 自動抽取。
 - 嚴重度：`error`／`warn`／`info`。`failed=0`、`lastError=none` 與累積的 `dropped=1` 不會被誤標成錯誤。
 - 搜尋：訊息、分類、session 與 `key=value` 欄位一起搜尋；命中字串以 `<mark>` 高亮，訊息沒有命中但欄位／session 命中時自動展開欄位。
+- 鄰近檢視：可選前後 0／2／5／10 筆；符合篩選的列正常顯示，鄰近列以淡色背景區分。跨頁載入會依原始行號去重；若同一列後來成為符合項，會升級為正常符合列。
 - 欄位展開：每行可展開 `key=value`，不用在一大串文字裡找數字；高亮只用 DOM text node，不把日誌內容塞進 `innerHTML`。
 - 分頁：預設 300 筆，按「載入更多」繼續。
 
