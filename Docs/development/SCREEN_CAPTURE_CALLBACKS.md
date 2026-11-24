@@ -3,7 +3,7 @@
 `[CaptureCallbacks] schema=1` 與 CaptureSource 使用同一 session。擷取期間約每五秒回報，收尾排空後另記 stage=finished。
 
 - callbacks：全部回呼，包含被忽略的樣本；video／audio／mic／unknown 分開。
-- outcomes：invalid、notReady、missingStatus、nonComplete、missingImage、unknownType 為略過原因；offered 是嘗試交付 mailbox，不代表 mailbox 接受或成功推流。
+- outcomes：invalid、notReady、missingStatus、nonComplete、missingImage、stale、unknownType 為略過原因；offered 是嘗試交付 mailbox，不代表 mailbox 接受或成功推流。stale 表示內容年齡超過 `CaptureContentAgeMonitor` 門檻，已在進入 mailbox 前丟棄。
 - states：可解析的畫面狀態 complete／idle／blank／suspended／started／stopped／unknown；不依此推定遊戲或系統故障。
 - idleSeconds：距最後回呼時間；沒有回呼為 unknown。maxCallbackGapSeconds 為 session 累計最大間隔，不是這五秒區間的最大值。
 - lastPTS、regress、invalidPTS：來源時間與異常計數，包含未交付 mailbox 的樣本。
@@ -54,3 +54,17 @@ ReplayKit 的 GPU 旋轉器經既有 Socket 快照每五秒回報，設備資訊
 在途比例為至少一筆命令尚未完成的區間聯集，並行命令不重複計時；watchdog 逾時不提前當作完成，實際回呼才扣除在途數。preparationMs 包含準備及可能等待，submitToCompletionMs 包含排隊與執行，兩者都不是 CPU／GPU 使用率。rotationDegrees、resized、canvas 描述最近提交命令；不是獨立旋轉或縮放 GPU 耗時。
 
 追蹤器隨旋轉器重建換 ID，首次僅建立基準。CPU 後備顯示 load=unavailable；摘要提供 consecutiveDrops，避免把凍結畫面後備誤當成正常新畫面。尚未涵蓋舊旋轉器重建後仍未完成命令的跨實例負載合計。
+
+## 內容年齡閘門（A2）
+
+`CaptureContentAgeMonitor` 只在 ScreenCaptureKit 提供可信 `displayTime` 時運作；它用 `ProcessInfo.systemUptime` 與 A1 的 `captureHostTime` 比較，預設門檻 200ms、暖機 1 秒。超過門檻的 `.complete` 影格在進入 mailbox／GPU 前丟棄，`CaptureCallbacks` 的 outcome 記為 `stale`，不會再出現在 `CaptureSource` 接受量或 mixer 輸入。
+
+`[CaptureAge]` 事件首次立即記錄，其後最多每 30 秒一則：
+
+```text
+[CaptureAge] session=... event=contentAgeDrop age=0.412 threshold=0.200 contentAgeDropped=3 samples=120 clockMissing=0
+```
+
+低頻摘要附在 `[CaptureCallbacks]` 之後，欄位為 `samples`、`contentAgeDropped`、`threshold`、`lastAge`、`maxAge`、`clockMissing`。`clockMissing` 表示該幀沒有可用抓幀時間；ReplayKit 目前沒有 `captureHostTime`，因此不會觸發這個閘門，也不應把 `clockMissing` 解讀為內容新鮮。
+
+這是入口閘門，不是佇列長度或編碼器背壓。若影格在 mailbox 或 GPU 等待後才變舊，還需要 worker 端二次檢查；目前先以入口年齡涵蓋「來源交付即過期」的情況。靜態畫面沒有新 `.complete` 幀時不會累積丟棄；有舊 `displayTime` 的幀被丟棄時，播放端應保持上一張，而不是得到中斷。
