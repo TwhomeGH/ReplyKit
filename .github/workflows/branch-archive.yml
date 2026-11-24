@@ -1,0 +1,164 @@
+name: Build Test IPA (No Tag)
+
+# 只產出可側載的 unsigned IPA artifact，不建立 tag、不建立 release。
+# workflow 本身在 main 執行，source_ref 可指定尚未合併的分支，讓 A1/A2
+# 這類改動先做實機短測試。
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: "要打包的分支／tag／commit（workflow 由 main 執行）"
+        required: true
+        default: "feature/content-latency"
+      label:
+        description: "產物標籤（不含空白）"
+        required: false
+        default: "test"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-ipa-${{ inputs.source_ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: xcode-27
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
+      BUILD_INFO_PACKAGES_DIR: /tmp/liveapp-source-packages
+
+    steps:
+      - name: Checkout source ref
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve build metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse --short=12 HEAD)"
+          branch="$(git rev-parse --abbrev-ref HEAD)"
+          version="$(grep -Eo 'MARKETING_VERSION = [^;]+;' liveAPP.xcodeproj/project.pbxproj \
+            | sed -E 's/.*= ([^;]+);/\1/' \
+            | grep -v '^1\.0$' \
+            | sort -u \
+            | head -n1 || true)"
+          version="${version:-0.0.0}"
+          build="$(date -u +%Y%m%d%H%M%S)"
+          label="$(printf '%s' '${{ inputs.label }}' | tr -cs 'A-Za-z0-9._-' '-')"
+          label="${label:-test}"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+          echo "branch=${branch}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "build=${build}" >> "$GITHUB_OUTPUT"
+          echo "label=${label}" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Test IPA (No Tag)"
+            echo
+            echo "- source: \`${branch}\` @ \`${sha}\`"
+            echo "- CFBundleShortVersionString: \`${version}\`"
+            echo "- CFBundleVersion: \`${build}\`"
+            echo "- unsigned; not a release"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify Xcode 27 and iOS SDKs
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          xcodebuild -showsdks
+          echo "Developer directory: $DEVELOPER_DIR" >> "$GITHUB_STEP_SUMMARY"
+          for SDK in iphoneos iphonesimulator; do
+            SDK_VERSION=$(xcrun --sdk "$SDK" --show-sdk-version)
+            echo "$SDK SDK: $SDK_VERSION" >> "$GITHUB_STEP_SUMMARY"
+            if [[ "$SDK_VERSION" != 27.* ]]; then
+              echo "::error::需要 iOS 27.x SDK，實際 $SDK 為 $SDK_VERSION"
+              exit 1
+            fi
+          done
+
+      - name: Install Metal Toolchain
+        uses: ./.github/actions/setup-metal-toolchain
+
+      - name: Resolve SwiftPM dependencies
+        run: |
+          xcodebuild -clonedSourcePackagesDirPath "$BUILD_INFO_PACKAGES_DIR" \
+            -resolvePackageDependencies \
+            -project liveAPP.xcodeproj -scheme liveAPP \
+            -onlyUsePackageVersionsFromResolvedFile
+
+      - name: Archive unsigned app
+        env:
+          MARKETING_VERSION: ${{ steps.meta.outputs.version }}
+          CURRENT_PROJECT_VERSION: ${{ steps.meta.outputs.build }}
+        run: |
+          set -o pipefail
+          mkdir -p build
+          xcodebuild -skipPackagePluginValidation -skipMacroValidation \
+            -clonedSourcePackagesDirPath "$BUILD_INFO_PACKAGES_DIR" \
+            archive \
+            -project liveAPP.xcodeproj \
+            -scheme liveAPP \
+            -configuration Release \
+            -archivePath "$PWD/build/liveApp.xcarchive" \
+            -disableAutomaticPackageResolution \
+            -onlyUsePackageVersionsFromResolvedFile \
+            -destination "generic/platform=iOS" \
+            CODE_SIGNING_ALLOWED=NO \
+            MARKETING_VERSION="$MARKETING_VERSION" \
+            CURRENT_PROJECT_VERSION="$CURRENT_PROJECT_VERSION" \
+            SWIFT_SYMBOL_REDACTION=NO 2>&1 | tee build/archive.log
+
+      - name: Add KSign-compatible alternate icon files
+        run: bash Scripts/add_legacy_alternate_icons.sh "build/liveApp.xcarchive/Products/Applications/liveAPP.app"
+
+      - name: Verify archived app icons
+        run: |
+          python3 -m unittest discover -s Scripts -p test_inspect_app_bundle.py
+          python3 Scripts/inspect_app_bundle.py \
+            "build/liveApp.xcarchive/Products/Applications/liveAPP.app" \
+            --output build/app-bundle-report.md \
+            --github-summary \
+            --expect-excluded Scripts/package_exclusions.txt
+
+      - name: Export unsigned IPA
+        run: |
+          set -euo pipefail
+          cd build
+          cp -R liveApp.xcarchive/Products/Applications/*.app .
+          mkdir -p Payload
+          mv *.app Payload/
+          IPA="liveApp_${{ steps.meta.outputs.label }}_${{ steps.meta.outputs.sha }}.ipa"
+          zip -r "$IPA" Payload
+          echo "IPA=$IPA" >> "$GITHUB_ENV"
+          ls -lh "$IPA"
+
+      - name: Upload test IPA
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-ipa-${{ steps.meta.outputs.label }}-${{ steps.meta.outputs.sha }}
+          path: |
+            build/*.ipa
+            build/archive.log
+            build/app-bundle-report.md
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Write artifact summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo
+            echo "### Artifact"
+            echo
+            echo "- name: \`test-ipa-${{ steps.meta.outputs.label }}-${{ steps.meta.outputs.sha }}\`"
+            echo "- retention: 7 days"
+            echo "- install: unsigned IPA；用 AltStore／KSign 等既有側載流程，不會出現在 Releases。"
+          } >> "$GITHUB_STEP_SUMMARY"
