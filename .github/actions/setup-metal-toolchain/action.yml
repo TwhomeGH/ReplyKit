@@ -37,9 +37,16 @@ runs:
         bundle="$(find_bundle || true)"
         if [[ "${{ steps.cache.outputs.cache-hit }}" == "true" && -n "$bundle" ]]; then
           echo "Using cached Metal Toolchain: $bundle"
+          # 快取命中時 runner 沒有安裝過，需要 import；若映像已預裝，import 會說
+          # already installed，交給最後的 xcrun 驗證，不把重複安裝當致命錯誤。
+          if ! xcodebuild -importComponent metalToolchain -importPath "$bundle"; then
+            echo "::warning::Metal Toolchain import failed; checking existing installation"
+          fi
         else
           rm -rf "$METAL_CACHE"
           mkdir -p "$METAL_CACHE"
+          # Xcode 27 的 -downloadComponent -exportPath 同時完成安裝；此時再 import
+          # 會得到 "Asset is already installed"，所以 cache miss 不再 import。
           xcodebuild -downloadComponent metalToolchain -exportPath "$METAL_CACHE"
           bundle="$(find_bundle || true)"
         fi
@@ -47,5 +54,4 @@ runs:
           echo "::error::Metal Toolchain export did not produce an exportedBundle"
           exit 1
         fi
-        xcodebuild -importComponent metalToolchain -importPath "$bundle"
         xcrun --find metal
