@@ -11,6 +11,8 @@ commit 在畫面上顯示前 12 碼；「複製完整版本資訊」與「分享
 | 欄位 | 來源與意義 |
 | --- | --- |
 | App commit | 建置當下原始碼 repository 的完整 HEAD，使用 checkout 實際值，不使用可能屬於觸發事件的 GITHUB_SHA |
+| 建置分支／標籤 | 建置來源的 branch 或 tag；可由 `BUILD_INFO_REF` 覆寫，detached HEAD 不顯示成 HEAD |
+| 建置通道 | 正式發布／分支測試／CI 建置／本機建置；由 `BUILD_INFO_CHANNEL` 覆寫，用來區分 release 與 branch test |
 | App 原始碼狀態 | Git status，包含已追蹤及未忽略的未追蹤修改；有修改時不能只用 commit 重現該產物 |
 | HaishinKit 鎖定 commit | 專案 workspace 的 Package.resolved 所鎖定的完整 revision |
 | HaishinKit checkout commit | 找到套件 checkout 時讀取其實際 HEAD；未取得顯示未知 |
@@ -33,6 +35,7 @@ commit 在畫面上顯示前 12 碼；「複製完整版本資訊」與「分享
 - CI 使用 `BUILD_INFO_PACKAGES_DIR` 與 `-clonedSourcePackagesDirPath` 指向相同 checkout 目錄，依原本鎖定套件的方式建置。舊的 sed 修改 HaishinKit Constants.swift 流程已移除。
 - 本機未指定目錄時，沿 BUILD_DIR 的父目錄查找 Xcode SourcePackages/checkouts。找不到就只顯示鎖定 revision，不宣稱已核對。
 - 若有自訂套件目錄，可在 Xcode 建置設定提供 BUILD_INFO_PACKAGES_DIR。手動 local package override／非標準套件配置不在自動識別範圍；核對結果只代表找到的 checkout 與鎖定檔比較，不能作為完整依賴來源證明。
+- `BUILD_INFO_REF`／`BUILD_INFO_CHANNEL` 由 workflow 傳入：正式 release 用 tag／`release`，分支測試用 `source_ref`／`branch-test`；未提供時 CI 依 `GITHUB_REF_TYPE` 推斷，本機則顯示目前 branch／`local`。
 - 主 App target 的 Debug／Release 關閉 User Script Sandboxing，供此階段讀取 Git metadata、worktree metadata 及 Xcode 外部套件 checkout；其他 target 保留原設定。腳本只執行唯讀 Git 命令及寫入指定產物資訊檔，不修改套件。
 
 建置機需有 Python 3 與 Git。腳本找不到來源資訊時仍可寫入未知；若腳本無法執行或資訊檔無法寫入，建置階段應失敗，避免產出沿用舊快照的包。

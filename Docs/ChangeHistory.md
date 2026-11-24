@@ -1,5 +1,12 @@
 # 變更歷史
 
+## 2026.11.25 04:13 建置資訊加入分支與建置通道（GMT+8）
+
+- `BuildInfo.json` 新增 `appRef`／`appChannel`：前者記錄 branch、tag 或 commit，後者區分 `release`／`branch-test`／`ci`／`local`。
+- `Scripts/build_info.py` 以 `BUILD_INFO_REF`／`BUILD_INFO_CHANNEL` 優先；detached HEAD 不顯示成 `HEAD`，退回 exact tag 或 `unknown`。
+- 關於頁新增「建置分支／標籤」與「建置通道」，舊 JSON 缺欄位時顯示未知；`[BuildInfo]` 日誌與複製／分享同步包含。
+- 驗證：Python 產生器 8 項測試通過、`swiftc -parse` 通過；branch-archive 會傳 `branch-test`，release workflow 之後補 `release`。
+
 ## 2026.11.24 11:04 CI：Metal Toolchain 使用 Actions cache（GMT+8）
 
 - 新增 composite action `.github/actions/setup-metal-toolchain`：先用 `xcrun --find metal` ＋ `xcrun metal --version` 探測；runner 已預裝可用 toolchain 時直接跳過，不還原 800 MB 快取也不下載。

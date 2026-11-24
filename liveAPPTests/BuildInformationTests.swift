@@ -24,4 +24,10 @@ struct BuildInformationTests {
         let mismatch = BuildInformation.decode(Data(#"{"schemaVersion":1,"haishinVerification":"mismatch"}"#.utf8))
         #expect(mismatch.verification.contains("不同"))
     }
+    @Test func branchAndChannelAreVisible() {
+        let data = Data(#"{"schemaVersion":1,"appRef":"feature/content-latency","appChannel":"branch-test"}"#.utf8)
+        let value = BuildInformation.decode(data)
+        #expect(value.report.contains("建置分支／標籤：feature/content-latency"))
+        #expect(value.report.contains("建置通道：分支測試"))
+    }
 }

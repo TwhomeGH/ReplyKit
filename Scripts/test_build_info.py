@@ -25,8 +25,28 @@ class BuildInfoTests(unittest.TestCase):
         self.assertIsNone(info["appDirty"])
         self.assertIsNone(info["appUntrackedCount"])
         self.assertIsNone(info["appModifiedCount"])
+        self.assertEqual(info["appRef"], "unknown")
+        self.assertEqual(info["appChannel"], "ci")
         self.assertEqual(info["ciRun"], "42")
         self.assertEqual(info["haishinVerification"], "missing")
+
+    def test_explicit_ref_and_channel_win(self):
+        info = build_info.collect(self.root, {
+            "BUILD_INFO_REF": "feature/content-latency",
+            "BUILD_INFO_CHANNEL": "branch-test",
+            "GITHUB_ACTIONS": "true",
+            "GITHUB_REF_TYPE": "branch",
+        })
+        self.assertEqual(info["appRef"], "feature/content-latency")
+        self.assertEqual(info["appChannel"], "branch-test")
+
+    def test_channel_falls_back_to_release_ci_or_local(self):
+        release = build_info.collect(self.root, {"GITHUB_ACTIONS": "true", "GITHUB_REF_TYPE": "tag"})
+        self.assertEqual(release["appChannel"], "release")
+        ci = build_info.collect(self.root, {"GITHUB_ACTIONS": "true", "GITHUB_REF_TYPE": "branch"})
+        self.assertEqual(ci["appChannel"], "ci")
+        local = build_info.collect(self.root, {})
+        self.assertEqual(local["appChannel"], "local")
 
     def test_project_lock_wins_over_root_lock(self):
         self.lock()

@@ -37,11 +37,34 @@ def snapshot(path):
     return revision, bool(lines), untracked, modified
 
 
+def resolve_ref(root, env):
+    """建置來源分支／標籤；CI 以顯式值優先，避免 detached HEAD 顯示 HEAD。"""
+    explicit = (env.get("BUILD_INFO_REF") or "").strip()
+    if explicit:
+        return explicit
+    branch = git(root, "rev-parse", "--abbrev-ref", "HEAD")
+    if branch and branch != "HEAD":
+        return branch
+    tag = git(root, "describe", "--tags", "--exact-match")
+    return tag or "unknown"
+
+
+def resolve_channel(env):
+    """建置通道；正式 release 與分支測試必須在畫面上可區分。"""
+    explicit = (env.get("BUILD_INFO_CHANNEL") or "").strip()
+    if explicit:
+        return explicit
+    if env.get("GITHUB_ACTIONS") == "true":
+        return "release" if env.get("GITHUB_REF_TYPE") == "tag" else "ci"
+    return "local"
+
+
 def collect(root, env):
     revision, dirty, untracked, modified = snapshot(root)
     info = {
         "schemaVersion": 1, "buildID": str(uuid.uuid4()),
         "appRevision": revision, "appDirty": dirty,
+        "appRef": resolve_ref(root, env), "appChannel": resolve_channel(env),
         "appUntrackedCount": untracked, "appModifiedCount": modified,
         "builtAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "source": "GitHub Actions" if env.get("GITHUB_ACTIONS") == "true" else "本機",

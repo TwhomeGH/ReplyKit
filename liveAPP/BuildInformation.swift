@@ -5,6 +5,10 @@ struct BuildInformation: Decodable, Sendable {
     var schemaVersion = 1
     var buildID: String?
     var appRevision: String?
+    /// 建置來源分支、標籤或 commit；detached HEAD 不顯示成 HEAD。
+    var appRef: String?
+    /// release／branch-test／ci／local；舊 JSON 沒有此欄位時為未知。
+    var appChannel: String?
     var appDirty: Bool?
     var appUntrackedCount: Int?
     var appModifiedCount: Int?
@@ -49,9 +53,21 @@ struct BuildInformation: Decodable, Sendable {
         default: return "未知：未取得套件鎖定資訊"
         }
     }
+    var channel: String {
+        switch appChannel {
+        case "release": return "正式發布"
+        case "branch-test": return "分支測試"
+        case "ci": return "CI 建置"
+        case "local": return "本機建置"
+        case let value?: return value
+        case nil: return "未知"
+        }
+    }
     var rows: [(String, String)] {
         [
             ("App commit", text(appRevision)),
+            ("建置分支／標籤", text(appRef)),
+            ("建置通道", channel),
             ("App 原始碼狀態", modifications(dirty: appDirty, untracked: appUntrackedCount, modified: appModifiedCount)),
             ("HaishinKit 鎖定 commit", text(haishinRevision)),
             ("HaishinKit checkout commit", text(haishinCheckoutRevision)),
