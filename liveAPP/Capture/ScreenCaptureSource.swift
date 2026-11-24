@@ -62,6 +62,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
     let callbacks = CaptureCallbackDiagnostics()
     let processing: VideoProcessingDiagnostics
     let avLag = AVLagDiagnostics()
+    let contentAge = CaptureContentAgeMonitor()
     init(mixer: MediaMixer, session: String, probe: ScreenAudioProbe, rotateLeft: Bool,
          canvas: CGSize? = nil, fills: Bool = false,
          queuePolicy: CaptureQueuePolicy) throws {
@@ -169,6 +170,16 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             let sample = CapturedSample(buffer: sampleBuffer, arrival: arrival, pts: pts,
                                         captureHostTime: captureHostTime,
                                         captureTimeSource: captureHostTime == nil ? .unknown : .displayTime)
+            let now = ProcessInfo.processInfo.systemUptime
+            let age = captureHostTime.map { max(0, now - $0) }
+            let decision = contentAge.evaluate(age: age, now: now)
+            if let event = decision.event {
+                sendlog(message: "[CaptureAge] session=\(session) \(event)")
+            }
+            if decision.drop {
+                outcome = .stale
+                return
+            }
             let frameSize = CGSize(width: CVPixelBufferGetWidth(image), height: CVPixelBufferGetHeight(image))
             if frameSize != loggedFrameSize {
                 loggedFrameSize = frameSize
@@ -461,6 +472,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                 if let pump = self.pump, detailedLog {
                     sendlog(message: "[CaptureVideoProcessing] session=\(token) schema=1 \(pump.processing.summary)")
                     sendlog(message: "[CaptureCallbacks] session=\(token) schema=1 clockComparison=unverified \(pump.callbacks.summary(now: CMClockGetTime(CMClockGetHostTimeClock()).seconds))")
+                    sendlog(message: "[CaptureAge] session=\(token) \(pump.contentAge.summary)")
                 }
                 if let av = self.pump?.avLag.snapshot(
                     session: token.uuidString,

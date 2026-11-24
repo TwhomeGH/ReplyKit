@@ -1,5 +1,13 @@
 # 變更歷史
 
+## 2026.11.24 09:54 A2：依內容年齡丟棄過期影格（GMT+8）
+
+- 新增 `CaptureContentAgeMonitor`：只用 `captureHostTime` 判斷內容年齡，預設門檻 200ms、暖機 1 秒；沒有可信抓幀時間時不丟幀，計入 `clockMissing`。
+- SCK `ScreenSamplePump` 在進入 queue／GPU 前評估；超過門檻記為 `stale`，不進 mailbox，避免過期畫面佔用後續管線。
+- `[CaptureAge] event=contentAgeDrop` 首次立即、其後最多每 30 秒一則；低頻摘要附在 `[CaptureCallbacks]` 旁。
+- 新增 `CaptureContentAgeMonitorTests`（保留、暖機、節流、clockMissing、負值夾取）。
+- 驗證：Swift 語法檢查通過；motion fixture 與實機內容年齡待驗收。ReplayKit 沒有 `captureHostTime`，目前不會觸發這個閘門。
+
 ## 2026.11.24 07:35 A1：ScreenCaptureKit 接入 displayTime（GMT+8）
 
 - `ScreenCaptureSource` 從 `SCStreamFrameInfo.displayTime` 取得 mach absolute time，轉成 host clock 後放入 `VideoFrameTrace.captureHostTime`；`sourcePTS` 仍是媒體 PTS。

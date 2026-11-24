@@ -4,7 +4,7 @@ import Foundation
 /// 所有更新與讀取以同一把鎖保護，支援影音回呼並行。
 final class CaptureCallbackDiagnostics: @unchecked Sendable {
     enum Track: String, CaseIterable { case video, audio, mic, unknown }
-    enum Outcome: String { case offered, invalid, notReady, missingStatus, nonComplete, missingImage, unknownType }
+    enum Outcome: String { case offered, invalid, notReady, missingStatus, nonComplete, missingImage, stale, unknownType }
     private struct Counters {
         var callbacks = 0
         var outcomes: [Outcome: Int] = [:]
