@@ -1,5 +1,12 @@
 # 變更歷史
 
+## 2026.11.24 11:45 CI：Metal Toolchain probe-first（GMT+8）
+
+- 新增 composite action `.github/actions/setup-metal-toolchain`：先用 `xcrun --find metal` ＋ `xcrun metal --version` 探測；runner 已預裝可用 toolchain 時直接跳過，不還原約 800 MB 快取也不下載。
+- 需要安裝時才用官方 `xcodebuild -downloadComponent metalToolchain -exportPath`（Xcode 27 產物是 `*.exportedBundle`），之後從 Actions cache 還原並以 `xcodebuild -importComponent metalToolchain -importPath` 匯入。
+- `unit-tests.yml`、`main.yml`（archive）與 `documentation.yml`（DocC）共用同一個 action。
+- 驗證：`45321733957` 日誌顯示 `Metal Toolchain already available: ...`，沒有 `Cache restored`／`Beginning asset download`，單元測試全部通過。
+
 ## 2026.11.24 06:42 編碼壓力快照與設備診斷（GMT+8）
 
 - HaishinKit `videoPipelineSnapshot()` 新增 `encoderPressure`：合併 VT `pending`、編碼前佇列、最近回呼耗時與 5 秒內丟幀事件，輸出 `normal`／`queueBacklog`／`vtBacklog`／`callbackSlow`／`throttling`／`dropping`／`unavailable`。
