@@ -103,6 +103,8 @@ jobs:
         env:
           MARKETING_VERSION: ${{ steps.meta.outputs.version }}
           CURRENT_PROJECT_VERSION: ${{ steps.meta.outputs.build }}
+          BUILD_INFO_REF: ${{ inputs.source_ref }}
+          BUILD_INFO_CHANNEL: branch-test
         run: |
           set -o pipefail
           mkdir -p build
