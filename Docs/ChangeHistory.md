@@ -1,5 +1,12 @@
 # 變更歷史
 
+## 2026.11.25 05:47 A3：CaptureAge flush 事件（GMT+8）
+
+- `CaptureContentAgeMonitor` 新增 stale episode：丟過 `contentAgeDrop` 後，收到下一張新鮮幀時發一次 `event=flush dropped=… lag=… gap=…`。
+- `lag` 是該 episode 最大 stale age；`gap` 是與上一張影格間隔；單純沒有新影格只累計 `maxFrameGap`，不會誤報 flush。
+- 摘要新增 `pending`、`flushes`、`lastFlush{dropped,lag,gap}`、`maxFrameGap`；未解決的 episode 可由 `contentAgeDropped − flushes` 看出。
+- 新增測試：episode 只 flush 一次、長 gap 不 flush、無 stale 不合併；`swiftc -parse` 與 iOS Unit Tests 待驗證。
+
 ## 2026.11.25 05:44 TTS mainOnly gating 與設定同步（GMT+8）
 
 - 新增 `TTSMessagePolicy`：固定順序為停用 → mainOnly → 長度 → 空白，短的非主訊息不再先記成「太短」而掩蓋 mainOnly。

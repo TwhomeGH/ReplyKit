@@ -48,4 +48,33 @@ struct CaptureContentAgeMonitorTests {
         #expect(monitor.summary.contains("lastAge=0.000"))
         #expect(monitor.summary.contains("maxAge=0.000"))
     }
+
+    @Test("stale episode 結束後只發一次 flush")
+    func flushesAfterStaleEpisode() {
+        let monitor = CaptureContentAgeMonitor(threshold: 0.2, warmup: 0)
+        let stale = monitor.evaluate(age: 0.5, now: 10)
+        #expect(stale.drop == true)
+
+        let fresh = monitor.evaluate(age: 0.1, now: 10.6)
+        #expect(fresh.drop == false)
+        #expect(fresh.event?.contains("event=flush") == true)
+        #expect(fresh.event?.contains("dropped=1") == true)
+        #expect(monitor.flushCount == 1)
+        #expect(monitor.lastFlush == CaptureContentAgeMonitor.Flush(dropped: 1, lag: 0.5, gap: 0.6))
+
+        let another = monitor.evaluate(age: 0.1, now: 10.7)
+        #expect(another.event == nil)
+        #expect(monitor.flushCount == 1)
+        #expect(monitor.summary.contains("flushes=1"))
+    }
+
+    @Test("沒有 stale 的長間隔不算 flush，只記 maxFrameGap")
+    func longGapWithoutDropsDoesNotFlush() {
+        let monitor = CaptureContentAgeMonitor(threshold: 0.2, warmup: 0)
+        _ = monitor.evaluate(age: 0.1, now: 10)
+        let resumed = monitor.evaluate(age: 0.1, now: 15)
+        #expect(resumed.event == nil)
+        #expect(monitor.flushCount == 0)
+        #expect(monitor.summary.contains("maxFrameGap=5.000"))
+    }
 }

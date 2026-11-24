@@ -65,6 +65,14 @@ ReplayKit 的 GPU 旋轉器經既有 Socket 快照每五秒回報，設備資訊
 [CaptureAge] session=... event=contentAgeDrop age=0.412 threshold=0.200 contentAgeDropped=3 samples=120 clockMissing=0
 ```
 
-低頻摘要附在 `[CaptureCallbacks]` 之後，欄位為 `samples`、`contentAgeDropped`、`threshold`、`lastAge`、`maxAge`、`clockMissing`。`clockMissing` 表示該幀沒有可用抓幀時間；ReplayKit 目前沒有 `captureHostTime`，因此不會觸發這個閘門，也不應把 `clockMissing` 解讀為內容新鮮。
+低頻摘要附在 `[CaptureCallbacks]` 之後，欄位為 `samples`、`contentAgeDropped`、`threshold`、`lastAge`、`maxAge`、`clockMissing`、`pending`、`flushes`、`lastFlush{dropped,lag,gap}`、`maxFrameGap`。`clockMissing` 表示該幀沒有可用抓幀時間；ReplayKit 目前沒有 `captureHostTime`，因此不會觸發這個閘門，也不應把 `clockMissing` 解讀為內容新鮮。
+
+A3 的 `flush` 只在「先前真的丟過 stale，之後收到新鮮幀」時發出：
+
+```text
+[CaptureAge] event=flush dropped=2 lag=0.412 gap=0.105 threshold=0.200 flushes=1
+```
+
+`lag` 是該 episode 最大 stale age，`gap` 是與上一張影格的間隔。單純沒有新影格（靜態 hold、背景節流）只會累計 `maxFrameGap`，不會產生 flush；`flush` 也不是佇列或編碼器背壓的證明。
 
 這是入口閘門，不是佇列長度或編碼器背壓。若影格在 mailbox 或 GPU 等待後才變舊，還需要 worker 端二次檢查；目前先以入口年齡涵蓋「來源交付即過期」的情況。靜態畫面沒有新 `.complete` 幀時不會累積丟棄；有舊 `displayTime` 的幀被丟棄時，播放端應保持上一張，而不是得到中斷。
