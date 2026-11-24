@@ -1,0 +1,41 @@
+name: Setup Metal Toolchain
+description: 還原快取的 Metal Toolchain DMG 並匯入 Xcode；沒有快取時只下載一次。
+
+# Xcode 26 起 Metal 編譯器是額外元件（約 700 MB）。`xcodebuild -downloadComponent`
+# 預設會下載並安裝；這裡用官方的 `-exportPath`／`-importComponent` 拆成
+# 「下載一次、之後從 Actions cache 匯入」，避免每個 CI job 重抓。
+runs:
+  using: composite
+  steps:
+    - name: Resolve Xcode version
+      id: xcode
+      shell: bash
+      run: |
+        set -euo pipefail
+        version="$(xcodebuild -version | sed -n '1s/ /-/p')"
+        echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+    - name: Restore Metal Toolchain cache
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}/metal-toolchain
+        key: metal-toolchain-${{ runner.os }}-${{ steps.xcode.outputs.version }}-v1
+
+    - name: Import or download Metal Toolchain
+      shell: bash
+      env:
+        METAL_CACHE: ${{ runner.temp }}/metal-toolchain
+      run: |
+        set -euo pipefail
+        mkdir -p "$METAL_CACHE"
+        dmg="$METAL_CACHE/metalToolchain.dmg"
+        if [[ "${{ steps.cache.outputs.cache-hit }}" == "true" && -f "$dmg" ]]; then
+          echo "Using cached Metal Toolchain: $dmg"
+        else
+          rm -rf "$METAL_CACHE"
+          mkdir -p "$METAL_CACHE"
+          xcodebuild -downloadComponent metalToolchain -exportPath "$METAL_CACHE"
+        fi
+        xcodebuild -importComponent metalToolchain "$dmg"
+        xcrun --find metal

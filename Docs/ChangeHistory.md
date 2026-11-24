@@ -1,5 +1,12 @@
 # 變更歷史
 
+## 2026.11.24 11:04 CI：Metal Toolchain 使用 Actions cache（GMT+8）
+
+- 新增 composite action `.github/actions/setup-metal-toolchain`：用官方的 `xcodebuild -downloadComponent metalToolchain -exportPath` 下載一次 `metalToolchain.dmg`，之後從 Actions cache 還原並以 `-importComponent` 匯入 Xcode。
+- 快取 key 依 `xcodebuild -version` 區分；Xcode 更新時自動換 key，不會把舊版 toolchain 匯入新版 Xcode。
+- `unit-tests.yml`、`main.yml`（archive）與 `documentation.yml`（DocC）都改用同一個 action，避免三處各自下載約 700 MB。
+- 驗證：YAML 解析通過；第一次 run 會是 cache miss（下載一次），第二次起應只還原並匯入。單元測試、archive 與 DocC 的實際快取命中待 CI 日誌確認。
+
 ## 2026.11.24 09:54 A2：依內容年齡丟棄過期影格（GMT+8）
 
 - 新增 `CaptureContentAgeMonitor`：只用 `captureHostTime` 判斷內容年齡，預設門檻 200ms、暖機 1 秒；沒有可信抓幀時間時不丟幀，計入 `clockMissing`。

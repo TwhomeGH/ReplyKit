@@ -94,10 +94,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install Metal toolchain
-        run: |
-          set -euo pipefail
-          # Xcode 26 起 Metal 編譯器改為需另外下載；缺它會使 .metal 編譯失敗。
-          xcodebuild -downloadComponent metalToolchain
+        uses: ./.github/actions/setup-metal-toolchain
 
       - name: Build App documentation
         run: |
