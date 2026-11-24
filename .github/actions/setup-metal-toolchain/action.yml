@@ -29,13 +29,23 @@ runs:
       run: |
         set -euo pipefail
         mkdir -p "$METAL_CACHE"
-        dmg="$METAL_CACHE/metalToolchain.dmg"
-        if [[ "${{ steps.cache.outputs.cache-hit }}" == "true" && -f "$dmg" ]]; then
-          echo "Using cached Metal Toolchain: $dmg"
+        # Xcode 27 的 -exportPath 產物是 *.exportedBundle 目錄，不是文件範例中的
+        # metalToolchain.dmg；-importComponent 也要求 -importPath，而非位置參數。
+        find_bundle() {
+          find "$METAL_CACHE" -maxdepth 1 -name '*.exportedBundle' -print -quit
+        }
+        bundle="$(find_bundle || true)"
+        if [[ "${{ steps.cache.outputs.cache-hit }}" == "true" && -n "$bundle" ]]; then
+          echo "Using cached Metal Toolchain: $bundle"
         else
           rm -rf "$METAL_CACHE"
           mkdir -p "$METAL_CACHE"
           xcodebuild -downloadComponent metalToolchain -exportPath "$METAL_CACHE"
+          bundle="$(find_bundle || true)"
         fi
-        xcodebuild -importComponent metalToolchain "$dmg"
+        if [[ -z "$bundle" ]]; then
+          echo "::error::Metal Toolchain export did not produce an exportedBundle"
+          exit 1
+        fi
+        xcodebuild -importComponent metalToolchain -importPath "$bundle"
         xcrun --find metal
