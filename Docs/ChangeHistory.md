@@ -1,5 +1,12 @@
 # 變更歷史
 
+## 2026.11.25 03:55 分支測試 IPA（No Tag）（GMT+8）
+
+- 新增 `.github/workflows/branch-archive.yml`：`workflow_dispatch` 指定 `source_ref`／`label`，由 main 執行、checkout 指定分支，產出 unsigned IPA artifact。
+- 不建立 tag、不建立 release、不更新 AltStore；artifact 保留 7 天，適合 A1/A2 這類尚未合併的實機短測試。
+- `CFBundleShortVersionString` 跟隨最新語意化 tag（目前 17.9.3），`CFBundleVersion` 用 UTC 時間戳；`CFBundleDisplayName` 改為「松鼠推流 測試」，bundle ID 不變。
+- 驗證：run `45473056481` 首次成功（7.7 MB，發現版本 17.6.7 過舊）；run `45474295811` 產出 17.9.3／`20261124194951`／「松鼠推流 測試」的 7.7 MB unsigned IPA，沒有 `_CodeSignature`；tags 與 releases 仍停在 17.9.3。
+
 ## 2026.11.24 11:45 CI：Metal Toolchain probe-first（GMT+8）
 
 - 新增 composite action `.github/actions/setup-metal-toolchain`：先用 `xcrun --find metal` ＋ `xcrun metal --version` 探測；runner 已預裝可用 toolchain 時直接跳過，不還原約 800 MB 快取也不下載。

@@ -85,3 +85,18 @@ xcodebuild docbuild -scheme liveAPP -destination 'generic/platform=iOS' \
 ## 主頁維護入口
 
 主頁第一批已按責任拆檔，請先看 [主頁模組說明](HOME_MODULES.md)，再定位排版、RTMP 表單或廣播操作。
+
+## 分支測試 IPA（不建 tag）
+
+尚未合併的改動要上實機時，不要為了短測試併回 `main` 發版；用手動 workflow 產生一次性 unsigned IPA：
+
+```bash
+gh workflow run branch-archive.yml --repo TwhomeGH/ReplyKit --ref main \
+  -f source_ref=feature/content-latency -f label=a1a2
+```
+
+- workflow 由 `main` 的定義執行，`source_ref` 才是實際打包的 branch／tag／commit。
+- 只上傳 artifact `test-ipa-<label>-<sha>`（IPA、archive log、bundle report），保留 7 天。
+- 不建立 tag、不建立 release、不更新 AltStore。
+- `CFBundleShortVersionString` 跟隨最新語意化 tag；`CFBundleVersion` 用 UTC 時間戳；桌面名稱加「測試」以供辨識。
+- IPA 未簽名，沿用既有 AltStore／KSign 側載流程。
