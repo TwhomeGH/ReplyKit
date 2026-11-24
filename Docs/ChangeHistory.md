@@ -1,5 +1,11 @@
 # 變更歷史
 
+## 2026.11.25 06:07 診斷檢視器搜尋高亮（GMT+8）
+
+- 搜尋命中改以 `<mark>` 高亮訊息、分類與 `key=value` 欄位；高亮用 DOM text node 建立，不把日誌內容塞進 `innerHTML`。
+- 訊息本身已命中時不自動展開欄位；只有欄位或 session 單獨命中才展開，避免一次搜尋展開數百列。
+- 瀏覽器驗證：搜尋 `busy` 有 886 個 mark，`pipTargetFPS` 有 374 個 mark，皆沒有自動展開大量欄位。
+
 ## 2026.11.25 03:55 分支測試 IPA（No Tag）（GMT+8）
 
 - 新增 `.github/workflows/branch-archive.yml`：`workflow_dispatch` 指定 `source_ref`／`label`，由 main 執行、checkout 指定分支，產出 unsigned IPA artifact。

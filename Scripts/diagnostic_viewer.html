@@ -67,6 +67,8 @@
   td.cat { width: 170px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
            font-size: 12px; color: var(--accent); overflow-wrap: anywhere; }
   td.msg { overflow-wrap: anywhere; }
+  mark { background: #f6d365; color: #111318; padding: 0 1px; border-radius: 3px; }
+  .session-match { color: var(--muted); font-size: 11px; margin-top: 4px; }
   tr.error td.msg { color: #ffc2c2; }
   tr.warn td.msg { color: #ffe2a3; }
   .fields { margin-top: 4px; }
@@ -139,6 +141,36 @@ function text(tag, value) {
   return el;
 }
 
+// 只用 DOM text node 建立 mark，不把日誌內容塞進 innerHTML。
+function appendHighlighted(parent, value, query) {
+  const source = value == null ? "" : String(value);
+  if (!query) {
+    parent.appendChild(document.createTextNode(source));
+    return;
+  }
+  const lower = source.toLocaleLowerCase();
+  const needle = query.toLocaleLowerCase();
+  let start = 0;
+  let index = lower.indexOf(needle, start);
+  if (index < 0) {
+    parent.appendChild(document.createTextNode(source));
+    return;
+  }
+  while (index >= 0) {
+    if (index > start) {
+      parent.appendChild(document.createTextNode(source.slice(start, index)));
+    }
+    const mark = document.createElement("mark");
+    mark.textContent = source.slice(index, index + needle.length);
+    parent.appendChild(mark);
+    start = index + needle.length;
+    index = lower.indexOf(needle, start);
+  }
+  if (start < source.length) {
+    parent.appendChild(document.createTextNode(source.slice(start)));
+  }
+}
+
 function card(label, value, color) {
   const box = document.createElement("div");
   box.className = "card";
@@ -201,17 +233,39 @@ function renderRows(data, append) {
     tr.className = line.severity;
     const time = text("td", line.time);
     time.className = "time";
-    const cat = text("td", line.category);
+    const cat = document.createElement("td");
     cat.className = "cat";
+    appendHighlighted(cat, line.category, state.q);
     const msg = document.createElement("td");
     msg.className = "msg";
-    msg.appendChild(text("div", line.message));
-    if (line.fields && Object.keys(line.fields).length) {
+    const message = document.createElement("div");
+    appendHighlighted(message, line.message, state.q);
+    msg.appendChild(message);
+    const fields = Object.entries(line.fields || {});
+    const query = state.q.toLocaleLowerCase();
+    const messageMatch = query && line.message.toLocaleLowerCase().includes(query);
+    const categoryMatch = query && line.category.toLocaleLowerCase().includes(query);
+    const sessionMatch = query && line.session
+      && line.session.toLocaleLowerCase().includes(query);
+    const fieldMatch = query && fields.some(([key, value]) =>
+      `${key}=${value}`.toLocaleLowerCase().includes(query));
+    const sessionOnly = sessionMatch && !messageMatch && !categoryMatch && !fieldMatch;
+    if (sessionOnly) {
+      // session 也是後端搜尋範圍；沒有其他可見命中時把它顯示出來，
+      // 避免出現「有結果但看不到哪個字被對上」。
+      fields.unshift(["session", line.session]);
+    }
+    if (fields.length) {
       const details = document.createElement("details");
       details.className = "fields";
-      details.appendChild(text("summary", `${Object.keys(line.fields).length} 個欄位`));
-      const pre = text("pre", Object.entries(line.fields)
-        .map(([k, v]) => `${k} = ${v}`).join("\n"));
+      // 訊息本身已高亮時不自動展開；只有欄位或 session 單獨命中才展開。
+      details.open = Boolean(fieldMatch || sessionOnly) && !messageMatch;
+      details.appendChild(text("summary", `${fields.length} 個欄位`));
+      const pre = document.createElement("pre");
+      fields.forEach(([key, value], index) => {
+        if (index > 0) pre.appendChild(document.createTextNode("\n"));
+        appendHighlighted(pre, `${key} = ${value}`, state.q);
+      });
       details.appendChild(pre);
       msg.appendChild(details);
     }
