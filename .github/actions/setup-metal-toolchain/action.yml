@@ -15,14 +15,31 @@ runs:
         version="$(xcodebuild -version | sed -n '1s/ /-/p')"
         echo "version=${version}" >> "$GITHUB_OUTPUT"
 
+    - name: Probe existing Metal Toolchain
+      id: probe
+      shell: bash
+      run: |
+        set -euo pipefail
+        # runner 映像可能已預裝可用的 Metal toolchain；先實際執行 metal，
+        # 不要只看 xcrun 找到路徑就下載／還原約 800 MB。
+        if path="$(xcrun --find metal 2>/dev/null)" && xcrun metal --version >/dev/null 2>&1; then
+          echo "available=true" >> "$GITHUB_OUTPUT"
+          echo "Metal Toolchain already available: $path"
+        else
+          echo "available=false" >> "$GITHUB_OUTPUT"
+          echo "Metal Toolchain not available; will restore cache or download"
+        fi
+
     - name: Restore Metal Toolchain cache
       id: cache
+      if: steps.probe.outputs.available != 'true'
       uses: actions/cache@v4
       with:
         path: ${{ runner.temp }}/metal-toolchain
         key: metal-toolchain-${{ runner.os }}-${{ steps.xcode.outputs.version }}-v1
 
     - name: Import or download Metal Toolchain
+      if: steps.probe.outputs.available != 'true'
       shell: bash
       env:
         METAL_CACHE: ${{ runner.temp }}/metal-toolchain

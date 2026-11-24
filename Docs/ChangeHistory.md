@@ -2,10 +2,11 @@
 
 ## 2026.11.24 11:04 CI：Metal Toolchain 使用 Actions cache（GMT+8）
 
-- 新增 composite action `.github/actions/setup-metal-toolchain`：用官方的 `xcodebuild -downloadComponent metalToolchain -exportPath` 下載一次（Xcode 27 產物是 `*.exportedBundle`），之後從 Actions cache 還原並以 `xcodebuild -importComponent metalToolchain -importPath` 匯入 Xcode。
+- 新增 composite action `.github/actions/setup-metal-toolchain`：先用 `xcrun --find metal` ＋ `xcrun metal --version` 探測；runner 已預裝可用 toolchain 時直接跳過，不還原 800 MB 快取也不下載。
+- 需要安裝時才用官方 `xcodebuild -downloadComponent metalToolchain -exportPath` 下載一次（Xcode 27 產物是 `*.exportedBundle`），之後從 Actions cache 還原並以 `xcodebuild -importComponent metalToolchain -importPath` 匯入 Xcode。
 - 快取 key 依 `xcodebuild -version` 區分；Xcode 更新時自動換 key，不會把舊版 toolchain 匯入新版 Xcode。
 - `unit-tests.yml`、`main.yml`（archive）與 `documentation.yml`（DocC）都改用同一個 action，避免三處各自下載約 700 MB。
-- 驗證：YAML 解析通過；第一次 run 會是 cache miss（下載一次），第二次起應只還原並匯入。Xcode 27 的 `-importComponent` 需要 `-importPath`，`-exportPath` 產物是 `*.exportedBundle`；且 `-downloadComponent -exportPath` 本身已安裝元件，cache miss 不可再 import（會得到 already installed）。
+- 驗證：cache miss 與 cache hit 都成功（run `45317321092`、`45319954863`），但 cache hit 仍還原 797 MB 且 import 回報 already installed，代表 runner 已有可用 toolchain；已改為 probe-first，下一輪應直接跳過。
 
 ## 2026.11.24 09:54 A2：依內容年齡丟棄過期影格（GMT+8）
 
