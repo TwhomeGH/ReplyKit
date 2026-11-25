@@ -61,6 +61,15 @@ final class CaptureCallbackDiagnostics: @unchecked Sendable {
         tracks[track] = value
     }
 
+    /// 取得指定軌最後一個有效來源 PTS；沒有樣本時為 nil。
+    /// - Parameter track: 要查詢的 SCStream 回呼軌。
+    /// - Returns: 最後有效 PTS（秒），或 nil。
+    func lastPTS(track: Track) -> Double? {
+        lock.lock()
+        defer { lock.unlock() }
+        return tracks[track]?.lastPTS
+    }
+
     /// 累計摘要與距最後回呼秒數；nil 顯示 unknown，零回呼不假裝成零延遲。
     func summary(now: Double) -> String {
         lock.lock()

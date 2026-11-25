@@ -15,6 +15,18 @@ callbacks 不增加而 idleSeconds 增加，表示 App 沒觀察到新回呼；�
 
 資料只描述回呼與來源時間，不能單獨證明畫面內容新鮮、GPU 正確或伺服器成功解碼。尚需實機對照 10/25 類似活動頁面、靜止畫面與前後景切換。
 
+## 停止尾端（A5）
+
+收尾排空後會記一筆：
+
+```text
+[CaptureStopTail] session=... videoLastPTS=... audioLastPTS=... micLastPTS=... audioTailSeconds=... micTailSeconds=... acceptanceSeconds=1.000000 verdict=withinOneSecond
+```
+
+`audioTailSeconds = audioLastPTS - videoLastPTS`：正值代表音訊比影片晚結束，負值代表音訊先結束。判定以 1 秒容差：`audioStoppedEarly` 是音訊早於影片超過 1 秒（對應「音訊已靜音、畫面還在動」），`audioContinuedAfterVideo` 是反過來，`unknown` 代表缺少其中一個時間軸。
+
+這是來源 PTS 差，不是檔案實際尾端、播放器 hold 或編碼器輸出；錄影檔尾端仍要對照 `RecordingSegmentTiming` 的 `tailGapSeconds`。
+
 ## 起始與 PCM 時間對照
 
 CaptureCallbacks 的 firstArrival 是第一個回呼時間，firstPTS 是第一筆有限來源時間，兩者不一定出自同一筆有效影格。MixerOrigin 每個 probe 各記一次影音時間，session 是 probe 的 UUID；須依既有 StreamDiagnostics 快照關聯，不等於 CaptureCallbacks 的擷取 session。

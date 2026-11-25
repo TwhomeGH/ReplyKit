@@ -1,5 +1,12 @@
 # 變更歷史
 
+## 2026.11.25 13:41 A5：停止尾端量測（GMT+8）
+
+- 新增 `CaptureStopTail`：收尾排空後記錄最後 video／audio／mic PTS、`audioTailSeconds` 與 1 秒容差判定。
+- 日誌 `[CaptureStopTail]` 區分 `audioStoppedEarly`（音訊先停超過 1 秒）、`audioContinuedAfterVideo`、`withinOneSecond`、`unknown`。
+- `CaptureCallbackDiagnostics` 新增 `lastPTS(track:)`；新增 `CaptureStopTailTests` 覆蓋邊界與最後有效 PTS。
+- 這是量測不是修正：先用短測確認現況，再決定是否調整停止順序；錄影尾端仍要對照 `RecordingSegmentTiming`。
+
 ## 2026.11.25 13:35 AVLag 分享來源與完整快照說明（GMT+8）
 
 - 新版日誌 `[AVLagStore] saved session=... samples=6 complete=true` 已確認最終保存成功；`final skipped session=none` 不再出現。

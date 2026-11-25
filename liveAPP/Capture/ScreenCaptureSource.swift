@@ -858,6 +858,11 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
                 AVLagModel.shared.record(av)
                 sendlog(message: "[AVLag] session=\(session) stage=finished \(av.logLine)")
             }
+            let stopTail = CaptureStopTail(
+                videoPTS: pump.callbacks.lastPTS(track: .video),
+                audioPTS: pump.callbacks.lastPTS(track: .audio),
+                micPTS: pump.callbacks.lastPTS(track: .mic))
+            sendlog(message: "[CaptureStopTail] session=\(session) \(stopTail.logLine)")
         }
         pump = nil
         logResources(stage: "pump.finish.end")
