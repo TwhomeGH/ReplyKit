@@ -1,5 +1,11 @@
 # 變更歷史
 
+## 2026.11.25 13:35 AVLag 分享來源與完整快照說明（GMT+8）
+
+- 新版日誌 `[AVLagStore] saved session=... samples=6 complete=true` 已確認最終保存成功；`final skipped session=none` 不再出現。
+- 文件釐清兩種分享：歷史場次的「分享此段 JSON」是從保存 document 產生，`complete=true` 時是完整快照；AV Lag 報告頁的「目前 session／分享」是即時 model 快照，新場次開始後會變成新內容。
+- 兩者檔名同為 `AVLag-<session>-<segment>.json`，仍需看 `complete`／`sessionComplete`／`recordingEndedAt`／`completionReason`，不要只靠檔名。
+
 ## 2026.11.25 12:39 AVLag 最終報告修正：session 參數 shadowing（GMT+8）
 
 - 現場報告 `AVLag-51D564A1-…-0.json` 只有 3 筆樣本、`complete=false`，但同一場錄影到 12:33:56 才完成 42.88 秒；這是 12:33:23 的分享／目前報告快照，不是真正保存場次。
