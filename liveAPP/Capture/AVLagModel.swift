@@ -145,22 +145,23 @@ final class AVLagModel: ObservableObject {
 
     /// 結束本場並等待最終報告寫入完成；避免 App 隨即關閉時只留下 checkpoint。
     /// - Parameters:
-    ///   - session: 只結束指定的 session；nil 代表目前 session。
+    ///   - requestedSession: 只結束指定的 session；nil 代表目前 session。
     ///   - completionReason: 明確指定完成原因；nil 會依錄影狀態推導。
-    func end(session: String? = nil, completionReason: String? = nil) async {
-        if let session, self.session != session { return }
+    func end(session requestedSession: String? = nil, completionReason: String? = nil) async {
+        if let requestedSession, self.session != requestedSession { return }
         let end = Date()
         endedAt = end
         self.completionReason = completionReason ?? inferredCompletionReason()
         let reason = self.completionReason ?? "unknown"
         guard AVLagSettings.mode == .recentSessions,
-              let session, let startedAt, let segmentStartedAt,
+              let currentSession = self.session,
+              let startedAt, let segmentStartedAt,
               !samples.isEmpty else {
-            sendlog(message: "[AVLagStore] final skipped session=\(session ?? "none") mode=\(AVLagSettings.mode.rawValue) samples=\(samples.count) reason=\(reason)")
+            sendlog(message: "[AVLagStore] final skipped session=\(self.session ?? "none") mode=\(AVLagSettings.mode.rawValue) samples=\(samples.count) reason=\(reason)")
             return
         }
         persist(
-            session: session,
+            session: currentSession,
             startedAt: startedAt,
             segmentIndex: segmentIndex,
             segmentStartedAt: segmentStartedAt,

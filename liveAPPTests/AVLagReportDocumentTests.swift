@@ -97,4 +97,30 @@ struct AVLagModelRecordingBindingTests {
         #expect(model.recordingEndedAt == nil)
         #expect(model.completionReason == nil)
     }
+
+    @Test("end() 無參數時使用目前 session，不會被 optional 參數 shadowing 跳過")
+    @MainActor
+    func endWithoutRequestedSessionPersistsCurrentSession() async {
+        let defaults = userDefaults ?? .standard
+        let previousMode = defaults.string(forKey: AVLagSettings.modeKey)
+        defaults.set(AVLagPersistenceMode.recentSessions.rawValue,
+                     forKey: AVLagSettings.modeKey)
+        defer {
+            if let previousMode {
+                defaults.set(previousMode, forKey: AVLagSettings.modeKey)
+            } else {
+                defaults.removeObject(forKey: AVLagSettings.modeKey)
+            }
+        }
+
+        let model = AVLagModel.shared
+        let session = "end-current-\(UUID().uuidString)"
+        model.begin(session: session)
+        model.record(AVLagObservation(session: session, sampledAt: Date()))
+        await model.end()
+
+        let summaries = await AVLagReportStore.shared.summaries(activeSessionID: nil)
+        #expect(summaries.contains { $0.id == session && $0.complete })
+        await AVLagReportStore.shared.delete(sessionID: session)
+    }
 }
