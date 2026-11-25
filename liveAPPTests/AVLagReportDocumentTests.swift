@@ -56,7 +56,7 @@ struct AVLagReportDocumentTests {
 struct AVLagModelRecordingBindingTests {
     @Test("綁定群組後結束錄影，完成原因為 recordingEnded")
     @MainActor
-    func bindsAndEndsRecording() {
+    func bindsAndEndsRecording() async {
         let model = AVLagModel.shared
         let group = UUID()
         model.begin(session: "binding-\(UUID().uuidString)")
@@ -68,29 +68,29 @@ struct AVLagModelRecordingBindingTests {
         #expect(model.recordingEndedAt == Date(timeIntervalSince1970: 20))
         #expect(model.completionReason == "recordingEnded")
 
-        model.end()
+        await model.end()
         #expect(model.completionReason == "recordingEnded")
         #expect(model.endedAt != nil)
     }
 
     @Test("沒有綁定錄影時停止，完成原因為 captureStopped")
     @MainActor
-    func withoutRecordingEndsAsCaptureStopped() {
+    func withoutRecordingEndsAsCaptureStopped() async {
         let model = AVLagModel.shared
         model.begin(session: "no-recording-\(UUID().uuidString)")
-        model.end()
+        await model.end()
         #expect(model.recordingGroup == nil)
         #expect(model.completionReason == "captureStopped")
     }
 
     @Test("begin 會清掉上一場的錄影綁定")
     @MainActor
-    func beginResetsRecordingBinding() {
+    func beginResetsRecordingBinding() async {
         let model = AVLagModel.shared
         model.begin(session: "reset-\(UUID().uuidString)")
         model.bindRecording(group: UUID())
         model.endRecording()
-        model.end()
+        await model.end()
         model.begin(session: "next-\(UUID().uuidString)")
         #expect(model.recordingGroup == nil)
         #expect(model.recordingStartedAt == nil)

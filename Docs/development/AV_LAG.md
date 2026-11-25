@@ -56,6 +56,8 @@ videoContentAge = arrival - videoPTS
 - `recentSessions` 模式每 60 秒會 checkpoint 進行中的 segment；停止、分段與進背景時也會保存。長場次被中止時，檔案最多落後一個 checkpoint 週期，不會只剩進入背景當下的少量樣本。
 - 儲存任務依呼叫順序串接；較舊的 checkpoint 不會覆蓋較新的 final 文件。寫檔為原子寫入，不阻塞擷取。
 - 目前報告與每個已保存 segment 都可分享成 `.json` 檔案；文字複製仍保留給快速檢查。報告檔同時寫在 `Documents/AVLagReports`，可直接從「檔案」App 取得。
+- 分享／目前報告檔名是 `AVLag-<session>-<segment>.json`，是當下快照；錄影中匯出會是 `complete=false`，不能拿它判斷保存場次是否中斷。真正保存的檔案是 `<session>-<segment>.json`，並由 `index.json` 管理。
+- 保存模式預設是「僅本次記憶體」；要保留最近 5 場必須在設定改為「保留最近 5 場」。日誌會印 `[AVLagStore] begin ... mode=...` 與結束時的 `saved`／`final skipped`，可先確認模式。
 
 ## JSON 用途
 

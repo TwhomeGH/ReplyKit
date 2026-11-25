@@ -67,6 +67,7 @@ final class AVLagModel: ObservableObject {
         lastCheckpointAt = Date()
         recordedSampleCount = 0
         lastCheckpointRecordedCount = 0
+        sendlog(message: "[AVLagStore] begin session=\(session) mode=\(AVLagSettings.mode.rawValue)")
     }
 
     func record(_ observation: AVLagObservation) {
@@ -142,14 +143,22 @@ final class AVLagModel: ObservableObject {
         lastCheckpointRecordedCount = recordedSampleCount
     }
 
-    func end(session: String? = nil, completionReason: String? = nil) {
+    /// 結束本場並等待最終報告寫入完成；避免 App 隨即關閉時只留下 checkpoint。
+    /// - Parameters:
+    ///   - session: 只結束指定的 session；nil 代表目前 session。
+    ///   - completionReason: 明確指定完成原因；nil 會依錄影狀態推導。
+    func end(session: String? = nil, completionReason: String? = nil) async {
         if let session, self.session != session { return }
         let end = Date()
         endedAt = end
         self.completionReason = completionReason ?? inferredCompletionReason()
+        let reason = self.completionReason ?? "unknown"
         guard AVLagSettings.mode == .recentSessions,
               let session, let startedAt, let segmentStartedAt,
-              !samples.isEmpty else { return }
+              !samples.isEmpty else {
+            sendlog(message: "[AVLagStore] final skipped session=\(session ?? "none") mode=\(AVLagSettings.mode.rawValue) samples=\(samples.count) reason=\(reason)")
+            return
+        }
         persist(
             session: session,
             startedAt: startedAt,
@@ -161,6 +170,8 @@ final class AVLagModel: ObservableObject {
             truncatedBefore: truncatedBefore,
             completionReason: self.completionReason,
             samples: samples)
+        // 依序等待 checkpoint 與 final；只有這樣停止後立即可看到 complete=true。
+        await persistTask?.value
     }
 
     /// 沒有錄影時擷取停止；有錄影但未收到結束時間代表取樣中斷。

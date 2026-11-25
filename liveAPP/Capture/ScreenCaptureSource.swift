@@ -879,7 +879,7 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
         let recordingEnded = recordingGroup.map {
             AVLagModel.shared.recordingGroup == $0.uuidString
         } ?? false
-        AVLagModel.shared.end(completionReason: recordingEnded ? "recordingEnded" : nil)
+        await AVLagModel.shared.end(completionReason: recordingEnded ? "recordingEnded" : nil)
         mediaPrepared = false
         pipeline = nil
     }
