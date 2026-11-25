@@ -96,7 +96,9 @@ gh workflow run branch-archive.yml --repo TwhomeGH/ReplyKit --ref main \
 ```
 
 - workflow 由 `main` 的定義執行，`source_ref` 才是實際打包的 branch／tag／commit。
+- GitHub 網頁的「Use workflow from」要選 **main**，再在 `source_ref` 填分支；選分支本身會顯示 `Workflow dispatch unavailable`，因為 `branch-archive.yml` 只存在 main。run 列表的 `main` 是 workflow 檔案來源，不是打包內容；請看 run 名稱的 `source_ref` 或 artifact 名稱。
 - 只上傳 artifact `test-ipa-<label>-<sha>`（IPA、archive log、bundle report），保留 7 天。
 - 不建立 tag、不建立 release、不更新 AltStore。
 - `CFBundleShortVersionString` 跟隨最新語意化 tag；`CFBundleVersion` 用 UTC 時間戳；桌面名稱加「測試」以供辨識。
 - IPA 未簽名，沿用既有 AltStore／KSign 側載流程。
+- 驗證打包來源：解開 IPA 內 `BuildInfo.json`，看 `appRef`（分支／tag）、`appChannel=branch-test`、`appRevision`；例如 `appRef=feature/content-latency`、`appRevision=10ef5253c731…` 才能證明不是 main 包。

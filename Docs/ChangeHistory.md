@@ -1,5 +1,11 @@
 # 變更歷史
 
+## 2026.11.25 12:28 分支測試 IPA：run 名稱顯示來源分支（GMT+8）
+
+- `branch-archive.yml` 新增 `run-name: Build Test IPA · <source_ref> · <label>`；Actions 列表不再只顯示 `main`，可直接看出實際打包來源。
+- 文件補清楚：網頁「Use workflow from」要選 `main`，`source_ref` 才是內容分支；選 feature 會顯示 `Workflow dispatch unavailable`，因為 workflow 檔案只在 main。
+- 實證：run `45543415491` 的 head branch 是 main，但 artifact `test-ipa-test-10ef5253c731` 內的 `BuildInfo.json` 是 `appRef=feature/content-latency`、`appRevision=10ef5253c731…`、`appChannel=branch-test`，證明打包的是 feature 而不是 main。
+
 ## 2026.11.25 06:12 診斷檢視器：鄰近前後 N 筆（GMT+8）
 
 - 搜尋／篩選工具列新增鄰近選項：0／2／5／10 筆；符合列正常顯示，鄰近列以淡色背景區分。

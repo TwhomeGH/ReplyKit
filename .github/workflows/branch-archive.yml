@@ -1,4 +1,5 @@
 name: Build Test IPA (No Tag)
+run-name: Build Test IPA · ${{ inputs.source_ref }} · ${{ inputs.label }}
 
 # 只產出可側載的 unsigned IPA artifact，不建立 tag、不建立 release。
 # workflow 本身在 main 執行，source_ref 可指定尚未合併的分支，讓 A1/A2
