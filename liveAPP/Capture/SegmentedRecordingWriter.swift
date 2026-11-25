@@ -12,6 +12,10 @@ final class SegmentedRecordingSink: MediaMixerOutput, @unchecked Sendable {
 
     let videoTrackId: UInt8? = UInt8.max
     let audioTrackId: UInt8? = UInt8.max
+    /// 本場錄影的群組 ID；AVLag 報告用它對應同一批片段。
+    let group: UUID
+    /// 開始接收錄影樣本的單調時間，供報告標示錄影起點。
+    let startedAt = Date()
     private let mailbox: CaptureMailbox<RecordingSample>
     private let worker: Task<Void, Never>
 
@@ -19,12 +23,17 @@ final class SegmentedRecordingSink: MediaMixerOutput, @unchecked Sendable {
     /// - Parameters:
     ///   - settings: 開錄時固定的編碼與分段設定。
     ///   - library: 管理片段清單與檔案路徑的錄製庫。
+    ///   - group: 本場錄影的群組 ID；預設建立新群組。
     ///   - failed: 寫入或收尾失敗時在 MainActor 執行的通知，參數為顯示訊息。
-    init(settings: DirectRecordingSettings, library: RecordingLibrary, failed: @escaping @MainActor @Sendable (String) -> Void) {
+    init(settings: DirectRecordingSettings, library: RecordingLibrary,
+         group: UUID = UUID(),
+         failed: @escaping @MainActor @Sendable (String) -> Void) {
+        self.group = group
         let mailbox = CaptureMailbox<RecordingSample>(budget: 48 * 1024 * 1024, maxDelay: 2)
         self.mailbox = mailbox
         worker = Task {
-            let writer = SegmentedRecordingWriter(settings: settings, library: library)
+            let writer = SegmentedRecordingWriter(settings: settings, library: library,
+                                                  group: group)
             do {
                 for await sample in mailbox.stream() { try await writer.append(sample.buffer) }
                 try await writer.finishSegment()

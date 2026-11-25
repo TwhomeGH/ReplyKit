@@ -11,6 +11,10 @@ final class AVLagModel: ObservableObject {
     @Published private(set) var session: String?
     @Published private(set) var startedAt: Date?
     @Published private(set) var endedAt: Date?
+    @Published private(set) var recordingGroup: String?
+    @Published private(set) var recordingStartedAt: Date?
+    @Published private(set) var recordingEndedAt: Date?
+    @Published private(set) var completionReason: String?
 
     private var segmentIndex = 0
     private var segmentStartedAt: Date?
@@ -53,6 +57,10 @@ final class AVLagModel: ObservableObject {
         latest = nil
         samples.removeAll()
         estimatedSampleBytes = 0
+        recordingGroup = nil
+        recordingStartedAt = nil
+        recordingEndedAt = nil
+        completionReason = nil
         segmentIndex = 0
         segmentStartedAt = Date()
         truncatedBefore = false
@@ -73,6 +81,30 @@ final class AVLagModel: ObservableObject {
         estimatedSampleBytes += estimatedBytes(observation)
         trimLocked()
         checkpointIfNeeded(now: now)
+    }
+
+    /// 綁定本場擷取使用的錄影群組；同一場只接受第一次綁定。
+    /// - Parameters:
+    ///   - group: 錄影分片共用的群組 ID。
+    ///   - startedAt: 錄影開始時間，預設為現在。
+    func bindRecording(group: UUID, startedAt: Date = Date()) {
+        guard isCapturing, recordingGroup == nil else { return }
+        recordingGroup = group.uuidString
+        recordingStartedAt = startedAt
+    }
+
+    /// 標記錄影收尾；只接受目前綁定的群組，重複呼叫不會覆蓋第一次結束時間。
+    /// - Parameters:
+    ///   - group: 要結束的錄影群組；nil 代表目前群組。
+    ///   - endedAt: 錄影結束時間。
+    ///   - reason: 完成原因，預設 recordingEnded。
+    func endRecording(group: UUID? = nil, endedAt: Date = Date(),
+                      reason: String = "recordingEnded") {
+        guard recordingGroup != nil else { return }
+        if let group, recordingGroup != group.uuidString { return }
+        guard recordingEndedAt == nil else { return }
+        recordingEndedAt = endedAt
+        completionReason = reason
     }
 
     /// 進行中的檔案最多落後一個 checkpoint 週期；只在有新增樣本時寫入。
@@ -104,15 +136,17 @@ final class AVLagModel: ObservableObject {
             complete: false,
             sessionComplete: false,
             truncatedBefore: truncatedBefore,
+            completionReason: completionReason,
             samples: samples)
         lastCheckpointAt = now
         lastCheckpointRecordedCount = recordedSampleCount
     }
 
-    func end(session: String? = nil) {
+    func end(session: String? = nil, completionReason: String? = nil) {
         if let session, self.session != session { return }
         let end = Date()
         endedAt = end
+        self.completionReason = completionReason ?? inferredCompletionReason()
         guard AVLagSettings.mode == .recentSessions,
               let session, let startedAt, let segmentStartedAt,
               !samples.isEmpty else { return }
@@ -125,7 +159,15 @@ final class AVLagModel: ObservableObject {
             complete: true,
             sessionComplete: true,
             truncatedBefore: truncatedBefore,
+            completionReason: self.completionReason,
             samples: samples)
+    }
+
+    /// 沒有錄影時擷取停止；有錄影但未收到結束時間代表取樣中斷。
+    private func inferredCompletionReason() -> String {
+        if recordingGroup == nil { return "captureStopped" }
+        if recordingEndedAt == nil { return "samplingInterrupted" }
+        return "recordingEnded"
     }
 
     /// 只保留目前 session；JSON 報告仍可完整輸出當前保留樣本。
@@ -144,7 +186,7 @@ final class AVLagModel: ObservableObject {
         let started = startedAt ?? Date()
         let segmentStarted = segmentStartedAt ?? started
         let document = AVLagReportDocument(
-            schema: 1,
+            schema: 3,
             session: session,
             startedAt: started,
             endedAt: endedAt,
@@ -154,6 +196,10 @@ final class AVLagModel: ObservableObject {
             complete: endedAt != nil,
             sessionComplete: endedAt != nil,
             truncatedBefore: truncatedBefore,
+            recordingGroup: recordingGroup,
+            recordingStartedAt: recordingStartedAt,
+            recordingEndedAt: recordingEndedAt,
+            completionReason: endedAt == nil ? nil : completionReason,
             sampleCount: samples.count,
             samples: samples)
         return document.jsonText
@@ -181,6 +227,7 @@ final class AVLagModel: ObservableObject {
             complete: true,
             sessionComplete: false,
             truncatedBefore: truncatedBefore,
+            completionReason: "segmentRotated",
             samples: samples)
         samples.removeAll(keepingCapacity: true)
         estimatedSampleBytes = 0
@@ -209,9 +256,10 @@ final class AVLagModel: ObservableObject {
     private func persist(session: String, startedAt: Date, segmentIndex: Int,
                          segmentStartedAt: Date, segmentEndedAt: Date?,
                          complete: Bool, sessionComplete: Bool,
-                         truncatedBefore: Bool, samples: [AVLagObservation]) {
+                         truncatedBefore: Bool, completionReason: String?,
+                         samples: [AVLagObservation]) {
         let document = AVLagReportDocument(
-            schema: 1,
+            schema: 3,
             session: session,
             startedAt: startedAt,
             endedAt: segmentEndedAt,
@@ -221,6 +269,10 @@ final class AVLagModel: ObservableObject {
             complete: complete,
             sessionComplete: sessionComplete,
             truncatedBefore: truncatedBefore,
+            recordingGroup: recordingGroup,
+            recordingStartedAt: recordingStartedAt,
+            recordingEndedAt: recordingEndedAt,
+            completionReason: completionReason,
             sampleCount: samples.count,
             samples: samples)
         // 依呼叫順序串接，避免背景 checkpoint 晚於 final save 完成而蓋掉較新的內容。

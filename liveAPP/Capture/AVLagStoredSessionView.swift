@@ -23,6 +23,12 @@ struct AVLagStoredSessionView: View {
                         endedAt.formatted(date: .abbreviated, time: .standard))
                 }
                 row(AppLanguage.localized("avLag.stored.segments"), "\(summary.segments.count)")
+                row(AppLanguage.localized("avLag.recording.group"),
+                    AVLagRecordingPresentation.group(summary.recordingGroup))
+                row(AppLanguage.localized("avLag.recording.reason"),
+                    AVLagRecordingPresentation.reason(
+                        summary.completionReason,
+                        active: isActiveSession && summary.recordingGroup != nil))
                 row(AppLanguage.localized("avLag.stored.samples"), "\(summary.sampleCount)")
                 row(AppLanguage.localized("avLag.stored.size"),
                     ByteCountFormatter.string(fromByteCount: Int64(summary.bytes), countStyle: .file))

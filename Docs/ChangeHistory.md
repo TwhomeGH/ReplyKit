@@ -1,5 +1,14 @@
 # 變更歷史
 
+## 2026.11.25 11:08 A4：AVLag 報告綁定錄影場次（GMT+8）
+
+- AVLag 報告 schema 3 新增 `recordingGroup`、`recordingStartedAt`、`recordingEndedAt`、`completionReason`；舊 schema 沒有這些欄位仍可解碼。
+- `SegmentedRecordingSink` 在建立時決定群組 UUID，`SegmentedRecordingWriter` 沿用同一個群組，AVLag 才能對應 `RecordingLibrary` 的實際片段。
+- `AVLagModel` 新增 `bindRecording`／`endRecording`；停止時先等錄影 sink 收尾，再結束報告，`completionReason` 區分 `recordingEnded`／`captureStopped`／`segmentRotated`／`samplingInterrupted`。
+- 報告頁與歷史場次列表顯示錄影群組、起訖與完成原因；錄影中顯示「錄影中」，沒有錄影顯示「未綁定錄影」。
+- 新增 `AVLagReportDocumentTests`（round-trip、舊 schema 解碼、正常結束／無錄影／重設狀態）。
+- 驗證：Swift parse 與 xcstrings JSON 通過；待 iOS Unit Tests 與實機確認報告群組對應檔案。
+
 ## 2026.11.25 06:31 修正 A3 flush 測試的浮點比較（GMT+8）
 
 - `10.6 - 10` 實際是 `0.5999999999999996`，原本用 `Flush` 精確相等比較會失敗；改成 `#require` 取出後分別比較欄位，時間差用 `1e-9` 容差。

@@ -5,7 +5,7 @@ import Foundation
 /// 依 PTS 分配片段；舊段短暫保留以接收晚到音訊，收尾另行執行。
 /// 只有 sink 的單一消費工作呼叫 append／finish；不可從多個工作並行呼叫。
 actor SegmentedRecordingWriter {
-    let group = UUID()
+    let group: UUID
     private let settings: DirectRecordingSettings
     private let library: RecordingLibrary
     private var current: RecordingSegmentWriter?
@@ -17,7 +17,13 @@ actor SegmentedRecordingWriter {
     private var lateAudio = 0
 
     /// 設定與錄製庫在整場錄影共用，片段序號由本路由器配置。
-    init(settings: DirectRecordingSettings, library: RecordingLibrary) {
+    /// - Parameters:
+    ///   - settings: 本場錄影的固定設定。
+    ///   - library: 片段清單與檔案庫。
+    ///   - group: 本場錄影群組；預設建立新群組，呼叫端可傳入供報告對應。
+    init(settings: DirectRecordingSettings, library: RecordingLibrary,
+         group: UUID = UUID()) {
+        self.group = group
         self.settings = settings
         self.library = library
     }

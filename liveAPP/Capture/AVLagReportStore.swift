@@ -2,7 +2,7 @@ import Foundation
 
 /// 單一 AV Lag segment 的可攜文件；schema 與即時報告共用，回放工具只需讀 samples。
 struct AVLagReportDocument: Codable, Sendable {
-    var schema = 2
+    var schema = 3
     var timeZone: String? = "Asia/Taipei"
     var measurementScope: String? = "source timestamp observations; not measured content synchronization"
     var session: String
@@ -14,12 +14,25 @@ struct AVLagReportDocument: Codable, Sendable {
     var complete: Bool
     var sessionComplete: Bool
     var truncatedBefore: Bool
+    /// 本場錄影群組；nil 代表這次擷取沒有本地錄影可對應。
+    var recordingGroup: String? = nil
+    /// 錄影實際開始時間；與擷取 session 起點可能相差數百毫秒。
+    var recordingStartedAt: Date? = nil
+    /// 錄影收尾時間；nil 代表 checkpoint 時仍在錄影或未綁定。
+    var recordingEndedAt: Date? = nil
+    /// 完成原因：recordingEnded／captureStopped／segmentRotated／samplingInterrupted。
+    var completionReason: String? = nil
     var sampleCount: Int
     var samples: [AVLagObservation]
 
     func encoded() throws -> Data {
         let encoder = AVLagDateCoding.encoder()
         return try encoder.encode(self)
+    }
+
+    /// 依報告檔案的日期格式解碼；供測試與回放工具讀取舊 schema。
+    static func decoded(from data: Data) throws -> Self {
+        try AVLagDateCoding.decoder().decode(Self.self, from: data)
     }
 
     var jsonText: String {
@@ -35,6 +48,8 @@ struct AVLagSegmentSummary: Codable, Identifiable, Sendable {
     var bytes: Int
     var complete: Bool
     var sessionComplete: Bool
+    var recordingGroup: String? = nil
+    var completionReason: String? = nil
 
     var id: Int { index }
 }
@@ -48,6 +63,25 @@ struct AVLagSessionSummary: Codable, Identifiable, Sendable {
     var bytes: Int
     var complete: Bool
     var truncatedBefore: Bool
+    var recordingGroup: String? = nil
+    var completionReason: String? = nil
+}
+
+/// 報告畫面的錄影欄位文字；未知原因保留原始代碼，不假裝成已翻譯。
+enum AVLagRecordingPresentation {
+    static func group(_ value: String?) -> String {
+        value ?? AppLanguage.localized("avLag.recording.none")
+    }
+
+    static func reason(_ value: String?, active: Bool = false) -> String {
+        if let value {
+            let key = "avLag.recording.reason.\(value)"
+            let localized = AppLanguage.localized(key)
+            return localized == key ? value : localized
+        }
+        if active { return AppLanguage.localized("avLag.recording.reason.recording") }
+        return AppLanguage.localized("avLag.recording.none")
+    }
 }
 
 private struct AVLagReportIndex: Codable {
@@ -194,6 +228,7 @@ actor AVLagReportStore {
                     ?? session.segments.map(\.startedAt).max()
                     ?? session.startedAt
                 session.complete = false
+                session.completionReason = session.completionReason ?? "samplingInterrupted"
                 changed = true
             }
             sessions.append(session)
@@ -216,7 +251,9 @@ actor AVLagReportStore {
             sampleCount: document.sampleCount,
             bytes: data.count,
             complete: document.complete,
-            sessionComplete: document.sessionComplete)
+            sessionComplete: document.sessionComplete,
+            recordingGroup: document.recordingGroup,
+            completionReason: document.completionReason)
 
         if let position = index.sessions.firstIndex(where: { $0.id == document.session }) {
             var session = index.sessions[position]
@@ -231,6 +268,8 @@ actor AVLagReportStore {
             session.endedAt = session.complete
                 ? session.segments.compactMap(\.endedAt).max()
                 : nil
+            session.recordingGroup = document.recordingGroup ?? session.recordingGroup
+            session.completionReason = document.completionReason ?? session.completionReason
             index.sessions[position] = session
         } else {
             let session = AVLagSessionSummary(
@@ -241,7 +280,9 @@ actor AVLagReportStore {
                 sampleCount: segment.sampleCount,
                 bytes: segment.bytes,
                 complete: document.sessionComplete,
-                truncatedBefore: document.truncatedBefore)
+                truncatedBefore: document.truncatedBefore,
+                recordingGroup: document.recordingGroup,
+                completionReason: document.completionReason)
             index.sessions.append(session)
         }
 

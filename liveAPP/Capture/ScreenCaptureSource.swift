@@ -444,6 +444,9 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             var sampleCount = 0
             var sendProgress = CaptureSendProgress()
             AVLagModel.shared.begin(session: token.uuidString)
+            if let sink = recordingSink {
+                AVLagModel.shared.bindRecording(group: sink.group, startedAt: sink.startedAt)
+            }
             while !Task.isCancelled {
                 guard let self else { return }
                 let queues = self.pump.map { "video{\($0.video.summary)} audio{\($0.audio.summary)} mic{\($0.mic.summary)}" } ?? "sampleQueues=none"
@@ -857,18 +860,26 @@ private final class ScreenSamplePump: NSObject, SCStreamOutput, @unchecked Senda
             }
         }
         pump = nil
-        AVLagModel.shared.end()
         logResources(stage: "pump.finish.end")
         if let audioProbe { await pipeline?.mixer.removeOutput(audioProbe) }
         audioProbe = nil
         if let streamDiagnosticsProbe { await pipeline?.mixer.removeOutput(streamDiagnosticsProbe) }
         streamDiagnosticsProbe = nil
         await pipeline?.mixer.stopRunning()
+        let recordingGroup = recordingSink?.group
         if let recordingSink {
             await pipeline?.mixer.removeOutput(recordingSink)
             await recordingSink.finish()
+            // 收尾完成才標記錄影結束；報告的錄影範圍才會與實際檔案一致。
+            AVLagModel.shared.bindRecording(group: recordingSink.group,
+                                            startedAt: recordingSink.startedAt)
+            AVLagModel.shared.endRecording(group: recordingSink.group)
         }
         recordingSink = nil
+        let recordingEnded = recordingGroup.map {
+            AVLagModel.shared.recordingGroup == $0.uuidString
+        } ?? false
+        AVLagModel.shared.end(completionReason: recordingEnded ? "recordingEnded" : nil)
         mediaPrepared = false
         pipeline = nil
     }

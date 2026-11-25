@@ -19,6 +19,20 @@ struct AVLagReportView: View {
             Section(AppLanguage.localized("avLag.current")) {
                 if let latest = model.latest {
                     row("session", latest.session)
+                    row(AppLanguage.localized("avLag.recording.group"),
+                        AVLagRecordingPresentation.group(model.recordingGroup))
+                    if let started = model.recordingStartedAt {
+                        row(AppLanguage.localized("avLag.recording.started"),
+                            started.formatted(date: .abbreviated, time: .standard))
+                    }
+                    if let ended = model.recordingEndedAt {
+                        row(AppLanguage.localized("avLag.recording.ended"),
+                            ended.formatted(date: .abbreviated, time: .standard))
+                    }
+                    row(AppLanguage.localized("avLag.recording.reason"),
+                        AVLagRecordingPresentation.reason(
+                            model.completionReason,
+                            active: model.recordingGroup != nil && model.recordingEndedAt == nil))
                     row("影片 callback − 來源 PTS（時鐘未驗證）", seconds(latest.videoContentAge))
                     row("影片來源回呼距今", seconds(latest.videoIdleAge))
                     row("音訊 callback − 來源 PTS（時鐘未驗證）", seconds(latest.audioContentAge))

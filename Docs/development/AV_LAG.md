@@ -49,6 +49,8 @@ videoContentAge = arrival - videoPTS
 - 可選**保留最近 5 場**：停止時寫入 `Documents/AVLagReports`，最多 5 個 session、總量約 50 MiB。App 的 `Info.plist` 已啟用 `UIFileSharingEnabled`，因此可在「檔案」App → 我的 iPhone → 松鼠推流 → `AVLagReports` 直接看到。
 - 可選**長場次分段**：每段長度 1／2／4／8 小時（預設 4）；每段仍受 2 MiB 上限。8 小時以上會自然拆成多段，但報告頁以 `sessionID` 分組，不會當成多場。
 - 分段之間保留 `segmentIndex`／`segmentStartedAt`／`segmentEndedAt`；最後一段可標記 `inProgress`，App 中途被殺仍可辨識。
+- 有本地錄影時，報告會帶 `recordingGroup`（`RecordingLibrary` 的場次 UUID）、`recordingStartedAt`、`recordingEndedAt`；`completionReason` 區分 `recordingEnded`／`captureStopped`／`segmentRotated`／`samplingInterrupted`。
+- 錄影中的 checkpoint 沒有 `completionReason`；若 `complete=false` 且已有 `recordingGroup` 但沒有 `recordingEndedAt`，代表取樣在錄影收尾前中斷，不能當成正常結束。
 - `complete=false` 的檔案是進行中 checkpoint，不是最終報告。若只有 3 筆樣本且時間只涵蓋開始後十幾秒，先看它的 `startedAt`／`segmentStartedAt`，不要直接當成長場次結論；目前報告頁的「目前 session」應在停止後再分享。
 - 未開分段而超過上限：保留最新區間，並在報告標記 `truncatedBefore`。
 - `recentSessions` 模式每 60 秒會 checkpoint 進行中的 segment；停止、分段與進背景時也會保存。長場次被中止時，檔案最多落後一個 checkpoint 週期，不會只剩進入背景當下的少量樣本。
@@ -57,7 +59,7 @@ videoContentAge = arrival - videoPTS
 
 ## JSON 用途
 
-`schema=1` 的 JSON 包含 session、開始／結束時間，以及每筆樣本。回放修復工具可用：
+`schema=3` 的 JSON 包含 session、開始／結束時間、錄影群組與每筆樣本；舊 schema 沒有錄影欄位仍可解讀。回放修復工具可用：
 
 1. 以 `audioPTS` 作媒體時間軸。
 2. 以 `videoContentAge` 找內容落後的區段。
