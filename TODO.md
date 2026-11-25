@@ -13,7 +13,7 @@
 - [ ] **P0-A1 抓幀時就打 timestamp（真正的抓幀時間）**：SCK 已接入 `SCStreamFrameInfo.displayTime` → `VideoFrameTrace.captureHostTime`，`sourcePTS` 仍是媒體 PTS；ReplayKit 仍用 `originalTime.presentationTimeStamp`，尚未證明是真正抓幀時間。`captureTime=missing`／`sourcePTS` 必須是警告，不能當成同步正常；待 motion fixture 與實機驗證。
 - [ ] **P0-A2 有界佇列＋依內容年齡丟棄**：SCK 已加 `CaptureContentAgeMonitor`（200ms、暖機 1s），在進入 queue／GPU 前用 `captureHostTime` 判斷；超過門檻記為 `stale`，並在 `[CaptureAge]` 記 `contentAgeDropped`。ReplayKit 沒有 host time 時只計 `clockMissing`，不丟幀。待 motion fixture 與實機驗收門檻是否足夠；若佇列等待造成二次老化，再補 worker 端閘門。
 - [x] **P0-A3 flush／追上事件**：已在 `CaptureContentAgeMonitor` 實作 stale episode；`event=flush dropped=... lag=... gap=...` 只在「丟過 stale 後收到新鮮幀」觸發，單純長 gap 不誤報。iOS Unit Tests `45501763557` 綠。
-- [x] **P1-A4 AVLag 覆蓋整場並綁定錄影**：已加入 `recordingGroup`／錄影起訖／`completionReason`（`recordingEnded`／`captureStopped`／`segmentRotated`／`samplingInterrupted`），報告與歷史列表會顯示。iOS Unit Tests `45537988203` 綠（269 tests／64 suites，含 AVLagReportDocument 與 AVLagModel 綁定測試）；實機報告群組與檔案清單對應仍待驗收。
+- [x] **P1-A4 AVLag 覆蓋整場並綁定錄影**：已加入 `recordingGroup`／錄影起訖／`completionReason`（`recordingEnded`／`captureStopped`／`segmentRotated`／`samplingInterrupted`），報告與歷史列表會顯示。iOS Unit Tests `45537988203` 綠；實機場次 `149543E5-…` 得到 `complete=true`、`completionReason=recordingEnded`，`recordingGroup=FAC05845-…` 與錄影 manifest 一致。另已修正 `end(session:)` optional 參數 shadowing 導致 final save 被跳過（`ad24ed9`）。
 - [ ] **Swift-DocC 註解逐檔補齊**：優先補目前正在改的檔案；`AVLagObservation` 屬性已完成，接著依 A4／診斷工作補 public／internal API、參數與回傳值。不做一次全 repo 掃描，也不把註解當成行為驗收。
 - [ ] **P2-A5 收播順序：先停畫面再停音訊**：停止時記錄最後 video／audio PTS；目前文件觀察尾端有 4–8 秒「音訊已靜音、畫面還在動」。先量測再改順序，驗收 ≤1 秒。
 - [ ] **P2-A6 不可中途改變輸出幀率**：用 gap 分布區分「靜態 hold」與「真的 60→30 regime change」；持續掉半才告警，不要把 06:00 的 1.9fps 靜態 VFR 誤判成掉幀。
