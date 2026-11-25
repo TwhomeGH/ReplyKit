@@ -7,7 +7,7 @@
 - `AVLagModel` 新增 `bindRecording`／`endRecording`；停止時先等錄影 sink 收尾，再結束報告，`completionReason` 區分 `recordingEnded`／`captureStopped`／`segmentRotated`／`samplingInterrupted`。
 - 報告頁與歷史場次列表顯示錄影群組、起訖與完成原因；錄影中顯示「錄影中」，沒有錄影顯示「未綁定錄影」。
 - 新增 `AVLagReportDocumentTests`（round-trip、舊 schema 解碼、正常結束／無錄影／重設狀態）。
-- 驗證：Swift parse 與 xcstrings JSON 通過；待 iOS Unit Tests 與實機確認報告群組對應檔案。
+- 驗證：Swift parse 與 xcstrings JSON 通過；iOS Unit Tests `45537988203` 綠（269 tests／64 suites，含 AVLagReportDocument 與 AVLagModel 綁定測試）。實機報告群組與 RecordingLibrary 檔案的對應仍待驗收。
 
 ## 2026.11.25 06:31 修正 A3 flush 測試的浮點比較（GMT+8）
 
