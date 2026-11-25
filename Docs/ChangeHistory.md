@@ -5,7 +5,7 @@
 - 現場報告 `AVLag-51D564A1-…-0.json` 只有 3 筆樣本、`complete=false`，但同一場錄影到 12:33:56 才完成 42.88 秒；這是 12:33:23 的分享／目前報告快照，不是真正保存場次。
 - `AVLagModel.end` 改為 async，會在停止時等待 checkpoint 與 final 寫入完成；避免 App 隨即離開時只留下 checkpoint。
 - 新增 `[AVLagStore] begin ... mode=...` 與 `[AVLagStore] final skipped ...` 日誌；若模式仍是預設 `memoryOnly`，就能直接看出沒有落地，不再與匯出快照混淆。
-- 文件補上 `AVLag-<session>-<segment>.json`（分享快照）與 `<session>-<segment>.json`（保存場次）的差別。
+- 文件補上 `AVLag-<session>-<segment>.json`（分享快照）與 `<session>-<segment>.json`（保存場次）的差別；快照改放 `Documents/AVLagSnapshots`，不再混進 `AVLagReports`，避免被當成未完成的保存場次。
 
 ## 2026.11.25 11:08 A4：AVLag 報告綁定錄影場次（GMT+8）
 

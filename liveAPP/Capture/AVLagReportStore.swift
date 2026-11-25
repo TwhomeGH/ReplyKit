@@ -99,7 +99,7 @@ enum AVLagReportExport {
     static func url(text: String, session: String, segmentIndex: Int) -> URL? {
         let directory = FileManager.default.urls(for: .documentDirectory,
                                                  in: .userDomainMask)[0]
-            .appendingPathComponent("AVLagReports", isDirectory: true)
+            .appendingPathComponent("AVLagSnapshots", isDirectory: true)
         let safeSession = session.map { character in
             character.isLetter || character.isNumber || character == "-" || character == "_"
                 ? String(character) : "_"
