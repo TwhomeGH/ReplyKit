@@ -27,6 +27,16 @@ callbacks 不增加而 idleSeconds 增加，表示 App 沒觀察到新回呼；�
 - 目前只在有實際編碼交付（推流）時運作；純本地分片錄製沒有 `encodedVideoFrames`，會保持 `unknown` 且不產事件，不能當成「輸出幀率正常」。
 - 這是觀測，不會修改編碼設定；也不能單獨證明畫面內容延遲或伺服器實際送達。
 
+## 錄製 queue 持有時間
+
+`[SegmentedRecordingQueue]` 現在包含：
+
+```text
+accepted=... dropped=... delayDropped=... queued=... bytes=.../... peakBytes=... oldestMs=... maxDelayMs=...
+```
+
+`oldestMs` 是目前仍在錄製 queue 中最舊樣本的等待時間，空 queue 為 `unknown`；`peakBytes` 是本次錄製曾持有的最高 bytes。它只涵蓋 mailbox，不包含已交給 `AVAssetWriterInput` 後仍被持有的 buffer；要判斷 pool 耗盡是否來自錄製端，需和 `CaptureVideoProcessing poolExhausted` 一起看。
+
 ## 停止尾端（A5）
 
 收尾排空後會記一筆：

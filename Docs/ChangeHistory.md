@@ -1,5 +1,11 @@
 # 變更歷史
 
+## 2026.11.26 17:20 錄製 queue 持有量測（GMT+8）
+
+- `CaptureMailbox` 新增 `peakBytes`，`summary` 增加 `peakBytes`、`oldestMs`、`maxDelayMs`；`[SegmentedRecordingQueue]` 可直接看到錄製 mailbox 是否堆積。
+- 新增 `CaptureMailboxTests` 驗證峰值、最舊等待與空 queue 的 unknown。
+- `oldestMs` 只涵蓋 mailbox，不包含已交給 `AVAssetWriterInput` 的 buffer；仍要搭配 `CaptureVideoProcessing poolExhausted` 判讀。
+
 ## 2026.11.26 17:00 純推流對照：pool 耗盡集中於錄製 consumer（GMT+8）
 
 - pure-stream 場次：`CaptureVideoProcessing attempts=56956 failed=0 poolExhausted=0`，`[FrameRateRegime] state=normal`（source/output 約 60）；`VideoQueue queued=0`、encoder 無 dropped。

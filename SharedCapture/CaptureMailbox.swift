@@ -18,6 +18,8 @@ final class CaptureMailbox<Value: Sendable>: @unchecked Sendable {
     private var capacityDropped = 0
     private var oversizedDropped = 0
     private var closedDropped = 0
+    /// 此佇列曾持有的最高 bytes；只在取樣時讀取，不改變容量判斷。
+    private var peakBytes = 0
     /// `maxDelay` 是樣本在佇列中的最長等待時間，不是緩衝長度；預設不因等待過久淘汰。
     init(budget: Int, maxDelay: TimeInterval = .infinity,
          clock: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
@@ -53,6 +55,7 @@ final class CaptureMailbox<Value: Sendable>: @unchecked Sendable {
         accepted += 1
         if let waiter { self.waiter = nil; lock.unlock(); waiter.resume(returning: value); return }
         entries.append(Entry(value: value, bytes: size, time: now, priority: priority)); bytes += size
+        peakBytes = max(peakBytes, bytes)
         lock.unlock()
     }
     func stream() -> AsyncStream<Value> {
@@ -87,11 +90,14 @@ final class CaptureMailbox<Value: Sendable>: @unchecked Sendable {
         return max(0, clock() - first.time)
     }
 
-    /// 日誌詳情
+    /// 日誌詳情；oldest 為目前最舊樣本等待秒數，空佇列為 unknown。
     var summary: String {
         lock.lock(); defer { lock.unlock() }
+        let oldest = entries.first.map { max(0, clock() - $0.time) }
         return "accepted=\(accepted) dropped=\(dropped) delayDropped=\(delayDropped) "
             + "capacity=\(capacityDropped) oversized=\(oversizedDropped) "
-            + "closed=\(closedDropped) queued=\(entries.count) bytes=\(bytes)/\(budget)"
+            + "closed=\(closedDropped) queued=\(entries.count) bytes=\(bytes)/\(budget) "
+            + "peakBytes=\(peakBytes) oldestMs=\(oldest.map { String(format: "%.1f", $0 * 1000) } ?? "unknown") "
+            + "maxDelayMs=\(String(format: "%.1f", maxDelay * 1000))"
     }
 }

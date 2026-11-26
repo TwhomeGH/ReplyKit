@@ -17,7 +17,7 @@
 - [ ] **Swift-DocC 註解逐檔補齊**：優先補目前正在改的檔案；`AVLagObservation` 屬性已完成，接著依 A4／診斷工作補 public／internal API、參數與回傳值。不做一次全 repo 掃描，也不把註解當成行為驗收。
 - [x] **P2-A5 收播順序：先停畫面再停音訊**：新增 `[CaptureStopTail]`（最後 video／audio／mic PTS 與 `audioTailSeconds`，1 秒容差）。38 秒樣本：`audioTailSeconds=-0.044`、`verdict=withinOneSecond`；錄影 `tailGapSeconds=+0.035`，沒有 4–8 秒音訊先停。單段短測通過，長場次仍需在 A6 動態測試交叉確認；每段開頭 `audioEndPTS=unknown` 是尚未寫入音訊，不是缺尾。
 - [ ] **P2-A6 不可中途改變輸出幀率**：已實作 `FrameRateRegimeMonitor`：以 Mixer 輸出 FPS 為來源、編碼交付 FPS 為輸出；來源 <10fps（靜態 hold）不告警，連續 3 個取樣低於半才 `regimeChange`，恢復需連續 3 個高比例。`[FrameRateRegime]` 事件與每 30 秒摘要、設備頁顯示；iOS Unit Tests `45766978508` 綠（280 tests／66 suites）。純本地分片錄製沒有 `encodedVideoFrames`，會保持 `unknown` 且不產事件；需用推流場次驗證。
-- [ ] **P1 影像加工池耗盡（新發現）**：pure-stream `attempts=56956 failed=0 poolExhausted=0`、A6 `normal` 60/60；streamAndRecord `attempts=52455 failed=1274 poolExhausted=1274`、max 298ms；local-only 只有 7 次 failed。可見 `poolLimit=6` 對單純推流足夠，問題集中在錄製 consumer 的 buffer 持有時間，而不是先改 pool 數量。下一步加 `SegmentedRecordingQueue` 的 oldest／peak 與 in-flight 量測，確認是 mailbox 或 AVAssetWriter 持有。
+- [ ] **P1 影像加工池耗盡（新發現）**：pure-stream `attempts=56956 failed=0 poolExhausted=0`、A6 `normal` 60/60；streamAndRecord `attempts=52455 failed=1274 poolExhausted=1274`、max 298ms；local-only 只有 7 次 failed。可見 `poolLimit=6` 對單純推流足夠，問題集中在錄製 consumer 的 buffer 持有時間。已補 `CaptureMailbox` 的 `peakBytes`／`oldestMs`／`maxDelayMs` 到 `[SegmentedRecordingQueue]`；取樣確認 mailbox 或 writer 持有後再決定修法。
 - [ ] **P0-驗收 fixture**：建立有走動時鐘／動畫的 motion fixture 與一段長錄影；06:00 的靜態畫面沒有新內容可落後，不能驗證 A1–A3。
 - [ ] **驗收工具整合**：`check-fps-gop.ps1`（fps／GOP／音訊數位靜音）、`probe-av-lag.py`（內容延遲）、`fix-content-lag.py --check-only`（曲線）；App 端同時檢查 `contentAge`／`ageSkew`、`contentAgeDropped`、flush、停止前 PTS 與 fps regime。離線 OCR 工具不進 CI，CI 只放合成 fixture。
 
