@@ -12,6 +12,7 @@ import RTMPHaishinKit
     /// 每個來源目前的輸出幀率 regime；只放摘要，不保存媒體。
     @Published private(set) var frameRateRegimes: [String: FrameRateRegimeMonitor.Snapshot] = [:]
     private var frameRateMonitors: [String: FrameRateRegimeMonitor] = [:]
+    private var frameRateLogAt: [String: Date] = [:]
 
     func record(_ snapshot: StreamDiagnosticsSnapshot, now: Date = Date()) {
         guard snapshot.schemaVersion == 1,
@@ -24,6 +25,7 @@ import RTMPHaishinKit
             points = []
             frameRateMonitors[snapshot.source] = FrameRateRegimeMonitor()
             frameRateRegimes[snapshot.source] = nil
+            frameRateLogAt[snapshot.source] = nil
         }
         // 長間隔不跨過缺測區連線；重新建立基準後才畫速率。
         let elapsed = snapshot.sampledUptime.flatMap { current in
@@ -46,9 +48,15 @@ import RTMPHaishinKit
         let event = monitor.record(sourceFPS: point.videoFPS, outputFPS: outputFPS)
         frameRateMonitors[snapshot.source] = monitor
         frameRateRegimes[snapshot.source] = monitor.snapshot
+        let shouldSummary = now.timeIntervalSince(frameRateLogAt[snapshot.source] ?? .distantPast) >= 30
         if let event {
             let name = event == .regimeChange ? "regimeChange" : "recovered"
             sendlog(message: "[FrameRateRegime] source=\(snapshot.source) event=\(name) \(monitor.snapshot.summary)")
+            frameRateLogAt[snapshot.source] = now
+        } else if shouldSummary, monitor.snapshot.outputFPS != nil {
+            // 沒有事件也要有低頻摘要，否則純本地或正常推流會看不到狀態。
+            sendlog(message: "[FrameRateRegime] source=\(snapshot.source) event=summary \(monitor.snapshot.summary)")
+            frameRateLogAt[snapshot.source] = now
         }
     }
 }

@@ -1,5 +1,12 @@
 # 變更歷史
 
+## 2026.11.26 16:15 A6 摘要與推流觀察（GMT+8）
+
+- `[FrameRateRegime]` 在有輸出速率時每 30 秒記一筆 `event=summary`，不再只在狀態變化時出現。
+- 16:02–16:18 推流場次：`CaptureTransport` queue 空、`failedBatches=0`、encoder submitted=delivered=51077，沒有傳輸堆積或失敗。
+- 唯一明顯異常是 `CaptureVideoProcessing` `poolExhausted=1274`（attempts=52455）、max 298ms；本地-only 對照場次只有 7 次 failed。列為 P1 待用 stream-only／stream+record 對照確認。
+- A6 未出現 regimeChange 不代表正常；需等含 30 秒摘要的新包再看 `normal/sourceIdle/degraded`。
+
 ## 2026.11.26 14:15 A6：輸出幀率 regime 偵測（GMT+8）
 
 - 新增 `FrameRateRegimeMonitor`：來源以 Mixer 實際輸出 FPS、輸出以實際編碼交付 FPS 的比例判定；來源 <10fps（靜態 hold）不告警。
