@@ -1,5 +1,12 @@
 # 變更歷史
 
+## 2026.11.26 21:42 buffer2 實機結果：pool 歸零、錄製 queue 換取穩定（GMT+8）
+
+- 18 分鐘 streamAndRecord：`CaptureVideoProcessing attempts=60234 failed=0 poolExhausted=0`、max 55ms；先前 pool 耗盡已消失。
+- `CaptureSource` video mailbox peak 11.8MB／oldest 16.7ms；A6 全程 `normal`，source/output 一起下降時未誤報。
+- 錄製 queue 24MiB：`accepted=110818 dropped=94 capacity=94`、`peakOldestMs=696.7`；drop 集中在啟動與分段邊界（9:24:42、9:31–9:34、9:39–9:42）。
+- 下一步轉向錄製 writer readiness／segment boundary，不再先動 pool；final `RecordingSegmentTiming` 本身 `drops=[]`，queue drop 是進入 writer 前發生。
+
 ## 2026.11.26 17:37 錄製 queue 保留 capture pool headroom（GMT+8）
 
 - `[SegmentedRecordingQueue]` 回報 `peakBytes=49,881,088`，約六張 1080p，正好等於 `poolLimit=6`；確認錄製 mailbox 可吃滿共用池。
