@@ -39,6 +39,22 @@ accepted=... dropped=... delayDropped=... queued=... bytes=.../... peakBytes=...
 
 錄製 mailbox 上限為 24 MiB（1080p 約三張），不再使用 48 MiB；目的是保留至少三張給 processing／推流，避免錄製 queue 吃滿共用的 6 張 capture pool。超過時 `dropped`／`capacity` 會增加；若 recorder 因正常寫入短暫落後而丟幀，應先看 `peakOldestMs` 與 writer 端，而不是把 queue 再放大。
 
+## 錄製 writer readiness
+
+`[RecordingSegmentTiming]` 現在附帶：
+
+```text
+readiness{videoWaits=... videoMaxMs=... audioWaits=... audioMaxMs=...}
+append{count=... meanMs=... maxMs=...}
+```
+
+- `videoWaits`／`audioWaits`：等待 `AVAssetWriterInput.isReadyForMoreMediaData` 超過 0.5ms 的次數；不是來源停送，也不是 queue 丟棄。
+- `videoMaxMs`／`audioMaxMs`：最長等待；首幀最多 1 秒，音訊最多 100ms。
+- `append`：從進入 writer actor 到 append 結束（含提前回傳）的耗時。
+- `[SegmentedRecording] ... finishMs=...`：`finishSegment` 從開始到完成 writer 收尾的時間，用來對照分段邊界的 queue 堆積。
+
+判讀：`readiness` 很高且 `append max` 很高，是 writer 來不及；`finishMs` 很高且 queue drop 集中在同一時間，是分段收尾阻塞。兩者都不是 pool starvation，應分開處理。
+
 ## 停止尾端（A5）
 
 收尾排空後會記一筆：

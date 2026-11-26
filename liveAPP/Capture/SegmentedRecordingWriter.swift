@@ -176,6 +176,42 @@ actor RecordingSegmentWriter {
     private var audioEnd: CMTime = .invalid
     /// 每軌、每種原因分開計數；只在低頻進度與收尾時輸出。
     private var dropReasons: [String: Int] = [:]
+    /// 等待 AVAssetWriterInput 可寫的次數與最長毫秒數；不含直接 notReady 丟棄。
+    private var readinessVideoWaits = 0
+    private var readinessVideoMaxMilliseconds = 0.0
+    private var readinessAudioWaits = 0
+    private var readinessAudioMaxMilliseconds = 0.0
+    /// append 從進入 actor 到完成的耗時，區分 writer 慢與來源停送。
+    private var appendCount = 0
+    private var appendTotalMilliseconds = 0.0
+    private var appendMaxMilliseconds = 0.0
+
+    /// 記錄一次 readiness 等待；低於 0.5ms 不視為等待。
+    private func noteReadinessWait(start: Double, video: Bool) {
+        let milliseconds = max(0, (ProcessInfo.processInfo.systemUptime - start) * 1000)
+        guard milliseconds >= 0.5 else { return }
+        if video {
+            readinessVideoWaits += 1
+            readinessVideoMaxMilliseconds = max(readinessVideoMaxMilliseconds, milliseconds)
+        } else {
+            readinessAudioWaits += 1
+            readinessAudioMaxMilliseconds = max(readinessAudioMaxMilliseconds, milliseconds)
+        }
+    }
+
+    /// 記錄一次 append 耗時；由 defer 呼叫，包含提前回傳。
+    private func noteAppend(start: Double) {
+        let milliseconds = max(0, (ProcessInfo.processInfo.systemUptime - start) * 1000)
+        appendCount += 1
+        appendTotalMilliseconds += milliseconds
+        appendMaxMilliseconds = max(appendMaxMilliseconds, milliseconds)
+    }
+
+    /// 錄製 writer readiness 與 append 耗時摘要。
+    private var readinessText: String {
+        let mean = appendCount > 0 ? appendTotalMilliseconds / Double(appendCount) : 0
+        return "readiness{videoWaits=\(readinessVideoWaits) videoMaxMs=\(String(format: "%.1f", readinessVideoMaxMilliseconds)) audioWaits=\(readinessAudioWaits) audioMaxMs=\(String(format: "%.1f", readinessAudioMaxMilliseconds))} append{count=\(appendCount) meanMs=\(String(format: "%.1f", mean)) maxMs=\(String(format: "%.1f", appendMaxMilliseconds))}"
+    }
 
     /// 累加寫入端丟棄原因，避免混淆音訊與視訊。
     private func recordDrop(video: Bool, reason: String) {
@@ -212,6 +248,8 @@ actor RecordingSegmentWriter {
     /// - Parameter sample: Mixer 輸出的視訊或 PCM 樣本。
     /// - Throws: 開檔、寫入、收尾或首幀等待失敗；等待被取消亦會拋錯。
     func append(_ sample: CMSampleBuffer) async throws {
+        let appendStart = ProcessInfo.processInfo.systemUptime
+        defer { noteAppend(start: appendStart) }
         let isVideo = sample.imageBuffer != nil
         let pts = sample.presentationTimeStamp
         guard pts.seconds.isFinite else { recordDrop(video: isVideo, reason: "invalidPTS"); return }
@@ -226,18 +264,22 @@ actor RecordingSegmentWriter {
         if isVideo && !limiter.accepts(seconds: pts.seconds) { return }
         guard let input = isVideo ? video : audio else { throw error("缺少編碼輸入軌道。") }
         if isVideo && videoCount == 0 {
+            let waitStart = ProcessInfo.processInfo.systemUptime
             let deadline = ContinuousClock.now.advanced(by: .seconds(1))
             while !input.isReadyForMoreMediaData && writer.status == .writing && ContinuousClock.now < deadline {
                 try await Task.sleep(nanoseconds: 2_000_000)
             }
+            noteReadinessWait(start: waitStart, video: true)
             guard input.isReadyForMoreMediaData else { throw writer.error ?? error("片段首幀等待編碼器逾時。") }
         }
         // 音訊短暫背壓時給編碼器有限的恢復機會；不讓無聲默默累積。
         if !isVideo && !input.isReadyForMoreMediaData {
+            let waitStart = ProcessInfo.processInfo.systemUptime
             let deadline = ContinuousClock.now.advanced(by: .milliseconds(100))
             while !input.isReadyForMoreMediaData && writer.status == .writing && ContinuousClock.now < deadline {
                 try await Task.sleep(nanoseconds: 2_000_000)
             }
+            noteReadinessWait(start: waitStart, video: false)
         }
         guard input.isReadyForMoreMediaData else { recordDrop(video: isVideo, reason: "notReady"); return }
         guard input.append(sample) else { throw writer.error ?? error("媒體樣本寫入失敗。") }
@@ -254,7 +296,7 @@ actor RecordingSegmentWriter {
             lastReport = pts.seconds
             await report(phase: nil)
             if Int(pts.seconds - start.seconds) % 5 == 0 {
-                sendlog(message: "[RecordingSegmentTiming] group=\(group) segment=\(number) videoLastPTS=\(videoLastText) audioEndPTS=\(audioEndText) drops=\(dropReasons)")
+                sendlog(message: "[RecordingSegmentTiming] group=\(group) segment=\(number) videoLastPTS=\(videoLastText) audioEndPTS=\(audioEndText) drops=\(dropReasons) \(readinessText)")
             }
         }
     }
@@ -320,9 +362,14 @@ actor RecordingSegmentWriter {
     /// - Throws: 寫入未完成、沒有視訊、資產讀取或可播放性驗證失敗。
     func finishSegment(at boundary: CMTime? = nil) async throws {
         guard let writer else { return }
+        let finishStart = ProcessInfo.processInfo.systemUptime
+        defer {
+            let milliseconds = (ProcessInfo.processInfo.systemUptime - finishStart) * 1000
+            sendlog(message: "[SegmentedRecording] group=\(group) segment=\(number) finishMs=\(String(format: "%.1f", milliseconds))")
+        }
         await report(phase: .finishing)
         if let boundary { writer.endSession(atSourceTime: boundary) }
-        sendlog(message: "[RecordingSegmentTiming] group=\(group) segment=\(number) videoCount=\(videoCount) audioCount=\(audioCount) videoLastPTS=\(videoLastText) audioEndPTS=\(audioEndText) tailGapSeconds=\(tailGapText) drops=\(dropReasons)")
+        sendlog(message: "[RecordingSegmentTiming] group=\(group) segment=\(number) videoCount=\(videoCount) audioCount=\(audioCount) videoLastPTS=\(videoLastText) audioEndPTS=\(audioEndText) tailGapSeconds=\(tailGapText) drops=\(dropReasons) \(readinessText)")
         video?.markAsFinished(); audio?.markAsFinished()
         let timeout = Task {
             do { try await Task.sleep(nanoseconds: 30_000_000_000); writer.cancelWriting() } catch { }

@@ -1,5 +1,11 @@
 # 變更歷史
 
+## 2026.11.26 22:00 錄製 writer readiness 與分段收尾量測（GMT+8）
+
+- `RecordingSegmentTiming` 新增 `readiness{videoWaits videoMaxMs audioWaits audioMaxMs}` 與 `append{count meanMs maxMs}`，區分 writer 來不及與來源停送。
+- `finishSegment` 新增 `[SegmentedRecording] ... finishMs=...`，可用來對照 queue drop burst 是否集中在分段收尾。
+- 這批只加量測，不改 queue 大小或分段行為；下一步用 streamAndRecord 長測決定是預開下一段、縮短 finish 阻塞，或調整 writer。
+
 ## 2026.11.26 21:42 buffer2 實機結果：pool 歸零、錄製 queue 換取穩定（GMT+8）
 
 - 18 分鐘 streamAndRecord：`CaptureVideoProcessing attempts=60234 failed=0 poolExhausted=0`、max 55ms；先前 pool 耗盡已消失。

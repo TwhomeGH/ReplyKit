@@ -18,6 +18,7 @@
 - [x] **P2-A5 收播順序：先停畫面再停音訊**：新增 `[CaptureStopTail]`（最後 video／audio／mic PTS 與 `audioTailSeconds`，1 秒容差）。38 秒樣本：`audioTailSeconds=-0.044`、`verdict=withinOneSecond`；錄影 `tailGapSeconds=+0.035`，沒有 4–8 秒音訊先停。單段短測通過，長場次仍需在 A6 動態測試交叉確認；每段開頭 `audioEndPTS=unknown` 是尚未寫入音訊，不是缺尾。
 - [ ] **P2-A6 不可中途改變輸出幀率**：已實作 `FrameRateRegimeMonitor`：以 Mixer 輸出 FPS 為來源、編碼交付 FPS 為輸出；來源 <10fps（靜態 hold）不告警，連續 3 個取樣低於半才 `regimeChange`，恢復需連續 3 個高比例。`[FrameRateRegime]` 事件與每 30 秒摘要、設備頁顯示；iOS Unit Tests `45766978508` 綠（280 tests／66 suites）。純本地分片錄製沒有 `encodedVideoFrames`，會保持 `unknown` 且不產事件；需用推流場次驗證。
 - [ ] **P1 影像加工池耗盡（已解決核心 starvation）**：buffer2 實機 `CaptureVideoProcessing attempts=60234 failed=0 poolExhausted=0`、max 55ms；A6 `normal` 60/60；`CaptureSource` video peak 11.8MB／oldest 16.7ms。代價是錄製 queue `accepted=110818 dropped=94 capacity=94`、`peakOldestMs=696.7`；drop 集中在啟動與分段邊界。下一步改錄製 writer readiness／segment boundary，而不是再調 pool。
+- [ ] **P1 錄製 writer／segment 邊界量測**：`RecordingSegmentTiming` 已加 `readiness{videoWaits/audioWaits/max}`、`append{count/mean/max}`；`[SegmentedRecording] finishMs` 量分段收尾。用 streamAndRecord 長測對照 queue drop burst：writer 慢 → 調 writer；finishMs 高 → 預開下一段／縮短收尾阻塞。
 - [ ] **P0-驗收 fixture**：建立有走動時鐘／動畫的 motion fixture 與一段長錄影；06:00 的靜態畫面沒有新內容可落後，不能驗證 A1–A3。
 - [ ] **驗收工具整合**：`check-fps-gop.ps1`（fps／GOP／音訊數位靜音）、`probe-av-lag.py`（內容延遲）、`fix-content-lag.py --check-only`（曲線）；App 端同時檢查 `contentAge`／`ageSkew`、`contentAgeDropped`、flush、停止前 PTS 與 fps regime。離線 OCR 工具不進 CI，CI 只放合成 fixture。
 
