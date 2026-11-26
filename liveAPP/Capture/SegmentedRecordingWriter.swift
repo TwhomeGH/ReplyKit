@@ -143,6 +143,22 @@ actor RecordingSegmentWriter {
     /// 本段最近的容量讀取錯誤，用來抑制連續重複日誌；成功讀取後清除。
     private var sizeReadError: String?
 
+    /// 視訊最後 PTS 的日誌文字；尚未寫入時顯示 unknown。
+    private var videoLastText: String {
+        lastVideo.isValid ? String(format: "%.6f", lastVideo.seconds) : "unknown"
+    }
+
+    /// 音訊結束 PTS 的日誌文字；音訊尚未寫入時顯示 unknown，不用 nan。
+    private var audioEndText: String {
+        audioEnd.isValid ? String(format: "%.6f", audioEnd.seconds) : "unknown"
+    }
+
+    /// 影音尾端差的日誌文字；任一時間軸無效時顯示 unknown。
+    private var tailGapText: String {
+        guard lastVideo.isValid, audioEnd.isValid else { return "unknown" }
+        return String(format: "%.6f", lastVideo.seconds - audioEnd.seconds)
+    }
+
     /// 本段累計的寫入端丟棄數；每段使用獨立 Writer 與計數。
     /// 包含時間戳無效／倒退與輸入未就緒；不含 FPS 篩選、佇列丟棄或音訊轉換失敗。
     private var dropped = 0
@@ -231,7 +247,7 @@ actor RecordingSegmentWriter {
             lastReport = pts.seconds
             await report(phase: nil)
             if Int(pts.seconds - start.seconds) % 5 == 0 {
-                sendlog(message: "[RecordingSegmentTiming] group=\(group) segment=\(number) videoLastPTS=\(lastVideo.seconds) audioEndPTS=\(audioEnd.seconds) drops=\(dropReasons)")
+                sendlog(message: "[RecordingSegmentTiming] group=\(group) segment=\(number) videoLastPTS=\(videoLastText) audioEndPTS=\(audioEndText) drops=\(dropReasons)")
             }
         }
     }
@@ -299,7 +315,7 @@ actor RecordingSegmentWriter {
         guard let writer else { return }
         await report(phase: .finishing)
         if let boundary { writer.endSession(atSourceTime: boundary) }
-        sendlog(message: "[RecordingSegmentTiming] group=\(group) segment=\(number) videoCount=\(videoCount) audioCount=\(audioCount) videoLastPTS=\(lastVideo.seconds) audioEndPTS=\(audioEnd.seconds) tailGapSeconds=\(lastVideo.seconds - audioEnd.seconds) drops=\(dropReasons)")
+        sendlog(message: "[RecordingSegmentTiming] group=\(group) segment=\(number) videoCount=\(videoCount) audioCount=\(audioCount) videoLastPTS=\(videoLastText) audioEndPTS=\(audioEndText) tailGapSeconds=\(tailGapText) drops=\(dropReasons)")
         video?.markAsFinished(); audio?.markAsFinished()
         let timeout = Task {
             do { try await Task.sleep(nanoseconds: 30_000_000_000); writer.cancelWriting() } catch { }

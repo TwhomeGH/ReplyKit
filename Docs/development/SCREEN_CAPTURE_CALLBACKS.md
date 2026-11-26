@@ -27,6 +27,8 @@ callbacks 不增加而 idleSeconds 增加，表示 App 沒觀察到新回呼；�
 
 這是來源 PTS 差，不是檔案實際尾端、播放器 hold 或編碼器輸出；錄影檔尾端仍要對照 `RecordingSegmentTiming` 的 `tailGapSeconds`。
 
+`RecordingSegmentTiming` 在每段剛開始、尚未寫入第一個音訊樣本時會顯示 `audioEndPTS=unknown`、`tailGapSeconds=unknown`（舊版顯示 `nan`）；這不是缺尾，後續幾筆會出現實際值。
+
 ## 起始與 PCM 時間對照
 
 CaptureCallbacks 的 firstArrival 是第一個回呼時間，firstPTS 是第一筆有限來源時間，兩者不一定出自同一筆有效影格。MixerOrigin 每個 probe 各記一次影音時間，session 是 probe 的 UUID；須依既有 StreamDiagnostics 快照關聯，不等於 CaptureCallbacks 的擷取 session。

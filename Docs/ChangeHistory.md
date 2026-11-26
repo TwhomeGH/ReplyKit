@@ -1,5 +1,11 @@
 # 變更歷史
 
+## 2026.11.26 13:59 A5 收播尾端量測結果（GMT+8）
+
+- 38 秒樣本：`[CaptureStopTail]` 的 `audioTailSeconds=-0.044`、`verdict=withinOneSecond`；錄影 `RecordingSegmentTiming tailGapSeconds=+0.035`，沒有文件觀察到的 4–8 秒音訊先停。
+- `RecordingSegmentTiming` 在每段尚未寫入音訊前不再輸出 `audioEndPTS=nan`／`tailGapSeconds=nan`，改為 `unknown`；這只是短暫無值，後續幾筆會出現實際時間。
+- A5 短測通過，暫時不需要改停止順序；長場次與動態幀率由 A6 交叉驗證。
+
 ## 2026.11.25 13:41 A5：停止尾端量測（GMT+8）
 
 - 新增 `CaptureStopTail`：收尾排空後記錄最後 video／audio／mic PTS、`audioTailSeconds` 與 1 秒容差判定。
