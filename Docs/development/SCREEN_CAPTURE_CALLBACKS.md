@@ -15,6 +15,16 @@ callbacks 不增加而 idleSeconds 增加，表示 App 沒觀察到新回呼；�
 
 資料只描述回呼與來源時間，不能單獨證明畫面內容新鮮、GPU 正確或伺服器成功解碼。尚需實機對照 10/25 類似活動頁面、靜止畫面與前後景切換。
 
+## 輸出幀率 regime（A6）
+
+`FrameRateRegimeMonitor` 以 Mixer 實際輸出 FPS 作來源、以實際編碼交付 FPS 作輸出，只在來源仍持續輸出、交付連續低於一半時告警。
+
+- 低於 `sourceFPS < 10` 視為靜態 hold／來源沒有新幀，不告警；`sourceFPS` 與 `outputFPS` 都低是預期 VFR。
+- 連續 3 個五秒取樣 `output/source <= 0.55` 才進入 `degraded`；恢復需要連續 3 個 `>= 0.75`。
+- `warmingUp`、`sourceIdle`、`unknown` 都不是正常；缺少交付速率不能補成 0。
+- 事件日誌：`[FrameRateRegime] source=... event=regimeChange ...`；設備頁「編碼輸入緩衝」會顯示同一個摘要。
+- 這是觀測，不會修改編碼設定；也不能單獨證明畫面內容延遲或伺服器實際送達。
+
 ## 停止尾端（A5）
 
 收尾排空後會記一筆：

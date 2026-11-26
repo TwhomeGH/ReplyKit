@@ -9,6 +9,9 @@ import RTMPHaishinKit
     @Published private(set) var snapshots: [String: StreamDiagnosticsSnapshot] = [:]
     @Published private(set) var receivedAt: [String: Date] = [:]
     @Published private(set) var history: [String: [MixerRatePoint]] = [:]
+    /// 每個來源目前的輸出幀率 regime；只放摘要，不保存媒體。
+    @Published private(set) var frameRateRegimes: [String: FrameRateRegimeMonitor.Snapshot] = [:]
+    private var frameRateMonitors: [String: FrameRateRegimeMonitor] = [:]
 
     func record(_ snapshot: StreamDiagnosticsSnapshot, now: Date = Date()) {
         guard snapshot.schemaVersion == 1,
@@ -17,7 +20,11 @@ import RTMPHaishinKit
               snapshots[snapshot.source].map({ $0.sampledAt < snapshot.sampledAt }) ?? true else { return }
         let previous = snapshots[snapshot.source]
         var points = history[snapshot.source] ?? []
-        if previous?.session != snapshot.session { points = [] }
+        if previous?.session != snapshot.session {
+            points = []
+            frameRateMonitors[snapshot.source] = FrameRateRegimeMonitor()
+            frameRateRegimes[snapshot.source] = nil
+        }
         // 長間隔不跨過缺測區連線；重新建立基準後才畫速率。
         let elapsed = snapshot.sampledUptime.flatMap { current in
             previous?.sampledUptime.map { current - $0 }
@@ -30,6 +37,19 @@ import RTMPHaishinKit
         history[snapshot.source] = Array(points.suffix(60))
         snapshots[snapshot.source] = snapshot
         receivedAt[snapshot.source] = now
+
+        var monitor = frameRateMonitors[snapshot.source] ?? FrameRateRegimeMonitor()
+        let outputFPS = DiagnosticCounterRate.value(
+            current: snapshot.encodedVideoFrames,
+            previous: previous?.session == snapshot.session ? previous?.encodedVideoFrames : nil,
+            elapsed: elapsed)
+        let event = monitor.record(sourceFPS: point.videoFPS, outputFPS: outputFPS)
+        frameRateMonitors[snapshot.source] = monitor
+        frameRateRegimes[snapshot.source] = monitor.snapshot
+        if let event {
+            let name = event == .regimeChange ? "regimeChange" : "recovered"
+            sendlog(message: "[FrameRateRegime] source=\(snapshot.source) event=\(name) \(monitor.snapshot.summary)")
+        }
     }
 }
 
@@ -236,6 +256,11 @@ struct StreamDiagnosticsSections: View {
     @ViewBuilder
     private func encoderInputSection(_ value: StreamDiagnosticsSnapshot) -> some View {
         group("編碼輸入緩衝") {
+            if let regime = model.frameRateRegimes[value.source] {
+                detail("輸出幀率 regime", regime.summary)
+                Text("來源 FPS 是 Mixer 實際輸出，output FPS 是實際編碼交付；靜態畫面兩邊同時下降時不告警，只有來源仍輸出而交付連續低於一半才標記。這是觀測，不會修改編碼設定。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             if let input = value.encoderInput {
                 detail("佇列狀態", input.availability)
                 detail("佇列上限", [

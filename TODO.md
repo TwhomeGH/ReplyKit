@@ -16,7 +16,7 @@
 - [x] **P1-A4 AVLag 覆蓋整場並綁定錄影**：已加入 `recordingGroup`／錄影起訖／`completionReason`（`recordingEnded`／`captureStopped`／`segmentRotated`／`samplingInterrupted`），報告與歷史列表會顯示。iOS Unit Tests `45537988203` 綠；實機場次 `149543E5-…` 得到 `complete=true`、`completionReason=recordingEnded`，`recordingGroup=FAC05845-…` 與錄影 manifest 一致。另已修正 `end(session:)` optional 參數 shadowing 導致 final save 被跳過（`ad24ed9`）。
 - [ ] **Swift-DocC 註解逐檔補齊**：優先補目前正在改的檔案；`AVLagObservation` 屬性已完成，接著依 A4／診斷工作補 public／internal API、參數與回傳值。不做一次全 repo 掃描，也不把註解當成行為驗收。
 - [x] **P2-A5 收播順序：先停畫面再停音訊**：新增 `[CaptureStopTail]`（最後 video／audio／mic PTS 與 `audioTailSeconds`，1 秒容差）。38 秒樣本：`audioTailSeconds=-0.044`、`verdict=withinOneSecond`；錄影 `tailGapSeconds=+0.035`，沒有 4–8 秒音訊先停。單段短測通過，長場次仍需在 A6 動態測試交叉確認；每段開頭 `audioEndPTS=unknown` 是尚未寫入音訊，不是缺尾。
-- [ ] **P2-A6 不可中途改變輸出幀率**：用 gap 分布區分「靜態 hold」與「真的 60→30 regime change」；持續掉半才告警，不要把 06:00 的 1.9fps 靜態 VFR 誤判成掉幀。
+- [ ] **P2-A6 不可中途改變輸出幀率**：已實作 `FrameRateRegimeMonitor`：以 Mixer 輸出 FPS 為來源、編碼交付 FPS 為輸出；來源 <10fps（靜態 hold）不告警，連續 3 個取樣低於半才 `regimeChange`，恢復需連續 3 個高比例。`[FrameRateRegime]` 與設備頁顯示；待 CI／實機長場次驗證。
 - [ ] **P0-驗收 fixture**：建立有走動時鐘／動畫的 motion fixture 與一段長錄影；06:00 的靜態畫面沒有新內容可落後，不能驗證 A1–A3。
 - [ ] **驗收工具整合**：`check-fps-gop.ps1`（fps／GOP／音訊數位靜音）、`probe-av-lag.py`（內容延遲）、`fix-content-lag.py --check-only`（曲線）；App 端同時檢查 `contentAge`／`ageSkew`、`contentAgeDropped`、flush、停止前 PTS 與 fps regime。離線 OCR 工具不進 CI，CI 只放合成 fixture。
 

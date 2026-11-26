@@ -1,5 +1,13 @@
 # 變更歷史
 
+## 2026.11.26 14:15 A6：輸出幀率 regime 偵測（GMT+8）
+
+- 新增 `FrameRateRegimeMonitor`：來源以 Mixer 實際輸出 FPS、輸出以實際編碼交付 FPS 的比例判定；來源 <10fps（靜態 hold）不告警。
+- 連續 3 個五秒取樣 `output/source <= 0.55` 才進入 `degraded` 並記 `[FrameRateRegime] event=regimeChange`；恢復需連續 3 個 `>= 0.75`。
+- `StreamDiagnosticsModel` 保存每個來源的 regime 摘要；設備頁「編碼輸入緩衝」顯示來源／輸出 FPS、比例、連續低次數與告警次數。
+- 新增 `FrameRateRegimeMonitorTests` 覆蓋正常、持續掉半、靜態來源、缺值與恢復。
+- 這是觀測，不會修改編碼設定；待 CI 與長場次實機驗證。
+
 ## 2026.11.26 13:59 A5 收播尾端量測結果（GMT+8）
 
 - 38 秒樣本：`[CaptureStopTail]` 的 `audioTailSeconds=-0.044`、`verdict=withinOneSecond`；錄影 `RecordingSegmentTiming tailGapSeconds=+0.035`，沒有文件觀察到的 4–8 秒音訊先停。
