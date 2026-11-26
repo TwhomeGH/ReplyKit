@@ -1,5 +1,12 @@
 # 變更歷史
 
+## 2026.11.26 17:37 錄製 queue 保留 capture pool headroom（GMT+8）
+
+- `[SegmentedRecordingQueue]` 回報 `peakBytes=49,881,088`，約六張 1080p，正好等於 `poolLimit=6`；確認錄製 mailbox 可吃滿共用池。
+- `CaptureMailbox` 新增 `peakOldestMs`，保留歷史最長等待，不再只看 30 秒取樣當下是否剛好空 queue。
+- `SegmentedRecordingSink` mailbox 從 48 MiB／2 秒改為 24 MiB／1 秒（1080p 約三張），保留至少三張給 processing／推流；超限改記 dropped，避免全域 pool 耗盡。
+- 待 streamAndRecord 重測 `poolExhausted`、`dropped`、`peakOldestMs` 與本地檔案缺口。
+
 ## 2026.11.26 17:20 錄製 queue 持有量測（GMT+8）
 
 - `CaptureMailbox` 新增 `peakBytes`，`summary` 增加 `peakBytes`、`oldestMs`、`maxDelayMs`；`[SegmentedRecordingQueue]` 可直接看到錄製 mailbox 是否堆積。

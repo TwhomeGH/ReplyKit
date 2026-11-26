@@ -6,9 +6,15 @@ import HaishinKit
 /// 入列後不再修改的樣本引用；音訊先複製成獨立緩衝再移交。
 private struct RecordingSample: @unchecked Sendable { let buffer: CMSampleBuffer }
 
-/// Mixer 回呼只複製／入列；單一消費工作路由片段，佇列最多 48 MiB。
-/// 過載丟樣本並記錄計數，不能以無限佇列換取表面上的無丟幀。
+/// Mixer 回呼只複製／入列；單一消費工作路由片段，佇列保留有限緩衝。
+/// 錄製 queue 不得吃滿共用的 capture pixel pool；1080p 24 MiB 約三張，
+/// 留至少三張給 processing／推流，超過時記 dropped 而不是讓全域 pool 耗盡。
 final class SegmentedRecordingSink: MediaMixerOutput, @unchecked Sendable {
+
+    /// 1080p BGRA 約 8.3 MiB／張；24 MiB 保留三個錄製 frame，低於 poolLimit 6。
+    static let queueBudgetBytes = 24 * 1024 * 1024
+    /// 錄製樣本最長等待時間；逾時 drop 由 CaptureMailbox 計數。
+    static let queueMaxDelaySeconds = 1.0
 
     let videoTrackId: UInt8? = UInt8.max
     let audioTrackId: UInt8? = UInt8.max
@@ -29,7 +35,8 @@ final class SegmentedRecordingSink: MediaMixerOutput, @unchecked Sendable {
          group: UUID = UUID(),
          failed: @escaping @MainActor @Sendable (String) -> Void) {
         self.group = group
-        let mailbox = CaptureMailbox<RecordingSample>(budget: 48 * 1024 * 1024, maxDelay: 2)
+        let mailbox = CaptureMailbox<RecordingSample>(budget: Self.queueBudgetBytes,
+                                                       maxDelay: Self.queueMaxDelaySeconds)
         self.mailbox = mailbox
         worker = Task {
             let writer = SegmentedRecordingWriter(settings: settings, library: library,

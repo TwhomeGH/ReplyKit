@@ -35,7 +35,9 @@ callbacks 不增加而 idleSeconds 增加，表示 App 沒觀察到新回呼；�
 accepted=... dropped=... delayDropped=... queued=... bytes=.../... peakBytes=... oldestMs=... maxDelayMs=...
 ```
 
-`oldestMs` 是目前仍在錄製 queue 中最舊樣本的等待時間，空 queue 為 `unknown`；`peakBytes` 是本次錄製曾持有的最高 bytes。它只涵蓋 mailbox，不包含已交給 `AVAssetWriterInput` 後仍被持有的 buffer；要判斷 pool 耗盡是否來自錄製端，需和 `CaptureVideoProcessing poolExhausted` 一起看。
+`oldestMs` 是目前仍在錄製 queue 中最舊樣本的等待時間，空 queue 為 `unknown`；`peakOldestMs` 是本次錄製曾觀測到的最長等待，避免 30 秒取樣只看到空 queue。`peakBytes` 是本次錄製曾持有的最高 bytes。它只涵蓋 mailbox，不包含已交給 `AVAssetWriterInput` 後仍被持有的 buffer；要判斷 pool 耗盡是否來自錄製端，需和 `CaptureVideoProcessing poolExhausted` 一起看。
+
+錄製 mailbox 上限為 24 MiB（1080p 約三張），不再使用 48 MiB；目的是保留至少三張給 processing／推流，避免錄製 queue 吃滿共用的 6 張 capture pool。超過時 `dropped`／`capacity` 會增加；若 recorder 因正常寫入短暫落後而丟幀，應先看 `peakOldestMs` 與 writer 端，而不是把 queue 再放大。
 
 ## 停止尾端（A5）
 

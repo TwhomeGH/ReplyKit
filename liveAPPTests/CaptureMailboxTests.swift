@@ -20,6 +20,7 @@ struct CaptureMailboxTests {
         #expect(summary.contains("queued=2"))
         #expect(summary.contains("peakBytes=60"))
         #expect(summary.contains("oldestMs=3000.0"))
+        #expect(summary.contains("peakOldestMs=3000.0"))
         #expect(summary.contains("maxDelayMs=10000.0"))
     }
 
