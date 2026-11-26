@@ -23,6 +23,7 @@ callbacks 不增加而 idleSeconds 增加，表示 App 沒觀察到新回呼；�
 - 連續 3 個五秒取樣 `output/source <= 0.55` 才進入 `degraded`；恢復需要連續 3 個 `>= 0.75`。
 - `warmingUp`、`sourceIdle`、`unknown` 都不是正常；缺少交付速率不能補成 0。
 - 事件日誌：`[FrameRateRegime] source=... event=regimeChange ...`；設備頁「編碼輸入緩衝」會顯示同一個摘要。
+- 目前只在有實際編碼交付（推流）時運作；純本地分片錄製沒有 `encodedVideoFrames`，會保持 `unknown` 且不產事件，不能當成「輸出幀率正常」。
 - 這是觀測，不會修改編碼設定；也不能單獨證明畫面內容延遲或伺服器實際送達。
 
 ## 停止尾端（A5）
