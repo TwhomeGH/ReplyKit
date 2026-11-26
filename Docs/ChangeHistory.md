@@ -1,5 +1,11 @@
 # 變更歷史
 
+## 2026.11.26 17:00 純推流對照：pool 耗盡集中於錄製 consumer（GMT+8）
+
+- pure-stream 場次：`CaptureVideoProcessing attempts=56956 failed=0 poolExhausted=0`，`[FrameRateRegime] state=normal`（source/output 約 60）；`VideoQueue queued=0`、encoder 無 dropped。
+- 前一次 streamAndRecord：`failed=1274 / poolExhausted=1274`、max 298ms；local-only 只有 7 次 failed。
+- 結論：`poolLimit=6` 對單純推流足夠；問題集中在錄製 consumer 讓加工 buffer 持有更久，先查 `SegmentedRecordingSink` 的 mailbox 與 AVAssetWriter 持有時間，不直接提高 pool 上限。
+
 ## 2026.11.26 16:15 A6 摘要與推流觀察（GMT+8）
 
 - `[FrameRateRegime]` 在有輸出速率時每 30 秒記一筆 `event=summary`，不再只在狀態變化時出現。
