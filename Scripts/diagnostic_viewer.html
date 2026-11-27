@@ -122,7 +122,7 @@
         <option value="info">一般</option>
       </select>
       <select id="session" title="Session"><option value="">全部 Session</option></select>
-      <select id="range" title="時間範圍">
+      <select id="range" title="時間範圍；最近 N 以檔案最新紀錄為準">
         <option value="all">全部時間</option>
         <option value="15">最近 15 分鐘</option>
         <option value="60">最近 1 小時</option>
@@ -352,9 +352,11 @@ async function load(append = false) {
   renderRows(data, append);
   const contextNote = state.context ? ` · 含前後 ${state.context} 列` : "";
   const orderNote = state.order === "desc" ? "新→舊" : "舊→新";
+  const anchorNote = state.range !== "all" && state.range !== "custom" && state.latest
+    ? `（以最新紀錄 ${formatTime(state.latest)} 為準）` : "";
   $("status").textContent = `${data.total} 筆符合 · 顯示 ${data.offset + data.matchCount} 筆${contextNote} · 目前 ${$("rows").children.length} 列`
     + (state.category ? ` · 分類 ${state.category}` : "")
-    + ` · 時間 ${rangeLabel()} · 排序 ${orderNote}`;
+    + ` · 時間 ${rangeLabel()}${anchorNote} · 排序 ${orderNote}`;
   if (data.hasMore) state.offset = data.offset + data.matchCount;
 }
 
