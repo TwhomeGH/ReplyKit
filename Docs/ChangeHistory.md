@@ -1,5 +1,13 @@
 # 變更歷史
 
+## 2026.11.27 診斷檢視器：時間範圍、排序與時間解析（GMT+8）
+
+- 新增「全部時間／最近 15 分鐘／1 小時／6 小時／24 小時／自訂區間」；靜態診斷檔以檔案最新時間為錨點，不用瀏覽器現在時間。
+- 新增時間舊→新／新→舊排序；與前後鄰近筆數一起使用時，context 也依同方向排列。
+- 後端解析日誌的本地中文時段（清晨、上午、中午、下午、傍晚、晚上、深夜）成 epoch；無時間戳的行在有時間條件時不選入。
+- `/api/summary` 增加 `earliest`／`latest`／`latestTime`，`/api/lines` 增加 `from`／`to`／`order`。
+- 與 TTWChatMessageServer 即時診斷頁的差異：ReplyKit 讀靜態檔，因此不提供自動更新、Log I/O 卡片或 Socket 事件；尚未做檔案 watch。
+
 ## 2026.11.26 22:00 錄製 writer readiness 與分段收尾量測（GMT+8）
 
 - `RecordingSegmentTiming` 新增 `readiness{videoWaits videoMaxMs audioWaits audioMaxMs}` 與 `append{count meanMs maxMs}`，區分 writer 來不及與來源停送。
@@ -75,6 +83,12 @@
 - `end` 也改為 async 並等待 checkpoint 與 final 寫入；新增 `[AVLagStore] begin ... mode=...` 與 `final skipped` 日誌。
 - 文件補上 `AVLag-<session>-<segment>.json`（分享快照）與 `<session>-<segment>.json`（保存場次）的差別；快照改放 `Documents/AVLagSnapshots`，不再混進 `AVLagReports`，避免被當成未完成的保存場次。
 
+## 2026.11.25 12:28 分支測試 IPA：run 名稱顯示來源分支（GMT+8）
+
+- `branch-archive.yml` 新增 `run-name: Build Test IPA · <source_ref> · <label>`；Actions 列表不再只顯示 `main`，可直接看出實際打包來源。
+- 文件補清楚：網頁「Use workflow from」要選 `main`，`source_ref` 才是內容分支；選 feature 會顯示 `Workflow dispatch unavailable`，因為 workflow 檔案只在 main。
+- 實證：run `45543415491` 的 head branch 是 main，但 artifact `test-ipa-test-10ef5253c731` 內的 `BuildInfo.json` 是 `appRef=feature/content-latency`、`appRevision=10ef5253c731…`、`appChannel=branch-test`，證明打包的是 feature 而不是 main。
+
 ## 2026.11.25 11:08 A4：AVLag 報告綁定錄影場次（GMT+8）
 
 - AVLag 報告 schema 3 新增 `recordingGroup`、`recordingStartedAt`、`recordingEndedAt`、`completionReason`；舊 schema 沒有這些欄位仍可解碼。
@@ -95,6 +109,19 @@
 - 修正 Swift 警告 `weak ownership of capture 'msg' differs from implicitly-captured strong reference in outer scope`：外層 `Task` 已強參考 `MessageLayerTuple`，內層圖片完成閉包再寫 `[weak msg]` 造成同一變數兩種所有權。
 - 移除內層多餘的 weak／`guard let`，直接使用外層 Task 的強參考；圖片載入完成前訊息仍會被保留，才能安全更新 avatar／gift／emoji。
 - 驗證：`swiftc -parse` 通過；實際 Xcode 警告與 PIP 圖片更新待 iOS Unit Tests／實機確認。
+
+## 2026.11.25 06:12 診斷檢視器：鄰近前後 N 筆（GMT+8）
+
+- 搜尋／篩選工具列新增鄰近選項：0／2／5／10 筆；符合列正常顯示，鄰近列以淡色背景區分。
+- 後端 `/api/lines` 新增 `context`，回傳符合列與前後鄰近列，附 `isMatch`；`matchCount` 供分頁使用，`lineCount` 是含鄰近的列數。
+- 跨頁載入依原始行號去重；同一列若在下一頁成為符合項，會從 context 升級為符合列。
+- 驗證：Python 測試 8 項通過；瀏覽器搜尋 `pipTargetFPS` 得 187 筆符合／932 列、`busy` 載入兩頁得 381 筆符合／1821 列且 0 重複。
+
+## 2026.11.25 06:07 診斷檢視器搜尋高亮（GMT+8）
+
+- 搜尋命中改以 `<mark>` 高亮訊息、分類與 `key=value` 欄位；高亮用 DOM text node 建立，不把日誌內容塞進 `innerHTML`。
+- 訊息本身已命中時不自動展開欄位；只有欄位或 session 單獨命中才展開，避免一次搜尋展開數百列。
+- 瀏覽器驗證：搜尋 `busy` 有 886 個 mark，`pipTargetFPS` 有 374 個 mark，皆沒有自動展開大量欄位。
 
 ## 2026.11.25 05:54 Swift-DocC：AVLagObservation 屬性註解（GMT+8）
 
@@ -123,6 +150,20 @@
 - `Scripts/build_info.py` 以 `BUILD_INFO_REF`／`BUILD_INFO_CHANNEL` 優先；detached HEAD 不顯示成 `HEAD`，退回 exact tag 或 `unknown`。
 - 關於頁新增「建置分支／標籤」與「建置通道」，舊 JSON 缺欄位時顯示未知；`[BuildInfo]` 日誌與複製／分享同步包含。
 - 驗證：Python 產生器 8 項測試通過、`swiftc -parse` 通過；branch-archive 會傳 `branch-test`，release workflow 之後補 `release`。
+
+## 2026.11.25 03:55 分支測試 IPA（No Tag）（GMT+8）
+
+- 新增 `.github/workflows/branch-archive.yml`：`workflow_dispatch` 指定 `source_ref`／`label`，由 main 執行、checkout 指定分支，產出 unsigned IPA artifact。
+- 不建立 tag、不建立 release、不更新 AltStore；artifact 保留 7 天，適合 A1/A2 這類尚未合併的實機短測試。
+- `CFBundleShortVersionString` 跟隨最新語意化 tag（目前 17.9.3），`CFBundleVersion` 用 UTC 時間戳；`CFBundleDisplayName` 改為「松鼠推流 測試」，bundle ID 不變。
+- 驗證：run `45473056481` 首次成功（7.7 MB，發現版本 17.6.7 過舊）；run `45474295811` 產出 17.9.3／`20261124194951`／「松鼠推流 測試」的 7.7 MB unsigned IPA，沒有 `_CodeSignature`；tags 與 releases 仍停在 17.9.3。
+
+## 2026.11.24 11:45 CI：Metal Toolchain probe-first（GMT+8）
+
+- 新增 composite action `.github/actions/setup-metal-toolchain`：先用 `xcrun --find metal` ＋ `xcrun metal --version` 探測；runner 已預裝可用 toolchain 時直接跳過，不還原約 800 MB 快取也不下載。
+- 需要安裝時才用官方 `xcodebuild -downloadComponent metalToolchain -exportPath`（Xcode 27 產物是 `*.exportedBundle`），之後從 Actions cache 還原並以 `xcodebuild -importComponent metalToolchain -importPath` 匯入。
+- `unit-tests.yml`、`main.yml`（archive）與 `documentation.yml`（DocC）共用同一個 action。
+- 驗證：`45321733957` 日誌顯示 `Metal Toolchain already available: ...`，沒有 `Cache restored`／`Beginning asset download`，單元測試全部通過。
 
 ## 2026.11.24 11:04 CI：Metal Toolchain 使用 Actions cache（GMT+8）
 
@@ -1583,23 +1624,6 @@ ScreenCaptureKit 推流在「App 進背景再回來（無 PiP 保活）」後，
 <!--
 新增紀錄請複製以下範本，貼到最上面（最新在上），並填寫內容：
 
-## YYYY.MM.DD HH:MM 一句話標題
-（時間可省略；由工具新增時會自動帶入當下時刻）
-
-**類型**: 修復 · **檔案**: `liveAPP/Socket.swift`
-
-### 問題 - 症狀摘要
-（可選）其後換行寫詳述
-
-### 根因 - 根因摘要
-（可選）其後換行寫詳述
-
-### 修改 - 手法摘要
-- 其餘改動條列
-
-**相關文件**: [xxx.md](xxx.md)（可選）
--->
-
 ## 2026.10.07 00:20 修正 HaishinKit fork 重複 DocC catalog 並更新 pin
 
 **類型**: 修復 · **檔案**: `Package.resolved`（root 與 xcodeproj）
@@ -1960,6 +1984,54 @@ SC 只在畫面有變化時產生 `.complete` 幀；閒置時沒有視訊封包�
 - 無聲根因與 Apple SDK 建置、實機方向／音訊仍待驗證；不將來源 accepted 誤認為成功送音訊。
 
 **相關文件**：[ScreenCaptureKit 接入](screencapturekit-integration.md)
+
+## 2026.10.05 修正 TTS 配置選檔流程並核對 TODO
+
+**類型**: 修復 · **檔案**: `liveAPP/TTSSettingsView.swift`、`TODO.md`
+
+### 修改 - 文件交付、背景讀取與頁面預覽
+
+- 使用系統文件選擇器匯入副本，支援被標記為一般資料的 JSON，保留內容驗證與大小上限。
+- 背景協調讀取檔案，移除 150 毫秒延遲與連續彈窗，改用頁面預覽及持續顯示的錯誤訊息。
+- 新增選檔、取消、讀取與解析階段日誌；待 iOS 實機回歸驗證。
+- TODO 修正已實作的動態島描述，將功能實作與實機／CI 驗收分開勾選。
+
+**相關文件**: [TTS 配置分享](tts-filter-configuration.md)
+
+---
+
+## 2026.10.05 主頁重排與串流金鑰遮蔽
+
+**類型**: 改進 · **檔案**: `liveAPP/ContentView.swift`、`liveAPP/Capture/CaptureCoordinator.swift`
+
+### 修改 - 優先顯示擷取操作並依模式整理設定
+
+- 主頁支援單欄／雙欄，進階控制預設收合；只錄製隱藏推流設定。
+- 金鑰預設遮蔽，可手動顯示，離開表單或切至背景自動隱藏。
+- 移除配置切換與關閉表單日誌中的金鑰，擷取與錄影狀態分行顯示。
+
+**相關文件**: [主頁操作與金鑰顯示](home-layout.md)
+
+---
+
+## 2026.10.05 ScreenCaptureKit 本地錄影收尾加入方向轉正
+
+**類型**: 修復 · **檔案**: `liveAPP/Capture/ScreenCaptureSource.swift`、`liveAPP/Capture/ScreenRecordingSession.swift`、`liveAPP/Capture/RecordingOrientationCorrector.swift`
+
+### 問題 - 實測原生 MP4 畫面橫倒且未帶旋轉矩陣
+
+本地錄製直接使用 SCRecordingOutput，未讀取影格方向，亦不經 RTMP Mixer，原本完成後立即開放分享。
+
+### 修改 - 依 EXIF 方向收尾，保留原生錄製與失敗原檔
+
+- 以輕量 screen output 收集 videoOrientation／PTS，僅保存有界方向事件，不保留影像 buffer。
+- 固定方向使用 track transform 與 passthrough；方向變化時使用 video composition 分段轉正並重新編碼。
+- 轉正期間維持 finishing；成功才取代原片，失敗保留原片並提示。加入背景工作到期取消與方向診斷。
+- 新增時間軸及八方向矩陣測試；四項 Windows 核心測試通過，Apple SDK 與真實匯出待實機驗證。
+
+**相關文件**: [ScreenCaptureKit 方向轉正](screencapturekit-integration.md)
+
+---
 
 ## 2026.10.05 23:53 CI 允許套件外掛，修正 HaishinKit 外掛驗證失敗
 
@@ -2511,90 +2583,6 @@ Apple 文件載明 ScreenCaptureKit 於 iOS 27 需實機（sample「requires a d
 
 ---
 
-## 2026.10.05 修正 TTS 配置選檔流程並核對 TODO
-
-**類型**: 修復 · **檔案**: `liveAPP/TTSSettingsView.swift`、`TODO.md`
-
-### 修改 - 文件交付、背景讀取與頁面預覽
-
-- 使用系統文件選擇器匯入副本，支援被標記為一般資料的 JSON，保留內容驗證與大小上限。
-- 背景協調讀取檔案，移除 150 毫秒延遲與連續彈窗，改用頁面預覽及持續顯示的錯誤訊息。
-- 新增選檔、取消、讀取與解析階段日誌；待 iOS 實機回歸驗證。
-- TODO 修正已實作的動態島描述，將功能實作與實機／CI 驗收分開勾選。
-
-**相關文件**: [TTS 配置分享](tts-filter-configuration.md)
-
----
-
-## 2026.10.05 主頁重排與串流金鑰遮蔽
-
-**類型**: 改進 · **檔案**: `liveAPP/ContentView.swift`、`liveAPP/Capture/CaptureCoordinator.swift`
-
-### 修改 - 優先顯示擷取操作並依模式整理設定
-
-- 主頁支援單欄／雙欄，進階控制預設收合；只錄製隱藏推流設定。
-- 金鑰預設遮蔽，可手動顯示，離開表單或切至背景自動隱藏。
-- 移除配置切換與關閉表單日誌中的金鑰，擷取與錄影狀態分行顯示。
-
-**相關文件**: [主頁操作與金鑰顯示](home-layout.md)
-
----
-
-## 2026.10.05 ScreenCaptureKit 本地錄影收尾加入方向轉正
-
-**類型**: 修復 · **檔案**: `liveAPP/Capture/ScreenCaptureSource.swift`、`liveAPP/Capture/ScreenRecordingSession.swift`、`liveAPP/Capture/RecordingOrientationCorrector.swift`
-
-### 問題 - 實測原生 MP4 畫面橫倒且未帶旋轉矩陣
-
-本地錄製直接使用 SCRecordingOutput，未讀取影格方向，亦不經 RTMP Mixer，原本完成後立即開放分享。
-
-### 修改 - 依 EXIF 方向收尾，保留原生錄製與失敗原檔
-
-- 以輕量 screen output 收集 videoOrientation／PTS，僅保存有界方向事件，不保留影像 buffer。
-- 固定方向使用 track transform 與 passthrough；方向變化時使用 video composition 分段轉正並重新編碼。
-- 轉正期間維持 finishing；成功才取代原片，失敗保留原片並提示。加入背景工作到期取消與方向診斷。
-- 新增時間軸及八方向矩陣測試；四項 Windows 核心測試通過，Apple SDK 與真實匯出待實機驗證。
-
-**相關文件**: [ScreenCaptureKit 方向轉正](screencapturekit-integration.md)
-
----
-
-## 2026.10.04 23:43 CI 補裝 Xcode 26+ 的 Metal Toolchain
-
-**類型**: 優化 · **檔案**: `.github/workflows/unit-tests.yml`, `.github/workflows/main.yml`
-
-### 問題 - CI 在 Xcode 27 下無法編譯 Metal
-
-`liveAPP` 的單元測試與封存於 Xcode 27 環境失敗：`CompileMetalFile rotateNV12.metal` 報「The Metal Toolchain was not installed and could not compile the Metal source files」。
-
-### 根因 - Xcode 26 起 Metal 編譯器改為需另下載的元件
-
-Xcode 26 起把 Metal 編譯器（metalToolchain）從 Xcode 本體抽離成可選下載元件，未安裝即無法編譯任何 .metal。
-
-### 修改 - workflow 於建置前安裝 metalToolchain
-
-- unit-tests.yml 與 main.yml 在 Verify Xcode/iOS SDK 之後、所有 build 與 test 之前加入 `xcodebuild -downloadComponent metalToolchain`。
-- 不加 sudo，以保留 DEVELOPER_DIR 讓指令選用正確的 Xcode 版本。
-
-**相關文件**: [unit-tests.yml](.github/workflows/unit-tests.yml), [main.yml](.github/workflows/main.yml)
-
----
-
-## 2026.10.04 CI 切換 Xcode 27 並強制檢查 iOS SDK
-
-**類型**: 調整 · **檔案**: `.github/workflows/main.yml`、`.github/workflows/unit-tests.yml`
-
-### 修改 - 確保 ScreenCaptureKit iOS 27 分支參與 CI
-
-- 測試及封裝改用官方 `xcode-27` runner，固定 Xcode 27.0 Developer 目錄。
-- 同時檢查 iPhoneOS／iPhoneSimulator SDK 為 27.x，不符即失敗，移除舊 SDK 僅提示後繼續的行為。
-- 測試只選擇可用的 iOS 27 iPhone Simulator；沒有符合的 runtime 即失敗。
-- runner 目前為公開預覽；本地格式驗證不代表 GitHub 上已編譯通過。
-
-**相關文件**: [ScreenCaptureKit 接入](screencapturekit-integration.md) · [官方 runner 公告](https://github.blog/changelog/2026-09-10-xcode-27-runner-image-now-runs-on-macos-27/)
-
----
-
 ## 2026.10.04 新增關於與建置資訊及啟動來源日誌
 
 **類型**: 新增 · **檔案**: `liveAPP/BuildInformation.swift`、`liveAPP/AboutBuildView.swift`、`Scripts/build_info.py`、`liveAPP.xcodeproj/project.pbxproj`、`.github/workflows/`
@@ -2608,6 +2596,36 @@ Xcode 26 起把 Metal 編譯器（metalToolchain）從 Xcode 本體抽離成可�
 - 新增 Python 產生器及 Swift 模型測試、中文欄位說明與封裝驗收待辦。
 
 **相關文件**: [建置資訊說明](build-information.md)
+
+---
+
+## 2026.10.04 接入 ScreenCaptureKit 雙來源、本地錄製與測試 CI
+
+**類型**: 新增 · **檔案**: `liveAPP/Capture/`、`SharedCapture/`、`liveAPP/ContentView.swift`、`ReplyKIT/SampleHandler.swift`、`liveAPPTests/`、`.github/workflows/`
+
+### 問題 - 新擷取來源需要保留舊版相容，並支援不推流的錄製測試
+
+原有流程使用 ReplayKit 推流，缺少 ScreenCaptureKit 選項與獨立的本地錄製入口；單元測試亦需納入 CI 與發布前檢查。
+
+### 修改 - 雙來源選擇、獨立輸出與持久錄影管理
+
+- 保留預設 ReplayKit，新增 iOS 27 ScreenCaptureKit 測試選項；以 SDK 條件、弱連結與執行期可用性檢查保留舊系統支援。
+- 提供只推流／只錄製／推流並錄製。只錄製不要求 RTMP 設定，也不建立推流 Mixer、編碼器或樣本消費佇列。
+- 接入 SCRecordingOutput 的 MP4／H.264 錄製，顯示時間、大小及狀態；完成後可播放、分享／匯出、存入照片及刪除。
+- 錄影與 JSON 紀錄存入持久目錄；只有完成回呼才能標為可用，失敗／收尾逾時／App 中斷的紀錄保留並標示。
+- 推流與錄製分開處理失敗；網路重連耗盡時，有效錄製繼續，錄製失敗亦不連帶停止有效推流。
+- 共用 Mixer 基本配置，加入跨程序擷取鎖、依位元組與停留時間限制的樣本佇列，以及來源／錄製診斷。
+- PiP／TTS 的 Audio Session 設定在擷取期間受共同保護，避免覆蓋麥克風配置。
+- 新增 PR／push／手動單元測試 workflow；發布前測試相同 commit，固定主 App scheme 與已鎖定的套件版本，保存測試結果及日誌。
+- 補齊中文操作說明、API 回傳欄位與限制；未接入功能及實機驗收統一列入 TODO.md。
+
+### 驗證 - 本地核心測試通過，Apple SDK 與實機驗收待完成
+
+- Windows 執行 12 項擷取核心測試與 3 項檔案管理測試，合計 15 項通過；Swift 語法、plist 與差異格式檢查通過。
+- Windows 測試排除 Apple UI／Photos 等整合，不能取代 Xcode 27 型別檢查、首次 CI 實跑或 iOS 27 實機驗收。
+- 新來源尚未接入 GPU 畫布、浮水印、進階音訊處理、即時設定與 HEVC；本地錄影不包含下游 Mixer 音量或最終處理效果。
+
+**相關文件**: [ScreenCaptureKit 使用方式與 API](screencapturekit-integration.md) · [集中待辦](../TODO.md)
 
 ---
 
@@ -2643,33 +2661,39 @@ Xcode 26 起把 Metal 編譯器（metalToolchain）從 Xcode 本體抽離成可�
 
 ---
 
-## 2026.10.04 接入 ScreenCaptureKit 雙來源、本地錄製與測試 CI
+## 2026.10.04 CI 切換 Xcode 27 並強制檢查 iOS SDK
 
-**類型**: 新增 · **檔案**: `liveAPP/Capture/`、`SharedCapture/`、`liveAPP/ContentView.swift`、`ReplyKIT/SampleHandler.swift`、`liveAPPTests/`、`.github/workflows/`
+**類型**: 調整 · **檔案**: `.github/workflows/main.yml`、`.github/workflows/unit-tests.yml`
 
-### 問題 - 新擷取來源需要保留舊版相容，並支援不推流的錄製測試
+### 修改 - 確保 ScreenCaptureKit iOS 27 分支參與 CI
 
-原有流程使用 ReplayKit 推流，缺少 ScreenCaptureKit 選項與獨立的本地錄製入口；單元測試亦需納入 CI 與發布前檢查。
+- 測試及封裝改用官方 `xcode-27` runner，固定 Xcode 27.0 Developer 目錄。
+- 同時檢查 iPhoneOS／iPhoneSimulator SDK 為 27.x，不符即失敗，移除舊 SDK 僅提示後繼續的行為。
+- 測試只選擇可用的 iOS 27 iPhone Simulator；沒有符合的 runtime 即失敗。
+- runner 目前為公開預覽；本地格式驗證不代表 GitHub 上已編譯通過。
 
-### 修改 - 雙來源選擇、獨立輸出與持久錄影管理
+**相關文件**: [ScreenCaptureKit 接入](screencapturekit-integration.md) · [官方 runner 公告](https://github.blog/changelog/2026-09-10-xcode-27-runner-image-now-runs-on-macos-27/)
 
-- 保留預設 ReplayKit，新增 iOS 27 ScreenCaptureKit 測試選項；以 SDK 條件、弱連結與執行期可用性檢查保留舊系統支援。
-- 提供只推流／只錄製／推流並錄製。只錄製不要求 RTMP 設定，也不建立推流 Mixer、編碼器或樣本消費佇列。
-- 接入 SCRecordingOutput 的 MP4／H.264 錄製，顯示時間、大小及狀態；完成後可播放、分享／匯出、存入照片及刪除。
-- 錄影與 JSON 紀錄存入持久目錄；只有完成回呼才能標為可用，失敗／收尾逾時／App 中斷的紀錄保留並標示。
-- 推流與錄製分開處理失敗；網路重連耗盡時，有效錄製繼續，錄製失敗亦不連帶停止有效推流。
-- 共用 Mixer 基本配置，加入跨程序擷取鎖、依位元組與停留時間限制的樣本佇列，以及來源／錄製診斷。
-- PiP／TTS 的 Audio Session 設定在擷取期間受共同保護，避免覆蓋麥克風配置。
-- 新增 PR／push／手動單元測試 workflow；發布前測試相同 commit，固定主 App scheme 與已鎖定的套件版本，保存測試結果及日誌。
-- 補齊中文操作說明、API 回傳欄位與限制；未接入功能及實機驗收統一列入 TODO.md。
+---
 
-### 驗證 - 本地核心測試通過，Apple SDK 與實機驗收待完成
+## 2026.10.04 23:43 CI 補裝 Xcode 26+ 的 Metal Toolchain
 
-- Windows 執行 12 項擷取核心測試與 3 項檔案管理測試，合計 15 項通過；Swift 語法、plist 與差異格式檢查通過。
-- Windows 測試排除 Apple UI／Photos 等整合，不能取代 Xcode 27 型別檢查、首次 CI 實跑或 iOS 27 實機驗收。
-- 新來源尚未接入 GPU 畫布、浮水印、進階音訊處理、即時設定與 HEVC；本地錄影不包含下游 Mixer 音量或最終處理效果。
+**類型**: 優化 · **檔案**: `.github/workflows/unit-tests.yml`, `.github/workflows/main.yml`
 
-**相關文件**: [ScreenCaptureKit 使用方式與 API](screencapturekit-integration.md) · [集中待辦](../TODO.md)
+### 問題 - CI 在 Xcode 27 下無法編譯 Metal
+
+`liveAPP` 的單元測試與封存於 Xcode 27 環境失敗：`CompileMetalFile rotateNV12.metal` 報「The Metal Toolchain was not installed and could not compile the Metal source files」。
+
+### 根因 - Xcode 26 起 Metal 編譯器改為需另下載的元件
+
+Xcode 26 起把 Metal 編譯器（metalToolchain）從 Xcode 本體抽離成可選下載元件，未安裝即無法編譯任何 .metal。
+
+### 修改 - workflow 於建置前安裝 metalToolchain
+
+- unit-tests.yml 與 main.yml 在 Verify Xcode/iOS SDK 之後、所有 build 與 test 之前加入 `xcodebuild -downloadComponent metalToolchain`。
+- 不加 sudo，以保留 DEVELOPER_DIR 讓指令選用正確的 Xcode 版本。
+
+**相關文件**: [unit-tests.yml](.github/workflows/unit-tests.yml), [main.yml](.github/workflows/main.yml)
 
 ---
 
@@ -2776,6 +2800,124 @@ DeviceInfo 用 MACH_TASK_BASIC_INFO.resident_size，會把執行檔/框架（含
 
 ---
 
+## 2026.09.29 變更歷史 GUI 新增紀錄視窗誤觸關閉
+
+**類型**: 修復 · **檔案**: `Scripts/change_log.py`
+
+### 問題 - 點背景就關閉，已填內容遺失
+
+在新增紀錄視窗點到背景遮罩即關閉，尚未送出就丟失剛填的內容。
+
+### 根因 - 遮罩綁定了點擊關閉
+
+modal 綁定 click 事件，事件 target 為 #modal（背景）時直接設 hidden=true。
+
+### 修改 - 僅按取消才關閉
+
+移除遮罩點擊關閉的處理，新增紀錄視窗只在按「取消」時關閉。
+
+**相關文件**: [change_log.py](Scripts/change_log.py)
+
+---
+
+## 2026.09.29 變更歷史 GUI 新增紀錄支援多筆相關文件
+
+**類型**: 優化 · **檔案**: `Scripts/change_log.py`
+
+### 問題 - 相關文件欄位只能填一筆
+
+多筆相關文件無法附加，只能手動改 markdown 或塞在同一行。
+
+### 根因 - 表單與 build_block 都只接受單一字串
+
+新增紀錄表單用單一 input 收集相關文件，build_block() 只接受單一字串並原樣輸出。
+
+### 修改 - GUI 改為可動態增減的多筆文件列
+
+- 新增 _norm_refs()，同時接受 list 與每行一筆的字串，多筆以 ` · ` 串接。
+- CLI `add` 新增可重複的 `--ref` 參數。
+
+**相關文件**: [change_log.py](Scripts/change_log.py)
+
+---
+
+## 2026.09.29 改進 Socket 心跳與連線日誌顯示
+
+**類型**: 優化 · **檔案**: `liveAPP/Socket.swift`
+
+### 問題 - 心跳日誌只顯示「收到Socket心跳維持連線」，看不出來自哪一組連線
+
+同一則心跳訊息在不同連線都長得一樣，翻日誌時會誤以為服務端重複對同一個客戶端續命，實際上續的是不同連線者。
+
+### 根因 - 主 App 每約 30 秒對所有連線廣播 `keepalive`，各用戶端分別回傳 `heartbeat`
+
+每條連線都會回 `heartbeat` 並各自寫一筆日誌，但訊息不含連線識別，無法分辨是哪一條連線回覆。
+
+### 修改 - 連線相關日誌統一帶上連線識別與遠端端點
+
+- 新增 `connectionLogContext(_:)` 產生 `連線=ObjectIdentifier(...)｜遠端=位址:連接埠`
+- 心跳日誌改為：`收到 Socket 心跳｜連線=…｜遠端=…`
+- 新連線／ready／failed／cancelled／removed 等日誌也帶上同一組識別，便於對照同一條連線的生命週期
+
+---
+
+## 2026.09.29 原始影像佇列的容量預算與診斷
+
+**類型**: 修復
+
+### 修改 - 運作方式
+
+- Mixer 的輸入與輸出分支不再使用固定容納 30 幀的 AsyncStream 緩衝區。 OutgoingStream 的自動模式也不再將計算出的預估幀數限制為最多 30 幀。 每個佇列會依實際像素緩衝區的資料大小計算容量；若沒有影像緩衝區，則使用壓縮樣本的資料大小。保留近期影格時，會同時遵守以下限制：
+- 以位元組計算的容量預算。
+- 最長停留時間，預設為 100 毫秒。
+- 若消費端正在等待影格，佇列會立即通知它。這裡沒有 30 FPS 的速率限制。 當輸入速度超過消化速度時，會先捨棄佇列中最舊的影格，再保留新影格。 單幀大小若超過容量預算，會拒絕收下，並計入 oversizedDrop。 調整預算時會立即裁減目前的佇列，不會替換消費端。 停留時間會在影格送入與取出時檢查，不會為每幀建立到期計時器。 若生產端與消費端都停止動作，已保留的資料仍受容量預算約束，直到下次操作或呼叫 finish 才會進一步清理。
+
+**相關文件**: [原始影像佇列的容量預算與診斷](https://github.com/TwhomeGH/HaishinKitFixSwfit/blob/main/Docs/VIDEO_QUEUE_DIAGNOSTICS.md)
+
+---
+
+## 2026.09.29 RTMP／H.264 解碼邊界恢復（更新 HaishinKitFixSwfit 依賴）
+
+**類型**: 修復 · **檔案**: `Package.resolved`, `liveAPP.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`
+
+### 問題 - 已編碼封包丟失後仍繼續輸出、舊發布工作跨重連、未確認真正輸出的關鍵幀
+
+已編碼資料遺失後串流仍持續輸出，舊的 publish 工作跨重連仍可能寫入新連線，且「要求關鍵幀」不代表 VT 已真正輸出；回放切回直播時非 IDR 影格先於直播 SPS/PPS 出現，造成大量語法解碼錯誤。
+
+### 根因 - 輸出佇列與發布工作缺少世代隔離，關鍵幀未以實際輸出確認
+
+有界輸出佇列滿載或 consumer 結束時只丟單一訊息而非整批作廢，失去連續性後仍續送；publish task／stream／connection 輸出之間沒有世代檢查，跨 actor hop 後未再驗證；VT session 未區分「已要求」與「已確認輸出」，非同步失敗被忽略。
+
+### 修改 - 更新 HaishinKitFixSwfit 至含解碼邊界恢復的修訂
+
+- 依賴修訂 `872d6fe` → `e842cbd`（`Package.resolved` 與 Xcode workspace 版本同步更新）
+- 輸出順序不變式：先參數集、再關鍵幀、再依賴影格；新發布／編碼器重啟／格式改變時等待 sync sample，未等到不送 P 幀；每個 sync sample 前重送 sequence header（週期性重送用 type-1／零 delta，不改媒體時間軸）
+- 丟失已編碼資料即失去連續性：stream／connection 有界輸出佇列遇滿載或 consumer 結束整批作廢，socket 容量保護改為關閉傳輸，改由既有斷線重連恢復
+- 舊工作不得進新連線／新編碼器：publish task、stream 輸出與 connection 輸出加世代檢查，跨 actor hop 後於 connection 再次驗證
+- VT 輸出改用獨立、有鎖的狀態：只有合法、ready、sync 的 callback 被 continuation 接受才算成功；丟幀或拒收繼續要求關鍵幀，非同步錯誤擋住後續輸出
+- 正常停止與故障分開：正常拆除等待已接受尾幀排空，故障直接取消／作廢佇列；排空後再驗證世代，避免舊 teardown 清掉新 consumer
+
+**相關文件**: [RTMP／H.264 解碼邊界恢復](https://github.com/TwhomeGH/HaishinKitFixSwfit/blob/main/Docs/RTMP_H264_RECOVERY.md#rtmph264-%E8%A7%A3%E7%A2%BC%E9%82%8A%E7%95%8C%E6%81%A2%E5%BE%A9)
+
+---
+
+## 2026.09.29 PiP 保活模式渲染效能改進
+
+**類型**: 修復 · **檔案**: `liveAPP/PIPService.swift`
+
+### 修改 - 發現與修正
+
+- 保活目標為 0.2 FPS，但排程以 `1 / max(currentFPS, 1)` 計算，實際至少每秒喚醒一次。現在使用完整低幀率值，無覆蓋層時每 5 秒更新一次時間畫面。
+- 遞迴 `asyncAfter` 沒有取消控制代次；停止後立即重啟會讓舊 callback 通過共用布林檢查，可能增加渲染迴圈。現在取消待執行工作並使舊代次失效，在主執行緒進入及離開渲染時都確認代次。
+- `rescheduleRenderTimer` 原本是空函式。現在真正提前下一次更新，重複事件不會持續推遲畫面更新。
+- 聊天、觀眾數及一般版面更新不再提升純保活畫面的幀率。保活模式原本不顯示聊天，現在也直接跳過聊天加入流程。
+- 贊助覆蓋層顯示期間維持 6 FPS 以支援翻頁與淡出；結束時立即補畫保活畫面，再回到 0.2 FPS。
+- 原本每次成功重繪都刷新活動時間，連時鐘重繪也會阻止聊天模式降頻。現在只用內容／動畫活動更新活動時間。
+- 停止時清除快取像素緩衝；舊工作階段的 attach、啟動與停止回呼不會干擾新工作階段。
+- 第一幀立即送出，不需等 5 秒才嘗試啟動 PiP。
+
+---
+
 ## 2026.09.29 23:56 修正 RTMP video composition time 在 A/V 補償下變成負值（無畫面）
 
 **類型**: 修復 · **檔案**: `Package.resolved`
@@ -2834,124 +2976,6 @@ DATE_RE 與 build_block 只處理 `YYYY.MM.DD`，新增時也未帶入時刻。
 
 ---
 
-## 2026.09.29 變更歷史 GUI 新增紀錄視窗誤觸關閉
-
-**類型**: 修復 · **檔案**: `Scripts/change_log.py`
-
-### 問題 - 點背景就關閉，已填內容遺失
-
-在新增紀錄視窗點到背景遮罩即關閉，尚未送出就丟失剛填的內容。
-
-### 根因 - 遮罩綁定了點擊關閉
-
-modal 綁定 click 事件，事件 target 為 #modal（背景）時直接設 hidden=true。
-
-### 修改 - 僅按取消才關閉
-
-移除遮罩點擊關閉的處理，新增紀錄視窗只在按「取消」時關閉。
-
-**相關文件**: [change_log.py](Scripts/change_log.py)
-
----
-
-## 2026.09.29 變更歷史 GUI 新增紀錄支援多筆相關文件
-
-**類型**: 優化 · **檔案**: `Scripts/change_log.py`
-
-### 問題 - 相關文件欄位只能填一筆
-
-多筆相關文件無法附加，只能手動改 markdown 或塞在同一行。
-
-### 根因 - 表單與 build_block 都只接受單一字串
-
-新增紀錄表單用單一 input 收集相關文件，build_block() 只接受單一字串並原樣輸出。
-
-### 修改 - GUI 改為可動態增減的多筆文件列
-
-- 新增 _norm_refs()，同時接受 list 與每行一筆的字串，多筆以 ` · ` 串接。
-- CLI `add` 新增可重複的 `--ref` 參數。
-
-**相關文件**: [change_log.py](Scripts/change_log.py)
-
----
-
-## 2026.09.29 原始影像佇列的容量預算與診斷
-
-**類型**: 修復
-
-### 修改 - 運作方式
-
-- Mixer 的輸入與輸出分支不再使用固定容納 30 幀的 AsyncStream 緩衝區。 OutgoingStream 的自動模式也不再將計算出的預估幀數限制為最多 30 幀。 每個佇列會依實際像素緩衝區的資料大小計算容量；若沒有影像緩衝區，則使用壓縮樣本的資料大小。保留近期影格時，會同時遵守以下限制：
-- 以位元組計算的容量預算。
-- 最長停留時間，預設為 100 毫秒。
-- 若消費端正在等待影格，佇列會立即通知它。這裡沒有 30 FPS 的速率限制。 當輸入速度超過消化速度時，會先捨棄佇列中最舊的影格，再保留新影格。 單幀大小若超過容量預算，會拒絕收下，並計入 oversizedDrop。 調整預算時會立即裁減目前的佇列，不會替換消費端。 停留時間會在影格送入與取出時檢查，不會為每幀建立到期計時器。 若生產端與消費端都停止動作，已保留的資料仍受容量預算約束，直到下次操作或呼叫 finish 才會進一步清理。
-
-**相關文件**: [原始影像佇列的容量預算與診斷](https://github.com/TwhomeGH/HaishinKitFixSwfit/blob/main/Docs/VIDEO_QUEUE_DIAGNOSTICS.md)
-
----
-
-## 2026.09.29 PiP 保活模式渲染效能改進
-
-**類型**: 修復 · **檔案**: `liveAPP/PIPService.swift`
-
-### 修改 - 發現與修正
-
-- 保活目標為 0.2 FPS，但排程以 `1 / max(currentFPS, 1)` 計算，實際至少每秒喚醒一次。現在使用完整低幀率值，無覆蓋層時每 5 秒更新一次時間畫面。
-- 遞迴 `asyncAfter` 沒有取消控制代次；停止後立即重啟會讓舊 callback 通過共用布林檢查，可能增加渲染迴圈。現在取消待執行工作並使舊代次失效，在主執行緒進入及離開渲染時都確認代次。
-- `rescheduleRenderTimer` 原本是空函式。現在真正提前下一次更新，重複事件不會持續推遲畫面更新。
-- 聊天、觀眾數及一般版面更新不再提升純保活畫面的幀率。保活模式原本不顯示聊天，現在也直接跳過聊天加入流程。
-- 贊助覆蓋層顯示期間維持 6 FPS 以支援翻頁與淡出；結束時立即補畫保活畫面，再回到 0.2 FPS。
-- 原本每次成功重繪都刷新活動時間，連時鐘重繪也會阻止聊天模式降頻。現在只用內容／動畫活動更新活動時間。
-- 停止時清除快取像素緩衝；舊工作階段的 attach、啟動與停止回呼不會干擾新工作階段。
-- 第一幀立即送出，不需等 5 秒才嘗試啟動 PiP。
-
----
-
-## 2026.09.29 RTMP／H.264 解碼邊界恢復（更新 HaishinKitFixSwfit 依賴）
-
-**類型**: 修復 · **檔案**: `Package.resolved`, `liveAPP.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`
-
-### 問題 - 已編碼封包丟失後仍繼續輸出、舊發布工作跨重連、未確認真正輸出的關鍵幀
-
-已編碼資料遺失後串流仍持續輸出，舊的 publish 工作跨重連仍可能寫入新連線，且「要求關鍵幀」不代表 VT 已真正輸出；回放切回直播時非 IDR 影格先於直播 SPS/PPS 出現，造成大量語法解碼錯誤。
-
-### 根因 - 輸出佇列與發布工作缺少世代隔離，關鍵幀未以實際輸出確認
-
-有界輸出佇列滿載或 consumer 結束時只丟單一訊息而非整批作廢，失去連續性後仍續送；publish task／stream／connection 輸出之間沒有世代檢查，跨 actor hop 後未再驗證；VT session 未區分「已要求」與「已確認輸出」，非同步失敗被忽略。
-
-### 修改 - 更新 HaishinKitFixSwfit 至含解碼邊界恢復的修訂
-
-- 依賴修訂 `872d6fe` → `e842cbd`（`Package.resolved` 與 Xcode workspace 版本同步更新）
-- 輸出順序不變式：先參數集、再關鍵幀、再依賴影格；新發布／編碼器重啟／格式改變時等待 sync sample，未等到不送 P 幀；每個 sync sample 前重送 sequence header（週期性重送用 type-1／零 delta，不改媒體時間軸）
-- 丟失已編碼資料即失去連續性：stream／connection 有界輸出佇列遇滿載或 consumer 結束整批作廢，socket 容量保護改為關閉傳輸，改由既有斷線重連恢復
-- 舊工作不得進新連線／新編碼器：publish task、stream 輸出與 connection 輸出加世代檢查，跨 actor hop 後於 connection 再次驗證
-- VT 輸出改用獨立、有鎖的狀態：只有合法、ready、sync 的 callback 被 continuation 接受才算成功；丟幀或拒收繼續要求關鍵幀，非同步錯誤擋住後續輸出
-- 正常停止與故障分開：正常拆除等待已接受尾幀排空，故障直接取消／作廢佇列；排空後再驗證世代，避免舊 teardown 清掉新 consumer
-
-**相關文件**: [RTMP／H.264 解碼邊界恢復](https://github.com/TwhomeGH/HaishinKitFixSwfit/blob/main/Docs/RTMP_H264_RECOVERY.md#rtmph264-%E8%A7%A3%E7%A2%BC%E9%82%8A%E7%95%8C%E6%81%A2%E5%BE%A9)
-
----
-
-## 2026.09.29 改進 Socket 心跳與連線日誌顯示
-
-**類型**: 優化 · **檔案**: `liveAPP/Socket.swift`
-
-### 問題 - 心跳日誌只顯示「收到Socket心跳維持連線」，看不出來自哪一組連線
-
-同一則心跳訊息在不同連線都長得一樣，翻日誌時會誤以為服務端重複對同一個客戶端續命，實際上續的是不同連線者。
-
-### 根因 - 主 App 每約 30 秒對所有連線廣播 `keepalive`，各用戶端分別回傳 `heartbeat`
-
-每條連線都會回 `heartbeat` 並各自寫一筆日誌，但訊息不含連線識別，無法分辨是哪一條連線回覆。
-
-### 修改 - 連線相關日誌統一帶上連線識別與遠端端點
-
-- 新增 `connectionLogContext(_:)` 產生 `連線=ObjectIdentifier(...)｜遠端=位址:連接埠`
-- 心跳日誌改為：`收到 Socket 心跳｜連線=…｜遠端=…`
-- 新連線／ready／failed／cancelled／removed 等日誌也帶上同一組識別，便於對照同一條連線的生命週期
-
----
-
 ## 2026.09.17 連線診斷強化：connect/handshake 逾時、keepalive ping、onLog always 通道
 
 **類型**: 修復
@@ -2963,18 +2987,17 @@ modal 綁定 click 事件，事件 target 為 #modal（背景）時直接設 hid
 
 ---
 
-## 2026.09.17 修復 liveAPP 背景執行緒寫 @Published 造成的 SwiftUI 死鎖
+## 2026.09.17 新增變更歷史工具 Scripts/change_log.py
 
-**類型**: 修復 · **檔案**: `liveAPP/ContentView.swift`, `liveAPP/Socket.swift`
+**類型**: 新增 · **檔案**: `Scripts/change_log.py`, `Scripts/change_log.cmd`
 
-**問題**: 主執行緒卡死，App 被 scene-update watchdog（`0x8BADF00D`）閃退。
-**根因**: `SocketServer.handleDecodedPayload` 跑在背景 `SocketServerQueue`，卻直接改 `LiveVolumeModel` 的 `@Published`。SwiftUI 於是在背景啟動 AttributeGraph 更新並持有 movable lock，途中 UIKit（`UITab.setImage:` → diffable `applySnapshot`）同步等 main；主執行緒此時在 runloop flush 要拿同一把鎖，兩者互等即死鎖。
 **修改**:
 
-- `LiveVolumeModel` 標為 `@MainActor`
-- `Socket.swift` 的 `audioLive` / `logbatch` 呼叫點包 `Task { @MainActor in ... }`
-- CFNotification observer 亦改為 hop 回 main
-**相關文件**: [design-issues.md](design-issues.md)
+- 本機網頁 GUI（零依賴，Python 內建 `http.server`）：清單、搜尋、就地編輯、刪除、新增表單
+- 新增表單自動帶入 `git diff` 目前改動的檔案
+- 深／淺色切換（記住選擇）、GitHub alert 樣式預覽
+- CLI 子命令 `add` / `list` / `show`，供腳本化
+**相關文件**: [github-alerts.md](github-alerts.md)
 
 ---
 
@@ -2993,17 +3016,30 @@ modal 綁定 click 事件，事件 target 為 #modal（背景）時直接設 hid
 
 ---
 
-## 2026.09.17 新增變更歷史工具 Scripts/change_log.py
+## 2026.09.17 修正本機 GUI server 在 Windows 搶綁同一埠
 
-**類型**: 新增 · **檔案**: `Scripts/change_log.py`, `Scripts/change_log.cmd`
+**類型**: 修復 · **檔案**: `Scripts/change_log.py`
 
+**問題**: 兩個 server 同時 LISTEN 同一埠，瀏覽器連到舊實例，改了程式卻看不到效果。
+**根因**: Python `HTTPServer` 預設 `allow_reuse_address=1`，在 Windows 的 `SO_REUSEADDR` 允許第二個實例「搶綁」已被占用的埠。
 **修改**:
 
-- 本機網頁 GUI（零依賴，Python 內建 `http.server`）：清單、搜尋、就地編輯、刪除、新增表單
-- 新增表單自動帶入 `git diff` 目前改動的檔案
-- 深／淺色切換（記住選擇）、GitHub alert 樣式預覽
-- CLI 子命令 `add` / `list` / `show`，供腳本化
-**相關文件**: [github-alerts.md](github-alerts.md)
+- `allow_reuse_address=False`；埠被占用或落在 Windows 保留區段（如 8740-8839）時改用系統自動配置
+
+---
+
+## 2026.09.17 修復 liveAPP 背景執行緒寫 @Published 造成的 SwiftUI 死鎖
+
+**類型**: 修復 · **檔案**: `liveAPP/ContentView.swift`, `liveAPP/Socket.swift`
+
+**問題**: 主執行緒卡死，App 被 scene-update watchdog（`0x8BADF00D`）閃退。
+**根因**: `SocketServer.handleDecodedPayload` 跑在背景 `SocketServerQueue`，卻直接改 `LiveVolumeModel` 的 `@Published`。SwiftUI 於是在背景啟動 AttributeGraph 更新並持有 movable lock，途中 UIKit（`UITab.setImage:` → diffable `applySnapshot`）同步等 main；主執行緒此時在 runloop flush 要拿同一把鎖，兩者互等即死鎖。
+**修改**:
+
+- `LiveVolumeModel` 標為 `@MainActor`
+- `Socket.swift` 的 `audioLive` / `logbatch` 呼叫點包 `Task { @MainActor in ... }`
+- CFNotification observer 亦改為 hop 回 main
+**相關文件**: [design-issues.md](design-issues.md)
 
 ---
 
@@ -3016,18 +3052,6 @@ modal 綁定 click 事件，事件 target 為 #modal（背景）時直接設 hid
 - 主 `README.md` 只留常青內容（簡介／側載／功能／設定），修復紀錄移到 `Docs/ChangeHistory.md`（最新在上）
 - 新增 `Docs/README.md` 分類索引
 **相關文件**: [README.md](README.md)
-
----
-
-## 2026.09.17 修正本機 GUI server 在 Windows 搶綁同一埠
-
-**類型**: 修復 · **檔案**: `Scripts/change_log.py`
-
-**問題**: 兩個 server 同時 LISTEN 同一埠，瀏覽器連到舊實例，改了程式卻看不到效果。
-**根因**: Python `HTTPServer` 預設 `allow_reuse_address=1`，在 Windows 的 `SO_REUSEADDR` 允許第二個實例「搶綁」已被占用的埠。
-**修改**:
-
-- `allow_reuse_address=False`；埠被占用或落在 Windows 保留區段（如 8740-8839）時改用系統自動配置
 
 ---
 
@@ -3198,56 +3222,6 @@ audioFourCcInfoMap: AMFObject? = RTMPConnection.supportedAudioFourCcInfoMap,
 
 ---
 
-## 最新重寫更新說明
-
-本次針對 `ReplyKIT/rotateNV12.metal` 內的 `rotateNV12_bilinear` 與 `rotateNV12_bicubic` 重新整理了畫面旋轉與縮放對齊邏輯。
-
-主要修正內容如下：
-
-- 將輸出座標回推來源座標的流程改為統一使用中心點計算，避免旋轉時以左上角為基準造成畫面偏移
-- 修正 4:3 畫面在 16:9 輸出下進行等比例適應時的對齊問題，例如 `1920x1334 -> 1920x1080` 會正確置中並保留左右黑邊
-- 修正 `90` / `270` 度旋轉在目前畫面座標系下上下顛倒的問題
-- 讓 `bicubic` 的 Y 平面取樣改回正確的 pixel-space 座標，避免取樣位置錯誤
-- 調整 NV12 的 UV plane 寫入方式，改為每個 2x2 區塊只寫一次，避免多個 thread 同時寫入同一個 UV pixel 導致色度對齊不穩
-
-這次重寫的重點是讓 GPU 旋轉後的輸出在不同長寬比、不同方向下都能維持正確的置中、縮放與色度對齊。
-[版本標記說明 Version Note](development/version.md) · [本地建置工作流程 Build Workflow](workflow.md)
-
----
-
-## LogView 頁面切換卡死修復 + 設備信息頁增強
-
-### 問題 - LogView 切走仍在背景處理 log
-
-切換到「日誌」或「音量」頁面再切走時，LogView 的 Coordinator 仍持續在背景處理 log 訊息：
-
-- `appendWorkItem` 持續排入 main queue
-- `shouldAutoScroll` 永不關閉（無 `onDisappear`）
-- 大量 UITextView 操作佔用主執行緒，造成 App 卡死
-
-### 修改 - 補 onDisappear 停止背景處理
-
-#### LogView（`ContentView.swift`）
-
-- 補上 `.onDisappear` → 設 `isVisible = false`、`shouldAutoScroll = false`、取消 pending work item
-- `appendMessages()` 開頭檢查 `isVisible`，不在背景時直接 return
-- 新增 `cancelPendingWork()` 方法清除排隊訊息
-
-#### 設備信息頁（`OtherView.swift`）
-
-重新設計 `DeviceView`，加入即時圖表與更多系統資訊：
-
-| 項目 | 內容 |
-| ------ | ------ |
-| CPU 折線圖 | App CPU 使用率歷史 60 秒，搭配 SystemCPU 系統/用戶/閒置率 |
-| RAM 折線圖 | App 記憶體用量歷史 60 秒 |
-| 儲存空間 | 總容量 / 已使用 / 可用 GB |
-| 網路介面 | WiFi / Cellular / No Connection |
-| 系統資訊 | iOS 版本、開機時間、電量、電池狀態 |
-| GPU | Metal 裝置名稱 |
-
----
-
 ## 統一 videoSettings 套用流程 + 移除 bitrate 雙路徑
 
 ### 問題 - configureVideo_init 設定不完整
@@ -3297,212 +3271,68 @@ audioFourCcInfoMap: AMFObject? = RTMPConnection.supportedAudioFourCcInfoMap,
 
 ---
 
-## Metal Shader 品質改造：float 精度 bicubic + unsharpen mask 後處理
+## 最新重寫更新說明
 
-### 問題 - 大動態畫面邊緣模糊、細節丟失
+本次針對 `ReplyKIT/rotateNV12.metal` 內的 `rotateNV12_bilinear` 與 `rotateNV12_bicubic` 重新整理了畫面旋轉與縮放對齊邏輯。
 
-大動態畫面（快速運鏡、激烈運動）時，影像邊緣模糊、細節丟失。主要原因有二：
+主要修正內容如下：
 
-1. **Bicubic 插值使用 `half` 精度** — Catmull-Rom 三次係數在 `half`（10-bit 尾數）下運算會產生約 0.25 grey level 的捨入誤差，尤其在係數累加（~0.01~2.0 動態範圍）時誤差更明顯
-2. **Interpolation 本身是平滑濾波** — 無論 bilinear 或 bicubic，旋轉+縮放後高頻細節會被自然衰減，缺少細節增強機制
+- 將輸出座標回推來源座標的流程改為統一使用中心點計算，避免旋轉時以左上角為基準造成畫面偏移
+- 修正 4:3 畫面在 16:9 輸出下進行等比例適應時的對齊問題，例如 `1920x1334 -> 1920x1080` 會正確置中並保留左右黑邊
+- 修正 `90` / `270` 度旋轉在目前畫面座標系下上下顛倒的問題
+- 讓 `bicubic` 的 Y 平面取樣改回正確的 pixel-space 座標，避免取樣位置錯誤
+- 調整 NV12 的 UV plane 寫入方式，改為每個 2x2 區塊只寫一次，避免多個 thread 同時寫入同一個 UV pixel 導致色度對齊不穩
 
-### 修改 - bicubic/unsharp 改 float 精度
-
-#### `rotateNV12.metal`
-
-**Bicubic 全精度化：**
-
-| 函數 | 修改前 | 修改後 |
-| ------ | -------- | -------- |
-| `catmullRom1D` | `half4` → `half` | `float4` → `float` |
-| `catmullRom1D_uv` | `half2` → `half` | `float2` → `float` |
-| `bicubicSampleY_16tap` | `half4 rows[4]`，`half4 col` | `float4 rows[4]`，`float4 col`，`float(tex.sample(...))` |
-| `bicubicSampleUV_16tap` | `half2 rows[4]`，`half2 col[4]` | `float2 rows[4]`，`float2 col[4]`，`float2(tex.sample(...))` |
-
-Texture read 維持 `half`（`r8Unorm` / `rg8Unorm` 本身就是 8-bit），但在進入算術運算前立即提升為 `float`，避免 interpolation 權重的累加誤差。
-
-**新增 `unsharpY` kernel：**
-
-```metal
-kernel void unsharpY(
-    texture2d<half, access::sample> srcY,   // 旋轉後的 Y
-    texture2d<half, access::write>  dstY,   // sharpen 後的 Y
-    constant float& amount,                 // 強度（0.0 ~ 0.5）
-    uint2 gid)
-```
-
-演算法：
-
-1. 3×3 Gaussian blur（未歸一化權重：中心 4、鄰邊 2、對角 1，總和 16）
-2. `sharpened = center + amount × (center − blurred)`
-3. Clamp 到 [0.0, 1.0] 後寫回
-
-使用 `coord::pixel` 模式的 nearest sampler，避免多餘的正規化計算。
-
-#### `GPUVideoRotator.swift`
-
-- 新增 `sharpenPipeline: MTLComputePipelineState?` — `buildComputePipeline()` 中新增 Pipeline C
-- 新增 `tempYTexture: MTLTexture?` — 避免同一個 command buffer 內讀寫衝突（rotation 寫 tempY → sharpen 讀 tempY 寫 dstY）
-- `ensureMetalResources()` 的 guard 納入 `sharpenPipeline == nil` 檢查
-- `cleanupResources()` 一併清理 sharpenPipeline + tempYTexture
-- `renderPlaneYUV()` 內部根據品質模式決定 sharpen 強度
-
-### 品質模式疊加
-
-| 模式 | Interpolation | Unsharp | 行為 |
-| ------ | ------------- | --------- | ------ |
-| `.live`（預設） | Bilinear | 0.15（輕度） | 低運算成本 + 基本細節補救 |
-| `.quality`（Bicubic） | Bicubic（float） | 0.25（中度） | 高精度插值 + 顯著細節增強 |
-
-### 效果 - float bicubic 消除捨入誤差
-
-- **float 精度的 bicubic**：消除係數捨入誤差，在平滑漸層區域有更乾淨的 interpolation
-- **Unsharpen mask**：在不改變 interpolation 方式的前提下，主動恢復被平滑的高頻邊緣
-- **兩 pass 獨立**：`unsharpY` 與 rotation kernel 分屬不同 compute encoder，中間依賴 implicit barrier 確保資料正確性
+這次重寫的重點是讓 GPU 旋轉後的輸出在不同長寬比、不同方向下都能維持正確的置中、縮放與色度對齊。
+[版本標記說明 Version Note](development/version.md) · [本地建置工作流程 Build Workflow](workflow.md)
 
 ---
 
-## 修復 Socket 連線穩定性與首次推流解析度錯誤
+## 最新 PiP 背景存活與渲染效能優化
 
-### 問題描述 - 首次推流解析度錯誤 + Socket 不穩
+本次針對 PiP 子母畫面在背景被系統終止、動畫與渲染效能進行全面改善：
 
-1. **首次推流解析度錯誤**：第一次推流時常變成 854x480，而非用戶指定的解析度（如 1920x1080）
-2. **Socket 死連接/殘留 Listener**：切換直播後舊連線未完全清理，導致新連線無法正常通訊
+### 背景存活修復
 
-### 根因分析 - 854x480 錯誤解析度根因
+- **PIPService**: 放寬 `attachToForegroundWindow` 綁定條件，接受任何已連接的 Scene
+- **PIPService**: 新增 `handleMemoryWarning()`、background task 生命週期、app 前景/背景切換時自動重連 displayLayer
+- **liveAPPApp.swift**: scenePhase `.background` 時啟動短 background window，並排程 BGTaskScheduler 機會型 socket refresh；BGTask 不再被視為常駐保活機制
+- **Socket.swift**: 新增 `suspend()` / `resume()` / `releaseMemory()`，背景時釋放緩衝區、前景恢復運作
 
-**854x480 錯誤解析度：**
+### 動畫迴圈重構
 
-- 當 `socket` 請求回傳的 `ODWidth`/`ODHeight` 與 `ADWidth`/`ADHeight` 皆為 0 時，`configureVideo` 跳過解析度設定，HaishinKit 使用預設 854x480
-- `SocketClient` 在連線尚未 `.ready` 時就發送 batch 請求，導致首次推流常 timeout 或拿到空配置
+- 移除 `CADisplayLink`，改由 PIPService render timer 統一驅動，消除雙 loop 不同步
+- 以 `tickAnimation()` 狀態機取代舊的 step 方法，動畫進行中持續回呼
+- 穩定 FPS 策略：動畫中 24fps、有訊息/活動 8fps、閒置 1fps，取代舊的跳 60→衰減機制，消除 FPS 震盪並降低 CPU 壓力
 
-**Socket 死連接：**
+### Render Pipeline 最佳化
 
-- `SocketServer.isRunning` computed property 有副作用（直接 `listener.cancel()`、`listener = nil`），造成多次存取時的 race condition
-- `receive()` callback 在 `removeConnection` 後仍可能執行，訪問已釋放的 buffer
-- `SocketClient.setupConnection()` 直接覆蓋 `connection` 而不清理舊連線，舊連線的 receive 迴圈仍在背景運作
-- `rtmpBatchContinuation` 等 continuation 在連線關閉時未清理，造成記憶體洩漏
-
-### 修改內容
-
-#### 1. SocketClient（`ReplyKIT/Socket.swift`）
-
-- **setupConnection()**：先 closeConnection 清理舊連線再建立新連線
-- **waitForReady(timeout:)**：新增 async 方法，等待連線 `.ready` 後才發送請求（3s timeout）
-- **closeConnection()**：同步清理所有 pending continuation（rtmp、log、batch、ContinuationStore），避免洩漏
-- **\_requestRTMPKEYAndLog() / \_requestRTMPKEY() / \_requestLogConfig()**：都先 await waitForReady() 再發送
-- **ContinuationStore**：新增 cancelAll() 清理所有殘留的 continuation
-
-#### 2. SocketServer（`liveAPP/Socket.swift`）
-
-- **isRunning**：改為純 computed property，移除所有副作用
-- **cleanupStaleListener()**：獨立方法處理 failed/cancelled listener 的清理
-- **receive(from:)**：增加多層 `guard connections[id] != nil` 檢查，防止 callback 在連線移除後繼續處理
-- **start()**：先調用 cleanupStaleListener() 再檢查狀態
-
-#### 3. SampleHandler（`ReplyKIT/SampleHandler.swift`）
-
-- **configureVideo_init()**：encoder 優先使用 OD，沒有 OD 才使用 AD；socket bridge 模式不使用 App Group fallback
-- **configureVideo()**：相同尺寸來源規則
-- **broadcastStarted publish 前**：最終 videoSize 檢查也遵守 OD 優先、socket 不 fallback 到 App Group 的規則
+- 跳過 `UIGraphicsImageRenderer` → `CGImage` → `CIImage` → `CIContext.render()` 的兩次 round-trip
+- 改為 `CVPixelBufferPool` + 直接 `CGContext(data:)` 將 CALayer tree 渲染到 pixel buffer 記憶體
+- 回全 CPU 渲染：移除不再使用的 GPU renderer、Metal-compatible PiP pool、Metal device、CIContext 等 dead code
+- `CMVideoFormatDescription`、`CGColorSpace`、時間/觀眾/重連 SF Symbol 改為快取，不再每幀重建
+- `AVSampleBufferDisplayLayer` 背壓時先跳過，不再先畫完整 frame 再丟棄
+- 詳細紀錄見 `Docs/replykit-core-fixes-summary.md` §17
 
 ---
 
-## 修復 GPU 旋轉初始化失敗造成畫面無法送出 (0x0)
+## 新增重連設計
 
-### 問題描述 - 推流輸出 0x0，編碼器無幀
+當直播因網路問題 沒有連線成功 會最多嘗試重連 最多5次
+也會顯示在子母窗口上 提示當前重連次數
 
-推流畫面完全沒送出去，輸出為 0x0，編碼器無幀可編。
+### 修正 `0/5` 重連狀態誤判
 
-### 根因
+`reconnectStatus` 的 `attempt = 0` 不視為真正斷線重連，只代表 RTMP 狀態機尚未進入有效重連次數，或正在回復正常。主 App 收到 `attempting 0` / `failed 0` 時會清空 PiP / Live Activity 的重連狀態，避免畫面殘留 `0/5` 並誤判為沒連上。
 
-`GPUVideoRotator.ensureMetalResources()` 在 `hasMetalResources` 設為 `true` 之後才進行實際資源初始化（textureCache、computePipeline）。若初始化失敗（如 GPU 暫時忙碌、shader 編譯失敗），函數回傳 `false` 但 flag 已永久鎖定為 `true`。後續所有幀的呼叫直接跳過初始化，使用 nil 資源，全部靜默丟棄。
+Broadcast Extension 端也避免在初始 `publish` 失敗時送出 `failed 0`；只有 HaishinKit reconnect callback 回報有效次數後，才會顯示重連提示。
+主要是針對音畫時間軸校正
 
-### 修復 - hasMetalResources 初始化成功才設 true
+在最新版本目前加上音軌的PTS校正 雖然說音軌偏移照理說應該不會發生
 
-- **`hasMetalResources`**：改為在所有資源初始化成功後才設為 `true`
-- **getReusableOutput 前**：加入 `dstW > 0 && dstH > 0` 保護，防止無效維度進入 GPU 管線
+但考量前幾個版本只對畫面做PTS校正 有概率在某些情況下可能出現異常
 
----
-
-## 修復 Rotate 事件處理器維度條件錯誤
-
-### 問題 - OD/AD 維度用 || 誤判有效
-
-`SampleHandler.swift:540,543` 使用 `||`（OR）而非 `&&`（AND）判斷 OD/AD 維度有效性。例如 `ODWidth=1920` 但 `ODHeight=0` 時，仍會設定 `NewVW=1920, NewVH=0`，造成 `videoSize` 單軸為 0。
-
-### 修復 - 改用 && 判斷寬高有效
-
-改為 `&&`，確保寬高同時有效才套用。
-
----
-
-## 修復 broadcastStarted 維度混合問題
-
-### 問題 - broadcastStarted OD/AD 寬高獨立檢查
-
-`broadcastStarted` 中 ODWidth 與 ODHeight 獨立檢查（`ODWidth > 0 ? ODWidth : ADWidth`），可導致 OD Width 與 AD Height 被混合使用。
-
-### 修復 - 成對檢查 OD/AD 維度
-
-改為成對檢查（OD 兩者 > 0 或 AD 兩者 > 0），維持維度一致性。
-
----
-
-## 修復 OutW/OutH 分開觸發造成 videoSize 維度不一致
-
-### 問題 - OutW/OutH 分開觸發造成維度不一致
-
-`OutW` 與 `OutH` 是兩個獨立的 Darwin Notification，App 端先發 OutW、再發 OutH。
-Extension 端原本的處理方式：
-
-- **OutW** 只改 `videoSize.width`
-- **OutH** 只改 `videoSize.height`
-
-這導致 OutW 處理完、OutH 尚未到達的時間窗口中，`videoSize` 為 **(新寬度, 舊高度)** 的錯誤組合。
-若編碼器在此時讀取，會得到錯誤解析度（如 854x480 或 0x0）。
-
-### 修復 - OutW/OutH 一次原子套用
-
-`OutW`/`OutH` 現在會一次讀齊完整尺寸並原子套用，encoder 使用最終畫布尺寸，GPU rotator 使用中間處理尺寸。
-詳細 AD/OD 設計與 preset 對照見 [Docs/video-dimensions.md](video-dimensions.md)。
-
----
-
-## 停用 AdaptiveVideoBufferManager
-
-### 原因
-
-經查閱 HaishinKit 原始碼，`setVideoInputBufferCounts` 僅為 **stored property setter**，
-其設定的值只在 `videoInputStream` computed property 被存取時讀取一次。
-而 `videoInputStream` 的 `for await` loop 在 stream 啟動時就已固定，**runtime 期間呼叫完全無效**。
-
-### 修改 - 移除 monitorFPSAndAdjust 呼叫
-
-- 移除每幀對 `AdaptiveVideoBufferManager.monitorFPSAndAdjust` 的呼叫
-- 保留初始化時從 `RPConfig.shared.state.BufferCount` 設定一次的邏輯（`configureVideo_init` 與 reconnect 處）
-
----
-
-## 修復 Metal 管線中途失敗無自動重建
-
-### 問題 - Metal 管線中途失敗無自動重建
-
-`GPUVideoRotator` 的 `hasMetalResources` 一旦設為 `true` 就永久鎖定，
-`ensureMetalResources()` 永遠直接 return，不會重試初始化。
-若 GPU 中途重置或記憶體不足造成 texture/command buffer 建立失敗，
-所有後續幀靜默丟棄，沒有任何復原路徑。
-
-### 修復 - 加入失敗計數器自動重建
-
-`GPUVideoRotator.swift` 加入 `consecutiveMetalFailures` 計數器：
-
-- `getReusableOutput` 失敗 → 計數 +1
-- `makeTexture` / `makeCommandBuffer` 失敗 → 計數 +1
-- 幀成功送出 → 計數歸零
-- 連續失敗達 **5 次** → 自動呼叫 `cleanupResources()`，
-  重置 `hasMetalResources`、textureCache、pipeline
-- 下一幀的 `ensureMetalResources()` 會從頭重建整條 Metal 管線
+所以兩者皆補上了PTS修正
 
 ---
 
@@ -3521,22 +3351,76 @@ Extension 端原本的處理方式：
 
 ---
 
-## 修復 h264ProfileLevel 在高解析度下回傳無效 Level
+## 新增 TTSService 監聽音頻服務丟失
 
-### 問題 - Baseline/Main 缺中高階 Level
+### 問題 - 音頻服務丟失未處理
 
-`h264ProfileLevel` 中 Baseline 和 Main 的 switch 缺少中高階 Level 範圍。
-對於 iPad 常見的 1920x1334 原始解析度（mbPerFrame≈10285），
-兩者都跳進 `default` 回傳 `xxx_4_2`，但 Level 4.2 最大只支援 8704 mb/frame。
+`TTSService` 只監聽 `mediaServicesWereResetNotification`，缺少
+`mediaServicesWereLostNotification`，無法在第一時間感知音頻服務中斷。
 
-- **Baseline 4.2**：H.264 標準中 Baseline 最高只到 Level 4.1，回傳 4.2 是非法的
-- **Main 4.2**：10285 > 8704，超出 Level 4.2 規格，VideoToolbox 可能拒絕或編碼異常
+### 修改 - 監聽音頻服務中斷事件
 
-### 修復 - Baseline 改 AutoLevel
+新增 `AVAudioSession.mediaServicesWereLostNotification` 監聽，中斷時記錄日誌，
+後續由 `mediaServicesWereResetNotification` 自動恢復。
 
-- **Baseline `default`** → 改為 `Baseline_AutoLevel`（讓編碼器自動選擇）
-- **Main** → 補上 `8192..<8704`(4.2)、`8704..<36864`(5.0)、`>=36864`(5.1/5.2) 等完整範圍
-- **High** → 維持不變（原本就有完整範圍）
+---
+
+## 新增 TTS 佇列上限控制 (maxQueueSize)
+
+### 問題 - TTS 佇列無上限
+
+`AVSpeechSynthesizer` 無公開 API 查詢內部佇列深度，連續大量朗讀時佇列可能無限增長，
+極端情況下導致記憶體壓力甚至崩潰。
+
+### 修改 - TTS 佇列上限與清空選項
+
+- `TTSService.swift`：新增 `maxQueueSize`（0=無限制/5/10/20/50）與 `queueOverflowAction`
+- 透過 `AVSpeechSynthesizerDelegate`（`didFinish`/`didCancel`）維護 `pendingUtteranceCount`
+- `stopSpeaking(at: .immediate)` 時手動重置計數為 0
+- `speak()` 在佇列已滿時根據 `queueOverflowAction` 決定跳過新訊息或清空佇列
+- `TTSSettingsView.swift`：設定頁面新增「佇列上限」Picker 與「佇列滿載」Picker
+- 新增 `TTSQueueOverflowAction` 列舉 (skipNew / stopOld)
+
+### 相關檔案
+
+- `liveAPP/TTSService.swift`：佇列計數 + 上限控制 + delegate
+- `liveAPP/TTSSettingsView.swift`：佇列設定 UI
+
+---
+
+## 新增 HEVC 編碼支援
+
+### 問題 - 僅支援 H.264
+
+先前僅支援 H.264 編碼，無法利用 HEVC（H.265）的更高壓縮率與 10-bit 色深支援。
+
+### 修改 - 新增 HEVC 編碼設定
+
+**`liveAPP/ContentView.swift`**
+
+- 新增 `HEVCProfile` 列舉（Main / Main10 / Main42210）
+- 編碼配置 UI 改為 segmented control 切換 H264 / HEVC，動態顯示對應的 profile picker
+
+**`ReplyKIT/Event.swift`**
+
+- `State` 新增 `videoCodec` 與 `hevcLevel` 欄位
+- `updateState()` 與 `init()` 同步載入
+
+**`ReplyKIT/SampleHandler.swift`**
+
+- `h264ProfileLevelString()` → `profileLevelString()`，新增 HEVC 分支（回傳 `kVTProfileLevel_HEVC_Main_AutoLevel` 等常數）
+- `applyAllVideoSettings()` 在 HEVC 模式自動將 `bitRateMode` 強制設為 `.variable`（HEVC 建議搭配 VBR）
+
+#### Socket
+
+- `liveAPP/Socket.swift` / `ReplyKIT/Socket.swift` 新增 `videoCodec` 與 `hevcLevel` 欄位傳遞
+
+### 行為
+
+| 編碼格式 | profileLevel | bitRateMode |
+| --------- | ------------- | ------------- |
+| H264 | 依使用者選擇（AutoLevel 或自訂 Level） | 使用者設定 |
+| HEVC | `kVTProfileLevel_HEVC_Main_AutoLevel` 等（AutoLevel，由系統決定） | 強制 `.variable` |
 
 ---
 
@@ -3566,6 +3450,67 @@ Extension 端原本的處理方式：
 當 GPU 密集型遊戲開啟高負載子頁面時，直播幀數可能瞬崩至 2-10 fps，遊戲本身不受影響，關閉子頁面立刻恢復。這是 iOS 系統級 GPU 排程行為：**前景 App 的 GPU 優先權永遠高於 ReplayKit 廣播擴展**。
 
 `videoInputFrames`（RTMP 吞吐量 log）是 ReplayKit 交給我們的原始幀數。若此值持續低於 20 且 video processor 無異常（`[VProc] active:true processing:false`），即為系統節流，非本專案 bug。GPU 旋轉降級到 CPU 或降低碼率都無法改善（瓶頸在擷取端螢幕合成器，不在後處理）。詳見 `Docs/replykit-core-fixes-summary.md` §9。
+
+---
+
+## 擴充 TTS 佇列滿載行為控制選項
+
+### 問題 - TTS 佇列滿載無選項
+
+`TTSQueueOverflowAction` 僅有 `.skipNew`（跳過新訊息）與 `.stopOld`（清空佇列並朗讀新訊息）兩種行為，缺乏「清空待朗讀但不讀新訊息」的選項。
+
+### 修改 - 新增清空待朗讀選項
+
+**`liveAPP/TTSService.swift`**
+
+- `TTSQueueOverflowAction` 新增 `.clearPending = 2`
+- `speak()` 新增 `.clearPending` 分支：stopSpeaking + 重置計數 + 釋放音訊 + return（不朗讀新訊息）
+
+**`liveAPP/TTSSettingsView.swift`**
+
+- 佇列滿載 Picker 新增第三選項「清空待朗讀」
+
+### 行為對照
+
+| 選項 | 佇列滿時行為 |
+| ------ | ------------- |
+| 跳過新訊息（skipNew） | 直接丟棄新訊息 |
+| 停止舊的，讀新的先（stopOld） | 停止目前朗讀，清空佇列，朗讀新訊息 |
+| 清空待朗讀（clearPending） | 停止目前朗讀，清空佇列，不讀新訊息 |
+
+## 停用 AdaptiveVideoBufferManager
+
+### 原因
+
+經查閱 HaishinKit 原始碼，`setVideoInputBufferCounts` 僅為 **stored property setter**，
+其設定的值只在 `videoInputStream` computed property 被存取時讀取一次。
+而 `videoInputStream` 的 `for await` loop 在 stream 啟動時就已固定，**runtime 期間呼叫完全無效**。
+
+### 修改 - 移除 monitorFPSAndAdjust 呼叫
+
+- 移除每幀對 `AdaptiveVideoBufferManager.monitorFPSAndAdjust` 的呼叫
+- 保留初始化時從 `RPConfig.shared.state.BufferCount` 設定一次的邏輯（`configureVideo_init` 與 reconnect 處）
+
+---
+
+## 修復首次 RTMP 連線容易失敗 (mediaMixer 時序競爭)
+
+### 問題 - configureMediaMixer 早於 RTMP connect
+
+`broadcastStarted()` 中 `configureMediaMixer()` 在 RTMP connect **之前**就呼叫了
+`mediaMixer.startRunning()`，導致混音器立即開始產出 frame，但此時 RTMP 連線尚未建立。
+HaishinKit 的 TCP timeout 為 15 秒，在這段期間 frame 持續積累，可能造成第一個 connect
+超時失敗，進而仰賴重連機制才成功。
+
+### 變更 (`SampleHandler.swift`)
+
+| 位置 | 修正前 | 修正後 |
+| ------ | -------- | -------- |
+| `configureMediaMixer()` | `addOutput` + **`startRunning`** | 只保留 `addOutput` |
+| `startRTMP()` 成功後 | (無) | 新增 `startRunning` |
+| `attemptReconnect()` 成功後 | `addOutput` 後無 `startRunning` | `addOutput` + **`startRunning`** |
+
+重連路徑也補上 `startRunning()`，避免極端情況（首次連線從未成功）下 mixer 永遠不啟動。
 
 ---
 
@@ -3640,6 +3585,91 @@ Crash 路徑：`RPBroadcastSampleHandler _processPayloadWithAudioSample:` → Au
 
 ---
 
+## 修復主 App 記憶體持續增長問題
+
+### 問題 - 主 App 記憶體持續增長
+
+經實機監測發現主 App RAM 用量持續穩定上升，即使無明顯操作也不回落。
+
+### 根因分析 - 記憶體持續增長根因
+
+全面審查所有 liveAPP target 中的集合類、緩衝區、定時器與單例，共找出以下記憶體洩漏或無界增長點：
+
+| 嚴重性 | 問題 | 位置 | 說明 |
+| -------- | ------ | ------ | ------ |
+| 🔴 | `ConfigManager.layers` 無界增長 | `liveAPP/Config.swift:13` | 每次 `push()` 永久追加新層，無 `pop()` 或容量上限 |
+| 🔴 | `pendingFailedPayloads` 只增不減 | `liveAPP/Socket.swift:1111` | 斷線時暫存未送出 payload，但 `suspend()` / `releaseMemory()` / `stopInternal()` 皆未清理 |
+| 🟠 | `stopInternal()` 漏清多個字典 | `liveAPP/Socket.swift:1198` | 關閉 Socket 時未釋放 `sendQueues`、`sendingFlags`、`pendingFailedPayloads` |
+| 🟢 | `SocketServer` 缺 `deinit` | `liveAPP/Socket.swift` | listener 與 idleTimers 在物件釋放時無法自動取消 |
+
+經檢查後確認已受控（無須修正）：
+
+- `RemoteLogBuffer.buffer` → 上限 300 條，drain 後移除，失敗不回插
+- `LogBuffer.buffer` → batch 100 條排出，排完 removeFirst
+- `messageLines` → 上限 10000 行，超過砍半至 5000
+- `PiPImageCache.inFlightTasks` → `finishDownload()` 正確清理
+- `Socket.receiveBuffers` → `removeConnection()` / `suspend()` 皆有清理
+- `LogModel.messages` → 上限 1000 條，超出移除最舊
+- `OrientationObserver` → 單例存活整段 app 生命週期，observer 無須移除
+
+### 修改 - 釋放暫存並修正洩漏
+
+| 檔案 | 變更 |
+| ------ | ------ |
+| `liveAPP/Config.swift` | `push()` 加入 `maxLayers=10`，超出時移除最舊層（保留第 0 層 default） |
+| `liveAPP/Socket.swift` | `suspend()` / `releaseMemory()` / `stopInternal()` 三處補上 `pendingFailedPayloads.removeAll()` |
+| `liveAPP/Socket.swift` | `stopInternal()` 補上 `sendQueues.removeAll()` + `sendingFlags.removeAll()` |
+| `liveAPP/Socket.swift` | 新增 `deinit`，取消 idleTimers 與 listener |
+
+---
+
+## 修復 sendlog() 雙重快取不同步導致日誌靜默丟棄
+
+### 問題 - sendlog 雙快取不同步丟 log
+
+`Event.swift` 中的 `sendlog()` 依賴全局變數 `logState` / `onlogState`，這兩個變數
+只在 `updateLogFixState()` / `updateONLogFixState()` 被調用時更新。
+若 Extension 啟動時值尚未同步，即使 App 端已設為 true，擴展端仍認為 false，所有日誌被靜默丟棄。
+
+### 修改 - 統一 sendlog 雙快取
+
+- 移除 `logState`、`onlogState` 全局變數及 `lastlogT`/`IntTime`
+- `sendlog()` 改為直接讀取 `RPConfig.shared.enableLog` 與 `RPConfig.shared.onLogPage`
+- `updateLogFixState()` / `updateONLogFixState()` 簡化為僅記錄日誌
+
+---
+
+## 修復 h264ProfileLevel 在高解析度下回傳無效 Level
+
+### 問題 - Baseline/Main 缺中高階 Level
+
+`h264ProfileLevel` 中 Baseline 和 Main 的 switch 缺少中高階 Level 範圍。
+對於 iPad 常見的 1920x1334 原始解析度（mbPerFrame≈10285），
+兩者都跳進 `default` 回傳 `xxx_4_2`，但 Level 4.2 最大只支援 8704 mb/frame。
+
+- **Baseline 4.2**：H.264 標準中 Baseline 最高只到 Level 4.1，回傳 4.2 是非法的
+- **Main 4.2**：10285 > 8704，超出 Level 4.2 規格，VideoToolbox 可能拒絕或編碼異常
+
+### 修復 - Baseline 改 AutoLevel
+
+- **Baseline `default`** → 改為 `Baseline_AutoLevel`（讓編碼器自動選擇）
+- **Main** → 補上 `8192..<8704`(4.2)、`8704..<36864`(5.0)、`>=36864`(5.1/5.2) 等完整範圍
+- **High** → 維持不變（原本就有完整範圍）
+
+---
+
+## 修復 broadcastStarted 維度混合問題
+
+### 問題 - broadcastStarted OD/AD 寬高獨立檢查
+
+`broadcastStarted` 中 ODWidth 與 ODHeight 獨立檢查（`ODWidth > 0 ? ODWidth : ADWidth`），可導致 OD Width 與 AD Height 被混合使用。
+
+### 修復 - 成對檢查 OD/AD 維度
+
+改為成對檢查（OD 兩者 > 0 或 AD 兩者 > 0），維持維度一致性。
+
+---
+
 ## 修復 VFR 造成的 PTS 異常與畫面速率抖動
 
 ### 問題發現 - 直播約 54 分後畫面速率異常
@@ -3710,77 +3740,6 @@ frameCount += 1
 
 ---
 
-## 新增重連設計
-
-當直播因網路問題 沒有連線成功 會最多嘗試重連 最多5次
-也會顯示在子母窗口上 提示當前重連次數
-
-### 修正 `0/5` 重連狀態誤判
-
-`reconnectStatus` 的 `attempt = 0` 不視為真正斷線重連，只代表 RTMP 狀態機尚未進入有效重連次數，或正在回復正常。主 App 收到 `attempting 0` / `failed 0` 時會清空 PiP / Live Activity 的重連狀態，避免畫面殘留 `0/5` 並誤判為沒連上。
-
-Broadcast Extension 端也避免在初始 `publish` 失敗時送出 `failed 0`；只有 HaishinKit reconnect callback 回報有效次數後，才會顯示重連提示。
-主要是針對音畫時間軸校正
-
-在最新版本目前加上音軌的PTS校正 雖然說音軌偏移照理說應該不會發生
-
-但考量前幾個版本只對畫面做PTS校正 有概率在某些情況下可能出現異常
-
-所以兩者皆補上了PTS修正
-
----
-
-## 最新 PiP 背景存活與渲染效能優化
-
-本次針對 PiP 子母畫面在背景被系統終止、動畫與渲染效能進行全面改善：
-
-### 背景存活修復
-
-- **PIPService**: 放寬 `attachToForegroundWindow` 綁定條件，接受任何已連接的 Scene
-- **PIPService**: 新增 `handleMemoryWarning()`、background task 生命週期、app 前景/背景切換時自動重連 displayLayer
-- **liveAPPApp.swift**: scenePhase `.background` 時啟動短 background window，並排程 BGTaskScheduler 機會型 socket refresh；BGTask 不再被視為常駐保活機制
-- **Socket.swift**: 新增 `suspend()` / `resume()` / `releaseMemory()`，背景時釋放緩衝區、前景恢復運作
-
-### 動畫迴圈重構
-
-- 移除 `CADisplayLink`，改由 PIPService render timer 統一驅動，消除雙 loop 不同步
-- 以 `tickAnimation()` 狀態機取代舊的 step 方法，動畫進行中持續回呼
-- 穩定 FPS 策略：動畫中 24fps、有訊息/活動 8fps、閒置 1fps，取代舊的跳 60→衰減機制，消除 FPS 震盪並降低 CPU 壓力
-
-### Render Pipeline 最佳化
-
-- 跳過 `UIGraphicsImageRenderer` → `CGImage` → `CIImage` → `CIContext.render()` 的兩次 round-trip
-- 改為 `CVPixelBufferPool` + 直接 `CGContext(data:)` 將 CALayer tree 渲染到 pixel buffer 記憶體
-- 回全 CPU 渲染：移除不再使用的 GPU renderer、Metal-compatible PiP pool、Metal device、CIContext 等 dead code
-- `CMVideoFormatDescription`、`CGColorSpace`、時間/觀眾/重連 SF Symbol 改為快取，不再每幀重建
-- `AVSampleBufferDisplayLayer` 背壓時先跳過，不再先畫完整 frame 再丟棄
-- 詳細紀錄見 `Docs/replykit-core-fixes-summary.md` §17
-
----
-
-## 新增 TTS 佇列上限控制 (maxQueueSize)
-
-### 問題 - TTS 佇列無上限
-
-`AVSpeechSynthesizer` 無公開 API 查詢內部佇列深度，連續大量朗讀時佇列可能無限增長，
-極端情況下導致記憶體壓力甚至崩潰。
-
-### 修改 - TTS 佇列上限與清空選項
-
-- `TTSService.swift`：新增 `maxQueueSize`（0=無限制/5/10/20/50）與 `queueOverflowAction`
-- 透過 `AVSpeechSynthesizerDelegate`（`didFinish`/`didCancel`）維護 `pendingUtteranceCount`
-- `stopSpeaking(at: .immediate)` 時手動重置計數為 0
-- `speak()` 在佇列已滿時根據 `queueOverflowAction` 決定跳過新訊息或清空佇列
-- `TTSSettingsView.swift`：設定頁面新增「佇列上限」Picker 與「佇列滿載」Picker
-- 新增 `TTSQueueOverflowAction` 列舉 (skipNew / stopOld)
-
-### 相關檔案
-
-- `liveAPP/TTSService.swift`：佇列計數 + 上限控制 + delegate
-- `liveAPP/TTSSettingsView.swift`：佇列設定 UI
-
----
-
 ## 修復 TTS 過濾器誤刪數字 + 新增純數字過濾選項
 
 ### 問題 - TTS 過濾器誤刪數字
@@ -3806,33 +3765,73 @@ TTS 過濾器設定頁面新增「移除純數字」Toggle 開關。
 
 ---
 
-## 修復 PIP unsafeBitCast 潛在崩潰
+## 修復 Socket 連線穩定性與首次推流解析度錯誤
 
-### 問題 - PIP unsafeBitCast 潛在崩潰
+### 問題描述 - 首次推流解析度錯誤 + Socket 不穩
 
-`PIPService.swift:createSampleBuffer()` 中 `CFArrayGetValueAtIndex(attachments, 0)` 的結果
-直接傳入 `unsafeBitCast`，若陣列為空則回傳 nil，`unsafeBitCast(nil, to:)` 會觸發 crash。
+1. **首次推流解析度錯誤**：第一次推流時常變成 854x480，而非用戶指定的解析度（如 1920x1080）
+2. **Socket 死連接/殘留 Listener**：切換直播後舊連線未完全清理，導致新連線無法正常通訊
 
-### 修改 - 移除 unsafeBitCast 改用安全轉換
+### 根因分析 - 854x480 錯誤解析度根因
 
-在 `unsafeBitCast` 前增加 `CFArrayGetCount(attachments) > 0` 與 `rawPtr` nil 檢查，
-確保只有有效指標才進行轉換。
+**854x480 錯誤解析度：**
+
+- 當 `socket` 請求回傳的 `ODWidth`/`ODHeight` 與 `ADWidth`/`ADHeight` 皆為 0 時，`configureVideo` 跳過解析度設定，HaishinKit 使用預設 854x480
+- `SocketClient` 在連線尚未 `.ready` 時就發送 batch 請求，導致首次推流常 timeout 或拿到空配置
+
+**Socket 死連接：**
+
+- `SocketServer.isRunning` computed property 有副作用（直接 `listener.cancel()`、`listener = nil`），造成多次存取時的 race condition
+- `receive()` callback 在 `removeConnection` 後仍可能執行，訪問已釋放的 buffer
+- `SocketClient.setupConnection()` 直接覆蓋 `connection` 而不清理舊連線，舊連線的 receive 迴圈仍在背景運作
+- `rtmpBatchContinuation` 等 continuation 在連線關閉時未清理，造成記憶體洩漏
+
+### 修改內容
+
+#### 1. SocketClient（`ReplyKIT/Socket.swift`）
+
+- **setupConnection()**：先 closeConnection 清理舊連線再建立新連線
+- **waitForReady(timeout:)**：新增 async 方法，等待連線 `.ready` 後才發送請求（3s timeout）
+- **closeConnection()**：同步清理所有 pending continuation（rtmp、log、batch、ContinuationStore），避免洩漏
+- **\_requestRTMPKEYAndLog() / \_requestRTMPKEY() / \_requestLogConfig()**：都先 await waitForReady() 再發送
+- **ContinuationStore**：新增 cancelAll() 清理所有殘留的 continuation
+
+#### 2. SocketServer（`liveAPP/Socket.swift`）
+
+- **isRunning**：改為純 computed property，移除所有副作用
+- **cleanupStaleListener()**：獨立方法處理 failed/cancelled listener 的清理
+- **receive(from:)**：增加多層 `guard connections[id] != nil` 檢查，防止 callback 在連線移除後繼續處理
+- **start()**：先調用 cleanupStaleListener() 再檢查狀態
+
+#### 3. SampleHandler（`ReplyKIT/SampleHandler.swift`）
+
+- **configureVideo_init()**：encoder 優先使用 OD，沒有 OD 才使用 AD；socket bridge 模式不使用 App Group fallback
+- **configureVideo()**：相同尺寸來源規則
+- **broadcastStarted publish 前**：最終 videoSize 檢查也遵守 OD 優先、socket 不 fallback 到 App Group 的規則
 
 ---
 
-## 修復 sendlog() 雙重快取不同步導致日誌靜默丟棄
+## 修復 Rotate 事件處理器維度條件錯誤
 
-### 問題 - sendlog 雙快取不同步丟 log
+### 問題 - OD/AD 維度用 || 誤判有效
 
-`Event.swift` 中的 `sendlog()` 依賴全局變數 `logState` / `onlogState`，這兩個變數
-只在 `updateLogFixState()` / `updateONLogFixState()` 被調用時更新。
-若 Extension 啟動時值尚未同步，即使 App 端已設為 true，擴展端仍認為 false，所有日誌被靜默丟棄。
+`SampleHandler.swift:540,543` 使用 `||`（OR）而非 `&&`（AND）判斷 OD/AD 維度有效性。例如 `ODWidth=1920` 但 `ODHeight=0` 時，仍會設定 `NewVW=1920, NewVH=0`，造成 `videoSize` 單軸為 0。
 
-### 修改 - 統一 sendlog 雙快取
+### 修復 - 改用 && 判斷寬高有效
 
-- 移除 `logState`、`onlogState` 全局變數及 `lastlogT`/`IntTime`
-- `sendlog()` 改為直接讀取 `RPConfig.shared.enableLog` 與 `RPConfig.shared.onLogPage`
-- `updateLogFixState()` / `updateONLogFixState()` 簡化為僅記錄日誌
+改為 `&&`，確保寬高同時有效才套用。
+
+---
+
+## 修復 RemoteLogBuffer 滿時無告警
+
+### 問題 - RemoteLogBuffer 滿無告警
+
+`RemoteLogBuffer` 最多暫存 300 筆，滿時靜默丟棄最舊日誌，無任何提示。
+
+### 修改 - 加入滿載告警
+
+每丟棄 50 條記錄一次 `sendlog("⚠️ RemoteLogBuffer 已滿")` 告警。
 
 ---
 
@@ -3854,148 +3853,173 @@ TTS 過濾器設定頁面新增「移除純數字」Toggle 開關。
 
 ---
 
-## 修復 RemoteLogBuffer 滿時無告警
+## 修復 PIP unsafeBitCast 潛在崩潰
 
-### 問題 - RemoteLogBuffer 滿無告警
+### 問題 - PIP unsafeBitCast 潛在崩潰
 
-`RemoteLogBuffer` 最多暫存 300 筆，滿時靜默丟棄最舊日誌，無任何提示。
+`PIPService.swift:createSampleBuffer()` 中 `CFArrayGetValueAtIndex(attachments, 0)` 的結果
+直接傳入 `unsafeBitCast`，若陣列為空則回傳 nil，`unsafeBitCast(nil, to:)` 會觸發 crash。
 
-### 修改 - 加入滿載告警
+### 修改 - 移除 unsafeBitCast 改用安全轉換
 
-每丟棄 50 條記錄一次 `sendlog("⚠️ RemoteLogBuffer 已滿")` 告警。
-
----
-
-## 新增 TTSService 監聽音頻服務丟失
-
-### 問題 - 音頻服務丟失未處理
-
-`TTSService` 只監聽 `mediaServicesWereResetNotification`，缺少
-`mediaServicesWereLostNotification`，無法在第一時間感知音頻服務中斷。
-
-### 修改 - 監聽音頻服務中斷事件
-
-新增 `AVAudioSession.mediaServicesWereLostNotification` 監聽，中斷時記錄日誌，
-後續由 `mediaServicesWereResetNotification` 自動恢復。
+在 `unsafeBitCast` 前增加 `CFArrayGetCount(attachments) > 0` 與 `rawPtr` nil 檢查，
+確保只有有效指標才進行轉換。
 
 ---
 
-## 修復首次 RTMP 連線容易失敗 (mediaMixer 時序競爭)
+## 修復 OutW/OutH 分開觸發造成 videoSize 維度不一致
 
-### 問題 - configureMediaMixer 早於 RTMP connect
+### 問題 - OutW/OutH 分開觸發造成維度不一致
 
-`broadcastStarted()` 中 `configureMediaMixer()` 在 RTMP connect **之前**就呼叫了
-`mediaMixer.startRunning()`，導致混音器立即開始產出 frame，但此時 RTMP 連線尚未建立。
-HaishinKit 的 TCP timeout 為 15 秒，在這段期間 frame 持續積累，可能造成第一個 connect
-超時失敗，進而仰賴重連機制才成功。
+`OutW` 與 `OutH` 是兩個獨立的 Darwin Notification，App 端先發 OutW、再發 OutH。
+Extension 端原本的處理方式：
 
-### 變更 (`SampleHandler.swift`)
+- **OutW** 只改 `videoSize.width`
+- **OutH** 只改 `videoSize.height`
 
-| 位置 | 修正前 | 修正後 |
+這導致 OutW 處理完、OutH 尚未到達的時間窗口中，`videoSize` 為 **(新寬度, 舊高度)** 的錯誤組合。
+若編碼器在此時讀取，會得到錯誤解析度（如 854x480 或 0x0）。
+
+### 修復 - OutW/OutH 一次原子套用
+
+`OutW`/`OutH` 現在會一次讀齊完整尺寸並原子套用，encoder 使用最終畫布尺寸，GPU rotator 使用中間處理尺寸。
+詳細 AD/OD 設計與 preset 對照見 [Docs/video-dimensions.md](video-dimensions.md)。
+
+---
+
+## 修復 Metal 管線中途失敗無自動重建
+
+### 問題 - Metal 管線中途失敗無自動重建
+
+`GPUVideoRotator` 的 `hasMetalResources` 一旦設為 `true` 就永久鎖定，
+`ensureMetalResources()` 永遠直接 return，不會重試初始化。
+若 GPU 中途重置或記憶體不足造成 texture/command buffer 建立失敗，
+所有後續幀靜默丟棄，沒有任何復原路徑。
+
+### 修復 - 加入失敗計數器自動重建
+
+`GPUVideoRotator.swift` 加入 `consecutiveMetalFailures` 計數器：
+
+- `getReusableOutput` 失敗 → 計數 +1
+- `makeTexture` / `makeCommandBuffer` 失敗 → 計數 +1
+- 幀成功送出 → 計數歸零
+- 連續失敗達 **5 次** → 自動呼叫 `cleanupResources()`，
+  重置 `hasMetalResources`、textureCache、pipeline
+- 下一幀的 `ensureMetalResources()` 會從頭重建整條 Metal 管線
+
+---
+
+## 修復 GPU 旋轉初始化失敗造成畫面無法送出 (0x0)
+
+### 問題描述 - 推流輸出 0x0，編碼器無幀
+
+推流畫面完全沒送出去，輸出為 0x0，編碼器無幀可編。
+
+### 根因
+
+`GPUVideoRotator.ensureMetalResources()` 在 `hasMetalResources` 設為 `true` 之後才進行實際資源初始化（textureCache、computePipeline）。若初始化失敗（如 GPU 暫時忙碌、shader 編譯失敗），函數回傳 `false` 但 flag 已永久鎖定為 `true`。後續所有幀的呼叫直接跳過初始化，使用 nil 資源，全部靜默丟棄。
+
+### 修復 - hasMetalResources 初始化成功才設 true
+
+- **`hasMetalResources`**：改為在所有資源初始化成功後才設為 `true`
+- **getReusableOutput 前**：加入 `dstW > 0 && dstH > 0` 保護，防止無效維度進入 GPU 管線
+
+---
+
+## Metal Shader 品質改造：float 精度 bicubic + unsharpen mask 後處理
+
+### 問題 - 大動態畫面邊緣模糊、細節丟失
+
+大動態畫面（快速運鏡、激烈運動）時，影像邊緣模糊、細節丟失。主要原因有二：
+
+1. **Bicubic 插值使用 `half` 精度** — Catmull-Rom 三次係數在 `half`（10-bit 尾數）下運算會產生約 0.25 grey level 的捨入誤差，尤其在係數累加（~0.01~2.0 動態範圍）時誤差更明顯
+2. **Interpolation 本身是平滑濾波** — 無論 bilinear 或 bicubic，旋轉+縮放後高頻細節會被自然衰減，缺少細節增強機制
+
+### 修改 - bicubic/unsharp 改 float 精度
+
+#### `rotateNV12.metal`
+
+**Bicubic 全精度化：**
+
+| 函數 | 修改前 | 修改後 |
 | ------ | -------- | -------- |
-| `configureMediaMixer()` | `addOutput` + **`startRunning`** | 只保留 `addOutput` |
-| `startRTMP()` 成功後 | (無) | 新增 `startRunning` |
-| `attemptReconnect()` 成功後 | `addOutput` 後無 `startRunning` | `addOutput` + **`startRunning`** |
+| `catmullRom1D` | `half4` → `half` | `float4` → `float` |
+| `catmullRom1D_uv` | `half2` → `half` | `float2` → `float` |
+| `bicubicSampleY_16tap` | `half4 rows[4]`，`half4 col` | `float4 rows[4]`，`float4 col`，`float(tex.sample(...))` |
+| `bicubicSampleUV_16tap` | `half2 rows[4]`，`half2 col[4]` | `float2 rows[4]`，`float2 col[4]`，`float2(tex.sample(...))` |
 
-重連路徑也補上 `startRunning()`，避免極端情況（首次連線從未成功）下 mixer 永遠不啟動。
+Texture read 維持 `half`（`r8Unorm` / `rg8Unorm` 本身就是 8-bit），但在進入算術運算前立即提升為 `float`，避免 interpolation 權重的累加誤差。
+
+**新增 `unsharpY` kernel：**
+
+```metal
+kernel void unsharpY(
+    texture2d<half, access::sample> srcY,   // 旋轉後的 Y
+    texture2d<half, access::write>  dstY,   // sharpen 後的 Y
+    constant float& amount,                 // 強度（0.0 ~ 0.5）
+    uint2 gid)
+```
+
+演算法：
+
+1. 3×3 Gaussian blur（未歸一化權重：中心 4、鄰邊 2、對角 1，總和 16）
+2. `sharpened = center + amount × (center − blurred)`
+3. Clamp 到 [0.0, 1.0] 後寫回
+
+使用 `coord::pixel` 模式的 nearest sampler，避免多餘的正規化計算。
+
+#### `GPUVideoRotator.swift`
+
+- 新增 `sharpenPipeline: MTLComputePipelineState?` — `buildComputePipeline()` 中新增 Pipeline C
+- 新增 `tempYTexture: MTLTexture?` — 避免同一個 command buffer 內讀寫衝突（rotation 寫 tempY → sharpen 讀 tempY 寫 dstY）
+- `ensureMetalResources()` 的 guard 納入 `sharpenPipeline == nil` 檢查
+- `cleanupResources()` 一併清理 sharpenPipeline + tempYTexture
+- `renderPlaneYUV()` 內部根據品質模式決定 sharpen 強度
+
+### 品質模式疊加
+
+| 模式 | Interpolation | Unsharp | 行為 |
+| ------ | ------------- | --------- | ------ |
+| `.live`（預設） | Bilinear | 0.15（輕度） | 低運算成本 + 基本細節補救 |
+| `.quality`（Bicubic） | Bicubic（float） | 0.25（中度） | 高精度插值 + 顯著細節增強 |
+
+### 效果 - float bicubic 消除捨入誤差
+
+- **float 精度的 bicubic**：消除係數捨入誤差，在平滑漸層區域有更乾淨的 interpolation
+- **Unsharpen mask**：在不改變 interpolation 方式的前提下，主動恢復被平滑的高頻邊緣
+- **兩 pass 獨立**：`unsharpY` 與 rotation kernel 分屬不同 compute encoder，中間依賴 implicit barrier 確保資料正確性
 
 ---
 
-## 修復主 App 記憶體持續增長問題
+## LogView 頁面切換卡死修復 + 設備信息頁增強
 
-### 問題 - 主 App 記憶體持續增長
+### 問題 - LogView 切走仍在背景處理 log
 
-經實機監測發現主 App RAM 用量持續穩定上升，即使無明顯操作也不回落。
+切換到「日誌」或「音量」頁面再切走時，LogView 的 Coordinator 仍持續在背景處理 log 訊息：
 
-### 根因分析 - 記憶體持續增長根因
+- `appendWorkItem` 持續排入 main queue
+- `shouldAutoScroll` 永不關閉（無 `onDisappear`）
+- 大量 UITextView 操作佔用主執行緒，造成 App 卡死
 
-全面審查所有 liveAPP target 中的集合類、緩衝區、定時器與單例，共找出以下記憶體洩漏或無界增長點：
+### 修改 - 補 onDisappear 停止背景處理
 
-| 嚴重性 | 問題 | 位置 | 說明 |
-| -------- | ------ | ------ | ------ |
-| 🔴 | `ConfigManager.layers` 無界增長 | `liveAPP/Config.swift:13` | 每次 `push()` 永久追加新層，無 `pop()` 或容量上限 |
-| 🔴 | `pendingFailedPayloads` 只增不減 | `liveAPP/Socket.swift:1111` | 斷線時暫存未送出 payload，但 `suspend()` / `releaseMemory()` / `stopInternal()` 皆未清理 |
-| 🟠 | `stopInternal()` 漏清多個字典 | `liveAPP/Socket.swift:1198` | 關閉 Socket 時未釋放 `sendQueues`、`sendingFlags`、`pendingFailedPayloads` |
-| 🟢 | `SocketServer` 缺 `deinit` | `liveAPP/Socket.swift` | listener 與 idleTimers 在物件釋放時無法自動取消 |
+#### LogView（`ContentView.swift`）
 
-經檢查後確認已受控（無須修正）：
+- 補上 `.onDisappear` → 設 `isVisible = false`、`shouldAutoScroll = false`、取消 pending work item
+- `appendMessages()` 開頭檢查 `isVisible`，不在背景時直接 return
+- 新增 `cancelPendingWork()` 方法清除排隊訊息
 
-- `RemoteLogBuffer.buffer` → 上限 300 條，drain 後移除，失敗不回插
-- `LogBuffer.buffer` → batch 100 條排出，排完 removeFirst
-- `messageLines` → 上限 10000 行，超過砍半至 5000
-- `PiPImageCache.inFlightTasks` → `finishDownload()` 正確清理
-- `Socket.receiveBuffers` → `removeConnection()` / `suspend()` 皆有清理
-- `LogModel.messages` → 上限 1000 條，超出移除最舊
-- `OrientationObserver` → 單例存活整段 app 生命週期，observer 無須移除
+#### 設備信息頁（`OtherView.swift`）
 
-### 修改 - 釋放暫存並修正洩漏
+重新設計 `DeviceView`，加入即時圖表與更多系統資訊：
 
-| 檔案 | 變更 |
+| 項目 | 內容 |
 | ------ | ------ |
-| `liveAPP/Config.swift` | `push()` 加入 `maxLayers=10`，超出時移除最舊層（保留第 0 層 default） |
-| `liveAPP/Socket.swift` | `suspend()` / `releaseMemory()` / `stopInternal()` 三處補上 `pendingFailedPayloads.removeAll()` |
-| `liveAPP/Socket.swift` | `stopInternal()` 補上 `sendQueues.removeAll()` + `sendingFlags.removeAll()` |
-| `liveAPP/Socket.swift` | 新增 `deinit`，取消 idleTimers 與 listener |
+| CPU 折線圖 | App CPU 使用率歷史 60 秒，搭配 SystemCPU 系統/用戶/閒置率 |
+| RAM 折線圖 | App 記憶體用量歷史 60 秒 |
+| 儲存空間 | 總容量 / 已使用 / 可用 GB |
+| 網路介面 | WiFi / Cellular / No Connection |
+| 系統資訊 | iOS 版本、開機時間、電量、電池狀態 |
+| GPU | Metal 裝置名稱 |
 
 ---
-
-## 新增 HEVC 編碼支援
-
-### 問題 - 僅支援 H.264
-
-先前僅支援 H.264 編碼，無法利用 HEVC（H.265）的更高壓縮率與 10-bit 色深支援。
-
-### 修改 - 新增 HEVC 編碼設定
-
-**`liveAPP/ContentView.swift`**
-
-- 新增 `HEVCProfile` 列舉（Main / Main10 / Main42210）
-- 編碼配置 UI 改為 segmented control 切換 H264 / HEVC，動態顯示對應的 profile picker
-
-**`ReplyKIT/Event.swift`**
-
-- `State` 新增 `videoCodec` 與 `hevcLevel` 欄位
-- `updateState()` 與 `init()` 同步載入
-
-**`ReplyKIT/SampleHandler.swift`**
-
-- `h264ProfileLevelString()` → `profileLevelString()`，新增 HEVC 分支（回傳 `kVTProfileLevel_HEVC_Main_AutoLevel` 等常數）
-- `applyAllVideoSettings()` 在 HEVC 模式自動將 `bitRateMode` 強制設為 `.variable`（HEVC 建議搭配 VBR）
-
-#### Socket
-
-- `liveAPP/Socket.swift` / `ReplyKIT/Socket.swift` 新增 `videoCodec` 與 `hevcLevel` 欄位傳遞
-
-### 行為
-
-| 編碼格式 | profileLevel | bitRateMode |
-| --------- | ------------- | ------------- |
-| H264 | 依使用者選擇（AutoLevel 或自訂 Level） | 使用者設定 |
-| HEVC | `kVTProfileLevel_HEVC_Main_AutoLevel` 等（AutoLevel，由系統決定） | 強制 `.variable` |
-
----
-
-## 擴充 TTS 佇列滿載行為控制選項
-
-### 問題 - TTS 佇列滿載無選項
-
-`TTSQueueOverflowAction` 僅有 `.skipNew`（跳過新訊息）與 `.stopOld`（清空佇列並朗讀新訊息）兩種行為，缺乏「清空待朗讀但不讀新訊息」的選項。
-
-### 修改 - 新增清空待朗讀選項
-
-**`liveAPP/TTSService.swift`**
-
-- `TTSQueueOverflowAction` 新增 `.clearPending = 2`
-- `speak()` 新增 `.clearPending` 分支：stopSpeaking + 重置計數 + 釋放音訊 + return（不朗讀新訊息）
-
-**`liveAPP/TTSSettingsView.swift`**
-
-- 佇列滿載 Picker 新增第三選項「清空待朗讀」
-
-### 行為對照
-
-| 選項 | 佇列滿時行為 |
-| ------ | ------------- |
-| 跳過新訊息（skipNew） | 直接丟棄新訊息 |
-| 停止舊的，讀新的先（stopOld） | 停止目前朗讀，清空佇列，朗讀新訊息 |
-| 清空待朗讀（clearPending） | 停止目前朗讀，清空佇列，不讀新訊息 |

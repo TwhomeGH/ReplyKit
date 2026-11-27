@@ -57,6 +57,9 @@
   .pill { border: 1px solid var(--border); background: var(--panel-2);
           color: var(--muted); border-radius: 999px; padding: 5px 10px; cursor: pointer; }
   .pill.active { border-color: var(--accent); color: var(--accent); }
+  .range { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+  .range input { background: var(--panel-2); color: var(--text);
+                 border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; }
   .status { color: var(--muted); font-size: 12px; margin: 8px 0; }
   table { width: 100%; border-collapse: collapse; table-layout: fixed; }
   th, td { padding: 8px 9px; border-bottom: 1px solid var(--border);
@@ -67,6 +70,11 @@
   td.cat { width: 170px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
            font-size: 12px; color: var(--accent); overflow-wrap: anywhere; }
   td.msg { overflow-wrap: anywhere; }
+  mark { background: #f6d365; color: #111318; padding: 0 1px; border-radius: 3px; }
+  tr.context { background: #141821; }
+  tr.context td { color: var(--muted); }
+  tr.context td.cat { color: #7f8b9e; }
+  .session-match { color: var(--muted); font-size: 11px; margin-top: 4px; }
   tr.error td.msg { color: #ffc2c2; }
   tr.warn td.msg { color: #ffe2a3; }
   .fields { margin-top: 4px; }
@@ -114,6 +122,29 @@
         <option value="info">一般</option>
       </select>
       <select id="session" title="Session"><option value="">全部 Session</option></select>
+      <select id="range" title="時間範圍">
+        <option value="all">全部時間</option>
+        <option value="15">最近 15 分鐘</option>
+        <option value="60">最近 1 小時</option>
+        <option value="360">最近 6 小時</option>
+        <option value="1440">最近 24 小時</option>
+        <option value="custom">自訂區間…</option>
+      </select>
+      <span class="range" id="customRange" hidden>
+        <input id="from" type="datetime-local" aria-label="開始時間">
+        <span>～</span>
+        <input id="to" type="datetime-local" aria-label="結束時間">
+      </span>
+      <select id="order" title="時間排序">
+        <option value="asc">時間：舊→新</option>
+        <option value="desc">時間：新→舊</option>
+      </select>
+      <select id="context" title="鄰近筆數">
+        <option value="0">不顯示鄰近</option>
+        <option value="2">前後 2 筆</option>
+        <option value="5">前後 5 筆</option>
+        <option value="10">前後 10 筆</option>
+      </select>
       <button class="pill active" id="reset" type="button">清除篩選</button>
     </div>
     </div>
@@ -129,14 +160,59 @@
   </main>
 </div>
 <script>
-const state = { category: "", q: "", severity: "", session: "", offset: 0, limit: 300, total: 0 };
+const state = { category: "", q: "", severity: "", session: "", context: 0, order: "asc", range: "all", from: 0, to: 0, latest: 0, offset: 0, limit: 300, total: 0 };
 const $ = (id) => document.getElementById(id);
 let searchTimer = 0;
+
+function formatTime(ms) {
+  if (!ms) return "—";
+  return new Date(ms).toLocaleString("zh-TW", {
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false
+  });
+}
+
+function rangeLabel() {
+  if (state.from && state.to) return `${formatTime(state.from)} ～ ${formatTime(state.to)}`;
+  if (state.from) return `${formatTime(state.from)} 之後`;
+  if (state.to) return `${formatTime(state.to)} 之前`;
+  return "全部時間";
+}
 
 function text(tag, value) {
   const el = document.createElement(tag);
   el.textContent = value == null ? "" : String(value);
   return el;
+}
+
+// 只用 DOM text node 建立 mark，不把日誌內容塞進 innerHTML。
+function appendHighlighted(parent, value, query) {
+  const source = value == null ? "" : String(value);
+  if (!query) {
+    parent.appendChild(document.createTextNode(source));
+    return;
+  }
+  const lower = source.toLocaleLowerCase();
+  const needle = query.toLocaleLowerCase();
+  let start = 0;
+  let index = lower.indexOf(needle, start);
+  if (index < 0) {
+    parent.appendChild(document.createTextNode(source));
+    return;
+  }
+  while (index >= 0) {
+    if (index > start) {
+      parent.appendChild(document.createTextNode(source.slice(start, index)));
+    }
+    const mark = document.createElement("mark");
+    mark.textContent = source.slice(index, index + needle.length);
+    parent.appendChild(mark);
+    start = index + needle.length;
+    index = lower.indexOf(needle, start);
+  }
+  if (start < source.length) {
+    parent.appendChild(document.createTextNode(source.slice(start)));
+  }
 }
 
 function card(label, value, color) {
@@ -151,6 +227,7 @@ function card(label, value, color) {
 }
 
 function renderSummary(s) {
+  state.latest = Number(s.latest) || 0;
   $("fileMeta").textContent = `${s.file} · ${s.range} · ${s.lines} 行`;
   const cards = $("cards");
   cards.replaceChildren(
@@ -197,21 +274,50 @@ function renderRows(data, append) {
   const body = $("rows");
   if (!append) body.replaceChildren();
   for (const line of data.lines) {
+    const existing = body.querySelector(`tr[data-n="${line.n}"]`);
+    if (existing) {
+      // 下一頁的 context 可能先出現過；真正符合篩選時把它升級成 highlight row。
+      if (line.isMatch) existing.classList.remove("context");
+      continue;
+    }
     const tr = document.createElement("tr");
-    tr.className = line.severity;
+    tr.dataset.n = String(line.n);
+    tr.className = line.severity + (line.isMatch === false ? " context" : "");
     const time = text("td", line.time);
     time.className = "time";
-    const cat = text("td", line.category);
+    const cat = document.createElement("td");
     cat.className = "cat";
+    appendHighlighted(cat, line.category, state.q);
     const msg = document.createElement("td");
     msg.className = "msg";
-    msg.appendChild(text("div", line.message));
-    if (line.fields && Object.keys(line.fields).length) {
+    const message = document.createElement("div");
+    appendHighlighted(message, line.message, state.q);
+    msg.appendChild(message);
+    const fields = Object.entries(line.fields || {});
+    const query = state.q.toLocaleLowerCase();
+    const messageMatch = query && line.message.toLocaleLowerCase().includes(query);
+    const categoryMatch = query && line.category.toLocaleLowerCase().includes(query);
+    const sessionMatch = query && line.session
+      && line.session.toLocaleLowerCase().includes(query);
+    const fieldMatch = query && fields.some(([key, value]) =>
+      `${key}=${value}`.toLocaleLowerCase().includes(query));
+    const sessionOnly = sessionMatch && !messageMatch && !categoryMatch && !fieldMatch;
+    if (sessionOnly) {
+      // session 也是後端搜尋範圍；沒有其他可見命中時把它顯示出來，
+      // 避免出現「有結果但看不到哪個字被對上」。
+      fields.unshift(["session", line.session]);
+    }
+    if (fields.length) {
       const details = document.createElement("details");
       details.className = "fields";
-      details.appendChild(text("summary", `${Object.keys(line.fields).length} 個欄位`));
-      const pre = text("pre", Object.entries(line.fields)
-        .map(([k, v]) => `${k} = ${v}`).join("\n"));
+      // 訊息本身已高亮時不自動展開；只有欄位或 session 單獨命中才展開。
+      details.open = Boolean(fieldMatch || sessionOnly) && !messageMatch;
+      details.appendChild(text("summary", `${fields.length} 個欄位`));
+      const pre = document.createElement("pre");
+      fields.forEach(([key, value], index) => {
+        if (index > 0) pre.appendChild(document.createTextNode("\n"));
+        appendHighlighted(pre, `${key} = ${value}`, state.q);
+      });
       details.appendChild(pre);
       msg.appendChild(details);
     }
@@ -220,7 +326,7 @@ function renderRows(data, append) {
   }
   $("empty").hidden = data.lines.length !== 0;
   $("more").hidden = !data.hasMore;
-  $("more").textContent = `載入更多（目前 ${data.offset + data.lines.length} / ${data.total}）`;
+  $("more").textContent = `載入更多（目前 ${data.offset + data.matchCount} / ${data.total}）`;
   syncActiveCategory();
 }
 
@@ -232,7 +338,9 @@ async function load(append = false) {
   }
   const params = new URLSearchParams({
     category: state.category, q: state.q, severity: state.severity,
-    session: state.session, offset: String(state.offset), limit: String(state.limit)
+    session: state.session, context: String(state.context),
+    order: state.order, from: String(state.from), to: String(state.to),
+    offset: String(state.offset), limit: String(state.limit)
   });
   const response = await fetch("/api/lines?" + params);
   if (!response.ok) {
@@ -242,9 +350,12 @@ async function load(append = false) {
   const data = await response.json();
   state.total = data.total;
   renderRows(data, append);
-  $("status").textContent = `${data.total} 筆符合 · 顯示 ${data.offset + data.lines.length} 筆`
-    + (state.category ? ` · 分類 ${state.category}` : "");
-  if (data.hasMore) state.offset = data.offset + data.lines.length;
+  const contextNote = state.context ? ` · 含前後 ${state.context} 列` : "";
+  const orderNote = state.order === "desc" ? "新→舊" : "舊→新";
+  $("status").textContent = `${data.total} 筆符合 · 顯示 ${data.offset + data.matchCount} 筆${contextNote} · 目前 ${$("rows").children.length} 列`
+    + (state.category ? ` · 分類 ${state.category}` : "")
+    + ` · 時間 ${rangeLabel()} · 排序 ${orderNote}`;
+  if (data.hasMore) state.offset = data.offset + data.matchCount;
 }
 
 function scheduleSearch() {
@@ -252,13 +363,40 @@ function scheduleSearch() {
   searchTimer = setTimeout(() => { state.q = $("search").value.trim(); load(); }, 220);
 }
 
+function applyCustomRange() {
+  const from = $("from").value ? new Date($("from").value).getTime() : 0;
+  const to = $("to").value ? new Date($("to").value).getTime() : 0;
+  state.from = Number.isFinite(from) ? from : 0;
+  state.to = Number.isFinite(to) ? to : 0;
+  load();
+}
+
 $("search").addEventListener("input", scheduleSearch);
 $("severity").addEventListener("change", () => { state.severity = $("severity").value; load(); });
 $("session").addEventListener("change", () => { state.session = $("session").value; load(); });
+$("context").addEventListener("change", () => { state.context = Number($("context").value) || 0; load(); });
+$("order").addEventListener("change", () => { state.order = $("order").value; load(); });
+$("range").addEventListener("change", () => {
+  const value = $("range").value;
+  state.range = value;
+  $("customRange").hidden = value !== "custom";
+  if (value === "custom") {
+    applyCustomRange();
+    return;
+  }
+  state.from = value === "all" ? 0 : (state.latest || Date.now()) - Number(value) * 60000;
+  state.to = 0;
+  load();
+});
+$("from").addEventListener("change", applyCustomRange);
+$("to").addEventListener("change", applyCustomRange);
 $("more").addEventListener("click", () => load(true));
 $("reset").addEventListener("click", () => {
-  state.category = ""; state.q = ""; state.severity = ""; state.session = ""; state.offset = 0;
-  $("search").value = ""; $("severity").value = ""; $("session").value = "";
+  state.category = ""; state.q = ""; state.severity = ""; state.session = ""; state.context = 0;
+  state.order = "asc"; state.range = "all"; state.from = 0; state.to = 0; state.offset = 0;
+  $("search").value = ""; $("severity").value = ""; $("session").value = ""; $("context").value = "0";
+  $("order").value = "asc"; $("range").value = "all";
+  $("customRange").hidden = true; $("from").value = ""; $("to").value = "";
   load();
 });
 

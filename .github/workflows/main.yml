@@ -73,6 +73,8 @@ jobs:
             exit 1
           fi
           echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "BUILD_INFO_REF=$TAG" >> "$GITHUB_ENV"
+          echo "BUILD_INFO_CHANNEL=release" >> "$GITHUB_ENV"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "Using tag: $TAG"
 
