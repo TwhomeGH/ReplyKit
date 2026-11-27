@@ -73,12 +73,36 @@ enum LogDiagnosticExport {
         var selected = false
         var lines = 0
         var undated = 0
+        var archives = 0
+        var gaps = 0
+        var maxGap: TimeInterval = 0
+        var firstSelected: Date?
+        var lastSelected: Date?
+        var lastSelectedTimestamp: Date?
+        let gapThreshold: TimeInterval = 60
         func consume(_ data: Data) throws {
             let line = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .newlines)
-            if line == "[ArchiveBoundary]" { selected = false; return }
+            if line.hasPrefix("[ArchiveBoundary]") {
+                archives += 1
+                selected = false
+                return
+            }
             if line.hasPrefix("[Retention]") { try write(line + "\n"); return }
             if let timestamp = date(in: line, zone: zone) {
                 selected = timestamp >= start && timestamp <= end
+                if selected, let previous = lastSelectedTimestamp {
+                    let interval = timestamp.timeIntervalSince(previous)
+                    if interval >= gapThreshold {
+                        gaps += 1
+                        maxGap = max(maxGap, interval)
+                        try write("[CoverageGap] previous=\(formatter.string(from: previous)) next=\(formatter.string(from: timestamp)) seconds=\(String(format: "%.1f", interval)) kind=noRecords\n")
+                    }
+                }
+                if selected {
+                    if firstSelected == nil { firstSelected = timestamp }
+                    lastSelected = timestamp
+                    lastSelectedTimestamp = timestamp
+                }
             } else if line.first?.isNumber == true && line.contains(":") {
                 selected = false
                 undated += 1
@@ -97,7 +121,10 @@ enum LogDiagnosticExport {
             }
         }
         if !pending.isEmpty { try consume(pending) }
-        try write("\n[匯出摘要] 選取 \(lines) 行；疑似日期但無法解析 \(undated) 行。無日期續行依前一筆時間歸屬。\n")
+        let firstText = firstSelected.map { formatter.string(from: $0) } ?? "none"
+        let lastText = lastSelected.map { formatter.string(from: $0) } ?? "none"
+        try write("\n[Coverage] archives=\(archives) first=\(firstText) last=\(lastText) gapsOver60s=\(gaps) maxGapSeconds=\(String(format: "%.1f", maxGap)) note=noRecordsMayBeIdleOrBackground\n")
+        try write("[匯出摘要] 選取 \(lines) 行；疑似日期但無法解析 \(undated) 行。無日期續行依前一筆時間歸屬。\n")
         try writer.synchronize()
         return output
     }
@@ -120,6 +147,9 @@ struct LogDiagnosticExportView: View {
                     Text("本次啟動到現在").tag(3)
                     Text("上次前景到背景").tag(4)
                     Text("本次前景到現在").tag(5)
+                    Text("上次前景到現在").tag(6)
+                    Text("本次推流到現在").tag(7)
+                    Text("上次推流到現在").tag(8)
                     Text("最近一小時").tag(1)
                     Text("今天").tag(0)
                     Text("自訂範圍").tag(2)
@@ -156,15 +186,52 @@ struct LogDiagnosticExportView: View {
                             .foregroundStyle(.orange)
                     }
                 }
+                if mode == 6 {
+                    if let start = AppSession.lastForegroundInterval?.start {
+                        Text("上次前景 active 起點：" + start.formatted(date: .abbreviated, time: .standard))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("尚無上次前景 active 區間。")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                }
+                if mode == 7 {
+                    if let start = AppSession.currentStreamStartedAt {
+                        Text("本次推流起點：" + start.formatted(date: .abbreviated, time: .standard))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("目前沒有進行中的推流。")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                }
+                if mode == 8 {
+                    if let interval = AppSession.lastStreamInterval {
+                        Text("上次推流：" + interval.start.formatted(date: .abbreviated, time: .standard)
+                            + " ～ " + interval.end.formatted(date: .abbreviated, time: .standard))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("尚無已完成的推流區間。")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                }
                 Text("時區：" + TimeZone.current.identifier)
-                Text("保留範圍內所有紀錄及多行續文。本次啟動以 App 啟動標記為起點；上次前景到背景以前景 active 起點到進背景為止；本次前景到現在以目前 active 起點到按下產生時為準；今天與最近一小時以按下產生時為準。原始日誌不變。")
+                Text("保留範圍內所有紀錄及多行續文。本次啟動以 App 啟動標記為起點；上次前景到背景以前景 active 起點到進背景為止；本次／上次前景到現在以前景 active 起點到按下產生時；本次／上次推流到現在以推流起點到按下產生時；今天與最近一小時以按下產生時為準。原始日誌不變；背景或閒置期間沒有日誌時，匯出檔會標示 CoverageGap，不代表記錄被丟棄。")
                     .font(.caption)
             }.disabled(busy)
             Section {
                 Button("產生診斷檔") { export() }
                     .disabled(busy || (mode == 2 && start > end)
                         || (mode == 4 && AppSession.lastForegroundInterval == nil)
-                        || (mode == 5 && AppSession.currentForegroundStartedAt == nil))
+                        || (mode == 5 && AppSession.currentForegroundStartedAt == nil)
+                        || (mode == 6 && AppSession.lastForegroundInterval == nil)
+                        || (mode == 7 && AppSession.currentStreamStartedAt == nil)
+                        || (mode == 8 && AppSession.lastStreamInterval == nil))
                 if busy { ProgressView("正在篩選日誌…"); Button("取消") { work?.cancel() } }
                 if let error { Text(error).foregroundStyle(.red) }
                 if let result {
@@ -182,6 +249,7 @@ struct LogDiagnosticExportView: View {
     private func export() {
         let now = Date(), zone = TimeZone.current
         let lastForeground = AppSession.lastForegroundInterval
+        let lastStream = AppSession.lastStreamInterval
         let upper = mode == 2 ? end : (mode == 4
             ? (lastForeground?.end.addingTimeInterval(1) ?? now) : now)
         let lower: Date
@@ -198,6 +266,14 @@ struct LogDiagnosticExportView: View {
             lower = (lastForeground?.start ?? AppSession.launchDate).addingTimeInterval(-1)
         case 5:
             lower = (AppSession.currentForegroundStartedAt ?? AppSession.launchDate).addingTimeInterval(-1)
+        case 6:
+            // 上次前景起點到現在，保留中間背景期間的空白與恢復紀錄。
+            lower = (lastForeground?.start ?? AppSession.launchDate).addingTimeInterval(-1)
+        case 7:
+            lower = (AppSession.currentStreamStartedAt ?? AppSession.launchDate).addingTimeInterval(-1)
+        case 8:
+            // 上次推流起點到現在，而不是只到停播；用來追停播後仍出現的收尾事件。
+            lower = (lastStream?.start ?? AppSession.launchDate).addingTimeInterval(-1)
         default:
             lower = start
         }

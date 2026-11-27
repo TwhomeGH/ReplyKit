@@ -47,4 +47,27 @@ struct LogDiagnosticExportTests {
         #expect(!text.contains("future continuation"))
         #expect(try String(contentsOf: input, encoding: .utf8) == original)
     }
+
+    @Test func exportMarksCoverageGapsExplicitly() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let input = folder.appendingPathComponent("source.snapshot")
+        try Data("""
+        2026/11/3 上午1:00:00: liveApp:first
+        [ArchiveBoundary] main.log
+        2026/11/3 上午1:05:00: liveApp:after-idle
+        2026/11/3 上午1:07:00: liveApp:next
+        """.utf8).write(to: input)
+        let zone = try #require(TimeZone(identifier: "Asia/Taipei"))
+        let start = try #require(LogDiagnosticExport.date(in: "2026/11/3 上午1:00:00: x", zone: zone))
+        let output = try LogDiagnosticExport.extract(snapshot: input, start: start,
+            end: start.addingTimeInterval(600), zone: zone)
+        let text = try String(contentsOf: output, encoding: .utf8)
+        #expect(text.contains("[CoverageGap]"))
+        #expect(text.contains("kind=noRecords"))
+        #expect(text.contains("archives=1"))
+        #expect(text.contains("gapsOver60s=2"))
+        #expect(text.contains("maxGapSeconds=300.0"))
+    }
 }

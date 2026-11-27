@@ -1,5 +1,13 @@
 # 變更歷史
 
+## 2026.11.27 診斷匯出：場次範圍與 CoverageGap（GMT+8）
+
+- 匯出新增「上次前景到現在」「本次推流到現在」「上次推流到現在」；推流區間由 `AppSession.markStreamStart()`／`markStreamEnd()` 記錄，停播後仍可匯出「上次推流到現在」。
+- `LogDiagnosticExport` 在範圍內兩個有時間戳紀錄間隔 ≥60 秒時寫入 `[CoverageGap] previous=... next=... seconds=... kind=noRecords`，並在檔尾寫 `[Coverage] archives=... first=... last=... gapsOver60s=... maxGapSeconds=...`。
+- `[ArchiveBoundary]` 改帶來源檔名（僅內部快照使用，不輸出到匯出檔）；`archives` 可看出是否跨封存。
+- 缺口只表示該區間沒有日誌，可能是背景、閒置或系統暫停，不宣稱資料一定被丟棄；用來避免把 8 小時空白誤判成連續事件。
+- 新增 `LogDiagnosticExportTests` 的 CoverageGap／archive 案例；Swift parse 通過，Apple CI 待驗證。
+
 ## 2026.11.27 診斷檢視器：時間範圍、排序與時間解析（GMT+8）
 
 - 新增「全部時間／最近 15 分鐘／1 小時／6 小時／24 小時／自訂區間」；靜態診斷檔以檔案最新時間為錨點，不用瀏覽器現在時間。

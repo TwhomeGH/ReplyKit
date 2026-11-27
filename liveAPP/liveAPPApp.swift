@@ -216,7 +216,7 @@ final class AppLogPersister: @unchecked Sendable {
                         }
                     }
                     for source in sources {
-                        try output.write(contentsOf: Data("\n[ArchiveBoundary]\n".utf8))
+                        try output.write(contentsOf: Data("\n[ArchiveBoundary] \(source.lastPathComponent)\n".utf8))
                         let input = try FileHandle(forReadingFrom: source)
                         defer { try? input.close() }
                         var remaining = try input.seekToEnd()

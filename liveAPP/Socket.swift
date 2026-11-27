@@ -1038,12 +1038,14 @@ class SocketServer:ObservableObject, @unchecked Sendable {
         PIPService.shared.markOverlayDirty()
 
         if isLive {
+            AppSession.markStreamStart()
             Task { @MainActor in
                 // 全局偏好關閉時連管理器啟動入口也不呼叫；管理器內仍保留防線。
                 guard LiveActivitySettings.enabled else { return }
                 StreamActivityManager.shared.startStreamActivity()
             }
         } else {
+            AppSession.markStreamEnd()
             Task { @MainActor in
                 StreamActivityManager.shared.endStreamActivity(reason: activityEndReason ?? "串流狀態已結束")
             }

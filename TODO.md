@@ -41,6 +41,7 @@
 - [x] 新增 `Scripts/diagnostic_viewer.py`：把 `diagnostic-*.txt` 依分類／session／嚴重度拆開，支援搜尋與欄位展開；指定 port 被占用時自動往後找。
 - [ ] 待實機驗證：長場次停止後分享的 JSON 應有完整 sampleCount；若只看到 `complete=false` 的檔案，先確認它是進行中 checkpoint，不是最終報告。
 - [ ] 待實機驗證：診斷檢視器在 Windows PowerShell 與檔案路徑含空白／中文時可啟動。
+- [ ] **診斷匯出缺口與場次範圍**：新增「上次前景到現在」「本次／上次推流到現在」，並在匯出檔加入 `[CoverageGap]`／`[Coverage]`，標示超過 60 秒的無紀錄區間。以 `diagnostic-20261127-0704-1543.txt` 為例，8.5 小時内有 5 段 ≥60 秒缺口（合計約 8.2 小時），目前只能靠人工看時間跳躍；需用新版本匯出驗證 `CoverageGap` 數量與推流邊界相符。
 
 ## 2026-11-09 核對摘要
 
