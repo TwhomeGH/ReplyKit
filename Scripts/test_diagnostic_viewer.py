@@ -1,5 +1,6 @@
 import sys
 import unittest
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -60,6 +61,35 @@ class DiagnosticViewerTests(unittest.TestCase):
         self.assertEqual(summary["warn"], 1)
         self.assertEqual(summary["sessions"], ["C3EE"])
         self.assertEqual(summary["categories"][0]["name"], "AVLag")
+        self.assertIsNotNone(summary["latest"])
+        self.assertEqual(summary["latestTime"], "2026/11/13 中午12:29:32")
+
+    def test_chinese_day_periods_parse_to_expected_hour(self):
+        cases = {
+            "2026/11/26 晚上9:35:11": 21,
+            "2026/11/26 清晨5:59:43": 5,
+            "2026/11/26 中午12:00:00": 12,
+            "2026/11/26 下午5:00:00": 17,
+            "2026/11/26 凌晨12:00:00": 0,
+        }
+        for text, expected in cases.items():
+            epoch_ms = viewer.parse_local_timestamp(text)
+            self.assertIsNotNone(epoch_ms, text)
+            self.assertEqual(
+                datetime.fromtimestamp(epoch_ms / 1000).hour,
+                expected,
+                text,
+            )
+
+    def test_time_range_excludes_lines_without_timestamp(self):
+        lines = self.parse([
+            "2026/11/26 晚上9:00:00: liveApp:[A] first",
+            "2026/11/26 晚上9:30:00: liveApp:[A] second",
+            "liveApp:[A] no timestamp",
+        ])
+        start = viewer.parse_local_timestamp("2026/11/26 晚上9:15:00")
+        matched = viewer.filter_indices(lines, from_ms=start)
+        self.assertEqual(matched, [1])
 
     def fake_lines(self, count=6):
         return [viewer.LogLine(i + 1, "t", "Other", "info", None, f"m{i}")
@@ -81,6 +111,11 @@ class DiagnosticViewerTests(unittest.TestCase):
         page = viewer.page_with_context(lines, [1, 4], 0, 1, 0)
         self.assertEqual([line.number for line, _ in page], [2])
         self.assertTrue(page[0][1])
+
+    def test_context_respects_descending_order(self):
+        lines = self.fake_lines()
+        page = viewer.page_with_context(lines, [1, 2], 0, 1, 1, "desc")
+        self.assertEqual([line.number for line, _ in page], [3, 2, 1])
 
 
 if __name__ == "__main__":

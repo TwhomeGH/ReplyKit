@@ -19,6 +19,7 @@ import sys
 import webbrowser
 from collections import Counter
 from dataclasses import dataclass, field
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -28,6 +29,11 @@ TEMPLATE = ROOT / "diagnostic_viewer.html"
 DEFAULT_PORT = 8766
 
 TIMESTAMP = re.compile(r"^(\d{4}/\d{2}/\d{2}\s+\S*\d{1,2}:\d{2}:\d{2}):\s*(.*)$")
+LOCAL_TIMESTAMP = re.compile(
+    r"^(\d{4})/(\d{1,2})/(\d{1,2})\s+"
+    r"(?:(凌晨|清晨|早晨|早上|上午|中午|下午|傍晚|晚上|深夜)\s*)?"
+    r"(\d{1,2}):(\d{2}):(\d{2})$"
+)
 TAG = re.compile(r"\[([^\[\]]+)\]")
 SESSION = re.compile(r"\bsession=([0-9A-Fa-f-]{8,}|[A-Za-z0-9_.-]+)")
 FIELD = re.compile(r"\b([A-Za-z_][A-Za-z0-9_.-]*)=([^\s]+)")
@@ -51,6 +57,7 @@ class LogLine:
     session: str | None
     message: str
     fields: dict[str, str] = field(default_factory=dict)
+    epoch_ms: int | None = None
 
     def as_dict(self) -> dict:
         return {
@@ -61,6 +68,7 @@ class LogLine:
             "session": self.session,
             "message": self.message,
             "fields": self.fields,
+            "epoch": self.epoch_ms,
         }
 
 
@@ -85,6 +93,37 @@ def classify_severity(message: str) -> str:
     if WARN_WORDS.search(lowered):
         return "warn"
     return "info"
+
+
+def parse_local_timestamp(text: str) -> int | None:
+    """把日誌的本地時間字串轉成 epoch 毫秒。
+
+    日誌使用 `2026/11/26 晚上9:35:11` 這類中文時段，不是 ISO 8601；
+    直接丟給 `datetime.fromisoformat` 會失敗，時間範圍篩選也會靜默失效。
+    """
+    match = LOCAL_TIMESTAMP.match(text.strip())
+    if not match:
+        return None
+    year, month, day, period, hour_text, minute_text, second_text = match.groups()
+    hour = int(hour_text)
+    if period in {"下午", "傍晚"} and hour < 12:
+        hour += 12
+    elif period in {"晚上", "深夜"}:
+        if hour == 12:
+            hour = 0
+        elif hour < 12:
+            hour += 12
+    elif period == "中午" and hour < 11:
+        hour += 12
+    elif period in {"凌晨", "清晨", "早晨", "早上", "上午"} and hour == 12:
+        hour = 0
+    try:
+        return int(datetime(
+            int(year), int(month), int(day),
+            hour, int(minute_text), int(second_text),
+        ).timestamp() * 1000)
+    except (ValueError, OSError):
+        return None
 
 
 def parse_line(number: int, raw: str) -> LogLine:
@@ -120,6 +159,7 @@ def parse_line(number: int, raw: str) -> LogLine:
         session=session,
         message=body,
         fields=fields,
+        epoch_ms=parse_local_timestamp(time_text),
     )
 
 
@@ -132,12 +172,21 @@ def summarize(path: Path, lines: list[LogLine]) -> dict:
     categories = Counter(line.category for line in lines)
     sessions = sorted({line.session for line in lines if line.session})
     times = [line.time for line in lines if line.time]
+    epochs = [line.epoch_ms for line in lines if line.epoch_ms is not None]
+    latest_line = max(
+        (line for line in lines if line.epoch_ms is not None),
+        key=lambda line: line.epoch_ms or 0,
+        default=None,
+    )
     warnings = sum(1 for line in lines if line.severity == "warn")
     errors = sum(1 for line in lines if line.severity == "error")
     return {
         "file": str(path),
         "range": f"{times[0]} ～ {times[-1]}" if times else "無時間戳",
         "lines": len(lines),
+        "earliest": min(epochs) if epochs else None,
+        "latest": max(epochs) if epochs else None,
+        "latestTime": latest_line.time if latest_line else None,
         "categories": [
             {"name": name, "count": count}
             for name, count in categories.most_common()
@@ -146,6 +195,34 @@ def summarize(path: Path, lines: list[LogLine]) -> dict:
         "warn": warnings,
         "error": errors,
     }
+
+
+def filter_indices(
+    lines: list[LogLine], *, category: str = "", severity: str = "",
+    session: str = "", search: str = "", from_ms: int = 0, to_ms: int = 0,
+) -> list[int]:
+    """依可見篩選與時間範圍回傳符合的原始索引。"""
+    result: list[int] = []
+    for index, line in enumerate(lines):
+        if category and line.category != category:
+            continue
+        if severity and line.severity != severity:
+            continue
+        if session and line.session != session:
+            continue
+        if from_ms and (line.epoch_ms is None or line.epoch_ms < from_ms):
+            continue
+        if to_ms and (line.epoch_ms is None or line.epoch_ms > to_ms):
+            continue
+        if search:
+            haystack = " ".join(
+                [line.message, line.category, line.session or ""]
+                + [f"{key}={value}" for key, value in line.fields.items()]
+            ).lower()
+            if search not in haystack:
+                continue
+        result.append(index)
+    return result
 
 
 class ViewerHandler(BaseHTTPRequestHandler):
@@ -203,38 +280,40 @@ class ViewerHandler(BaseHTTPRequestHandler):
         severity = first("severity")
         session = first("session")
         search = first("q").lower()
+        order = "desc" if first("order") == "desc" else "asc"
         try:
             offset = max(0, int(first("offset") or "0"))
             limit = min(1000, max(1, int(first("limit") or "300")))
             context = min(10, max(0, int(first("context") or "0")))
+            from_ms = max(0, int(first("from") or "0"))
+            to_ms = max(0, int(first("to") or "0"))
         except ValueError:
-            self.send_json({"error": "offset/limit/context 必須是整數"}, 400)
+            self.send_json({"error": "offset/limit/context/from/to 必須是整數"}, 400)
             return
 
-        def matches(line: LogLine) -> bool:
-            if category and line.category != category:
-                return False
-            if severity and line.severity != severity:
-                return False
-            if session and line.session != session:
-                return False
-            if search:
-                haystack = " ".join(
-                    [line.message, line.category, line.session or ""]
-                    + [f"{key}={value}" for key, value in line.fields.items()]
-                ).lower()
-                if search not in haystack:
-                    return False
-            return True
-
-        matched_indices = [index for index, line in enumerate(self.lines) if matches(line)]
+        matched_indices = filter_indices(
+            self.lines,
+            category=category,
+            severity=severity,
+            session=session,
+            search=search,
+            from_ms=from_ms,
+            to_ms=to_ms,
+        )
+        if order == "desc":
+            matched_indices.reverse()
         page_matches = matched_indices[offset:offset + limit]
-        page = page_with_context(self.lines, matched_indices, offset, limit, context)
+        page = page_with_context(
+            self.lines, matched_indices, offset, limit, context, order
+        )
         self.send_json({
             "total": len(matched_indices),
             "offset": offset,
             "limit": limit,
             "context": context,
+            "order": order,
+            "from": from_ms,
+            "to": to_ms,
             "matchCount": len(page_matches),
             "lineCount": len(page),
             "hasMore": offset + len(page_matches) < len(matched_indices),
@@ -243,7 +322,8 @@ class ViewerHandler(BaseHTTPRequestHandler):
 
 
 def page_with_context(lines: list[LogLine], matched: list[int],
-                      offset: int, limit: int, context: int) -> list[tuple[LogLine, bool]]:
+                      offset: int, limit: int, context: int,
+                      order: str = "asc") -> list[tuple[LogLine, bool]]:
     """回傳本頁符合行與其前後鄰近行；is_match 為 True 表示真正符合篩選。"""
     page = matched[offset:offset + limit]
     wanted = set(page)
@@ -252,7 +332,8 @@ def page_with_context(lines: list[LogLine], matched: list[int],
         start = max(0, index - context)
         end = min(len(lines), index + context + 1)
         indices.update(range(start, end))
-    return [(lines[index], index in wanted) for index in sorted(indices)]
+    ordered = sorted(indices, reverse=(order == "desc"))
+    return [(lines[index], index in wanted) for index in ordered]
 
 
 def bind_server(host: str, start_port: int, attempts: int = 20) -> ThreadingHTTPServer:

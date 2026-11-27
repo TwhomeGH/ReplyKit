@@ -1,5 +1,13 @@
 # 變更歷史
 
+## 2026.11.27 診斷檢視器：時間範圍、排序與時間解析（GMT+8）
+
+- 新增「全部時間／最近 15 分鐘／1 小時／6 小時／24 小時／自訂區間」；靜態診斷檔以檔案最新時間為錨點，不用瀏覽器現在時間。
+- 新增時間舊→新／新→舊排序；與前後鄰近筆數一起使用時，context 也依同方向排列。
+- 後端解析日誌的本地中文時段（清晨、上午、中午、下午、傍晚、晚上、深夜）成 epoch；無時間戳的行在有時間條件時不選入。
+- `/api/summary` 增加 `earliest`／`latest`／`latestTime`，`/api/lines` 增加 `from`／`to`／`order`。
+- 與 TTWChatMessageServer 即時診斷頁的差異：ReplyKit 讀靜態檔，因此不提供自動更新、Log I/O 卡片或 Socket 事件；尚未做檔案 watch。
+
 ## 2026.11.25 12:28 分支測試 IPA：run 名稱顯示來源分支（GMT+8）
 
 - `branch-archive.yml` 新增 `run-name: Build Test IPA · <source_ref> · <label>`；Actions 列表不再只顯示 `main`，可直接看出實際打包來源。

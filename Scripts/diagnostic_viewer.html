@@ -57,6 +57,9 @@
   .pill { border: 1px solid var(--border); background: var(--panel-2);
           color: var(--muted); border-radius: 999px; padding: 5px 10px; cursor: pointer; }
   .pill.active { border-color: var(--accent); color: var(--accent); }
+  .range { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+  .range input { background: var(--panel-2); color: var(--text);
+                 border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; }
   .status { color: var(--muted); font-size: 12px; margin: 8px 0; }
   table { width: 100%; border-collapse: collapse; table-layout: fixed; }
   th, td { padding: 8px 9px; border-bottom: 1px solid var(--border);
@@ -119,6 +122,23 @@
         <option value="info">一般</option>
       </select>
       <select id="session" title="Session"><option value="">全部 Session</option></select>
+      <select id="range" title="時間範圍">
+        <option value="all">全部時間</option>
+        <option value="15">最近 15 分鐘</option>
+        <option value="60">最近 1 小時</option>
+        <option value="360">最近 6 小時</option>
+        <option value="1440">最近 24 小時</option>
+        <option value="custom">自訂區間…</option>
+      </select>
+      <span class="range" id="customRange" hidden>
+        <input id="from" type="datetime-local" aria-label="開始時間">
+        <span>～</span>
+        <input id="to" type="datetime-local" aria-label="結束時間">
+      </span>
+      <select id="order" title="時間排序">
+        <option value="asc">時間：舊→新</option>
+        <option value="desc">時間：新→舊</option>
+      </select>
       <select id="context" title="鄰近筆數">
         <option value="0">不顯示鄰近</option>
         <option value="2">前後 2 筆</option>
@@ -140,9 +160,24 @@
   </main>
 </div>
 <script>
-const state = { category: "", q: "", severity: "", session: "", context: 0, offset: 0, limit: 300, total: 0 };
+const state = { category: "", q: "", severity: "", session: "", context: 0, order: "asc", range: "all", from: 0, to: 0, latest: 0, offset: 0, limit: 300, total: 0 };
 const $ = (id) => document.getElementById(id);
 let searchTimer = 0;
+
+function formatTime(ms) {
+  if (!ms) return "—";
+  return new Date(ms).toLocaleString("zh-TW", {
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false
+  });
+}
+
+function rangeLabel() {
+  if (state.from && state.to) return `${formatTime(state.from)} ～ ${formatTime(state.to)}`;
+  if (state.from) return `${formatTime(state.from)} 之後`;
+  if (state.to) return `${formatTime(state.to)} 之前`;
+  return "全部時間";
+}
 
 function text(tag, value) {
   const el = document.createElement(tag);
@@ -192,6 +227,7 @@ function card(label, value, color) {
 }
 
 function renderSummary(s) {
+  state.latest = Number(s.latest) || 0;
   $("fileMeta").textContent = `${s.file} · ${s.range} · ${s.lines} 行`;
   const cards = $("cards");
   cards.replaceChildren(
@@ -303,6 +339,7 @@ async function load(append = false) {
   const params = new URLSearchParams({
     category: state.category, q: state.q, severity: state.severity,
     session: state.session, context: String(state.context),
+    order: state.order, from: String(state.from), to: String(state.to),
     offset: String(state.offset), limit: String(state.limit)
   });
   const response = await fetch("/api/lines?" + params);
@@ -314,8 +351,10 @@ async function load(append = false) {
   state.total = data.total;
   renderRows(data, append);
   const contextNote = state.context ? ` · 含前後 ${state.context} 列` : "";
+  const orderNote = state.order === "desc" ? "新→舊" : "舊→新";
   $("status").textContent = `${data.total} 筆符合 · 顯示 ${data.offset + data.matchCount} 筆${contextNote} · 目前 ${$("rows").children.length} 列`
-    + (state.category ? ` · 分類 ${state.category}` : "");
+    + (state.category ? ` · 分類 ${state.category}` : "")
+    + ` · 時間 ${rangeLabel()} · 排序 ${orderNote}`;
   if (data.hasMore) state.offset = data.offset + data.matchCount;
 }
 
@@ -324,14 +363,40 @@ function scheduleSearch() {
   searchTimer = setTimeout(() => { state.q = $("search").value.trim(); load(); }, 220);
 }
 
+function applyCustomRange() {
+  const from = $("from").value ? new Date($("from").value).getTime() : 0;
+  const to = $("to").value ? new Date($("to").value).getTime() : 0;
+  state.from = Number.isFinite(from) ? from : 0;
+  state.to = Number.isFinite(to) ? to : 0;
+  load();
+}
+
 $("search").addEventListener("input", scheduleSearch);
 $("severity").addEventListener("change", () => { state.severity = $("severity").value; load(); });
 $("session").addEventListener("change", () => { state.session = $("session").value; load(); });
 $("context").addEventListener("change", () => { state.context = Number($("context").value) || 0; load(); });
+$("order").addEventListener("change", () => { state.order = $("order").value; load(); });
+$("range").addEventListener("change", () => {
+  const value = $("range").value;
+  state.range = value;
+  $("customRange").hidden = value !== "custom";
+  if (value === "custom") {
+    applyCustomRange();
+    return;
+  }
+  state.from = value === "all" ? 0 : (state.latest || Date.now()) - Number(value) * 60000;
+  state.to = 0;
+  load();
+});
+$("from").addEventListener("change", applyCustomRange);
+$("to").addEventListener("change", applyCustomRange);
 $("more").addEventListener("click", () => load(true));
 $("reset").addEventListener("click", () => {
-  state.category = ""; state.q = ""; state.severity = ""; state.session = ""; state.context = 0; state.offset = 0;
+  state.category = ""; state.q = ""; state.severity = ""; state.session = ""; state.context = 0;
+  state.order = "asc"; state.range = "all"; state.from = 0; state.to = 0; state.offset = 0;
   $("search").value = ""; $("severity").value = ""; $("session").value = ""; $("context").value = "0";
+  $("order").value = "asc"; $("range").value = "all";
+  $("customRange").hidden = true; $("from").value = ""; $("to").value = "";
   load();
 });
 
