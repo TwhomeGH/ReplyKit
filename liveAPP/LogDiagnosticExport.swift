@@ -148,8 +148,9 @@ struct LogDiagnosticExportView: View {
                     Text("上次前景到背景").tag(4)
                     Text("本次前景到現在").tag(5)
                     Text("上次前景到現在").tag(6)
-                    Text("本次推流到現在").tag(7)
-                    Text("上次推流到現在").tag(8)
+                    Text("推流中：本次推流到現在").tag(7)
+                    Text("上次推流：起點到現在").tag(8)
+                    Text("上次推流期間").tag(9)
                     Text("最近一小時").tag(1)
                     Text("今天").tag(0)
                     Text("自訂範圍").tag(2)
@@ -199,18 +200,36 @@ struct LogDiagnosticExportView: View {
                 }
                 if mode == 7 {
                     if let start = AppSession.currentStreamStartedAt {
-                        Text("本次推流起點：" + start.formatted(date: .abbreviated, time: .standard))
+                        Text("目前推流中，起點：" + start.formatted(date: .abbreviated, time: .standard))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("只在推流進行中可用；停止後請改用「上次推流」範圍。")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     } else {
-                        Text("目前沒有進行中的推流。")
+                        Text("目前沒有進行中的推流；請改用上次推流或自訂範圍。")
                             .font(.caption)
                             .foregroundStyle(.orange)
                     }
                 }
                 if mode == 8 {
                     if let interval = AppSession.lastStreamInterval {
-                        Text("上次推流：" + interval.start.formatted(date: .abbreviated, time: .standard)
+                        Text("上次推流起點：" + interval.start.formatted(date: .abbreviated, time: .standard)
+                            + "；停播於 " + interval.end.formatted(date: .abbreviated, time: .standard))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("包含停播後到按下產生時的紀錄；只看推流期間請選「上次推流期間」。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("尚無已完成的推流區間。")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                }
+                if mode == 9 {
+                    if let interval = AppSession.lastStreamInterval {
+                        Text("上次推流期間：" + interval.start.formatted(date: .abbreviated, time: .standard)
                             + " ～ " + interval.end.formatted(date: .abbreviated, time: .standard))
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -221,7 +240,7 @@ struct LogDiagnosticExportView: View {
                     }
                 }
                 Text("時區：" + TimeZone.current.identifier)
-                Text("保留範圍內所有紀錄及多行續文。本次啟動以 App 啟動標記為起點；上次前景到背景以前景 active 起點到進背景為止；本次／上次前景到現在以前景 active 起點到按下產生時；本次／上次推流到現在以推流起點到按下產生時；今天與最近一小時以按下產生時為準。原始日誌不變；背景或閒置期間沒有日誌時，匯出檔會標示 CoverageGap，不代表記錄被丟棄。")
+                Text("保留範圍內所有紀錄及多行續文。本次啟動以 App 啟動標記為起點；上次前景到背景以前景 active 起點到進背景為止；本次／上次前景到現在以前景 active 起點到按下產生時；推流中：本次推流到現在只在推流進行中可用；上次推流：起點到現在包含停播後；上次推流期間只到停播為止。今天與最近一小時以按下產生時為準。原始日誌不變；背景或閒置期間沒有日誌時，匯出檔會標示 CoverageGap，不代表記錄被丟棄。")
                     .font(.caption)
             }.disabled(busy)
             Section {
@@ -231,7 +250,8 @@ struct LogDiagnosticExportView: View {
                         || (mode == 5 && AppSession.currentForegroundStartedAt == nil)
                         || (mode == 6 && AppSession.lastForegroundInterval == nil)
                         || (mode == 7 && AppSession.currentStreamStartedAt == nil)
-                        || (mode == 8 && AppSession.lastStreamInterval == nil))
+                        || (mode == 8 && AppSession.lastStreamInterval == nil)
+                        || (mode == 9 && AppSession.lastStreamInterval == nil))
                 if busy { ProgressView("正在篩選日誌…"); Button("取消") { work?.cancel() } }
                 if let error { Text(error).foregroundStyle(.red) }
                 if let result {
@@ -251,7 +271,8 @@ struct LogDiagnosticExportView: View {
         let lastForeground = AppSession.lastForegroundInterval
         let lastStream = AppSession.lastStreamInterval
         let upper = mode == 2 ? end : (mode == 4
-            ? (lastForeground?.end.addingTimeInterval(1) ?? now) : now)
+            ? (lastForeground?.end.addingTimeInterval(1) ?? now)
+            : (mode == 9 ? (lastStream?.end.addingTimeInterval(1) ?? now) : now))
         let lower: Date
         switch mode {
         case 0:
@@ -273,6 +294,9 @@ struct LogDiagnosticExportView: View {
             lower = (AppSession.currentStreamStartedAt ?? AppSession.launchDate).addingTimeInterval(-1)
         case 8:
             // 上次推流起點到現在，而不是只到停播；用來追停播後仍出現的收尾事件。
+            lower = (lastStream?.start ?? AppSession.launchDate).addingTimeInterval(-1)
+        case 9:
+            // 只看上次推流的起點到停播，不含停播後的閒置。
             lower = (lastStream?.start ?? AppSession.launchDate).addingTimeInterval(-1)
         default:
             lower = start
